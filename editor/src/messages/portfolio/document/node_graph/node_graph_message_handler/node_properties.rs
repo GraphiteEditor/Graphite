@@ -199,6 +199,22 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _contex
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
 
+pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+
+	vec![
+		LayoutGroup::Row { widgets: input_shadows },
+		LayoutGroup::Row { widgets: input_midtones },
+		LayoutGroup::Row { widgets: input_highlights },
+		LayoutGroup::Row { widgets: output_minimums },
+		LayoutGroup::Row { widgets: output_maximums },
+	]
+}
+
 pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	const MIN: f64 = -200.;
 	const MAX: f64 = 300.;

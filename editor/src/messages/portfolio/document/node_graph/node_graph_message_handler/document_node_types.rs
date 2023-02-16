@@ -193,6 +193,45 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeType {
+			name: "Levels",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::LevelsNode<_, _, _, _, _>"),
+			inputs: vec![
+				DocumentInputType {
+					name: "Image",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+				},
+				DocumentInputType {
+					name: "Shadows",
+					data_type: FrontendGraphDataType::Number,
+					default: NodeInput::value(TaggedValue::F64(0.), false),
+				},
+				DocumentInputType {
+					name: "Midtones",
+					data_type: FrontendGraphDataType::Number,
+					default: NodeInput::value(TaggedValue::F64(50.), false),
+				},
+				DocumentInputType {
+					name: "Highlights",
+					data_type: FrontendGraphDataType::Number,
+					default: NodeInput::value(TaggedValue::F64(100.), false),
+				},
+				DocumentInputType {
+					name: "Output Minimums",
+					data_type: FrontendGraphDataType::Number,
+					default: NodeInput::value(TaggedValue::F64(0.), false),
+				},
+				DocumentInputType {
+					name: "Output Maximums",
+					data_type: FrontendGraphDataType::Number,
+					default: NodeInput::value(TaggedValue::F64(100.), false),
+				},
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::levels_properties,
+		},
+		DocumentNodeType {
 			name: "Grayscale",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>"),

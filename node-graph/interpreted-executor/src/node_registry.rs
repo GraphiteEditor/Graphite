@@ -30,19 +30,26 @@ macro_rules! register_node {
 			|args| {
 				let mut args = args.clone();
 				args.reverse();
-				let node = <$path>::new($(graphene_std::any::input_node::<$type>(args.pop().expect("not enough arguments provided to construct node"))),*);
+				let node = <$path>::new($(
+					graphene_std::any::input_node::<$type>(
+						args.pop().expect("not enough arguments provided to construct node")
+					)
+				),*);
 				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 				Box::pin(any)
-			},{
+			},
+			{
 				let node = IdNode::new().into_type_erased();
 				let node = NodeContainer::new(node, vec![]);
 				let _node = unsafe { node.erase_lifetime().static_ref() };
-				let node = <$path>::new($(graphene_std::any::input_node::<$type>(_node)),*);
+				let node = <$path>::new($(
+					graphene_std::any::input_node::<$type>(_node)
+				),*);
 				let params = vec![$(concrete!($type)),*];
-				let mut  node_io =  <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
+				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io
-			}
+			},
 		)
 	};
 }
@@ -50,21 +57,24 @@ macro_rules! raster_node {
 	($path:ty, params: [$($type:ty),*]) => {
 		(
 			NodeIdentifier::new(stringify!($path)),
-				|args| {
-					let mut args = args.clone();
-					args.reverse();
-					let node = <$path>::new($(
-							graphene_core::value::ClonedNode::new(
-							graphene_std::any::input_node::<$type>(args.pop().expect("Not enough arguments provided to construct node"))
-							.eval(()))
-					),*);
-					let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-					let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
-					Box::pin(any)
-				}, {
-					let params = vec![$(concrete!($type)),*];
-					NodeIOTypes::new(concrete!(Image), concrete!(Image), params)
-				}
+			|args| {
+				let mut args = args.clone();
+				args.reverse();
+				let node = <$path>::new($(
+					graphene_core::value::ClonedNode::new(
+						graphene_std::any::input_node::<$type>(
+							args.pop().expect("Not enough arguments provided to construct node")
+						).eval(())
+					)
+				),*);
+				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
+				let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+				Box::pin(any)
+			},
+			{
+				let params = vec![$(concrete!($type)),*];
+				NodeIOTypes::new(concrete!(Image), concrete!(Image), params)
+			},
 		)
 	};
 }
@@ -103,6 +113,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		),
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
+		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
