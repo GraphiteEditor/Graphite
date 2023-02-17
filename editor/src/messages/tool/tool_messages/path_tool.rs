@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::transformation_cage::axis_align
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
+use document_legacy::Operation;
 use document_legacy::intersection::Quad;
 use graphene_std::vector::consts::ManipulatorType;
 
@@ -123,9 +124,10 @@ struct PathToolData {
 	shape_editor: ShapeEditor,
 	overlay_renderer: OverlayRenderer,
 	snap_manager: SnapManager,
-
+	center: DVec2,
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
+	grs_mouse_start: DVec2,
 	alt_debounce: bool,
 }
 
@@ -171,6 +173,9 @@ impl Fsm for PathToolFsmState {
 				}
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
+
+					tool_data.center = DVec2::new(0.0,0.0);
+
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
@@ -238,38 +243,97 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				//Rotating
-				(PathToolFsmState::Rotating, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance,},) => {
-
-					let mut center = DVec2::new(0.0,0.0);
-					let x = center.x;
+				(PathToolFsmState::Rotating, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance}) => {
+					
+					let path = tool_data.shape_editor.selected_layers_ref();
+					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
 					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
-					let mut count = 0;
-					for point in points{
-						debug!("Point {}{}", point.position.x, point.position.y);
-						center.x += point.position.x;
-						center.y += point.position.y;
+					
+				
+					let mut count:usize = 0;
+					let pivot = points.map(|point| {
 						count += 1;
-					}
-					center.x = center.x / count as f64;
-					center.y = center.y / count as f64;
-					debug!("Center {}", center);
+						point.position 
+					}).sum::<DVec2>() / count as f64;
 
-
-					let angle = {
-							let start_offset = tool_data.drag_start_pos - center;
-							let end_offset = input.mouse.position -center;
-
-							start_offset.angle_between(end_offset)
-						};
+					//drag start is in pixels // center is in relative pos
+					// let vector_from_mouse_start = pivot - tool_data.grs_mouse_start ;
+					// let vector_from_mouse_current = pivot - input.mouse.position;
+					let vector_from_mouse_start =  tool_data.grs_mouse_start - pivot ;
+					let vector_from_mouse_current = input.mouse.position - pivot;
+					let angle = vector_from_mouse_start.angle_between(vector_from_mouse_current);
+					debug!("Mouse start {}", tool_data.grs_mouse_start);
 					debug!("Angle {}", angle);
 					let delta = DAffine2::from_angle(angle);
-					//apply transformation to each point
-					// let mut points = tool_data.shape_editor.selected_points(&document.document_legacy);
-					// for mut point in &mut points{
-					// 	let mut p = point.clone();
-					// 	p.transform(&delta);
-					// 	point = &p;
+					debug!("Delta {}", delta);
+					//convert pivot position from viewport space (pixels) into layer space using one of the funcs -> DAffine2
+					let viewport_pivot = viewspace.transform_point2(pivot);
+					//modify that matrix by multiplying it by rotation matrix based on angle -> DAffine2 
+					//mult delta * viewspace?
+					let viewspace_matrix = *viewspace * delta;
+					
+					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
+					// let manipulator_groups = subpath.unwrap().manipulator_groups().enumerate();
+					//something to do with man_id i think for which point it selects
+					// let man_id = manipulator_groups.next();
+		
+					// 3. apply matrix to selected points -> DVec2
+					// if let Some((group_id, anchor)) = man_id
+					// 		.as_ref()
+					// 		.and_then(|(&id, manipulator_group)| manipulator_group.points[ManipulatorType::Anchor].as_ref().map(|x| (id, x)))
+					// {
+						
+					
+					for point in points{
+						debug!("Point {},{}", point.position.x, point.position.y);
+						debug!("Pos {},{}", viewspace.transform_point2(point.position).x, viewspace.transform_point2(point.position).y);
+						
+						// 1 vertex = 1 man group = 3 poss man points (anchor and handles)
+						let mut group_id = 0;
+						for man_group in subpath.unwrap().manipulator_groups().enumerate(){
+							let points_in_group = man_group.1.selected_points();
+							for p in points_in_group{
+								debug!("P {},{}", p.position.x, p.position.y);
+								if p.position == point.position{
+									debug!("cracked");
+									debug!("man_group.1 {:?}", man_group.0 );
+									group_id = *man_group.0;
+								}
+							}
+							// if man_group.1.selected_points() == point.position{
+							// 	debug!{"here"};
+							// }
+						}
+						// let group_id = group_ids.find(|val| val.1.points == point).unwrap().0;
+						let new_pos = viewspace_matrix.transform_point2(point.position);
+						//TODO: check is this the right pos?
+						debug!("New pos {}", new_pos);
+						// debug!("Group ID {}", group_id);
+						let op = Operation::MoveManipulatorPoint{
+							layer_path : path[0].to_vec(),
+							id : group_id, //manGroupID
+							manipulator_type : point.manipulator_type,
+							position : (200.,200.),
+						}.into();
+						responses.push_back(op);
+					}
 					// }
+					// subpath.	/// Move the selected points by the delta vector
+	// pub fn move_selected(&mut self, delta: DVec2, mirror_distance: bool) {
+					// for point in points{
+					// let delta = viewspace.transform_point2(point.position);
+					// }
+					// path[0]
+					//get layer so we can get subpath so we can use selected_manipulator_groups_any_points_mut
+					// let layer = &mut document.document_legacy.layer(path[0]);
+					// let subpath =  layer.unwrap().as_subpath();
+					// let group_ids = subpath.unwrap().manipulator_groups().enumerate();
+					
+					// if let Some(shape) = layer.unwrap().as_subpath_mut() {
+					// 	shape.move_selected(x, false);
+					// }
+					// tool_data.shape_editor.move_selected_points(x, false, responses);
 						
 
 					PathToolFsmState::Rotating
@@ -312,6 +376,45 @@ impl Fsm for PathToolFsmState {
 
 				}
 				(_, PathToolMessage::BeginRotate) => {
+
+					// TODO: need start pos of mouse to calculate angle 
+					tool_data.grs_mouse_start = input.mouse.position;
+					
+					let path = tool_data.shape_editor.selected_layers_ref();
+					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
+
+					//need to add .transformation to viewspace
+					// let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					// let layer = &mut document.document_legacy.layer(path[0]);
+					// let subpath =  layer.unwrap().as_subpath();
+					// let group_ids = subpath.unwrap().manipulator_groups().enumerate();
+					// group_ids.find(|val| val.1 == )
+
+
+					// is the center constantly moving?
+					// for point in points{
+					// 	debug!("Point {},{}", point.position.x, point.position.y);
+					// 	debug!("Pos {},{}", viewspace.transform_point2(point.position).x, viewspace.transform_point2(point.position).y);
+					 	// point.position = viewspace.transform_point2(point.position);
+					// 	let group_id = group_ids.find(|val| val.1 == point).unwrap().0;
+					// 	responses.push_back(Operation::MoveManipulatorPoint{
+					// 		layer_path : path[0],
+					// 		id : group_id, //manGroupID
+					// 		manipulator_type: control_type : point.,
+					// 		position : viewspace.transform_point2(point.position),
+					// 	}
+
+					// 	tool_data.center.x += point.position.x;
+					// 	tool_data.center.y += point.position.y;
+					// 	count += 1;
+					// }
+
+					// debug!("Center1 {}", tool_data.center);
+
+					// tool_data.center.x /= count as f64;
+					// tool_data.center.y /= count as f64;
+					// debug!("Center2 {}", tool_data.center);
+
 					
 					PathToolFsmState::Rotating
 
