@@ -1631,7 +1631,7 @@ dependencies = [
  "num-traits",
  "rand_chacha 0.3.1",
  "serde",
- "specta",
+ "specta 0.0.6 (git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae)",
 ]
 
 [[package]]
@@ -1648,7 +1648,7 @@ dependencies = [
  "node-macro",
  "once_cell",
  "serde",
- "specta",
+ "specta 0.0.6 (git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae)",
  "spirv-std",
 ]
 
@@ -1686,16 +1686,22 @@ name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bezier-rs",
  "chrono",
  "fern",
  "futures",
+ "graph-craft",
+ "graphene-core",
+ "graphite-document-legacy",
  "graphite-editor",
  "log",
  "ron",
  "serde",
  "serde_json",
+ "specta 0.0.6 (git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae)",
  "tauri",
  "tauri-build",
+ "tauri-specta",
  "tokio",
 ]
 
@@ -1714,7 +1720,7 @@ dependencies = [
  "log",
  "rustybuzz",
  "serde",
- "specta",
+ "specta 0.0.6 (git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae)",
 ]
 
 [[package]]
@@ -1742,7 +1748,7 @@ dependencies = [
  "remain",
  "serde",
  "serde_json",
- "specta",
+ "specta 0.0.6 (git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae)",
  "spin 0.9.4",
  "test-case",
  "thiserror",
@@ -2139,6 +2145,7 @@ checksum = "1885e79c1fc4b10f0e172c475f458b7f7b93061064d98c3293e98c5ba0c8b399"
 dependencies = [
  "autocfg",
  "hashbrown",
+ "serde",
 ]
 
 [[package]]
@@ -2882,6 +2889,17 @@ checksum = "2078c0039e6a54a0c42c28faa984e115fb4c2d5bf2208f77d1961002df8576f8"
 dependencies = [
  "pathdiff",
  "windows-sys 0.42.0",
+]
+
+[[package]]
+name = "openapiv3"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b1a9f106eb0a780abd17ba9fca8e0843e3461630bcbe2af0ad4d5d3ba4e9aa4"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4117,6 +4135,22 @@ dependencies = [
 [[package]]
 name = "specta"
 version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "427e2820d72e030de0f4e3d57a4b1060d1d5865d822751f9cc21a12ffe4e8c80"
+dependencies = [
+ "document-features",
+ "once_cell",
+ "openapiv3",
+ "paste",
+ "serde",
+ "serde_json",
+ "specta-macros 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tauri",
+]
+
+[[package]]
+name = "specta"
+version = "0.0.6"
 source = "git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae#9725ddbfe40183debc055b88c37910eb6f818eae"
 dependencies = [
  "document-features",
@@ -4125,7 +4159,21 @@ dependencies = [
  "paste",
  "serde",
  "serde_json",
- "specta-macros",
+ "specta-macros 0.0.6 (git+https://github.com/oscartbeaumont/rspc?rev=9725ddbfe40183debc055b88c37910eb6f818eae)",
+ "tauri",
+]
+
+[[package]]
+name = "specta-macros"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fb7a302eb421c00c45715b2c8abb61650dd01d26a475505834f3e8ee23ffcbb"
+dependencies = [
+ "Inflector",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "termcolor",
 ]
 
 [[package]]
@@ -4520,6 +4568,21 @@ dependencies = [
  "webview2-com",
  "windows 0.39.0",
  "wry",
+]
+
+[[package]]
+name = "tauri-specta"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34040e46523f9595aa9d29f2f2c333d50f68efba2199b6e0b927d264ff0f5622"
+dependencies = [
+ "openapiv3",
+ "paste",
+ "serde",
+ "serde_json",
+ "specta 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tauri",
+ "thiserror",
 ]
 
 [[package]]

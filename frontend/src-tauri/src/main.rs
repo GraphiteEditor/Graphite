@@ -17,8 +17,14 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
 
+#[macro_use]
+extern crate log;
+
+mod commands;
+mod helpers;
+
 static IMAGES: Mutex<Option<HashMap<String, FrontendImageData>>> = Mutex::new(None);
-static EDITOR: Mutex<Option<Editor>> = Mutex::new(None);
+pub static EDITOR: Mutex<Option<Editor>> = Mutex::new(None);
 
 async fn respond_to(id: Path<String>) -> impl IntoResponse {
 	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
