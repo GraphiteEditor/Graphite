@@ -7,7 +7,7 @@ use std::f64::consts::PI;
 /// Functionality that transform Beziers, such as split, reduce, offset, etc.
 impl Bezier {
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/split/solo" title="Split Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/split/solo" title="Split Demo"></iframe>
 	pub fn split(&self, t: TValue) -> [Bezier; 2] {
 		let t = self.t_value_to_parametric(t);
 		let split_point = self.evaluate(TValue::Parametric(t));
@@ -104,7 +104,7 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier curve that results from rotating the curve around the origin by the given angle (in radians).
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/rotate/solo" title="Rotate Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
 		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
@@ -230,7 +230,7 @@ impl Bezier {
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/reduce/solo" title="Reduce Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/reduce/solo" title="Reduce Demo"></iframe>
 	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
 		self.reduced_curves_and_t_values(step_size).0
 	}
@@ -330,7 +330,7 @@ impl Bezier {
 	/// Offset takes the following parameter:
 	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
 		let mut reduced = self.reduce(None);
 		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
@@ -362,7 +362,7 @@ impl Bezier {
 	///
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline(&self, distance: f64) -> Vec<Bezier> {
 		let first_segment = self.offset(distance);
 		let third_segment = self.reverse().offset(distance);
@@ -378,13 +378,13 @@ impl Bezier {
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
 	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
-	/// <iframe frameBorder="0" width="100%" height="460px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
 	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Vec<Bezier> {
 		let first_segment = self.graduated_offset(distance1, distance2);
 		let third_segment = self.reverse().graduated_offset(distance3, distance4);
