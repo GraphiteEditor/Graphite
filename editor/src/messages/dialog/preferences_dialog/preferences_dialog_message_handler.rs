@@ -80,8 +80,13 @@ impl PreferencesDialogMessageHandler {
 
 		let scroll_as_zoom = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Interpret scroll as zoom".into(),
-				min_width: 200,
+				value: "Input".into(),
+				min_width: 60,
+				italic: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Scroll As Zoom".into(),
 				table_align: true,
 				..Default::default()
 			})),
