@@ -65,6 +65,7 @@ impl Bezier {
 
 	/// Calculate the coordinates of the point `t` along the curve.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
+	/// <iframe frameBorder="0" width = "100%" height = "450px" src="https://graphite.rs/bezier-rs-demos#bezier/evaluate/solo" title="Evaluate Demo"></iframe>
 	pub fn evaluate(&self, t: TValue) -> DVec2 {
 		let t = self.t_value_to_parametric(t);
 		self.unrestricted_parametric_evaluate(t)
@@ -72,6 +73,7 @@ impl Bezier {
 
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
+	/// <iframe frameBorder="0" width = "100%" height = "450px" src="https://graphite.rs/bezier-rs-demos#bezier/lookup-table/solo" title="Lookup-Table Demo"></iframe>
 	pub fn compute_lookup_table(&self, steps: Option<usize>) -> Vec<DVec2> {
 		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
 		let ratio: f64 = 1. / (steps_unwrapped as f64);
@@ -86,6 +88,7 @@ impl Bezier {
 
 	/// Return an approximation of the length of the bezier curve.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is 1000.
+	/// <iframe frameBorder="0" width = "100%" height = "360px" src="https://graphite.rs/bezier-rs-demos#bezier/length/solo" title="Length Demo"></iframe>
 	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
 		match self.handles {
 			BezierHandles::Linear => self.start.distance(self.end),
@@ -112,6 +115,7 @@ impl Bezier {
 
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
+	/// <iframe frameBorder="0" width = "100%" height = "360px" src="https://graphite.rs/bezier-rs-demos#bezier/project/solo" title="Project Demo"></iframe>
 	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
 		let ProjectionOptions {
 			lut_size,
