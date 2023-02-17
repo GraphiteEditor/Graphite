@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ComputeType, ProjectionOptions};
+use crate::{ProjectionOptions, TValue};
 use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
@@ -22,7 +22,7 @@ impl Subpath {
 			.iter()
 			.map(|bezier| {
 				let project_t = bezier.project(point, options);
-				(bezier.evaluate(ComputeType::Parametric(project_t)).distance(point), project_t)
+				(bezier.evaluate(TValue::Parametric(project_t)).distance(point), project_t)
 			})
 			.enumerate()
 			.min_by(|(_, (distance1, _)), (_, (distance2, _))| distance1.total_cmp(distance2))

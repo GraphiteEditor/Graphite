@@ -52,6 +52,47 @@ fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) ->
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
+	input_start: InputStart,
+	input_mid: InputMid,
+	input_end: InputEnd,
+	output_start: OutputStart,
+	output_end: OutputEnd,
+}
+
+// From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+#[node_macro::node_fn(LevelsNode)]
+fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
+	// Input Range
+	let input_shadows = (input_start / 100.) as f32;
+	let input_midtones = (input_mid / 100.) as f32;
+	let input_highlights = (input_end / 100.) as f32;
+
+	// Output Range
+	let output_minimums = (output_start / 100.) as f32;
+	let output_maximums = (output_end / 100.) as f32;
+
+	// Midtones interpolation factor between minimums and maximums
+	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
+
+	// Gamma correction
+	let gamma = if midtones < 0.5 {
+		1. / (1. + (9. * (1. - midtones * 2.))).min(9.99)
+	} else {
+		1. / ((1. - midtones) * 2.).max(0.01)
+	};
+
+	// Input levels
+	let color = color.map_rgb(|channel| (channel - input_shadows) / (input_highlights - input_shadows));
+
+	// Midtones
+	let color = color.map_rgb(|channel| channel.powf(gamma));
+
+	// Output levels
+	color.map_rgb(|channel| channel * (output_maximums - output_minimums) + output_minimums)
+}
+
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 	tint: Tint,
 	reds: Reds,

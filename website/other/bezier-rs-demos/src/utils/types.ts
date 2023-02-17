@@ -11,10 +11,10 @@ export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_ou
 export const BEZIER_CURVE_TYPE = ["Linear", "Quadratic", "Cubic"] as const;
 export type BezierCurveType = typeof BEZIER_CURVE_TYPE[number];
 
-export type ComputeType = "Euclidean" | "Parametric";
+export type TVariant = "Euclidean" | "Parametric";
 
-export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
-export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number], computeType?: ComputeType) => string;
+export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number], tVariant?: TVariant) => string;
+export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number], tVariant?: TVariant) => string;
 
 export type BezierDemoOptions = {
 	[key in BezierCurveType]: {
@@ -85,7 +85,7 @@ export interface DemoPane extends HTMLElement {
 	name: string;
 	demos: DemoArgs[];
 	id: string;
-	chooseComputeType: boolean;
-	computeType: ComputeType;
+	chooseTVariant: boolean;
+	tVariant: TVariant;
 	buildDemo(demo: DemoArgs): Demo;
 }

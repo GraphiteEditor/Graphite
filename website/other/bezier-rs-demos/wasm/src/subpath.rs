@@ -1,6 +1,6 @@
 use crate::svg_drawing::*;
 
-use bezier_rs::{Bezier, ComputeType, ManipulatorGroup, ProjectionOptions, Subpath};
+use bezier_rs::{Bezier, ManipulatorGroup, ProjectionOptions, Subpath, TValue};
 
 use glam::DVec2;
 use std::fmt::Write;
@@ -56,20 +56,20 @@ impl WasmSubpath {
 		subpath_svg
 	}
 
-	pub fn insert(&self, t: f64, compute_type: String) -> String {
+	pub fn insert(&self, t: f64, t_variant: String) -> String {
 		let mut subpath = self.0.clone();
-		let point = match compute_type.as_str() {
+		let point = match t_variant.as_str() {
 			"Euclidean" => {
-				let parameter = ComputeType::Euclidean(t);
+				let parameter = TValue::Euclidean(t);
 				subpath.insert(parameter);
 				self.0.evaluate(parameter)
 			}
 			"Parametric" => {
-				let parameter = ComputeType::Parametric(t);
+				let parameter = TValue::Parametric(t);
 				subpath.insert(parameter);
 				self.0.evaluate(parameter)
 			}
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+			_ => panic!("Unexpected TValue string: '{}'", t_variant),
 		};
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 
@@ -81,19 +81,19 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), length_text))
 	}
 
-	pub fn evaluate(&self, t: f64, compute_type: String) -> String {
-		let point = match compute_type.as_str() {
-			"Euclidean" => self.0.evaluate(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.evaluate(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+	pub fn evaluate(&self, t: f64, t_variant: String) -> String {
+		let point = match t_variant.as_str() {
+			"Euclidean" => self.0.evaluate(TValue::Euclidean(t)),
+			"Parametric" => self.0.evaluate(TValue::Parametric(t)),
+			_ => panic!("Unexpected TValue string: '{}'", t_variant),
 		};
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
 	}
 
 	pub fn tangent(&self, t: f64) -> String {
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
-		let tangent_point = self.0.tangent(ComputeType::Parametric(t));
+		let intersection_point = self.0.evaluate(TValue::Parametric(t));
+		let tangent_point = self.0.tangent(TValue::Parametric(t));
 		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let point_text = draw_circle(intersection_point, 4., RED, 1.5, WHITE);
@@ -103,8 +103,8 @@ impl WasmSubpath {
 	}
 
 	pub fn normal(&self, t: f64) -> String {
-		let intersection_point = self.0.evaluate(ComputeType::Parametric(t));
-		let normal_point = self.0.normal(ComputeType::Parametric(t));
+		let intersection_point = self.0.evaluate(TValue::Parametric(t));
+		let normal_point = self.0.normal(TValue::Parametric(t));
 		let normal_end = intersection_point + normal_point * SCALE_UNIT_VECTOR_FACTOR;
 
 		let point_text = draw_circle(intersection_point, 4., RED, 1.5, WHITE);
@@ -115,7 +115,7 @@ impl WasmSubpath {
 
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
-		let projected_point = self.0.evaluate(ComputeType::Parametric((segment_index as f64 + projected_t) / (self.0.len_segments() as f64)));
+		let projected_point = self.0.evaluate(TValue::Parametric((segment_index as f64 + projected_t) / (self.0.len_segments() as f64)));
 
 		let subpath_svg = self.to_default_svg();
 		let content = format!("{subpath_svg}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
@@ -143,7 +143,7 @@ impl WasmSubpath {
 			.intersections(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -172,7 +172,7 @@ impl WasmSubpath {
 			.intersections(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -201,7 +201,7 @@ impl WasmSubpath {
 			.intersections(&line, None, None)
 			.iter()
 			.map(|intersection_t| {
-				let point = self.0.evaluate(ComputeType::Parametric(*intersection_t));
+				let point = self.0.evaluate(TValue::Parametric(*intersection_t));
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -209,11 +209,11 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn split(&self, t: f64, compute_type: String) -> String {
-		let (main_subpath, optional_subpath) = match compute_type.as_str() {
-			"Euclidean" => self.0.split(ComputeType::Euclidean(t)),
-			"Parametric" => self.0.split(ComputeType::Parametric(t)),
-			_ => panic!("Unexpected ComputeType string: '{}'", compute_type),
+	pub fn split(&self, t: f64, t_variant: String) -> String {
+		let (main_subpath, optional_subpath) = match t_variant.as_str() {
+			"Euclidean" => self.0.split(TValue::Euclidean(t)),
+			"Parametric" => self.0.split(TValue::Parametric(t)),
+			_ => panic!("Unexpected ComputeType string: '{}'", t_variant),
 		};
 
 		let mut main_subpath_svg = String::new();
