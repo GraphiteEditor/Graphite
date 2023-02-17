@@ -483,6 +483,54 @@ const bezierFeatures = {
 		},
 		chooseTVariant: true,
 	},
+	"join": {
+		name: "Join",
+		callback: (bezier: WasmBezierInstance): string => {
+			const points = JSON.parse(bezier.get_points());
+			if (points.length === 2) {
+				return bezier.join([
+					[120, 155],
+					[40, 155],
+				]);
+			}
+			if (points.length === 3) {
+				return bezier.join([
+					[40, 150],
+					[95, 195],
+					[155, 145],
+				]);
+			}
+			return bezier.join([
+				[140, 150],
+				[85, 110],
+				[65, 180],
+				[30, 140],
+			]);
+		},
+		demoOptions: {
+			Linear: {
+				customPoints: [
+					[45, 40],
+					[130, 90],
+				],	
+			},
+			Quadratic: {
+				customPoints: [
+					[153, 40],
+					[40, 20],
+					[75, 85],
+				],
+			},
+			Cubic: {
+				customPoints: [
+					[20, 80],
+					[40, 20],
+					[90, 100],
+					[130, 55],
+				],
+			},
+		},
+	},
 };
 
 export type BezierFeatureKey = keyof typeof bezierFeatures;
