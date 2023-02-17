@@ -31,7 +31,7 @@ impl Subpath {
 	/// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
 	/// - If the argument is a variant containing a `segment_index`, asserts that the index references a valid segment on the curve.
 	pub(crate) fn t_value_to_parametric(&self, t: SubpathTValue) -> (usize, f64) {
-		assert!(self.len() > 1);
+		assert!(self.len_segments() >= 1);
 
 		match t {
 			SubpathTValue::Parametric { segment_index, t } => {
