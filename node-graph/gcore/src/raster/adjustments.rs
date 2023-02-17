@@ -216,13 +216,59 @@ pub struct VibranceNode<Vibrance> {
 	vibrance: Vibrance,
 }
 
-// TODO: The current results are incorrect, try implementing this from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// From https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	let [hue, saturation, lightness, alpha] = color.to_hsla();
-	let vibrance = vibrance as f32 / 100.;
-	let saturation = saturation + vibrance * (1. - saturation);
-	Color::from_hsla(hue, saturation, lightness, alpha)
+	// x = max(r, g, b)
+	let x = color.r().max(color.g()).max(color.b());
+	// y = min(r, g, b)
+	let y = color.r().min(color.g()).min(color.b());
+	// gray = toGray(unGamma(r, g, b))
+	let gray = color.to_linear_srgb().luminance_rec_601_rounded();
+	// scale = input
+	let scale = vibrance as f32 / 100.;
+	// if x == r:
+	let scale = if x == color.r() {
+		// 	t = min(1, abs((g - b) / (x - y)))
+		let t = ((color.g() - color.b()) / (x - y)).abs().min(1.);
+		// 	scale = scale * (1 + t) * 0.5
+		scale * (1. + t) * 0.5
+	} else {
+		scale
+	};
+	// a = (x - y) / 255
+	let a = x - y;
+	// scale1 = scale * (2 - a)
+	let scale1 = scale * (2. - a);
+	// scale2 = 1 + scale1 * (1 - a)
+	let scale2 = 1. + scale1 * (1. - a);
+	// sub = y * scale1
+	let sub = y * scale1;
+	// r = unGamma(r * scale2 - sub)
+	// g = unGamma(g * scale2 - sub)
+	// b = unGamma(b * scale2 - sub)
+	let color = color.map_rgb(|channel| (channel * scale2 - sub)).to_linear_srgb();
+	// gray2 = toGray(r, g, b)
+	let gray2 = color.luminance_rec_601_rounded();
+	// r *= gray / gray2
+	// g *= gray / gray2
+	// b *= gray / gray2
+	let color = color.map_rgb(|channel| channel * gray / gray2);
+	// m = max(r, g, b)
+	let m = color.r().max(color.g()).max(color.b());
+	// if Gamma(m) > 255:
+	let color = if Color::linear_to_srgb(m) > 1. {
+		// 	scale = (unGamma(255) - gray2) / (m - gray2)
+		let scale = (1. - gray2) / (m - gray2);
+		// 	r = (r - gray2) * scale + gray2
+		// 	g = (g - gray2) * scale + gray2
+		// 	b = (b - gray2) * scale + gray2
+		color.map_rgb(|channel| (channel - gray2) * scale + gray2)
+	} else {
+		color
+	};
+	// (r, g, b) = Gamma(r, g, b)
+	color.to_gamma_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
