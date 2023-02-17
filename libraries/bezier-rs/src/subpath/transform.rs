@@ -7,7 +7,7 @@ impl Subpath {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
 	/// If the original Subpath was open, two open Subpaths will be returned.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/split/solo" title="Split Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/split/solo" title="Split Demo"></iframe>
 	pub fn split(&self, t: SubpathTValue) -> (Subpath, Option<Subpath>) {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		let curve = self.get_segment(segment_index).unwrap();

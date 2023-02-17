@@ -46,14 +46,14 @@ impl Subpath {
 	}
 
 	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
 	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal on the subpath based on the parametric `t`-value provided.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		self.get_segment(segment_index).unwrap().normal(TValue::Parametric(t))
