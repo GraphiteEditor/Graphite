@@ -10,8 +10,7 @@ const subpathFeatures = {
 		name: "Insert",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.insert(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseTVariant: true,
+		chooseTVariant: true,
 	},
 	length: {
 		name: "Length",
@@ -31,13 +30,15 @@ const subpathFeatures = {
 	},
 	tangent: {
 		name: "Tangent",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.tangent(options.t),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.tangent(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	normal: {
 		name: "Normal",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.normal(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	"intersect-linear": {
 		name: "Intersect (Line Segment)",
@@ -70,8 +71,7 @@ const subpathFeatures = {
 		name: "Split",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.split(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseTVariant: true,
+		chooseTVariant: true,
 	},
 };
 
