@@ -105,7 +105,6 @@ export default defineComponent({
 			open: false,
 			entries: [] as MenuListEntry[],
 			activeEntry: undefined as MenuListEntry | undefined,
-			highlighted: undefined as MenuListEntry | undefined,
 			entriesStart: 0,
 			minWidth: this.isStyle ? 0 : 300,
 		};
@@ -113,7 +112,6 @@ export default defineComponent({
 	async mounted() {
 		this.entries = await this.getEntries();
 		this.activeEntry = this.getActiveEntry(this.entries);
-		this.highlighted = this.activeEntry;
 	},
 	methods: {
 		async setOpen(): Promise<void> {
@@ -175,12 +173,10 @@ export default defineComponent({
 		async fontFamily() {
 			this.entries = await this.getEntries();
 			this.activeEntry = this.getActiveEntry(this.entries);
-			this.highlighted = this.activeEntry;
 		},
 		async fontStyle() {
 			this.entries = await this.getEntries();
 			this.activeEntry = this.getActiveEntry(this.entries);
-			this.highlighted = this.activeEntry;
 		},
 	},
 	components: {

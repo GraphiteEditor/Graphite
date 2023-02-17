@@ -1,6 +1,6 @@
 use crate::messages::prelude::*;
 
-use bezier_rs::ComputeType;
+use bezier_rs::TValue;
 use document_legacy::{LayerId, Operation};
 use graphene_std::vector::consts::ManipulatorType;
 use graphene_std::vector::manipulator_group::ManipulatorGroup;
@@ -307,7 +307,7 @@ impl ShapeEditor {
 		for bezier_id in document.layer(layer_path).ok()?.as_subpath()?.bezier_iter() {
 			let bezier = bezier_id.internal;
 			let t = bezier.project(layer_pos, projection_options);
-			let layerspace = bezier.evaluate(ComputeType::Parametric(t));
+			let layerspace = bezier.evaluate(TValue::Parametric(t));
 
 			let screenspace = transform.transform_point2(layerspace);
 			let distance_squared = screenspace.distance_squared(position);
@@ -325,7 +325,7 @@ impl ShapeEditor {
 	pub fn split(&self, document: &Document, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
 			if let Some((bezier_id, t)) = self.closest_segment(document, layer_path, position, tolerance) {
-				let [first, second] = bezier_id.internal.split(t);
+				let [first, second] = bezier_id.internal.split(TValue::Parametric(t));
 
 				// Adjust the first manipulator group's out handle
 				let out_handle = Operation::SetManipulatorPoints {

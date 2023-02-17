@@ -1646,6 +1646,7 @@ dependencies = [
  "kurbo",
  "log",
  "node-macro",
+ "once_cell",
  "serde",
  "specta",
  "spirv-std",
@@ -2171,6 +2172,7 @@ dependencies = [
  "graphene-std",
  "log",
  "num-traits",
+ "once_cell",
  "rand_chacha 0.3.1",
  "serde",
 ]

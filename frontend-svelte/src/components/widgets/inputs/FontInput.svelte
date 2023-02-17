@@ -30,21 +30,16 @@
 	let open = false;
 	let entries: MenuListEntry[] = [];
 	let activeEntry: MenuListEntry | undefined = undefined;
-	let highlighted: MenuListEntry | undefined = undefined;
 	let minWidth = isStyle ? 0 : 300;
 
-	$: fontFamily,
-		(async () => {
-			entries = await getEntries();
-			activeEntry = getActiveEntry(entries);
-			highlighted = activeEntry;
-		})();
-	$: fontStyle,
-		async () => {
-			entries = await getEntries();
-			activeEntry = getActiveEntry(entries);
-			highlighted = activeEntry;
-		};
+	$: fontFamily, fontStyle, watchFont();
+
+	async function watchFont(): Promise<void> {
+		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop
+		const newEntries = await getEntries();
+		entries = newEntries;
+		activeEntry = getActiveEntry(newEntries);
+	}
 
 	async function setOpen(): Promise<void> {
 		open = true;
@@ -106,7 +101,6 @@
 		entries = await getEntries();
 
 		activeEntry = getActiveEntry(entries);
-		highlighted = activeEntry;
 	});
 </script>
 
