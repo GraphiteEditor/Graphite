@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
-use graphene_core::value::{ForgetNode, ValueNode};
+use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode};
@@ -95,6 +95,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [&u32]),
 		register_node!(graphene_core::ops::AddNode, input: (u32, u32), params: []),
 		register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
+		register_node!(graphene_core::ops::CloneNode<_>, input: &Image, params: []),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [&u32]),
@@ -175,6 +176,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let image = DowncastBothRefNode::<Image, Image>::new(args[2]);
 				let empty_image: ValueNode<Image> = ValueNode::new(Image::empty());
 				let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
+				use graphene_core::Node;
+				let radius = ClonedNode::new(radius.eval(()));
+				let sigma = ClonedNode::new(sigma.eval(()));
 
 				//let image = &image as &dyn for<'a> Node<'a, (), Output = &'a Image>;
 				// dirty hack: we abuse that the cache node will ignore the input if it is evaluated a second time

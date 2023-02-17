@@ -84,7 +84,7 @@ pub mod dynamic {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CloneNode<O>(PhantomData<O>);
-impl<'i, O: Clone + 'i> Node<'i, &'i O> for CloneNode<O> {
+impl<'i, 'n: 'i, O: Clone + 'i> Node<'i, &'n O> for CloneNode<O> {
 	type Output = O;
 	fn eval<'s: 'i>(&'s self, input: &'i O) -> Self::Output {
 		input.clone()
