@@ -206,6 +206,7 @@ impl ShapeEditor {
 		}
 	}
 
+	/// The opposing handle lengths.
 	pub fn opposing_handle_lengths(&self, document: &Document) -> HashMap<Vec<LayerId>, HashMap<u64, f64>> {
 		self.selected_layers()
 			.iter()
@@ -216,14 +217,28 @@ impl ShapeEditor {
 					.manipulator_groups()
 					.enumerate()
 					.filter_map(|(id, manipulator_group)| {
+						// We will keep track of the opposing handle length when:
+						// i) Both handles exist and exactly one is selected.
+						// ii) The anchor is not selected.
+						// iii) We have to mirror the angle between handles.
+
+						if !manipulator_group.editor_state.mirror_angle_between_handles {
+							return None;
+						}
+
 						let mut selected_handles = manipulator_group.selected_handles();
 						let handle = selected_handles.next()?;
+
 						// Check that handle is the only selected handle.
 						if selected_handles.next().is_none() {
 							let opposing_handle_position = manipulator_group.opposing_handle(handle)?.position;
-							let anchor_position = manipulator_group.points[ManipulatorType::Anchor].as_ref()?.position;
-							let opposing_handle_length = opposing_handle_position.distance(anchor_position);
-							Some((*id, opposing_handle_length))
+							let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
+							if !anchor.is_selected() {
+								let opposing_handle_length = opposing_handle_position.distance(anchor.position);
+								Some((*id, opposing_handle_length))
+							} else {
+								None
+							}
 						} else {
 							None
 						}
@@ -234,7 +249,8 @@ impl ShapeEditor {
 			.collect::<HashMap<_, _>>()
 	}
 
-	pub fn reset_opposing_handle_lengths(&self, document: &Document, opposing_handle_lengths: HashMap<Vec<LayerId>, HashMap<u64, f64>>, responses: &mut VecDeque<Message>) {
+	/// Reset the opposing handle lengths.
+	pub fn reset_opposing_handle_lengths(&self, document: &Document, opposing_handle_lengths: &HashMap<Vec<LayerId>, HashMap<u64, f64>>, responses: &mut VecDeque<Message>) {
 		self.selected_layers()
 			.iter()
 			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
@@ -250,17 +266,20 @@ impl ShapeEditor {
 				if !manipulator_group.editor_state.mirror_angle_between_handles {
 					return;
 				}
+
 				let opposing_handle_length = if let Some(length) = layer_opposing_handle_lengths.get(id) {
 					length
 				} else {
 					return;
 				};
+
 				let mut selected_handles = manipulator_group.selected_handles();
 				let handle = if let Some(handle) = selected_handles.next() {
 					handle
 				} else {
 					return;
 				};
+
 				// Check that handle is the only selected handle.
 				if selected_handles.next().is_none() {
 					let opposing_handle = if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
@@ -268,6 +287,7 @@ impl ShapeEditor {
 					} else {
 						return;
 					};
+
 					let anchor = if let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() {
 						anchor
 					} else {
@@ -276,8 +296,10 @@ impl ShapeEditor {
 					if anchor.is_selected() {
 						return;
 					}
+
 					if let Some(offset) = (opposing_handle.position - anchor.position).try_normalize() {
 						let new_opposing_handle_position = anchor.position + offset * (*opposing_handle_length);
+						assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
 						responses.push_back(
 							Operation::MoveManipulatorPoint {
 								layer_path: path.clone(),

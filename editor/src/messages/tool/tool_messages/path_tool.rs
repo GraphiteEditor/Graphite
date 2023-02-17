@@ -142,6 +142,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.overlay_renderer.render_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
 
+					tool_data.opposing_handle_lengths = None;
 					// This can happen in any state (which is why we return self)
 					self
 				}
@@ -157,6 +158,8 @@ impl Fsm for PathToolFsmState {
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
+
+					tool_data.opposing_handle_lengths = None;
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = tool_data
@@ -190,7 +193,6 @@ impl Fsm for PathToolFsmState {
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
 						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
-						tool_data.opposing_handle_lengths = None;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -232,9 +234,9 @@ impl Fsm for PathToolFsmState {
 					let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
 					if alt_pressed != tool_data.alt_debounce {
 						tool_data.alt_debounce = alt_pressed;
-						tool_data.opposing_handle_lengths = None;
 						// Only on alt down
 						if alt_pressed {
+							tool_data.opposing_handle_lengths = None;
 							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, responses);
 						}
 					}
@@ -247,9 +249,9 @@ impl Fsm for PathToolFsmState {
 							tool_data.opposing_handle_lengths = Some(tool_data.shape_editor.opposing_handle_lengths(&document.document_legacy));
 						}
 					} else {
-						let opposing_handle_lengths = tool_data.opposing_handle_lengths.take();
-						if let Some(opposing_handle_lengths) = opposing_handle_lengths {
+						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
 							tool_data.shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+							tool_data.opposing_handle_lengths = None;
 						}
 					}
 
