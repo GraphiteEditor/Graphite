@@ -97,10 +97,11 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		demoRow.append(demoComponent);
 	});
 
+	container.append(demoRow);
+
 	if (demoPane.chooseTVariant) {
 		container.append(tVariantContainer);
 	}
-	container.append(demoRow);
 
 	demoPane.append(container);
 }
