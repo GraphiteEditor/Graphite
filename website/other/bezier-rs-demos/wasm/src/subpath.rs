@@ -199,8 +199,11 @@ impl WasmSubpath {
 			.0
 			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(SubpathTValue::GlobalParametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -228,8 +231,11 @@ impl WasmSubpath {
 			.0
 			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(SubpathTValue::GlobalParametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -257,8 +263,11 @@ impl WasmSubpath {
 			.0
 			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(SubpathTValue::GlobalParametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -273,7 +282,10 @@ impl WasmSubpath {
 			.self_intersections(Some(error), Some(minimum_separation))
 			.iter()
 			.map(|(segment_index, intersection_t)| {
-				let point = self.0.evaluate(TValue::Parametric(((*segment_index as f64) + *intersection_t) / (self.0.len_segments() as f64)));
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
