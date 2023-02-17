@@ -10,9 +10,7 @@ pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, 
 pub use crate::messages::dialog::{DialogMessage, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 pub use crate::messages::globals::{GlobalsMessage, GlobalsMessageDiscriminant, GlobalsMessageHandler};
-pub use crate::messages::input_mapper::{
-	InputMapperMessage, InputMapperMessageDiscriminant, InputMapperMessageHandler, LayoutManagerMessage, LayoutManagerMessageDiscriminant, LayoutManagerMessageHandler,
-};
+pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageDiscriminant, InputMapperMessageHandler, KeyMappingMessage, KeyMappingMessageDiscriminant, KeyMappingMessageHandler};
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
 pub use crate::messages::portfolio::document::artboard::{ArtboardMessage, ArtboardMessageDiscriminant, ArtboardMessageHandler};

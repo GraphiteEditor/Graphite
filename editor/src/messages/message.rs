@@ -28,9 +28,9 @@ pub enum Message {
 	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
-	Layout(LayoutMessage),
+	KeyMapping(KeyMappingMessage),
 	#[child]
-	LayoutManager(LayoutManagerMessage),
+	Layout(LayoutMessage),
 	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]

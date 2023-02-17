@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
-#[impl_message(Message, LayoutManagerMessage, Lookup)]
+#[impl_message(Message, KeyMappingMessage, Lookup)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum InputMapperMessage {
 	// Sub-messages

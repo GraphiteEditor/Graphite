@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::LayoutVariant;
+use crate::messages::input_mapper::MappingVariant;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			imaginate_server_hostname: "http://localhost:7860/".into(),
 			imaginate_refresh_frequency: 1.,
-			scroll_as_zoom: matches!(LayoutVariant::default(), LayoutVariant::ScrollAsZoom),
+			scroll_as_zoom: matches!(MappingVariant::default(), MappingVariant::ScrollAsZoom),
 		}
 	}
 }
@@ -60,10 +60,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.scroll_as_zoom = scroll_as_zoom;
 
 				let variant = match scroll_as_zoom {
-					false => LayoutVariant::Default,
-					true => LayoutVariant::ScrollAsZoom,
+					false => MappingVariant::Default,
+					true => MappingVariant::ScrollAsZoom,
 				};
-				responses.push_back(LayoutManagerMessage::ModifyLayout(variant).into())
+				responses.push_back(KeyMappingMessage::ModifyMapping(variant).into())
 			}
 		}
 

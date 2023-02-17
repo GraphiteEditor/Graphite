@@ -1,6 +1,6 @@
 use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup, LayoutKeysGroup};
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
-use crate::messages::input_mapper::LayoutVariant;
+use crate::messages::input_mapper::MappingVariant;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ pub struct Mapping {
 
 impl Default for Mapping {
 	fn default() -> Self {
-		LayoutVariant::Default.into()
+		MappingVariant::Default.into()
 	}
 }
 

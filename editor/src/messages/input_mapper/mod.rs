@@ -1,7 +1,7 @@
 mod input_mapper_message;
 mod input_mapper_message_handler;
-mod layout_manager_message;
-mod layout_manager_message_handler;
+mod key_mapping_message;
+mod key_mapping_message_handler;
 
 pub mod default_mapping;
 pub mod utility_types;
@@ -11,6 +11,6 @@ pub use input_mapper_message::{InputMapperMessage, InputMapperMessageDiscriminan
 #[doc(inline)]
 pub use input_mapper_message_handler::InputMapperMessageHandler;
 #[doc(inline)]
-pub use layout_manager_message::{LayoutManagerMessage, LayoutManagerMessageDiscriminant, LayoutVariant, LayoutVariantDiscriminant};
+pub use key_mapping_message::{KeyMappingMessage, KeyMappingMessageDiscriminant, MappingVariant, MappingVariantDiscriminant};
 #[doc(inline)]
-pub use layout_manager_message_handler::LayoutManagerMessageHandler;
+pub use key_mapping_message_handler::KeyMappingMessageHandler;
