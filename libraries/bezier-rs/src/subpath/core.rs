@@ -34,6 +34,44 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		)
 	}
 
+	/// Creates a subpath from a vector of [Bezier]. When two consecutive Bezier do not share an end and start point, this function
+	/// resolves the discrepancy by simply taking the start-point of the second Bezier as the anchor of the Manipulator Group.
+	pub fn from_beziers(beziers: Vec<Bezier>, closed: bool) -> Self {
+		assert!(!closed || beziers.len() > 1, "A closed Subpath must contain at least 1 Bezier.");
+		if beziers.is_empty() {
+			return Subpath::new(vec![], closed);
+		}
+
+		let first = beziers.first().unwrap();
+		let mut manipulator_groups = vec![ManipulatorGroup {
+			anchor: first.start(),
+			in_handle: None,
+			out_handle: first.handle_start(),
+		}];
+		let mut inner_groups: Vec<ManipulatorGroup> = beziers
+			.windows(2)
+			.map(|bezier_pair| ManipulatorGroup {
+				anchor: bezier_pair[1].start(),
+				in_handle: bezier_pair[0].handle_end(),
+				out_handle: bezier_pair[1].handle_start(),
+			})
+			.collect::<Vec<ManipulatorGroup>>();
+		manipulator_groups.append(&mut inner_groups);
+
+		let last = beziers.last().unwrap();
+		if !closed {
+			manipulator_groups.push(ManipulatorGroup {
+				anchor: last.end(),
+				in_handle: last.handle_end(),
+				out_handle: None,
+			});
+			return Subpath::new(manipulator_groups, false);
+		}
+
+		manipulator_groups[0].in_handle = last.handle_end();
+		Subpath::new(manipulator_groups, true)
+	}
+
 	/// Returns true if the `Subpath` contains no [ManipulatorGroup].
 	pub fn is_empty(&self) -> bool {
 		self.manipulator_groups.is_empty()

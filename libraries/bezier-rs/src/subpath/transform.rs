@@ -1,6 +1,8 @@
+use std::vec;
+
 use super::*;
-use crate::utils::SubpathTValue;
-use crate::utils::TValue;
+use crate::compare::compare_points;
+use crate::utils::{Joint, SubpathTValue, TValue};
 
 use glam::DAffine2;
 
@@ -271,6 +273,67 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		for manipulator_group in &mut self.manipulator_groups {
 			manipulator_group.apply_transform(affine_transform);
 		}
+	}
+
+	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
+		assert!(self.len_segments() > 1, "Cannot outline an empty Subpath.");
+
+		let subpaths = self
+			.iter()
+			.map(|bezier| Subpath::from_beziers(bezier.offset(distance), false))
+			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
+		let mut manip_groups: Vec<Vec<ManipulatorGroup<ManipulatorGroupId>>> = vec![subpaths[0].manipulator_groups.clone()];
+
+		// Combine the Subpaths by trimming or joining consecutive Subpaths
+		for i in 0..subpaths.len() - 1 + (self.closed as usize) {
+			let j = (i + 1) % subpaths.len();
+			let subpath1 = &subpaths[i];
+			let subpath2 = &subpaths[j];
+
+			let last_segment = subpath1.get_segment(subpath1.len_segments() - 1).unwrap();
+			let first_segment = subpath2.get_segment(0).unwrap();
+
+			// If the anchors are approximately equal, drop the first anchor and combine the subpaths without trimming / joining
+			if compare_points(last_segment.end(), first_segment.start()) {
+				let last_segment_index = manip_groups.len() - 1;
+				manip_groups[i][last_segment_index].out_handle = first_segment.handle_start();
+				manip_groups.push(subpath2.manipulator_groups[1..subpath2.len()].to_vec());
+				continue;
+			}
+
+			// Calculate the angle formed between the groups of Beziers
+			let out_tangent = self.get_segment(i).unwrap().tangent(TValue::Parametric(1.));
+			let in_tangent = self.get_segment(j).unwrap().tangent(TValue::Parametric(0.));
+			let angle = out_tangent.angle_between(in_tangent);
+
+			// The angle is concave. The Subpath overlap
+			if angle > std::f64::consts::PI {
+				// Split the first subpath at its last intersection
+				let last_intersection = subpath1.subpath_intersections(subpath2, None, None)[0];
+				let (trimmed_first_subpath, _) = subpath1.split(SubpathTValue::GlobalParametric(last_intersection));
+				manip_groups[i] = trimmed_first_subpath.manipulator_groups.clone();
+
+				// Split the second subpath at its first intersection
+				let first_intersection = *subpath2.subpath_intersections(subpath1, None, None).last().unwrap();
+				let split_second_subpath = subpath2.split(SubpathTValue::GlobalParametric(first_intersection));
+				let trimmed_second_subpath = split_second_subpath.1.unwrap();
+				let last_segment_index = manip_groups.len() - 1;
+				manip_groups[i][last_segment_index].out_handle = trimmed_second_subpath[0].out_handle;
+				manip_groups.push(trimmed_second_subpath.manipulator_groups[1..subpath2.len()].to_vec());
+			}
+			// The angle is convex. The Subpath must be joined using the specified Joint type
+			else {
+				match joint {
+					Joint::Mitre => todo!(),
+					Joint::Blunt => {
+						manip_groups.push(subpath2.manipulator_groups.clone());
+					}
+					Joint::Rounded => todo!(),
+				}
+			}
+		}
+
+		Subpath::new(manip_groups.into_iter().flatten().collect(), self.closed)
 	}
 }
 

@@ -17,21 +17,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Calculates the intersection points the subpath has with a given curve and returns a list of `(usize, f64)` tuples,
 	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
 	/// that curve where the intersection occured.
-	/// This function expects the following:
+	/// Expects the following:
 	/// - `other`: a [Bezier] curve to check intersections against
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_seperation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
-	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
-		// TODO: account for either euclidean or parametric type
-		let intersection_t_values: Vec<(usize, f64)> = self
-			.iter()
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+		self.iter()
 			.enumerate()
-			.flat_map(|(index, bezier)| bezier.intersections(other, error, minimum_seperation).into_iter().map(|t| (index, t)).collect::<Vec<(usize, f64)>>())
-			.collect();
-
-		intersection_t_values
+			.flat_map(|(index, bezier)| bezier.intersections(other, error, minimum_separation).into_iter().map(|t| (index, t)).collect::<Vec<(usize, f64)>>())
+			.collect()
 	}
 
 	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.

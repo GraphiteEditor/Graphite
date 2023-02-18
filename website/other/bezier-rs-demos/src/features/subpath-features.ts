@@ -114,6 +114,19 @@ const subpathFeatures = {
 		],
 		chooseTVariant: true,
 	},
+	offset: {
+		name: "Offset",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance),
+		sliderOptions: [
+			{
+				variable: "distance",
+				min: -50,
+				max: 50,
+				step: 1,
+				default: 20,
+			},
+		],
+	},
 };
 
 export type SubpathFeatureKey = keyof typeof subpathFeatures;

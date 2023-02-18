@@ -28,6 +28,12 @@ pub enum SubpathTValue {
 	GlobalEuclideanWithinError { t: f64, error: f64 },
 }
 
+pub enum Joint {
+	Mitre,
+	Blunt,
+	Rounded,
+}
+
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
 /// Given the correct power of `t` and `(1-t)`, the computation is the same for quadratic and cubic cases.
 /// Relevant derivation and the definitions of a, b, and c can be found in [the projection identity section](https://pomax.github.io/bezierinfo/#abc) of Pomax's bezier curve primer.

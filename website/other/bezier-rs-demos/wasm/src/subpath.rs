@@ -376,4 +376,13 @@ impl WasmSubpath {
 
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), trimmed_subpath_svg))
 	}
+
+	pub fn offset(&self, distance: f64) -> String {
+		let offset_subpath = self.0.offset(distance, bezier_rs::Joint::Blunt);
+
+		let mut offset_svg = String::new();
+		offset_subpath.to_svg(&mut offset_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+
+		wrap_svg_tag(format!("{}{offset_svg}", self.to_default_svg()))
+	}
 }
