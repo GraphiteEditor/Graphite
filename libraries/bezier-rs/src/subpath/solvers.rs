@@ -60,7 +60,7 @@ impl Subpath {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
+	// TODO: add iframe to rustdocs
 	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
@@ -80,6 +80,7 @@ impl Subpath {
 		intersections_vec
 	}
 
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		self.get_segment(segment_index).unwrap().normal(TValue::Parametric(t))
