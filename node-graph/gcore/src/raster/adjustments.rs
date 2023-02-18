@@ -217,14 +217,18 @@ pub struct VibranceNode<Vibrance> {
 }
 
 // From https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let color = color.to_linear_srgb();
+
 	// x = max(r, g, b)
 	let x = color.r().max(color.g()).max(color.b());
 	// y = min(r, g, b)
 	let y = color.r().min(color.g()).min(color.b());
 	// gray = toGray(unGamma(r, g, b))
-	let gray = color.to_linear_srgb().luminance_rec_601_rounded();
+	let gray = color.to_linear_srgb().luminance_srgb();
 	// scale = input
 	let scale = vibrance as f32 / 100.;
 	// if x == r:
@@ -249,7 +253,7 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	// b = unGamma(b * scale2 - sub)
 	let color = color.map_rgb(|channel| (channel * scale2 - sub)).to_linear_srgb();
 	// gray2 = toGray(r, g, b)
-	let gray2 = color.luminance_rec_601_rounded();
+	let gray2 = color.luminance_srgb();
 	// r *= gray / gray2
 	// g *= gray / gray2
 	// b *= gray / gray2
@@ -268,6 +272,9 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 		color
 	};
 	// (r, g, b) = Gamma(r, g, b)
+	let color = color.to_gamma_srgb();
+
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	color.to_gamma_srgb()
 }
 
