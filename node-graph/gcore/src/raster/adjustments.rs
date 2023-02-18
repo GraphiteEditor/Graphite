@@ -223,55 +223,35 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	// x = max(r, g, b)
-	let x = color.r().max(color.g()).max(color.b());
-	// y = min(r, g, b)
-	let y = color.r().min(color.g()).min(color.b());
-	// gray = toGray(unGamma(r, g, b))
-	let gray = color.to_linear_srgb().luminance_srgb();
-	// scale = input
 	let scale = vibrance as f32 / 100.;
-	// if x == r:
-	let scale = if x == color.r() {
-		// 	t = min(1, abs((g - b) / (x - y)))
-		let t = ((color.g() - color.b()) / (x - y)).abs().min(1.);
-		// 	scale = scale * (1 + t) * 0.5
-		scale * (1. + t) * 0.5
+
+	let channel_max = color.r().max(color.g()).max(color.b());
+	let channel_min = color.r().min(color.g()).min(color.b());
+	let channel_difference = channel_max - channel_min;
+
+	let scale_multiplier = if channel_max == color.r() {
+		let green_blue_difference = (color.g() - color.b()).abs();
+		let t = (green_blue_difference / channel_difference).min(1.);
+		t * 0.5 + 0.5
 	} else {
-		scale
+		1.
 	};
-	// a = (x - y) / 255
-	let a = x - y;
-	// scale1 = scale * (2 - a)
-	let scale1 = scale * (2. - a);
-	// scale2 = 1 + scale1 * (1 - a)
-	let scale2 = 1. + scale1 * (1. - a);
-	// sub = y * scale1
-	let sub = y * scale1;
-	// r = unGamma(r * scale2 - sub)
-	// g = unGamma(g * scale2 - sub)
-	// b = unGamma(b * scale2 - sub)
-	let color = color.map_rgb(|channel| (channel * scale2 - sub)).to_linear_srgb();
-	// gray2 = toGray(r, g, b)
-	let gray2 = color.luminance_srgb();
-	// r *= gray / gray2
-	// g *= gray / gray2
-	// b *= gray / gray2
-	let color = color.map_rgb(|channel| channel * gray / gray2);
-	// m = max(r, g, b)
-	let m = color.r().max(color.g()).max(color.b());
-	// if Gamma(m) > 255:
-	let color = if Color::linear_to_srgb(m) > 1. {
-		// 	scale = (unGamma(255) - gray2) / (m - gray2)
-		let scale = (1. - gray2) / (m - gray2);
-		// 	r = (r - gray2) * scale + gray2
-		// 	g = (g - gray2) * scale + gray2
-		// 	b = (b - gray2) * scale + gray2
-		color.map_rgb(|channel| (channel - gray2) * scale + gray2)
+	let scale = scale * scale_multiplier * (2. - channel_difference);
+	let channel_reduction = channel_min * scale;
+	let scale = 1. + scale * (1. - channel_difference);
+
+	let luminance_initial = color.to_linear_srgb().luminance_srgb();
+	let color = color.map_rgb(|channel| (channel * scale - channel_reduction)).to_linear_srgb();
+	let luminance = color.luminance_srgb();
+	let color = color.map_rgb(|channel| channel * luminance_initial / luminance);
+
+	let channel_max = color.r().max(color.g()).max(color.b());
+	let color = if Color::linear_to_srgb(channel_max) > 1. {
+		let scale = (1. - luminance) / (channel_max - luminance);
+		color.map_rgb(|channel| (channel - luminance) * scale + luminance)
 	} else {
 		color
 	};
-	// (r, g, b) = Gamma(r, g, b)
 	let color = color.to_gamma_srgb();
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
