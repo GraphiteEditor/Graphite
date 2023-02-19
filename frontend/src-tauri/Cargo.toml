@@ -31,7 +31,7 @@ bezier-rs = { path = "../../libraries/bezier-rs" }
 log = "0.4"
 fern = {version = "0.6", features = ["colored"] }
 futures = "0.3.25"
-tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta" }
+tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "2aa2a312324343fe1cfc8b2ba9db98ec236b7f09" }
 specta.workspace = true
 
 

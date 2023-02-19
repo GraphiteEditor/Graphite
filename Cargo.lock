@@ -4140,7 +4140,7 @@ dependencies = [
 [[package]]
 name = "specta"
 version = "0.0.6"
-source = "git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff#599de1454a5be624816ff87aad4b810ecc5737ff"
+source = "git+https://github.com/oscartbeaumont/specta.git?rev=3d8f2d965077f1a02a58a814cb31cc9e66d558ea#3d8f2d965077f1a02a58a814cb31cc9e66d558ea"
 dependencies = [
  "document-features",
  "glam",
@@ -4157,7 +4157,7 @@ dependencies = [
 [[package]]
 name = "specta-macros"
 version = "0.0.6"
-source = "git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff#599de1454a5be624816ff87aad4b810ecc5737ff"
+source = "git+https://github.com/oscartbeaumont/specta.git?rev=3d8f2d965077f1a02a58a814cb31cc9e66d558ea#3d8f2d965077f1a02a58a814cb31cc9e66d558ea"
 dependencies = [
  "Inflector",
  "itertools",
@@ -4552,7 +4552,7 @@ dependencies = [
 [[package]]
 name = "tauri-specta"
 version = "0.0.2"
-source = "git+https://github.com/oscartbeaumont/tauri-specta#9fecc3e63f7a4c4deb4d9dd3d651000cbc6e6bce"
+source = "git+https://github.com/oscartbeaumont/tauri-specta?rev=2aa2a312324343fe1cfc8b2ba9db98ec236b7f09#2aa2a312324343fe1cfc8b2ba9db98ec236b7f09"
 dependencies = [
  "heck 0.4.1",
  "indoc",
