@@ -338,7 +338,7 @@ import { defineComponent, nextTick } from "vue";
 
 import type { IconName } from "@/utility-functions/icons";
 
-import { UpdateNodeGraphSelection, UpdateScrollAsZoom, type FrontendNodeLink } from "@/wasm-communication/messages";
+import { UpdateNodeGraphSelection, type FrontendNodeLink } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -358,7 +358,6 @@ export default defineComponent({
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
 			panning: false,
-			scrollAsZoom: false,
 			selected: [] as bigint[],
 			draggingNodes: undefined as { startX: number; startY: number; roundX: number; roundY: number } | undefined,
 			selectIfNotDragged: undefined as undefined | bigint,
@@ -514,11 +513,12 @@ export default defineComponent({
 		scroll(e: WheelEvent) {
 			const scrollX = e.deltaX;
 			const scrollY = e.deltaY;
+			const scrollAsZoom = this.nodeGraph.state.scrollAsZoom;
 
-			console.log(`scrollAsZoom: ${this.scrollAsZoom}`);
+			console.log(`scrollAsZoom: ${scrollAsZoom}`);
 			let zoom;
 			let verticalPan;
-			if (this.scrollAsZoom) {
+			if (scrollAsZoom) {
 				zoom = !(e.ctrlKey || e.shiftKey);
 				verticalPan = e.ctrlKey;
 			} else {
@@ -798,9 +798,6 @@ export default defineComponent({
 
 		this.editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
 			this.selected = updateNodeGraphSelection.selected;
-		});
-		this.editor.subscriptions.subscribeJsMessage(UpdateScrollAsZoom, (updateScrollAsZoom) => {
-			this.scrollAsZoom = updateScrollAsZoom.scrollAsZoom;
 		});
 	},
 	components: {
