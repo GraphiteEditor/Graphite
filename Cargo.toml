@@ -30,7 +30,7 @@ exclude = [
 ]
 
 [workspace.dependencies]
-specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183debc055b88c37910eb6f818eae", features = ["glam"] }
+specta = { git = "https://github.com/oscartbeaumont/specta.git", rev = "599de1454a5be624816ff87aad4b810ecc5737ff", features = ["glam", "function", "tauri"] }
 
 [profile.release.package.graphite-wasm]
 opt-level = 3
