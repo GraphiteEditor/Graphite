@@ -516,13 +516,13 @@ export default defineComponent({
 			const scrollAsZoom = this.nodeGraph.state.scrollAsZoom;
 
 			let zoom;
-			let verticalPan;
+			let horizontalPan;
 			if (scrollAsZoom) {
 				zoom = !(e.ctrlKey || e.shiftKey);
-				verticalPan = e.ctrlKey;
+				horizontalPan = e.ctrlKey;
 			} else {
 				zoom = e.ctrlKey;
-				verticalPan = !(e.ctrlKey || e.shiftKey);
+				horizontalPan = !(e.ctrlKey || e.shiftKey);
 			}
 
 			// Zoom
@@ -552,11 +552,11 @@ export default defineComponent({
 				e.preventDefault();
 			}
 			// Pan
-			else if (verticalPan) {
+			else if (horizontalPan) {
+				this.transform.x -= scrollY / this.transform.scale;
+			} else {
 				this.transform.x -= scrollX / this.transform.scale;
 				this.transform.y -= scrollY / this.transform.scale;
-			} else {
-				this.transform.x -= scrollY / this.transform.scale;
 			}
 		},
 		keydown(e: KeyboardEvent): void {
