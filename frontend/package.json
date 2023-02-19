@@ -17,10 +17,12 @@
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^1.2.0",
+		"@types/json-bigint": "^1.0.1",
 		"@vitejs/plugin-vue": "^4.0.0",
 		"class-transformer": "^0.5.1",
 		"graphite-wasm": "file:wasm/pkg",
 		"idb-keyval": "^6.2.0",
+		"json-bigint": "^1.0.0",
 		"reflect-metadata": "^0.1.13",
 		"vite-svg-loader": "^4.0.0",
 		"vue": "^3.2.26"

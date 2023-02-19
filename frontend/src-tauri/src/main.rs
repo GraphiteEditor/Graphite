@@ -69,9 +69,68 @@ async fn main() {
 	tauri::async_runtime::spawn(async {
 		axum::Server::bind(&"0.0.0.0:3001".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
 	});
+	use commands::*;
 
 	tauri::Builder::default()
-		.invoke_handler(tauri::generate_handler![set_random_seed, handle_message])
+		.invoke_handler(tauri::generate_handler![
+			set_random_seed,
+			handle_message,
+			init_after_frontend_ready,
+			error_dialog,
+			has_crashed,
+			in_development_mode,
+			file_save_suffix,
+			graphite_document_version,
+			update_layout,
+			load_preferences,
+			select_document,
+			new_document_dialog,
+			document_open,
+			open_document_file,
+			open_auto_saved_document,
+			trigger_auto_save,
+			close_document_with_confirmation,
+			request_about_graphite_dialog_with_localized_commit_date,
+			bounds_of_viewports,
+			on_mouse_move,
+			on_wheel_scroll,
+			on_mouse_down,
+			on_mouse_up,
+			on_double_click,
+			on_key_down,
+			on_key_up,
+			on_change_text,
+			on_font_load,
+			update_bounds,
+			eyedropper_sample_for_color_picker,
+			update_primary_color,
+			update_secondary_color,
+			paste_serialized_data,
+			select_layer,
+			deselect_all_layers,
+			move_layer_in_tree,
+			set_layer_name,
+			translate_canvas,
+			translate_canvas_by_fraction,
+			set_image_blob_url,
+			set_imaginate_image_data,
+			set_imaginate_generating_status,
+			set_imaginate_server_status,
+			process_node_graph_frame,
+			connect_nodes_by_link,
+			shift_node,
+			disconnect_nodes,
+			rectangle_intersects,
+			create_node,
+			select_nodes,
+			paste_serialized_nodes,
+			double_click_node,
+			move_selected_nodes,
+			toggle_preview,
+			paste_image,
+			toggle_layer_visibility,
+			toggle_layer_expansion
+		])
 		.setup(|app| {
 			app.get_window("main").unwrap().open_devtools();
 			Ok(())

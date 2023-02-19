@@ -51,7 +51,7 @@ pub fn generate_uuid() -> u64 {
 			*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
 		})
 	}
-	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
+	lock.as_mut().map(ChaCha20Rng::next_u32).unwrap() as u64
 }
 
 pub fn release_series() -> String {
