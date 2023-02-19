@@ -115,7 +115,7 @@ impl Hash for TaggedValue {
 				p.hash(state)
 			}
 			Self::ImageFrame(i) => {
-				21.hash(state);
+				20.hash(state);
 				i.image.hash(state);
 				i.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
