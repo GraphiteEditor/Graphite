@@ -79,14 +79,7 @@ export async function extractPixelData(imageData: ImageBitmapSource): Promise<Im
 	// Decode the image file binary data
 	const image = await createImageBitmap(svgImageData || imageData);
 
-	// Halve the image size until the editor lag is somewhat usable
-	// TODO: Fix lag so this can be removed
-	const MAX_IMAGE_SIZE = 512;
 	let { width, height } = image;
-	while (width > MAX_IMAGE_SIZE || height > MAX_IMAGE_SIZE) {
-		width /= 2;
-		height /= 2;
-	}
 	width = Math.floor(width);
 	height = Math.floor(height);
 
