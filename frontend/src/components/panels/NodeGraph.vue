@@ -338,7 +338,7 @@ import { defineComponent, nextTick } from "vue";
 
 import type { IconName } from "@/utility-functions/icons";
 
-import { UpdateNodeGraphSelection, type FrontendNodeLink } from "@/wasm-communication/messages";
+import { UpdateNodeGraphSelection, UpdateScrollAsZoom, type FrontendNodeLink } from "@/wasm-communication/messages";
 
 import LayoutCol from "@/components/layout/LayoutCol.vue";
 import LayoutRow from "@/components/layout/LayoutRow.vue";
@@ -358,6 +358,7 @@ export default defineComponent({
 		return {
 			transform: { scale: 1, x: 0, y: 0 },
 			panning: false,
+			scrollAsZoom: false,
 			selected: [] as bigint[],
 			draggingNodes: undefined as { startX: number; startY: number; roundX: number; roundY: number } | undefined,
 			selectIfNotDragged: undefined as undefined | bigint,
@@ -514,8 +515,18 @@ export default defineComponent({
 			const scrollX = e.deltaX;
 			const scrollY = e.deltaY;
 
+			let zoom;
+			let horizontalPan;
+			if (this.scrollAsZoom) {
+				zoom = !(e.ctrlKey || e.shiftKey);
+				horizontalPan = e.ctrlKey;
+			} else {
+				zoom = e.ctrlKey;
+				horizontalPan = !(e.ctrlKey || e.shiftKey);
+			}
+
 			// Zoom
-			if (e.ctrlKey) {
+			if (zoom) {
 				let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 				if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
@@ -541,12 +552,16 @@ export default defineComponent({
 				e.preventDefault();
 			}
 			// Pan
-			else if (!e.shiftKey) {
+			else if (horizontalPan) {
 				this.transform.x -= scrollX / this.transform.scale;
 				this.transform.y -= scrollY / this.transform.scale;
 			} else {
 				this.transform.x -= scrollY / this.transform.scale;
 			}
+
+			this.editor.subscriptions.subscribeJsMessage(UpdateScrollAsZoom, (updateScrollAsZoom) => {
+				this.scrollAsZoom = updateScrollAsZoom.scrollAsZoom;
+			});
 		},
 		keydown(e: KeyboardEvent): void {
 			if (e.key.toLowerCase() === "escape") {

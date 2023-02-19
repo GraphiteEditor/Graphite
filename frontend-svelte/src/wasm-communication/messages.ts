@@ -53,6 +53,10 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
+export class UpdateScrollAsZoom extends JsMessage {
+	readonly scrollAsZoom!: boolean;
+}
+
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -1432,6 +1436,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateScrollAsZoom,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
