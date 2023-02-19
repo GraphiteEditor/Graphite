@@ -46,3 +46,6 @@ opt-level = 3
 
 #[profile.dev]
 #opt-level = 3
+
+[patch.crates-io]
+specta = { git = "https://github.com/oscartbeaumont/specta.git", rev = "599de1454a5be624816ff87aad4b810ecc5737ff" }

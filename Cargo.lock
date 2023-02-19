@@ -1633,7 +1633,7 @@ dependencies = [
  "num-traits",
  "rand_chacha 0.3.1",
  "serde",
- "specta 0.0.6 (git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff)",
+ "specta",
 ]
 
 [[package]]
@@ -1650,7 +1650,7 @@ dependencies = [
  "node-macro",
  "once_cell",
  "serde",
- "specta 0.0.6 (git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff)",
+ "specta",
  "spirv-std",
 ]
 
@@ -1700,6 +1700,7 @@ dependencies = [
  "ron",
  "serde",
  "serde_json",
+ "specta",
  "tauri",
  "tauri-build",
  "tauri-specta",
@@ -1721,7 +1722,7 @@ dependencies = [
  "log",
  "rustybuzz",
  "serde",
- "specta 0.0.6 (git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff)",
+ "specta",
 ]
 
 [[package]]
@@ -1749,7 +1750,7 @@ dependencies = [
  "remain",
  "serde",
  "serde_json",
- "specta 0.0.6 (git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff)",
+ "specta",
  "spin 0.9.5",
  "test-case",
  "thiserror",
@@ -4139,21 +4140,6 @@ dependencies = [
 [[package]]
 name = "specta"
 version = "0.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "427e2820d72e030de0f4e3d57a4b1060d1d5865d822751f9cc21a12ffe4e8c80"
-dependencies = [
- "document-features",
- "once_cell",
- "paste",
- "serde",
- "serde_json",
- "specta-macros 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "tauri",
-]
-
-[[package]]
-name = "specta"
-version = "0.0.6"
 source = "git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff#599de1454a5be624816ff87aad4b810ecc5737ff"
 dependencies = [
  "document-features",
@@ -4163,22 +4149,9 @@ dependencies = [
  "paste",
  "serde",
  "serde_json",
- "specta-macros 0.0.6 (git+https://github.com/oscartbeaumont/specta.git?rev=599de1454a5be624816ff87aad4b810ecc5737ff)",
+ "specta-macros",
  "tauri",
  "thiserror",
-]
-
-[[package]]
-name = "specta-macros"
-version = "0.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb7a302eb421c00c45715b2c8abb61650dd01d26a475505834f3e8ee23ffcbb"
-dependencies = [
- "Inflector",
- "proc-macro2",
- "quote",
- "syn",
- "termcolor",
 ]
 
 [[package]]
@@ -4585,7 +4558,7 @@ dependencies = [
  "indoc",
  "serde",
  "serde_json",
- "specta 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "specta",
  "tauri",
  "thiserror",
 ]

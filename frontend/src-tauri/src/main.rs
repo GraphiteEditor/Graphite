@@ -71,7 +71,7 @@ async fn main() {
 	});
 	use commands::*;
 
-	tauri_specta::export_to_ts(
+	tauri_specta::ts::export(
 		tauri_specta::collate_types![
 			set_random_seed,
 			handle_message,
@@ -202,13 +202,16 @@ async fn main() {
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
 }
+
 #[tauri::command]
+#[specta::specta]
 fn set_random_seed(seed: f64) {
 	let seed = seed as u64;
 	graphite_editor::application::set_uuid_seed(seed);
 }
 
 #[tauri::command]
+#[specta::specta]
 fn handle_message(message: String) -> String {
 	let Ok(message) = ron::from_str::<graphite_editor::messages::message::Message>(&message) else {
 		panic!("Error parsing message: {}", message)
