@@ -23,6 +23,51 @@ pub struct ProtoNetwork {
 	pub nodes: Vec<(NodeId, ProtoNode)>,
 }
 
+impl core::fmt::Display for ProtoNetwork {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_str("Proto Network with nodes: ")?;
+		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
+			f.write_str(&"\t".repeat(indent))?;
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else{
+				return f.write_str("{{Unknown Node}}");
+			};
+			f.write_str("Node: ")?;
+			f.write_str(&node.identifier.name)?;
+
+			f.write_str("\n")?;
+			f.write_str(&"\t".repeat(indent))?;
+			f.write_str("{\n")?;
+
+			f.write_str(&"\t".repeat(indent + 1))?;
+			f.write_str("Primary input: ")?;
+			match &node.input {
+				ProtoNodeInput::None => f.write_str("None")?,
+				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
+				ProtoNodeInput::Node(_) => f.write_str("Node")?,
+			}
+			f.write_str("\n")?;
+
+			match &node.construction_args {
+				ConstructionArgs::Value(value) => {
+					f.write_str(&"\t".repeat(indent + 1))?;
+					f.write_fmt(format_args!("Value construction argument: {value:?}"))?
+				}
+				ConstructionArgs::Nodes(nodes) => {
+					for id in nodes {
+						write_node(f, network, *id, indent + 1)?;
+					}
+				}
+			}
+			f.write_str(&"\t".repeat(indent))?;
+			f.write_str("}\n")?;
+			Ok(())
+		}
+
+		let id = self.output;
+		write_node(f, self, id, 0)
+	}
+}
+
 #[derive(Debug, Clone)]
 pub enum ConstructionArgs {
 	Value(value::TaggedValue),
