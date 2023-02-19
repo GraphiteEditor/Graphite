@@ -53,7 +53,7 @@ impl Bezier {
 	}
 
 	/// Returns the non-normalized vector representing the tangent at the point `t` along the curve.
-	fn non_normalized_tangent(&self, t: f64) -> DVec2 {
+	pub(crate) fn non_normalized_tangent(&self, t: f64) -> DVec2 {
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
 			_ => self.derivative().unwrap().evaluate(TValue::Parametric(t)),
