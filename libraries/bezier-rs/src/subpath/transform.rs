@@ -275,65 +275,127 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
+	// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as occasionally the approximation for finding intersections
+	// doesn't return intersections at the very endpoints if it falls within the error threshold.
+	// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that would be trimmed. This could cause the subpath
+	//  subpaths to clip at the incorrect location. This can be avoided by first trimming the two subpaths at any extrema, effectively ignoring loopbacks.
+	fn clip_subpaths(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> Option<(Subpath<ManipulatorGroupId>, Subpath<ManipulatorGroupId>)> {
+		// Split the first subpath at its last intersection
+		let intersections1 = subpath1.subpath_intersections(subpath2, None, None);
+		if intersections1.is_empty() {
+			return None;
+		}
+		let (segment_index, t) = *intersections1.last().unwrap();
+		let (clipped_subpath1, _) = subpath1.split(SubpathTValue::Parametric { segment_index, t });
+
+		// Split the second subpath at its first intersection
+		let intersections2 = subpath2.subpath_intersections(subpath1, None, None);
+		if intersections2.is_empty() {
+			return None;
+		}
+		let (segment_index, t) = intersections2[0];
+		let (_, clipped_subpath2) = subpath2.split(SubpathTValue::Parametric { segment_index, t });
+
+		Some((clipped_subpath1, clipped_subpath2.unwrap()))
+	}
+
+	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
+	/// The intersections of segments of the subpath are joined using the method specified by the `joint` argument.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot outline an empty Subpath.");
 
-		let subpaths = self
+		let mut subpaths = self
 			.iter()
 			.map(|bezier| Subpath::from_beziers(bezier.offset(distance), false))
 			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
-		let mut manip_groups: Vec<Vec<ManipulatorGroup<ManipulatorGroupId>>> = vec![subpaths[0].manipulator_groups.clone()];
+		let mut drop_common_point = vec![true; self.len()];
 
-		// Combine the Subpaths by trimming or joining consecutive Subpaths
-		for i in 0..subpaths.len() - 1 + (self.closed as usize) {
-			let j = (i + 1) % subpaths.len();
-			let subpath1 = &subpaths[i];
-			let subpath2 = &subpaths[j];
+		if distance != 0. {
+			// Clip or joining consecutive Subpaths
+			for i in 0..subpaths.len() - 1 {
+				let j = i + 1;
+				let subpath1 = &subpaths[i];
+				let subpath2 = &subpaths[j];
 
-			let last_segment = subpath1.get_segment(subpath1.len_segments() - 1).unwrap();
-			let first_segment = subpath2.get_segment(0).unwrap();
+				let last_segment = subpath1.get_segment(subpath1.len_segments() - 1).unwrap();
+				let first_segment = subpath2.get_segment(0).unwrap();
 
-			// If the anchors are approximately equal, drop the first anchor and combine the subpaths without trimming / joining
-			if compare_points(last_segment.end(), first_segment.start()) {
-				let last_segment_index = manip_groups.len() - 1;
-				manip_groups[i][last_segment_index].out_handle = first_segment.handle_start();
-				manip_groups.push(subpath2.manipulator_groups[1..subpath2.len()].to_vec());
-				continue;
-			}
+				// If the anchors are approximately equal, there is no need to clip / join the segments
+				if compare_points(last_segment.end(), first_segment.start()) {
+					continue;
+				}
 
-			// Calculate the angle formed between the groups of Beziers
-			let out_tangent = self.get_segment(i).unwrap().tangent(TValue::Parametric(1.));
-			let in_tangent = self.get_segment(j).unwrap().tangent(TValue::Parametric(0.));
-			let angle = out_tangent.angle_between(in_tangent);
+				// Calculate the angle formed between two consecutive Subpaths
+				let out_tangent = self.get_segment(i).unwrap().tangent(TValue::Parametric(1.));
+				let in_tangent = self.get_segment(j).unwrap().tangent(TValue::Parametric(0.));
+				let angle = out_tangent.angle_between(in_tangent);
 
-			// The angle is concave. The Subpath overlap
-			if angle > std::f64::consts::PI {
-				// Split the first subpath at its last intersection
-				let last_intersection = subpath1.subpath_intersections(subpath2, None, None)[0];
-				let (trimmed_first_subpath, _) = subpath1.split(SubpathTValue::GlobalParametric(last_intersection));
-				manip_groups[i] = trimmed_first_subpath.manipulator_groups.clone();
-
-				// Split the second subpath at its first intersection
-				let first_intersection = *subpath2.subpath_intersections(subpath1, None, None).last().unwrap();
-				let split_second_subpath = subpath2.split(SubpathTValue::GlobalParametric(first_intersection));
-				let trimmed_second_subpath = split_second_subpath.1.unwrap();
-				let last_segment_index = manip_groups.len() - 1;
-				manip_groups[i][last_segment_index].out_handle = trimmed_second_subpath[0].out_handle;
-				manip_groups.push(trimmed_second_subpath.manipulator_groups[1..subpath2.len()].to_vec());
-			}
-			// The angle is convex. The Subpath must be joined using the specified Joint type
-			else {
-				match joint {
-					Joint::Mitre => todo!(),
-					Joint::Blunt => {
-						manip_groups.push(subpath2.manipulator_groups.clone());
+				// The angle is concave. The Subpath overlap and must be clipped
+				if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
+					// If the angle is close enough to zero, subpath intersections could find no intersections. In this case,
+					// the points are likely close enough that we can approximate the points as being on top of one another.
+					if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(subpath1, subpath2) {
+						subpaths[i] = clipped_subpath1;
+						subpaths[j] = clipped_subpath2;
 					}
-					Joint::Rounded => todo!(),
+				}
+				// The angle is convex. The Subpath must be joined using the specified Joint type
+				else {
+					match joint {
+						Joint::Mitre => todo!(),
+						Joint::Rounded => todo!(),
+						Joint::Blunt => {
+							drop_common_point[j] = false;
+						}
+					}
+				}
+			}
+
+			// Clip any overlap in the last segment
+			if self.closed {
+				let out_tangent = self.get_segment(self.len_segments() - 1).unwrap().tangent(TValue::Parametric(1.));
+				let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
+				let angle = out_tangent.angle_between(in_tangent);
+
+				if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
+					if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
+						// Merge the clipped subpaths
+						let last_index = subpaths.len() - 1;
+						subpaths[last_index] = clipped_subpath1;
+						subpaths[0] = clipped_subpath2;
+					}
+				} else {
+					match joint {
+						Joint::Mitre => todo!(),
+						Joint::Rounded => todo!(),
+						Joint::Blunt => {
+							drop_common_point[0] = false;
+						}
+					}
 				}
 			}
 		}
 
-		Subpath::new(manip_groups.into_iter().flatten().collect(), self.closed)
+		// Merge the subpaths. Drop points which overlap with one another.
+		let mut manipulator_groups = subpaths[0].manipulator_groups.clone();
+		for i in 1..subpaths.len() {
+			if drop_common_point[i] {
+				let last_group = manipulator_groups.pop().unwrap();
+				let mut manipulators_copy = subpaths[i].manipulator_groups.clone();
+				manipulators_copy[0].in_handle = last_group.in_handle;
+
+				manipulator_groups.append(&mut manipulators_copy);
+			} else {
+				manipulator_groups.append(&mut subpaths[i].manipulator_groups.clone());
+			}
+		}
+		if self.closed && drop_common_point[0] {
+			let last_group = manipulator_groups.pop().unwrap();
+			manipulator_groups[0].in_handle = last_group.in_handle;
+		}
+
+		Subpath::new(manipulator_groups, self.closed)
 	}
 }
 

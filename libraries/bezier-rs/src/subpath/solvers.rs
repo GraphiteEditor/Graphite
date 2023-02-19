@@ -30,6 +30,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.collect()
 	}
 
+	/// Calculates the intersection points the subpath has with another given subpath and returns a list of global parametric `t`-values.
+	/// This function expects the following:
+	/// - other: a [Bezier] curve to check intersections against
+	/// - error: an optional f64 value to provide an error bound
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
+	pub fn subpath_intersections(&self, other: &Subpath<ManipulatorGroupId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+		let mut intersection_t_values: Vec<(usize, f64)> = other.iter().flat_map(|bezier| self.intersections(&bezier, error, minimum_separation)).collect();
+		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+		intersection_t_values
+	}
+
 	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
 	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {

@@ -120,10 +120,10 @@ const subpathFeatures = {
 		sliderOptions: [
 			{
 				variable: "distance",
-				min: -50,
-				max: 50,
+				min: -25,
+				max: 25,
 				step: 1,
-				default: 20,
+				default: 10,
 			},
 		],
 	},

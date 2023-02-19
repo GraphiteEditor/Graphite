@@ -47,15 +47,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			anchor: first.start(),
 			in_handle: None,
 			out_handle: first.handle_start(),
+			id: ManipulatorGroupId::new(),
 		}];
-		let mut inner_groups: Vec<ManipulatorGroup> = beziers
+		let mut inner_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = beziers
 			.windows(2)
 			.map(|bezier_pair| ManipulatorGroup {
 				anchor: bezier_pair[1].start(),
 				in_handle: bezier_pair[0].handle_end(),
 				out_handle: bezier_pair[1].handle_start(),
+				id: ManipulatorGroupId::new(),
 			})
-			.collect::<Vec<ManipulatorGroup>>();
+			.collect::<Vec<ManipulatorGroup<ManipulatorGroupId>>>();
 		manipulator_groups.append(&mut inner_groups);
 
 		let last = beziers.last().unwrap();
@@ -64,6 +66,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				anchor: last.end(),
 				in_handle: last.handle_end(),
 				out_handle: None,
+				id: ManipulatorGroupId::new(),
 			});
 			return Subpath::new(manipulator_groups, false);
 		}
