@@ -270,9 +270,12 @@ impl NodeGraphExecutor {
 			}];
 			responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
 
-			// Update the transform based on the graph output
-			let transform = transform.to_cols_array();
-			responses.push_back(Operation::SetLayerTransform { path: layer_path, transform }.into());
+			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
+			if !transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON) {
+				// Update the transform based on the graph output
+				let transform = transform.to_cols_array();
+				responses.push_back(Operation::SetLayerTransform { path: layer_path, transform }.into());
+			}
 		}
 
 		Ok(())

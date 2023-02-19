@@ -385,7 +385,7 @@ mod image {
 		pub const fn empty() -> Self {
 			Self {
 				image: Image::empty(),
-				transform: DAffine2::IDENTITY,
+				transform: DAffine2::ZERO,
 			}
 		}
 	}
