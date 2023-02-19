@@ -1,6 +1,8 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
 
+use document_legacy::LayerId;
+
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use spin::Mutex;
@@ -43,7 +45,7 @@ pub fn set_uuid_seed(random_seed: u64) {
 	UUID_SEED.with(|seed| seed.set(Some(random_seed)))
 }
 
-pub fn generate_uuid() -> u64 {
+pub fn generate_uuid() -> LayerId {
 	let mut lock = RNG.lock();
 	if lock.is_none() {
 		UUID_SEED.with(|seed| {
@@ -51,7 +53,7 @@ pub fn generate_uuid() -> u64 {
 			*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
 		})
 	}
-	lock.as_mut().map(ChaCha20Rng::next_u32).unwrap() as u64
+	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap().into()
 }
 
 pub fn release_series() -> String {

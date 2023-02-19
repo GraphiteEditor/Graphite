@@ -53,3 +53,5 @@ pub use crate::messages::globals::global_variables::*;
 pub use graphite_proc_macros::*;
 
 pub use std::collections::{HashMap, HashSet, VecDeque};
+
+pub use document_legacy::LayerId;

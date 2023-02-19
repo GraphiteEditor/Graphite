@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
-pub type LayerId = u64;
+pub type LayerId = graphene_core::uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct Document {
@@ -283,7 +283,7 @@ impl Document {
 
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
-	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
+	pub fn layer_closer_to_root(&self, path_a: &[LayerId], path_b: &[LayerId]) -> bool {
 		// Convert UUIDs to indices
 		let indices_for_path_a = self.indices_for_path(path_a).unwrap();
 		let indices_for_path_b = self.indices_for_path(path_b).unwrap();
@@ -305,7 +305,7 @@ impl Document {
 	}
 
 	// Is  the target layer between a <-> b layers, inclusive
-	pub fn layer_is_between(&self, target: &[u64], path_a: &[u64], path_b: &[u64]) -> bool {
+	pub fn layer_is_between(&self, target: &[LayerId], path_a: &[LayerId], path_b: &[LayerId]) -> bool {
 		// If the target is the root, it isn't between
 		if target.is_empty() {
 			return false;
@@ -452,7 +452,7 @@ impl Document {
 
 		let mut path = path.to_vec();
 		let len = path.len();
-		path.push(0);
+		path.push(0.into());
 
 		if let Some(ids) = layer.as_folder().ok().map(|f| f.layer_ids.clone()) {
 			for id in ids {
@@ -728,7 +728,7 @@ impl Document {
 				};
 				self.delete(&path)?;
 
-				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
+				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0.into()));
 				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
@@ -765,7 +765,7 @@ impl Document {
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
-				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0.into()));
 				let folder = self.folder_mut(folder_path)?;
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
 					let new_path = [folder_path, &[new_layer_id]].concat();

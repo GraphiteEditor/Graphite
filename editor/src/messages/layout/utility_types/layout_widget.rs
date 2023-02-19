@@ -9,6 +9,7 @@ use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::prelude::*;
 
+use document_legacy::LayerId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -438,7 +439,7 @@ impl LayoutGroup {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
-	pub widget_id: u64,
+	pub widget_id: LayerId,
 	pub widget: Widget,
 }
 
