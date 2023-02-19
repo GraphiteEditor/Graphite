@@ -515,7 +515,6 @@ export default defineComponent({
 			const scrollY = e.deltaY;
 			const scrollAsZoom = this.nodeGraph.state.scrollAsZoom;
 
-			console.log(`scrollAsZoom: ${scrollAsZoom}`);
 			let zoom;
 			let verticalPan;
 			if (scrollAsZoom) {
@@ -525,7 +524,6 @@ export default defineComponent({
 				zoom = e.ctrlKey;
 				verticalPan = !(e.ctrlKey || e.shiftKey);
 			}
-			console.log(`zoom: ${zoom}; verticalPan: ${verticalPan}`);
 
 			// Zoom
 			if (zoom) {

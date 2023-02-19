@@ -8,7 +8,7 @@ import {
 	UpdateNodeGraph,
 	UpdateNodeTypes,
 	UpdateNodeGraphBarLayout,
-	UpdateScrollAsZoom, 
+	UpdateScrollAsZoom,
 	defaultWidgetLayout,
 	patchWidgetLayout,
 } from "@/wasm-communication/messages";
