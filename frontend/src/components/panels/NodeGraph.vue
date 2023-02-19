@@ -515,15 +515,17 @@ export default defineComponent({
 			const scrollX = e.deltaX;
 			const scrollY = e.deltaY;
 
+			console.log(`scrollAsZoom: ${this.scrollAsZoom}`);
 			let zoom;
-			let horizontalPan;
+			let verticalPan;
 			if (this.scrollAsZoom) {
 				zoom = !(e.ctrlKey || e.shiftKey);
-				horizontalPan = e.ctrlKey;
+				verticalPan = e.ctrlKey;
 			} else {
 				zoom = e.ctrlKey;
-				horizontalPan = !(e.ctrlKey || e.shiftKey);
+				verticalPan = !(e.ctrlKey || e.shiftKey);
 			}
+			console.log(`zoom: ${zoom}; verticalPan: ${verticalPan}`);
 
 			// Zoom
 			if (zoom) {
@@ -552,16 +554,12 @@ export default defineComponent({
 				e.preventDefault();
 			}
 			// Pan
-			else if (horizontalPan) {
+			else if (verticalPan) {
 				this.transform.x -= scrollX / this.transform.scale;
 				this.transform.y -= scrollY / this.transform.scale;
 			} else {
 				this.transform.x -= scrollY / this.transform.scale;
 			}
-
-			this.editor.subscriptions.subscribeJsMessage(UpdateScrollAsZoom, (updateScrollAsZoom) => {
-				this.scrollAsZoom = updateScrollAsZoom.scrollAsZoom;
-			});
 		},
 		keydown(e: KeyboardEvent): void {
 			if (e.key.toLowerCase() === "escape") {
@@ -800,6 +798,9 @@ export default defineComponent({
 
 		this.editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
 			this.selected = updateNodeGraphSelection.selected;
+		});
+		this.editor.subscriptions.subscribeJsMessage(UpdateScrollAsZoom, (updateScrollAsZoom) => {
+			this.scrollAsZoom = updateScrollAsZoom.scrollAsZoom;
 		});
 	},
 	components: {

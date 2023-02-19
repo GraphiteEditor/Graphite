@@ -63,7 +63,8 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 					false => MappingVariant::Default,
 					true => MappingVariant::ScrollAsZoom,
 				};
-				responses.push_back(KeyMappingMessage::ModifyMapping(variant).into())
+				responses.push_back(KeyMappingMessage::ModifyMapping(variant).into());
+				responses.push_back(FrontendMessage::UpdateScrollAsZoom { scroll_as_zoom }.into());
 			}
 		}
 
