@@ -252,6 +252,7 @@ pub enum FrontendMessage {
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateScrollAsZoom {
+		#[serde(rename = "scrollAsZoom")]
 		scroll_as_zoom: bool,
 	},
 	UpdateToolOptionsLayout {
