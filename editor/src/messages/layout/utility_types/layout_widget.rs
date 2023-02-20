@@ -55,7 +55,7 @@ pub struct WidgetDiff {
 	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
 	/// An empty path [] shows that the entire panel has changed and is sent when the UI is first created.
 	#[serde(rename = "widgetPath")]
-	pub widget_path: Vec<usize>,
+	pub widget_path: Vec<LayerId>,
 	/// What the specified part of the UI has changed to.
 	#[serde(rename = "newValue")]
 	pub new_value: DiffUpdate,
@@ -160,7 +160,7 @@ impl Layout {
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<LayerId>, widget_diffs: &mut Vec<WidgetDiff>) {
 		match (self, new) {
 			// Simply diff the internal layout
 			(Self::WidgetLayout(current), Self::WidgetLayout(new)) => current.diff(new, widget_path, widget_diffs),
@@ -209,7 +209,7 @@ impl WidgetLayout {
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<LayerId>, widget_diffs: &mut Vec<WidgetDiff>) {
 		// Check if the length of items is different
 		// TODO: Diff insersion and deletion of items
 		if self.layout.len() != new.layout.len() {
@@ -226,7 +226,7 @@ impl WidgetLayout {
 		}
 		// Diff all of the children
 		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout.into_iter()).enumerate() {
-			widget_path.push(index);
+			widget_path.push((index as u64).into());
 			current_child.diff(new_child, widget_path, widget_diffs);
 			widget_path.pop();
 		}
@@ -369,7 +369,7 @@ impl LayoutGroup {
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<LayerId>, widget_diffs: &mut Vec<WidgetDiff>) {
 		let is_column = matches!(new, Self::Column { .. });
 		match (self, new) {
 			(Self::Column { widgets: current_widgets }, Self::Column { widgets: new_widgets }) | (Self::Row { widgets: current_widgets }, Self::Row { widgets: new_widgets }) => {
@@ -387,7 +387,7 @@ impl LayoutGroup {
 				}
 				// Diff all of the children
 				for (index, (current_child, new_child)) in current_widgets.iter_mut().zip(new_widgets.into_iter()).enumerate() {
-					widget_path.push(index);
+					widget_path.push((index as u64).into());
 					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();
 				}
@@ -414,7 +414,7 @@ impl LayoutGroup {
 				}
 				// Diff all of the children
 				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout.into_iter()).enumerate() {
-					widget_path.push(index);
+					widget_path.push((index as u64).into());
 					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();
 				}
@@ -460,7 +460,7 @@ impl WidgetHolder {
 		TextLabel::new(text).bold(true).widget_holder()
 	}
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn diff(&mut self, new: Self, widget_path: &mut [LayerId], widget_diffs: &mut Vec<WidgetDiff>) {
 		// If there have been changes to the acutal widget (not just the id)
 		if self.widget != new.widget {
 			// We should update to the new widget value as well as a new widget id

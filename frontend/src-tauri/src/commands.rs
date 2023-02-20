@@ -472,9 +472,9 @@ pub fn process_node_graph_frame(document_id: Uuid, layer_path: Vec<LayerId>, ima
 pub fn connect_nodes_by_link(output_node: Uuid, output_node_connector_index: Uuid, input_node: Uuid, input_node_connector_index: Uuid) -> Vec<FrontendMessage> {
 	let message = NodeGraphMessage::ConnectNodesByLink {
 		output_node,
-		output_node_connector_index: *output_node_connector_index as usize,
+		output_node_connector_index: u64::from(output_node_connector_index) as usize,
 		input_node,
-		input_node_connector_index: *input_node_connector_index as usize,
+		input_node_connector_index: u64::from(input_node_connector_index) as usize,
 	};
 	dispatch(message)
 }
@@ -493,7 +493,7 @@ pub fn shift_node(node_id: Uuid) -> Vec<FrontendMessage> {
 pub fn disconnect_nodes(node_id: Uuid, input_index: Uuid) -> Vec<FrontendMessage> {
 	let message = NodeGraphMessage::DisconnectNodes {
 		node_id,
-		input_index: *input_index as usize,
+		input_index: u64::from(input_index) as usize,
 	};
 	dispatch(message)
 }

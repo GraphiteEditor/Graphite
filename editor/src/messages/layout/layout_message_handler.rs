@@ -19,7 +19,7 @@ pub struct LayoutMessageHandler {
 
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
-	fn get_widget_path(widget_layout: &WidgetLayout, id: LayerId) -> Option<(&WidgetHolder, Vec<usize>)> {
+	fn get_widget_path(widget_layout: &WidgetLayout, id: LayerId) -> Option<(&WidgetHolder, Vec<LayerId>)> {
 		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, group)) = stack.pop() {
 			match group {
@@ -29,6 +29,7 @@ impl LayoutMessageHandler {
 						// Return if this is the correct ID
 						if widget.widget_id == id {
 							widget_path.push(index);
+							let widget_path = widget_path.into_iter().map(|x| LayerId::from(x as u64)).collect::<Vec<_>>();
 							return Some((widget, widget_path));
 						}
 					}
