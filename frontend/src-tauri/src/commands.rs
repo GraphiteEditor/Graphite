@@ -183,7 +183,7 @@ pub fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Vec<Front
 /// Mouse scrolling within the screenspace bounds of the viewport
 #[tauri::command]
 #[specta::specta]
-pub fn on_wheel_scroll(x: f64, y: f64, mouse_keys: u8, wheel_delta_x: i32, wheel_delta_y: i32, wheel_delta_z: i32, modifiers: u8) -> Vec<FrontendMessage> {
+pub fn on_wheel_scroll(x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f32, wheel_delta_y: f32, wheel_delta_z: f32, modifiers: u8) -> Vec<FrontendMessage> {
 	let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 	editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
 

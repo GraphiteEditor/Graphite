@@ -232,7 +232,7 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 			WheelCanvasZoom => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
 				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
-				if ipp.mouse.scroll_delta.y > 0 {
+				if ipp.mouse.scroll_delta.y > 0. {
 					zoom_factor = 1. / zoom_factor
 				};
 

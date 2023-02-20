@@ -37,16 +37,24 @@ impl ViewportBounds {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScrollDelta {
-	// TODO: Switch these to `f64` values (not trivial because floats don't provide PartialEq, Eq, and Hash)
-	pub x: i32,
-	pub y: i32,
-	pub z: i32,
+	pub x: f32,
+	pub y: f32,
+	pub z: f32,
+}
+
+use std::hash::{Hash, Hasher};
+impl Hash for ScrollDelta {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.x.to_bits().hash(state);
+		self.y.to_bits().hash(state);
+		self.z.to_bits().hash(state);
+	}
 }
 
 impl ScrollDelta {
-	pub fn new(x: i32, y: i32, z: i32) -> Self {
+	pub fn new(x: f32, y: f32, z: f32) -> Self {
 		Self { x, y, z }
 	}
 
@@ -56,7 +64,7 @@ impl ScrollDelta {
 
 	pub fn scroll_delta(&self) -> f64 {
 		let (dx, dy) = (self.x, self.y);
-		dy.signum() as f64 * ((dy * dy + i32::min(dy.abs(), dx.abs()).pow(2)) as f64).sqrt()
+		dy.signum() as f64 * ((dy * dy + f32::min(dy.abs(), dx.abs()).powf(2.)) as f64).sqrt()
 	}
 }
 
