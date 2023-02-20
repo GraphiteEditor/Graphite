@@ -114,6 +114,62 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}{}{}", self.to_default_svg(), point_text, line_text, normal_end_point))
 	}
 
+	pub fn local_extrema(&self) -> String {
+		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
+
+		let bezier = self.to_default_svg();
+		let circles: String = local_extrema
+			.iter()
+			.zip([RED, GREEN])
+			.flat_map(|(t_value_list, color)| {
+				t_value_list.iter().map(|&t_value| {
+					let point = self.0.evaluate(SubpathTValue::GlobalParametric(t_value));
+					draw_circle(point, 3., color, 1.5, WHITE)
+				})
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+
+		let content = format!(
+			"{bezier}{circles}{}{}",
+			draw_text("X extrema".to_string(), TEXT_OFFSET_X, TEXT_OFFSET_Y - 20., RED),
+			draw_text("Y extrema".to_string(), TEXT_OFFSET_X, TEXT_OFFSET_Y, GREEN),
+		);
+		wrap_svg_tag(content)
+	}
+
+	pub fn bounding_box(&self) -> String {
+		let subpath_svg = self.to_default_svg();
+		let bounding_box = self.0.bounding_box();
+		match bounding_box {
+			None => wrap_svg_tag(subpath_svg),
+			Some(bounding_box) => {
+				let content = format!(
+					"{subpath_svg}<rect x={} y ={} width=\"{}\" height=\"{}\" style=\"fill:{NONE};stroke:{RED};stroke-width:1\" />",
+					bounding_box[0].x,
+					bounding_box[0].y,
+					bounding_box[1].x - bounding_box[0].x,
+					bounding_box[1].y - bounding_box[0].y,
+				);
+				wrap_svg_tag(content)
+			}
+		}
+	}
+
+	pub fn inflections(&self) -> String {
+		let inflections: Vec<f64> = self.0.inflections();
+
+		let bezier = self.to_default_svg();
+		let circles: String = inflections
+			.iter()
+			.map(|&t_value| {
+				let point = self.0.evaluate(SubpathTValue::GlobalParametric(t_value));
+				draw_circle(point, 3., RED, 1.5, WHITE)
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+		let content = format!("{bezier}{circles}");
+		wrap_svg_tag(content)
+	}
+
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
 		let projected_point = self.0.evaluate(SubpathTValue::Parametric { segment_index, t: projected_t });
