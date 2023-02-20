@@ -11,12 +11,9 @@ impl Subpath {
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/evaluate/solo" title="Evaluate Demo"></iframe>
 	pub fn evaluate(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = match t {
-			SubpathTValue::GlobalEuclidean(_) => todo!(),
 			SubpathTValue::Parametric { segment_index, t: segment_t } => (segment_index, segment_t),
 			SubpathTValue::GlobalParametric(_) => self.t_value_to_parametric(t),
-			SubpathTValue::Euclidean { segment_index, t } => todo!(),
-			SubpathTValue::EuclideanWithinError { segment_index, t, error } => todo!(),
-			SubpathTValue::GlobalEuclideanWithinError { t, error } => todo!(),
+			_ => todo!(),
 		};
 		self.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(t))
 	}
@@ -60,7 +57,7 @@ impl Subpath {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	// TODO: add iframe to rustdocs
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
 	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
