@@ -1,5 +1,5 @@
 use super::*;
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPERATION_VALUE};
+use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::SubpathTValue;
 use crate::TValue;
 
@@ -28,14 +28,6 @@ impl Subpath {
 			.enumerate()
 			.flat_map(|(index, bezier)| bezier.intersections(other, error, minimum_seperation).into_iter().map(|t| (index, t)).collect::<Vec<(usize, f64)>>())
 			.collect();
-
-		intersection_t_values.iter().fold(Vec::<(usize, f64)>::new(), |mut accumulator, (index, t)| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap().1 - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
-				accumulator.pop();
-			}
-			accumulator.push((*index, *t));
-			accumulator
-		});
 
 		intersection_t_values
 	}

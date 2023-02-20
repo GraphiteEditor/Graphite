@@ -37,7 +37,7 @@ impl Subpath {
 		match t {
 			SubpathTValue::Parametric { segment_index, t } => {
 				assert!((0.0..=1.).contains(&t));
-				assert!((0..self.len_segments() - 1).contains(&segment_index));
+				assert!((0..self.len_segments()).contains(&segment_index));
 				(segment_index, t)
 			}
 			SubpathTValue::GlobalParametric(global_t) => {
