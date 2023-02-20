@@ -1,50 +1,39 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
-use crate::TValue;
+use crate::{SubpathTValue, TValue};
 
 impl Subpath {
 	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
-	pub fn insert(&mut self, t: TValue) {
-		match t {
-			TValue::Parametric(t) => {
-				assert!((0.0..=1.).contains(&t));
+	pub fn insert(&mut self, t: SubpathTValue) {
+		let (segment_index, t) = self.t_value_to_parametric(t);
 
-				let number_of_curves = self.len_segments() as f64;
-				let scaled_t = t * number_of_curves;
-
-				let target_curve_index = scaled_t.floor() as i32;
-				let target_curve_t = scaled_t % 1.;
-
-				if f64_compare(target_curve_t, 0., MAX_ABSOLUTE_DIFFERENCE) || f64_compare(target_curve_t, 1., MAX_ABSOLUTE_DIFFERENCE) {
-					return;
-				}
-
-				// The only case where `curve` would be `None` is if the provided argument was 1
-				// But the above if case would catch that, since `target_curve_t` would be 0.
-				let curve = self.iter().nth(target_curve_index as usize).unwrap();
-
-				let [first, second] = curve.split(TValue::Parametric(target_curve_t));
-				let new_group = ManipulatorGroup {
-					anchor: first.end(),
-					in_handle: first.handle_end(),
-					out_handle: second.handle_start(),
-				};
-				let number_of_groups = self.manipulator_groups.len() + 1;
-				self.manipulator_groups.insert((target_curve_index as usize) + 1, new_group);
-				self.manipulator_groups[(target_curve_index as usize) % number_of_groups].out_handle = first.handle_start();
-				self.manipulator_groups[((target_curve_index as usize) + 2) % number_of_groups].in_handle = second.handle_end();
-			}
-			// TODO: change this implementation to Euclidean compute
-			TValue::Euclidean(_t) => {}
-			TValue::EuclideanWithinError { t: _, error: _ } => todo!(),
+		if f64_compare(t, 0., MAX_ABSOLUTE_DIFFERENCE) || f64_compare(t, 1., MAX_ABSOLUTE_DIFFERENCE) {
+			return;
 		}
+
+		// The only case where `curve` would be `None` is if the provided argument was 1
+		// But the above if case would catch that, since `target_curve_t` would be 0.
+		let curve = self.iter().nth(segment_index).unwrap();
+
+		let [first, second] = curve.split(TValue::Parametric(t));
+		let new_group = ManipulatorGroup {
+			anchor: first.end(),
+			in_handle: first.handle_end(),
+			out_handle: second.handle_start(),
+		};
+		let number_of_groups = self.manipulator_groups.len() + 1;
+		self.manipulator_groups.insert((segment_index) + 1, new_group);
+		self.manipulator_groups[segment_index % number_of_groups].out_handle = first.handle_start();
+		self.manipulator_groups[(segment_index + 2) % number_of_groups].in_handle = second.handle_end();
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use crate::utils::SubpathTValue;
+
 	use super::*;
 	use glam::DVec2;
 
@@ -94,9 +83,9 @@ mod tests {
 	#[test]
 	fn insert_in_first_segment_of_open_subpath() {
 		let mut subpath = set_up_open_subpath();
-		let location = subpath.evaluate(TValue::Parametric(0.2));
+		let location = subpath.evaluate(SubpathTValue::GlobalParametric(0.2));
 		let split_pair = subpath.iter().next().unwrap().split(TValue::Parametric((0.2 * 3.) % 1.));
-		subpath.insert(TValue::Parametric(0.2));
+		subpath.insert(SubpathTValue::GlobalParametric(0.2));
 		assert_eq!(subpath.manipulator_groups[1].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().next().unwrap());
 		assert_eq!(split_pair[1], subpath.iter().nth(1).unwrap());
@@ -105,9 +94,9 @@ mod tests {
 	#[test]
 	fn insert_in_last_segment_of_open_subpath() {
 		let mut subpath = set_up_open_subpath();
-		let location = subpath.evaluate(TValue::Parametric(0.9));
+		let location = subpath.evaluate(SubpathTValue::GlobalParametric(0.9));
 		let split_pair = subpath.iter().nth(2).unwrap().split(TValue::Parametric((0.9 * 3.) % 1.));
-		subpath.insert(TValue::Parametric(0.9));
+		subpath.insert(SubpathTValue::GlobalParametric(0.9));
 		assert_eq!(subpath.manipulator_groups[3].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().nth(2).unwrap());
 		assert_eq!(split_pair[1], subpath.iter().nth(3).unwrap());
@@ -117,8 +106,8 @@ mod tests {
 	fn insert_at_exisiting_manipulator_group_of_open_subpath() {
 		// This will do nothing to the subpath
 		let mut subpath = set_up_open_subpath();
-		let location = subpath.evaluate(TValue::Parametric(0.75));
-		subpath.insert(TValue::Parametric(0.75));
+		let location = subpath.evaluate(SubpathTValue::GlobalParametric(0.75));
+		subpath.insert(SubpathTValue::GlobalParametric(0.75));
 		assert_eq!(subpath.manipulator_groups[3].anchor, location);
 		assert_eq!(subpath.manipulator_groups.len(), 5);
 		assert_eq!(subpath.len_segments(), 4);
@@ -127,9 +116,9 @@ mod tests {
 	#[test]
 	fn insert_at_last_segment_of_closed_subpath() {
 		let mut subpath = set_up_closed_subpath();
-		let location = subpath.evaluate(TValue::Parametric(0.9));
+		let location = subpath.evaluate(SubpathTValue::GlobalParametric(0.9));
 		let split_pair = subpath.iter().nth(3).unwrap().split(TValue::Parametric((0.9 * 4.) % 1.));
-		subpath.insert(TValue::Parametric(0.9));
+		subpath.insert(SubpathTValue::GlobalParametric(0.9));
 		assert_eq!(subpath.manipulator_groups[4].anchor, location);
 		assert_eq!(split_pair[0], subpath.iter().nth(3).unwrap());
 		assert_eq!(split_pair[1], subpath.iter().nth(4).unwrap());
@@ -140,8 +129,8 @@ mod tests {
 	fn insert_at_last_manipulator_group_of_closed_subpath() {
 		// This will do nothing to the subpath
 		let mut subpath = set_up_closed_subpath();
-		let location = subpath.evaluate(TValue::Parametric(1.));
-		subpath.insert(TValue::Parametric(1.));
+		let location = subpath.evaluate(SubpathTValue::GlobalParametric(1.));
+		subpath.insert(SubpathTValue::GlobalParametric(1.));
 		assert_eq!(subpath.manipulator_groups[0].anchor, location);
 		assert_eq!(subpath.manipulator_groups.len(), 4);
 		assert!(subpath.closed);
