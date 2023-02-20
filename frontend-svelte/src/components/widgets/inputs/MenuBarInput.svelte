@@ -21,7 +21,6 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let self: HTMLDivElement;
 	let entries: MenuListEntry[] = [];
 
 	function clickEntry(menuListEntry: MenuListEntry, e: MouseEvent) {
@@ -36,7 +35,7 @@
 		(e.target as HTMLElement | undefined)?.focus();
 
 		if (menuListEntry.ref) {
-			menuListEntry.ref.isOpen = true;
+			menuListEntry.ref.open = true;
 			entries = entries;
 		} else {
 			throw new Error("The menu bar floating menu has no associated ref");
@@ -74,7 +73,7 @@
 	});
 </script>
 
-<div class="menu-bar-input" bind:this={self} data-menu-bar-input>
+<div class="menu-bar-input" data-menu-bar-input>
 	{#each entries as entry, index (index)}
 		<div class="entry-container">
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
@@ -82,7 +81,7 @@
 				on:click={(e) => clickEntry(entry, e)}
 				on:keydown={(e) => entry.ref?.keydown(e, false)}
 				class="entry"
-				class:open={entry.ref?.isOpen}
+				class:open={entry.ref?.open}
 				tabindex="0"
 				data-floating-menu-spawner={entry.children && entry.children.length > 0 ? "" : "no-hover-transfer"}
 			>
@@ -96,9 +95,9 @@
 			{#if entry.children && entry.children.length > 0}
 				<MenuList
 					on:open={(e) => {
-						if (entry.ref) entry.ref.isOpen = e.detail;
+						if (entry.ref) entry.ref.open = e.detail;
 					}}
-					open={entry.ref?.isOpen || false}
+					open={entry.ref?.open || false}
 					entries={entry.children || []}
 					direction="Bottom"
 					minWidth={240}
