@@ -279,7 +279,7 @@ import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerTreeStructureJs,
+	UpdateDocumentLayerTreeStructureTauri,
 	UpdateLayerTreeOptionsLayout,
 	layerTypeData,
 } from "@/wasm-communication/messages";
@@ -482,14 +482,14 @@ export default defineComponent({
 			this.fakeHighlight = undefined;
 			this.dragInPanel = false;
 		},
-		rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructureJs) {
+		rebuildLayerTree(updateDocumentLayerTreeStructureTauri: UpdateDocumentLayerTreeStructureTauri) {
 			const layerWithNameBeingEdited = this.layers.find((layer: LayerListingInfo) => layer.editingName);
 			const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
 			const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
 			const path = [] as bigint[];
 			this.layers = [] as LayerListingInfo[];
 
-			const recurse = (folder: UpdateDocumentLayerTreeStructureJs, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
+			const recurse = (folder: UpdateDocumentLayerTreeStructureTauri, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
 				folder.children.forEach((item, index) => {
 					// TODO: fix toString
 					const layerId = BigInt(item.layerId.toString());
@@ -512,15 +512,15 @@ export default defineComponent({
 				});
 			};
 
-			recurse(updateDocumentLayerTreeStructure, this.layers, this.layerCache);
+			recurse(updateDocumentLayerTreeStructureTauri, this.layers, this.layerCache);
 		},
 		layerTypeData(layerType: LayerType): LayerTypeData {
 			return layerTypeData(layerType) || { name: "Error", icon: "Info" };
 		},
 	},
 	mounted() {
-		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
-			this.rebuildLayerTree(updateDocumentLayerTreeStructure);
+		this.editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureTauri, (updateDocumentLayerTreeStructureTauri) => {
+			this.rebuildLayerTree(updateDocumentLayerTreeStructureTauri);
 		});
 
 		this.editor.subscriptions.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {

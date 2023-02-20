@@ -635,10 +635,69 @@ export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
 	}
 }
 
+export class UpdateDocumentLayerTreeStructureTauri extends JsMessage {
+	constructor(readonly layerId: string, readonly children: UpdateDocumentLayerTreeStructureTauri[]) {
+		super();
+	}
+}
+
 type DataBuffer = {
 	pointer: string;
 	length: string;
 };
+
+export function newUpdateDocumentLayerTreeStructureTauri(input: { dataBuffer: number[] }): UpdateDocumentLayerTreeStructureJs {
+
+	const pointerNum = 0;
+	const wasmMemoryBuffer = new Uint8Array(input.dataBuffer).buffer;
+
+	// Decode the folder structure encoding
+	const encoding = new DataView(wasmMemoryBuffer);
+
+	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
+	const structureSectionLength = Number(encoding.getBigUint64(0, true));
+	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
+
+	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
+	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
+
+	let layersEncountered = 0;
+	let currentFolder = new UpdateDocumentLayerTreeStructureTauri("-1", []);
+	const currentFolderStack = [currentFolder];
+
+	for (let i = 0; i < structureSectionLength; i += 1) {
+		const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
+		const msbMask = BigInt(1) << BigInt(64 - 1);
+
+		// Set the MSB to 0 to clear the sign and then read the number as usual
+		const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
+
+		// Store child folders in the current folder (until we are interrupted by an indent)
+		for (let j = 0; j < numberOfLayersAtThisDepth; j += 1) {
+			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
+			layersEncountered += 1;
+
+			const childLayer = new UpdateDocumentLayerTreeStructureJs(layerId.toString(), []);
+			currentFolder.children.push(childLayer);
+		}
+
+		// Check the sign of the MSB, where a 1 is a negative (outward) indent
+		const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
+		// Inward
+		if (subsequentDirectionOfDepthChange) {
+			currentFolderStack.push(currentFolder);
+			currentFolder = currentFolder.children[currentFolder.children.length - 1];
+		}
+		// Outward
+		else {
+			const popped = currentFolderStack.pop();
+			if (!popped) throw Error("Too many negative indents in the folder structure");
+			if (popped) currentFolder = popped;
+		}
+	}
+
+	return currentFolder;
+}
 
 export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructureJs {
 	const pointerNum = Number(input.dataBuffer.pointer);
@@ -1404,7 +1463,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
-	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
+	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructureTauri,
 	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
