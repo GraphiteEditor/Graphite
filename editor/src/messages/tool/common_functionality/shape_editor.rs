@@ -190,7 +190,7 @@ impl ShapeEditor {
 
 	// Sets the selected points to all points for the corresponding intersection
 	pub fn select_all_anchors(&self, responses: &mut VecDeque<Message>, itersections: Vec<u64>) {
-		responses.push_back(Operation::SelectAllManipulatorPoints { layer_path: itersections }.into());
+		responses.push_back(Operation::SelectAllAnchors { layer_path: itersections }.into());
 	}
 
 	/// Provide the currently selected points by reference.
