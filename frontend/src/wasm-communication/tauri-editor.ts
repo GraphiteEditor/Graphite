@@ -212,8 +212,8 @@ async boundsOfViewports(bounds_of_viewports: number[]) {
 * @param {boolean} is_default
 */
   async onFontLoad(font_family: string, font_style: string, preview_url: string, data: number[], is_default: Promise<boolean>) {
-	  console.log(data);
-	dispatch_response(await commands.onFontLoad(font_family, font_style, preview_url, data, await is_default));
+	  const numberArray = Array.from(data, (x) => x);
+	dispatch_response(await commands.onFontLoad(font_family, font_style, preview_url, numberArray, await is_default));
   }
 /**
 * A text box was changed
