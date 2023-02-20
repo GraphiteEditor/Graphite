@@ -223,7 +223,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 				"View".into(),
 				MenuBarEntryChildren(vec![vec![
 					MenuBarEntry {
-						label: "Center View on Selected".into(),
+						label: "Zoom to Selected".into(),
 						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
 						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
 						..MenuBarEntry::default()
