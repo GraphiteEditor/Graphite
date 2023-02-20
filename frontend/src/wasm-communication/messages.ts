@@ -566,7 +566,7 @@ export class ImaginateMaskImage {
 export class ImaginateBaseImage {
 	readonly mime!: string;
 
-	readonly imageData!: Uint8Array;
+	readonly imageData!: number[];
 
 	@TupleToVec2
 	readonly size!: [number, number];
@@ -769,7 +769,7 @@ export class ImaginateImageData {
 
 	readonly mime!: string;
 
-	readonly imageData!: Uint8Array;
+	readonly imageData!: number[];
 }
 
 export class DisplayDialogDismiss extends JsMessage {}
@@ -1404,6 +1404,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
+	UpdateDocumentLayerTreeStructure: newUpdateDocumentLayerTreeStructure,
 	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
