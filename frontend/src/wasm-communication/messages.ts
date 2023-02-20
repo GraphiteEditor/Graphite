@@ -1287,6 +1287,7 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
+			console.log("targetLayout", targetLayout);
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];

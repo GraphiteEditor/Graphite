@@ -125,7 +125,8 @@ async requestAboutGraphiteDialogWithLocalizedCommitDate(localized_commit_date: s
 * @param {Float64Array} bounds_of_viewports
 */
 async boundsOfViewports(bounds_of_viewports: number[]) {
-  dispatch_response(await commands.boundsOfViewports( bounds_of_viewports ));
+  const numberArray = Array.from(bounds_of_viewports, (x) => x);
+  dispatch_response(await commands.boundsOfViewports( numberArray ));
 }
 /**
 * Mouse movement within the screenspace bounds of the viewport
@@ -211,7 +212,7 @@ async boundsOfViewports(bounds_of_viewports: number[]) {
 * @param {number[]} data
 * @param {boolean} is_default
 */
-  async onFontLoad(font_family: string, font_style: string, preview_url: string, data: number[], is_default: Promise<boolean>) {
+  async onFontLoad(font_family: string, font_style: string, preview_url: string, data: Uint8Array, is_default: Promise<boolean>) {
 	  const numberArray = Array.from(data, (x) => x);
 	dispatch_response(await commands.onFontLoad(font_family, font_style, preview_url, numberArray, await is_default));
   }
@@ -491,7 +492,6 @@ async boundsOfViewports(bounds_of_viewports: number[]) {
 const instance = new TauriHandle();
 
 async function dispatch_response(response: any[]) {
-	console.log(response);
 	let array = response;
 	for (let deserialized of array) {
 		let messageType = Object.keys(deserialized)[0];
