@@ -11,9 +11,9 @@ pub enum NodeGraphMessage {
 	// Messages
 	CloseNodeGraph,
 	ConnectNodesByLink {
-		output_node: u64,
+		output_node: NodeId,
 		output_node_connector_index: usize,
-		input_node: u64,
+		input_node: NodeId,
 		input_node_connector_index: usize,
 	},
 	Copy,

@@ -10,6 +10,9 @@ homepage = "https://graphite.rs"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
+[features]
+wasm = ["graphene-core/wasm"]
+
 [dependencies]
 graph-craft = { path = "../node-graph/graph-craft", features = ["serde"] }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }

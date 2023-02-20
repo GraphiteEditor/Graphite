@@ -1,3 +1,5 @@
+use crate::Uuid;
+
 use super::consts::ManipulatorType;
 use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
@@ -189,7 +191,7 @@ impl Subpath {
 
 	/// Delete the selected points from the [Subpath]
 	pub fn delete_selected(&mut self) {
-		let mut ids_to_delete: Vec<u64> = vec![];
+		let mut ids_to_delete: Vec<Uuid> = vec![];
 		for (id, manipulator_group) in self.manipulator_groups_mut().enumerate_mut() {
 			if manipulator_group.is_anchor_selected() {
 				ids_to_delete.push(*id);
@@ -213,7 +215,7 @@ impl Subpath {
 	// ** SELECTION OF POINTS **
 
 	/// Set a single point to a chosen selection state by providing `(manipulator group ID, manipulator type)`.
-	pub fn select_point(&mut self, point: (u64, ManipulatorType), selected: bool) -> Option<&mut ManipulatorGroup> {
+	pub fn select_point(&mut self, point: (Uuid, ManipulatorType), selected: bool) -> Option<&mut ManipulatorGroup> {
 		let (manipulator_group_id, point_id) = point;
 		if let Some(manipulator_group) = self.manipulator_groups_mut().by_id_mut(manipulator_group_id) {
 			manipulator_group.select_point(point_id as usize, selected);
@@ -225,7 +227,7 @@ impl Subpath {
 	}
 
 	/// Set points in the [Subpath] to a chosen selection state, given by `(manipulator group ID, manipulator type)`.
-	pub fn select_points(&mut self, points: &[(u64, ManipulatorType)], selected: bool) {
+	pub fn select_points(&mut self, points: &[(Uuid, ManipulatorType)], selected: bool) {
 		points.iter().for_each(|point| {
 			self.select_point(*point, selected);
 		});
@@ -429,31 +431,31 @@ pub struct BezierId {
 	/// The internal [`bezier_rs::Bezier`].
 	pub internal: bezier_rs::Bezier,
 	/// The ID of the [ManipulatorGroup] of the start point and, if cubic, the start handle.
-	pub start: u64,
+	pub start: Uuid,
 	/// The ID of the [ManipulatorGroup] of the end point and, if cubic, the end handle.
-	pub end: u64,
+	pub end: Uuid,
 	/// The ID of the [ManipulatorGroup] of the handle on a quadratic (if applicable).
-	pub mid: Option<u64>,
+	pub mid: Option<Uuid>,
 }
 
 impl BezierId {
 	/// Construct a `BezierId` by encapsulating a [`bezier_rs::Bezier`] and providing the IDs of the [`ManipulatorGroup`]s the constituent points belong to.
-	fn new(internal: bezier_rs::Bezier, start: u64, end: u64, mid: Option<u64>) -> Self {
+	fn new(internal: bezier_rs::Bezier, start: Uuid, end: Uuid, mid: Option<Uuid>) -> Self {
 		Self { internal, start, end, mid }
 	}
 }
 
 /// An iterator over [`bezier_rs::Bezier`] segments constructable via [`Subpath::bezier_iter`].
 pub struct PathIter<'a> {
-	path: core::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
+	path: core::iter::Zip<core::slice::Iter<'a, Uuid>, core::slice::Iter<'a, ManipulatorGroup>>,
 
 	last_anchor: Option<DVec2>,
 	last_out_handle: Option<DVec2>,
-	last_id: Option<u64>,
+	last_id: Option<Uuid>,
 
 	first_in_handle: Option<DVec2>,
 	first_anchor: Option<DVec2>,
-	first_id: Option<u64>,
+	first_id: Option<Uuid>,
 
 	start_new_contour: bool,
 }

@@ -1653,6 +1653,7 @@ dependencies = [
  "serde",
  "specta",
  "spirv-std",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -120,7 +120,7 @@ pub enum Operation {
 	},
 	DeselectManipulatorPoints {
 		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ManipulatorType)>,
+		point_ids: Vec<(LayerId, ManipulatorType)>,
 	},
 	DeselectAllManipulatorPoints {
 		layer_path: Vec<LayerId>,
@@ -144,13 +144,13 @@ pub enum Operation {
 	},
 	MoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
-		id: u64,
+		id: LayerId,
 		manipulator_type: ManipulatorType,
 		position: (f64, f64),
 	},
 	SetManipulatorPoints {
 		layer_path: Vec<LayerId>,
-		id: u64,
+		id: LayerId,
 		manipulator_type: ManipulatorType,
 		position: Option<(f64, f64)>,
 	},
@@ -180,7 +180,7 @@ pub enum Operation {
 	},
 	SelectManipulatorPoints {
 		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ManipulatorType)>,
+		point_ids: Vec<(LayerId, ManipulatorType)>,
 		add: bool,
 	},
 	SetShapePath {
@@ -190,7 +190,7 @@ pub enum Operation {
 	InsertManipulatorGroup {
 		layer_path: Vec<LayerId>,
 		manipulator_group: ManipulatorGroup,
-		after_id: u64,
+		after_id: LayerId,
 	},
 	PushManipulatorGroup {
 		layer_path: Vec<LayerId>,
@@ -202,11 +202,11 @@ pub enum Operation {
 	},
 	RemoveManipulatorGroup {
 		layer_path: Vec<LayerId>,
-		id: u64,
+		id: LayerId,
 	},
 	RemoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
-		id: u64,
+		id: LayerId,
 		manipulator_type: ManipulatorType,
 	},
 	TransformLayerInScope {
@@ -268,7 +268,7 @@ pub enum Operation {
 	},
 	SetManipulatorHandleMirroring {
 		layer_path: Vec<LayerId>,
-		id: u64,
+		id: LayerId,
 		mirror_angle: bool,
 	},
 	SetSelectedHandleMirroring {

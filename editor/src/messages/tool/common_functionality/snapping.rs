@@ -274,7 +274,7 @@ impl SnapManager {
 							(*id, &shape.points[ManipulatorType::OutHandle]),
 						]
 					} else {
-						[(*id, &shape.points[ManipulatorType::Anchor]), (0, &None), (0, &None)]
+						[(*id, &shape.points[ManipulatorType::Anchor]), (0u64.into(), &None), (0u64.into(), &None)]
 					}
 				})
 				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))

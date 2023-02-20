@@ -10,12 +10,12 @@ fn main() {
 	let client = reqwest::blocking::Client::new();
 
 	let network = NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(0, 0)],
+		inputs: vec![0u64.into()],
+		outputs: vec![NodeOutput::new(0u64.into(), 0)],
 		disabled: vec![],
 		previous_outputs: None,
 		nodes: [(
-			0,
+			0u64.into(),
 			DocumentNode {
 				name: "Inc Node".into(),
 				inputs: vec![
@@ -40,13 +40,13 @@ fn main() {
 
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
-		inputs: vec![0, 0],
-		outputs: vec![NodeOutput::new(1, 0)],
+		inputs: vec![0u64.into(), 0u64.into()],
+		outputs: vec![NodeOutput::new(1u64.into(), 0)],
 		disabled: vec![],
 		previous_outputs: None,
 		nodes: [
 			(
-				0,
+				0u64.into(),
 				DocumentNode {
 					name: "Cons".into(),
 					inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
@@ -55,10 +55,10 @@ fn add_network() -> NodeNetwork {
 				},
 			),
 			(
-				1,
+				1u64.into(),
 				DocumentNode {
 					name: "Add".into(),
-					inputs: vec![NodeInput::node(0, 0)],
+					inputs: vec![NodeInput::node(0u64.into(), 0)],
 					metadata: DocumentNodeMetadata::default(),
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode")),
 				},

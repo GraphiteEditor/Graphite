@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
-pub type LayerId = graphene_core::uuid::Uuid;
+pub type LayerId = graphene_core::Uuid;
 
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct Document {
@@ -452,7 +452,7 @@ impl Document {
 
 		let mut path = path.to_vec();
 		let len = path.len();
-		path.push(0.into());
+		path.push(0u64.into());
 
 		if let Some(ids) = layer.as_folder().ok().map(|f| f.layer_ids.clone()) {
 			for id in ids {
@@ -728,7 +728,7 @@ impl Document {
 				};
 				self.delete(&path)?;
 
-				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0.into()));
+				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0u64.into()));
 				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(folder));
 				Some(responses)
@@ -765,7 +765,7 @@ impl Document {
 			}
 			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
-				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0.into()));
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0u64.into()));
 				let folder = self.folder_mut(folder_path)?;
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
 					let new_path = [folder_path, &[new_layer_id]].concat();

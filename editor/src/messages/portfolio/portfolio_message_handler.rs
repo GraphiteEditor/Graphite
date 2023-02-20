@@ -19,13 +19,15 @@ use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
 use graphene_core::raster::Image;
 
+pub type DocumentId = graphene_core::Uuid;
+
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
-	documents: HashMap<u64, DocumentMessageHandler>,
-	document_ids: Vec<u64>,
+	documents: HashMap<DocumentId, DocumentMessageHandler>,
+	document_ids: Vec<DocumentId>,
 	executor: NodeGraphExecutor,
-	active_document_id: Option<u64>,
+	active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 }
@@ -598,11 +600,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 }
 
 impl PortfolioMessageHandler {
-	pub fn document(&self, document_id: u64) -> Option<&DocumentMessageHandler> {
+	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
 		self.documents.get(&document_id)
 	}
 
-	pub fn document_mut(&mut self, document_id: u64) -> Option<&mut DocumentMessageHandler> {
+	pub fn document_mut(&mut self, document_id: DocumentId) -> Option<&mut DocumentMessageHandler> {
 		self.documents.get_mut(&document_id)
 	}
 
@@ -614,7 +616,7 @@ impl PortfolioMessageHandler {
 		self.active_document_id.and_then(|id| self.documents.get_mut(&id))
 	}
 
-	pub fn active_document_id(&self) -> Option<u64> {
+	pub fn active_document_id(&self) -> Option<DocumentId> {
 		self.active_document_id
 	}
 
@@ -640,7 +642,7 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		let render_data = RenderData::new(&self.persistent_data.font_cache, new_document.view_mode, None);
 
 		self.document_ids.push(document_id);
@@ -678,7 +680,7 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
 	}
 
-	fn document_index(&self, document_id: u64) -> usize {
+	fn document_index(&self, document_id: DocumentId) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 }

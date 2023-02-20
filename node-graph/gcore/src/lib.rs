@@ -10,7 +10,7 @@ extern crate log;
 pub mod generic;
 pub mod ops;
 pub mod structural;
-pub mod uuid;
+mod uuid;
 pub mod value;
 
 #[cfg(feature = "gpu")]
@@ -22,6 +22,11 @@ pub mod raster;
 pub mod vector;
 
 use core::any::TypeId;
+
+#[cfg(feature = "wasm")]
+pub type Uuid = u64;
+#[cfg(not(feature = "wasm"))]
+pub use uuid::Uuid;
 
 // pub trait Node: for<'n> NodeIO<'n> {
 pub trait Node<'i, Input: 'i>: 'i {

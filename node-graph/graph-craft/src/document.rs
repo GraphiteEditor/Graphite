@@ -15,23 +15,23 @@ use std::sync::Mutex;
 
 pub mod value;
 
-pub type NodeId = u64;
+pub type NodeId = graphene_core::Uuid;
 static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
 
-pub fn generate_uuid() -> u64 {
+pub fn generate_uuid() -> NodeId {
 	let mut lock = RNG.lock().expect("uuid mutex poisoned");
 	if lock.is_none() {
 		*lock = Some(ChaCha20Rng::seed_from_u64(0));
 	}
-	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
+	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap().into()
 }
 
-fn merge_ids(a: u64, b: u64) -> u64 {
+fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	use std::hash::{Hash, Hasher};
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
 	a.hash(&mut hasher);
 	b.hash(&mut hasher);
-	hasher.finish()
+	hasher.finish().into()
 }
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type)]
@@ -237,7 +237,7 @@ impl NodeNetwork {
 
 	/// Collect a hashmap of nodes with a list of the nodes that use it as input
 	pub fn collect_outwards_links(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut outwards_links: HashMap<u64, Vec<u64>> = HashMap::new();
+		let mut outwards_links: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (node_id, node) in &self.nodes {
 			for input in &node.inputs {
 				if let NodeInput::Node { node_id: ref_id, .. } = input {
@@ -449,11 +449,11 @@ impl NodeNetwork {
 	/// A graph with just an input and output node
 	pub fn new_network(output_offset: i32, output_node_id: NodeId) -> Self {
 		Self {
-			inputs: vec![0],
-			outputs: vec![NodeOutput::new(1, 0)],
+			inputs: vec![0u64.into()],
+			outputs: vec![NodeOutput::new(1u64.into(), 0)],
 			nodes: [
 				(
-					0,
+					0u64.into(),
 					DocumentNode {
 						name: "Input".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
@@ -462,7 +462,7 @@ impl NodeNetwork {
 					},
 				),
 				(
-					1,
+					1u64.into(),
 					DocumentNode {
 						name: "Output".into(),
 						inputs: vec![NodeInput::node(output_node_id, 0)],

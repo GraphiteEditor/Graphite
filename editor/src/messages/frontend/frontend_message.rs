@@ -4,6 +4,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
 use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
 use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuffer, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::DocumentId;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
@@ -73,7 +74,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "refreshFrequency")]
 		refresh_frequency: f64,
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		#[serde(rename = "nodePath")]
@@ -81,7 +82,7 @@ pub enum FrontendMessage {
 	},
 	TriggerImaginateTerminate {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		#[serde(rename = "nodePath")]
@@ -91,7 +92,7 @@ pub enum FrontendMessage {
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	TriggerIndexedDbWriteDocument {
 		document: String,
@@ -102,7 +103,7 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerNodeGraphFrameGenerate {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 		#[serde(rename = "layerPath")]
 		layer_path: Vec<LayerId>,
 		svg: String,
@@ -138,7 +139,7 @@ pub enum FrontendMessage {
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	UpdateDialogDetails {
 		#[serde(rename = "layoutTarget")]
@@ -197,7 +198,7 @@ pub enum FrontendMessage {
 	},
 	UpdateImageData {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 		#[serde(rename = "imageData")]
 		image_data: Vec<FrontendImageData>,
 	},

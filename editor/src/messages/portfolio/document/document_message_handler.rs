@@ -18,6 +18,7 @@ use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMeta
 use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
+use crate::messages::portfolio::portfolio_message_handler::DocumentId;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
@@ -41,8 +42,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
 	pub document_legacy: DocumentLegacy,
-	pub saved_document_identifier: u64,
-	pub auto_saved_document_identifier: u64,
+	pub saved_document_identifier: DocumentId,
+	pub auto_saved_document_identifier: DocumentId,
 	pub name: String,
 	pub version: String,
 
@@ -78,8 +79,8 @@ impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
 			document_legacy: DocumentLegacy::default(),
-			saved_document_identifier: 0,
-			auto_saved_document_identifier: 0,
+			saved_document_identifier: 0u64.into(),
+			auto_saved_document_identifier: 0u64.into(),
 			name: String::from("Untitled Document"),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 
@@ -105,13 +106,13 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor)> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor)> for DocumentMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: DocumentMessage,
 		responses: &mut VecDeque<Message>,
-		(document_id, ipp, persistent_data, preferences, executor): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor),
+		(document_id, ipp, persistent_data, preferences, executor): (DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor),
 	) {
 		use DocumentMessage::*;
 
@@ -536,7 +537,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						node_id: *imaginate_node.last().unwrap(),
 						// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
 						input_index: 2,
-						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+						value: graph_craft::document::value::TaggedValue::F64((<LayerId as Into<u64>>::into(generate_uuid()) >> 1) as f64),
 					}
 					.into(),
 				);
@@ -605,7 +606,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
 				let path = vec![generate_uuid()];
-				let image_node_id = 100;
+				let image_node_id = 100u64.into();
 				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
 
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
@@ -1010,7 +1011,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData, imaginate_node: Option<Vec<NodeId>>) -> Option<Message> {
+	pub fn call_node_graph_frame(
+		&mut self,
+		document_id: DocumentId,
+		_preferences: &PreferencesMessageHandler,
+		persistent_data: &PersistentData,
+		imaginate_node: Option<Vec<NodeId>>,
+	) -> Option<Message> {
 		let layer_path = {
 			let mut selected_nodegraph_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
 
@@ -1320,7 +1327,7 @@ impl DocumentMessageHandler {
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		self.serialize_structure(self.document_legacy.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
-		structure.extend(data);
+		structure.extend(data.into_iter().map(|id| u64::from(id)));
 
 		structure
 	}
@@ -1503,14 +1510,14 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn current_identifier(&self) -> u64 {
+	pub fn current_identifier(&self) -> DocumentId {
 		// We can use the last state of the document to serve as the identifier to compare against
 		// This is useful since when the document is empty the identifier will be 0
 		self.document_undo_history
 			.iter()
 			.last()
-			.map(|DocumentSave { document, .. }| document.current_state_identifier())
-			.unwrap_or(0)
+			.map(|DocumentSave { document, .. }| document.current_state_identifier().into())
+			.unwrap_or(0u64.into())
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
@@ -1592,7 +1599,7 @@ impl DocumentMessageHandler {
 
 	/// Calculate the path that new layers should be inserted to.
 	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
-	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
+	pub fn get_path_for_new_layer(&self) -> Vec<LayerId> {
 		// If the selected layers don't actually exist, a new uuid for the
 		// root folder will be returned
 		let mut path = self.document_legacy.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
@@ -1601,7 +1608,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: u64) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: DocumentId) {
 		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>, fonts: &mut HashSet<Font>) {
 			match data {
 				LayerDataType::Folder(folder) => {

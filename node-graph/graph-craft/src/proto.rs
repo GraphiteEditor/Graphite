@@ -99,7 +99,7 @@ impl ProtoNode {
 			}
 			ProtoNodeInput::Node(id) => id.hash(&mut hasher),
 		};
-		Some(hasher.finish() as NodeId)
+		Some(hasher.finish().into())
 	}
 
 	pub fn value(value: ConstructionArgs) -> Self {
@@ -198,14 +198,14 @@ impl ProtoNetwork {
 		self.reorder_ids();
 
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
-		let compose_node_id = self.nodes.len() as NodeId;
+		let compose_node_id = (self.nodes.len() as u64).into();
 		let inputs = self.nodes.iter().map(|(_, node)| node.input.clone()).collect::<Vec<_>>();
 
 		let resolved_lookup = resolved.clone();
 		if let Some((input_node, id, input)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
 			if let ProtoNodeInput::Node(input_node) = node.input {
 				resolved.insert(*id);
-				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
+				let pre_node_input = inputs.get(<NodeId as Into<u64>>::into(input_node) as usize).expect("input node should exist");
 				Some((input_node, *id, pre_node_input.clone()))
 			} else {
 				None
@@ -284,20 +284,20 @@ impl ProtoNetwork {
 	pub fn reorder_ids(&mut self) {
 		let order = self.topological_sort();
 		// Map of node ids to indexes (which become the node ids as they are inserted into the borrow stack)
-		let lookup: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
+		let lookup: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, (pos as u64).into())).collect();
 		self.nodes = order
 			.iter()
 			.enumerate()
 			.map(|(pos, id)| {
 				let node = self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()).1;
-				(pos as NodeId, node)
+				((pos as u64).into(), node)
 			})
 			.collect();
 		self.replace_node_references(&lookup);
 		assert_eq!(order.len(), self.nodes.len());
 	}
 
-	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>) {
+	fn replace_node_references(&mut self, lookup: &HashMap<NodeId, NodeId>) {
 		self.nodes.iter_mut().for_each(|(_, node)| {
 			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"));
 		});

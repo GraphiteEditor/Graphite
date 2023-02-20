@@ -1,6 +1,7 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
 use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMode;
 use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::DocumentId;
 use crate::messages::prelude::*;
 
 use document_legacy::{document::pick_safe_imaginate_resolution, layers::layer_info::LayerDataType};
@@ -115,7 +116,7 @@ impl NodeGraphExecutor {
 		&mut self,
 		network: NodeNetwork,
 		imaginate_node: Vec<NodeId>,
-		(document, document_id): (&mut DocumentMessageHandler, u64),
+		(document, document_id): (&mut DocumentMessageHandler, DocumentId),
 		layer_path: Vec<LayerId>,
 		image_frame: ImageFrame,
 		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
@@ -217,7 +218,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph, computing either the imaginate node or the entire graph
 	pub fn evaluate_node_graph(
 		&mut self,
-		(document_id, documents): (u64, &mut HashMap<u64, DocumentMessageHandler>),
+		(document_id, documents): (DocumentId, &mut HashMap<DocumentId, DocumentMessageHandler>),
 		layer_path: Vec<LayerId>,
 		(image_data, (width, height)): (Vec<u8>, (u32, u32)),
 		imaginate_node: Option<Vec<NodeId>>,

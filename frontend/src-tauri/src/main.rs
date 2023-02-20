@@ -1,5 +1,6 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
+use graphene_core::Uuid;
 use graphite_editor::application::Editor;
 use graphite_editor::messages::frontend::utility_types::FrontendImageData;
 use graphite_editor::messages::prelude::*;
@@ -205,8 +206,8 @@ async fn main() {
 
 #[tauri::command]
 #[specta::specta]
-fn set_random_seed(seed: f64) {
-	let seed = seed as u64;
+fn set_random_seed(seed: Uuid) {
+	let seed = *seed as u64;
 	graphite_editor::application::set_uuid_seed(seed);
 }
 

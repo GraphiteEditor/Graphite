@@ -98,7 +98,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::node(0, 0),
+				default: NodeInput::node(0u64.into(), 0),
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
@@ -127,8 +127,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Input",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1],
-				outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(1, 0)],
+				inputs: vec![0u64.into(), 1u64.into()],
+				outputs: vec![NodeOutput::new(0u64.into(), 0), NodeOutput::new(1u64.into(), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -145,7 +145,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| ((id as u64).into(), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -295,11 +295,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Gaussian Blur",
 			category: "Image Filters",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1, 1],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![0u64.into(), 1u64.into(), 1u64.into()],
+				outputs: vec![NodeOutput::new(1u64.into(), 0)],
 				nodes: vec![
 					(
-						0,
+						0u64.into(),
 						DocumentNode {
 							name: "CacheNode".to_string(),
 							inputs: vec![NodeInput::Network(concrete!(Image))],
@@ -308,10 +308,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						},
 					),
 					(
-						1,
+						1u64.into(),
 						DocumentNode {
 							name: "BlurNode".to_string(),
-							inputs: vec![NodeInput::node(0, 0), NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(f64)), NodeInput::node(0, 0)],
+							inputs: vec![
+								NodeInput::node(0u64.into(), 0),
+								NodeInput::Network(concrete!(u32)),
+								NodeInput::Network(concrete!(f64)),
+								NodeInput::node(0u64.into(), 0),
+							],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlurNode")),
 							metadata: Default::default(),
 						},
@@ -336,11 +341,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Cache",
 			category: "Structural",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![0u64.into()],
+				outputs: vec![NodeOutput::new(1u64.into(), 0)],
 				nodes: vec![
 					(
-						0,
+						0u64.into(),
 						DocumentNode {
 							name: "CacheNode".to_string(),
 							inputs: vec![NodeInput::Network(concrete!(Image))],
@@ -349,10 +354,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						},
 					),
 					(
-						1,
+						1u64.into(),
 						DocumentNode {
 							name: "CloneNode".to_string(),
-							inputs: vec![NodeInput::node(0, 0)],
+							inputs: vec![NodeInput::node(0u64.into(), 0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
 							metadata: Default::default(),
 						},
@@ -617,10 +622,10 @@ impl DocumentNodeType {
 		let inner_network = match &self.identifier {
 			NodeImplementation::ProtoNode(ident) => {
 				NodeNetwork {
-					inputs: (0..num_inputs).map(|_| 0).collect(),
-					outputs: vec![NodeOutput::new(0, 0)],
+					inputs: (0..num_inputs).map(|_| 0u64.into()).collect(),
+					outputs: vec![NodeOutput::new(0u64.into(), 0)],
 					nodes: [(
-						0,
+						0u64.into(),
 						DocumentNode {
 							name: format!("{}_impl", self.name),
 							// TODO: Allow inserting nodes that contain other nodes.
@@ -651,8 +656,8 @@ impl DocumentNodeType {
 
 pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
 	NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(1, 0)],
+		inputs: vec![0u64.into()],
+		outputs: vec![NodeOutput::new(1u64.into(), 0)],
 		nodes: [
 			resolve_document_node_type("Input").expect("Input node does not exist").to_document_node(
 				[NodeInput::Network(concrete!(Image)), NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
@@ -660,14 +665,15 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 			),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
-				.to_document_node([NodeInput::node(2, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
-			resolve_document_node_type("Image Frame")
-				.expect("Image frame node does not exist")
-				.to_document_node([NodeInput::node(output_node_id, 0), NodeInput::node(0, 1)], DocumentNodeMetadata::position((output_offset, 4))),
+				.to_document_node([NodeInput::node(2u64.into(), 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+			resolve_document_node_type("Image Frame").expect("Image frame node does not exist").to_document_node(
+				[NodeInput::node(output_node_id, 0), NodeInput::node(0u64.into(), 1)],
+				DocumentNodeMetadata::position((output_offset, 4)),
+			),
 		]
 		.into_iter()
 		.enumerate()
-		.map(|(id, node)| (id as NodeId, node))
+		.map(|(id, node)| ((id as u64).into(), node))
 		.collect(),
 		..Default::default()
 	}

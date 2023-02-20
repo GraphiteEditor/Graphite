@@ -2,12 +2,13 @@ use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+use crate::messages::portfolio::DocumentId;
 use crate::messages::prelude::*;
 
 /// A dialog for confirming the closing a document with unsaved changes.
 pub struct CloseDocumentDialog {
 	pub document_name: String,
-	pub document_id: u64,
+	pub document_id: DocumentId,
 }
 
 impl PropertyHolder for CloseDocumentDialog {

@@ -3,6 +3,7 @@ use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::DocumentId;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 
@@ -14,13 +15,13 @@ pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData)> for ToolMessageHandler {
+impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData)> for ToolMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: ToolMessage,
 		responses: &mut VecDeque<Message>,
-		(document, document_id, input, persistent_data): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData),
+		(document, document_id, input, persistent_data): (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData),
 	) {
 		let render_data = RenderData::new(&persistent_data.font_cache, document.view_mode, None);
 
@@ -165,9 +166,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				let random_number = generate_uuid();
-				let r = (random_number >> 16) as u8;
-				let g = (random_number >> 8) as u8;
-				let b = random_number as u8;
+				let r = (u64::from(random_number) >> 16) as u8;
+				let g = (u64::from(random_number) >> 8) as u8;
+				let b = u64::from(random_number) as u8;
 				let random_color = Color::from_rgba8(r, g, b, 255);
 				document_data.primary_color = random_color;
 

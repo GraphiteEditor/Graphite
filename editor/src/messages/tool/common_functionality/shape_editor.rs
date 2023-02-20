@@ -36,7 +36,7 @@ pub struct SelectedPointsInfo<'a> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ManipulatorPointInfo<'a> {
 	pub shape_layer_path: &'a [LayerId],
-	pub manipulator_group_id: u64,
+	pub manipulator_group_id: LayerId,
 	pub manipulator_type: ManipulatorType,
 }
 
@@ -79,7 +79,7 @@ impl ShapeEditor {
 						.flat_map(|(id, manipulator_group)| manipulator_group.selected_points().map(move |point| (id, point.manipulator_type)))
 						.map(|(anchor, manipulator_point)| ManipulatorPointInfo {
 							shape_layer_path: path.as_slice(),
-							manipulator_group_id: *anchor,
+							manipulator_group_id: (*anchor).into(),
 							manipulator_type: manipulator_point,
 						})
 				})
@@ -189,7 +189,7 @@ impl ShapeEditor {
 	}
 
 	// Sets the selected points to all points for the corresponding intersection
-	pub fn select_all_anchors(&self, responses: &mut VecDeque<Message>, itersections: Vec<u64>) {
+	pub fn select_all_anchors(&self, responses: &mut VecDeque<Message>, itersections: Vec<LayerId>) {
 		responses.push_back(Operation::SelectAllAnchors { layer_path: itersections }.into());
 	}
 
@@ -242,7 +242,7 @@ impl ShapeEditor {
 
 	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
 	/// Return value is an `Option` of the tuple representing `(layer path, ManipulatorGroup ID, ManipulatorType enum index)`.
-	fn find_nearest_point_indices(&self, document: &Document, mouse_position: DVec2, select_threshold: f64) -> Option<(&[LayerId], u64, usize)> {
+	fn find_nearest_point_indices(&self, document: &Document, mouse_position: DVec2, select_threshold: f64) -> Option<(&[LayerId], LayerId, usize)> {
 		if self.selected_layers.is_empty() {
 			return None;
 		}
@@ -266,9 +266,9 @@ impl ShapeEditor {
 	/// Find the closest manipulator, manipulator point, and distance so we can select path elements.
 	/// Brute force comparison to determine which manipulator (handle or anchor) we want to select taking O(n) time.
 	/// Return value is an `Option` of the tuple representing `(manipulator ID, manipulator point index, distance squared)`.
-	fn closest_point_in_layer(&self, document: &Document, layer_path: &[LayerId], pos: glam::DVec2) -> Option<(u64, usize, f64)> {
+	fn closest_point_in_layer(&self, document: &Document, layer_path: &[LayerId], pos: glam::DVec2) -> Option<(LayerId, usize, f64)> {
 		let mut closest_distance_squared: f64 = f64::MAX; // Not ideal
-		let mut result: Option<(u64, usize, f64)> = None;
+		let mut result: Option<(LayerId, usize, f64)> = None;
 
 		if let Some(shape) = document.layer(layer_path).ok()?.as_subpath() {
 			let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
@@ -467,7 +467,7 @@ impl ShapeEditor {
 		false
 	}
 
-	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[u64]) -> Option<&'a Subpath> {
+	fn shape<'a>(&'a self, document: &'a Document, layer_id: &[LayerId]) -> Option<&'a Subpath> {
 		document.layer(layer_id).ok()?.as_subpath()
 	}
 }

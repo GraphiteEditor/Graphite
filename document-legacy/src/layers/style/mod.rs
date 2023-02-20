@@ -1,7 +1,10 @@
 //! Contains stylistic options for SVG elements.
 
 use super::text_layer::FontCache;
-use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+use crate::{
+	consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT},
+	LayerId,
+};
 
 use graphene_core::raster::color::Color;
 
@@ -68,13 +71,13 @@ pub struct Gradient {
 	pub end: DVec2,
 	pub transform: DAffine2,
 	pub positions: Vec<(f64, Option<Color>)>,
-	uuid: u64,
+	uuid: LayerId,
 	pub gradient_type: GradientType,
 }
 
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64, gradient_type: GradientType) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: LayerId, gradient_type: GradientType) -> Self {
 		Gradient {
 			start,
 			end,

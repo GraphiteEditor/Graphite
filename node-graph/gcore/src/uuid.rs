@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct Uuid(
 	#[serde(with = "u64_string")]
 	#[specta(type = String)]
-	u64,
+	pub(crate) u64,
 );
 
 impl core::fmt::Debug for Uuid {
@@ -41,6 +41,11 @@ impl From<u64> for Uuid {
 		Uuid(value)
 	}
 }
+impl From<Uuid> for u64 {
+	fn from(value: Uuid) -> u64 {
+		*value
+	}
+}
 
 impl AddAssign for Uuid {
 	fn add_assign(&mut self, rhs: Self) {
@@ -58,6 +63,12 @@ impl FromStr for Uuid {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		u64::from_str(s).map(|x| x.into())
+	}
+}
+
+impl AsRef<u64> for Uuid {
+	fn as_ref(&self) -> &u64 {
+		&self.0
 	}
 }
 

@@ -16,7 +16,7 @@ use glam::{DAffine2, DVec2};
 
 /// [ManipulatorGroupOverlay]s is the collection of overlays that make up an [ManipulatorGroup] visible in the editor.
 type ManipulatorGroupOverlays = [Option<Vec<LayerId>>; 5];
-type ManipulatorId = u64;
+type ManipulatorId = LayerId;
 
 const POINT_STROKE_WEIGHT: f64 = 2.;
 

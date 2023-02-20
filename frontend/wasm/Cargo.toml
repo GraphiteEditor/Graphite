@@ -19,10 +19,10 @@ default = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-editor = { path = "../../editor", package = "graphite-editor" }
-document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
+editor = { path = "../../editor", package = "graphite-editor", features = ["wasm"] }
+document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy", features=["wasm"] }
 graph-craft = { path = "../../node-graph/graph-craft" }
-graphene-core = { path = "../../node-graph/gcore", features = ["async", "std", "alloc"] }
+graphene-core = { path = "../../node-graph/gcore", features = ["async", "std", "alloc", "wasm"] }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.73" }

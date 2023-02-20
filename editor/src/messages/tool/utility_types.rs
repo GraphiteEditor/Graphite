@@ -7,6 +7,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::IconButton;
 use crate::messages::layout::utility_types::widgets::input_widgets::SwatchPairInput;
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
+use crate::messages::portfolio::DocumentId;
 use crate::messages::prelude::*;
 
 use document_legacy::layers::style::RenderData;
@@ -15,7 +16,7 @@ use graphene_core::raster::color::Color;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>);
+pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, DocumentId, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>);
 
 pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}

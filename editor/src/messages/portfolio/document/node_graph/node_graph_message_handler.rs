@@ -84,13 +84,13 @@ pub struct FrontendNode {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeLink {
 	#[serde(rename = "linkStart")]
-	pub link_start: u64,
+	pub link_start: NodeId,
 	#[serde(rename = "linkStartOutputIndex")]
-	pub link_start_output_index: usize,
+	pub link_start_output_index: NodeId,
 	#[serde(rename = "linkEnd")]
-	pub link_end: u64,
+	pub link_end: NodeId,
 	#[serde(rename = "linkEndInputIndex")]
-	pub link_end_input_index: u64,
+	pub link_end_input_index: NodeId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -283,9 +283,9 @@ impl NodeGraphMessageHandler {
 				{
 					Some(FrontendNodeLink {
 						link_start,
-						link_start_output_index: link_start_index,
+						link_start_output_index: (link_start_index as u64).into(),
 						link_end,
-						link_end_input_index: link_end_input_index as u64,
+						link_end_input_index: (link_end_input_index as u64).into(),
 					})
 				} else {
 					None
@@ -462,7 +462,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				};
 
 				// Collect the selected nodes
-				let new_ids = &self.selected_nodes.iter().copied().enumerate().map(|(new, old)| (old, new as NodeId)).collect();
+				let new_ids = &self.selected_nodes.iter().copied().enumerate().map(|(new, old)| (old, (new as u64).into())).collect();
 				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
 
 				// Prefix to show that this is nodes

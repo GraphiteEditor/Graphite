@@ -3,6 +3,7 @@ use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
 use graphene_core::raster::LuminanceCalculation;
+use graphene_core::Uuid;
 use graphene_core::{Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
@@ -33,7 +34,7 @@ pub enum TaggedValue {
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateStatus(ImaginateStatus),
-	LayerPath(Option<Vec<u64>>),
+	LayerPath(Option<Vec<Uuid>>),
 }
 
 #[allow(clippy::derive_hash_xor_eq)]

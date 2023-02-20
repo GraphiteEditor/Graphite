@@ -1,6 +1,8 @@
 use document_legacy::LayerId;
 use serde::{Deserialize, Serialize};
 
+use crate::messages::portfolio::DocumentId;
+
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct FrontendDocumentDetails {
 	#[serde(rename = "isAutoSaved")]
@@ -8,7 +10,7 @@ pub struct FrontendDocumentDetails {
 	#[serde(rename = "isSaved")]
 	pub is_saved: bool,
 	pub name: String,
-	pub id: u64,
+	pub id: DocumentId,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]

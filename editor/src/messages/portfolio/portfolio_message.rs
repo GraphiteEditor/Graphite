@@ -9,6 +9,8 @@ use graph_craft::imaginate_input::ImaginateStatus;
 
 use serde::{Deserialize, Serialize};
 
+use super::DocumentId;
+
 #[remain::sorted]
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -24,20 +26,20 @@ pub enum PortfolioMessage {
 	// Messages
 	#[remain::unsorted]
 	DocumentPassMessage {
-		document_id: u64,
+		document_id: DocumentId,
 		message: DocumentMessage,
 	},
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
 	CloseDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	CloseDocumentWithConfirmation {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	Copy {
 		clipboard: Clipboard,
@@ -46,7 +48,7 @@ pub enum PortfolioMessage {
 		clipboard: Clipboard,
 	},
 	DeleteDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
 	FontLoaded {
@@ -58,14 +60,14 @@ pub enum PortfolioMessage {
 	},
 	ImaginateCheckServerStatus,
 	ImaginateSetGeneratingStatus {
-		document_id: u64,
+		document_id: DocumentId,
 		layer_path: Vec<LayerId>,
 		node_path: Vec<NodeId>,
 		percent: Option<f64>,
 		status: ImaginateStatus,
 	},
 	ImaginateSetImageData {
-		document_id: u64,
+		document_id: DocumentId,
 		layer_path: Vec<LayerId>,
 		node_path: Vec<NodeId>,
 		image_data: Vec<u8>,
@@ -77,7 +79,7 @@ pub enum PortfolioMessage {
 	},
 	Import,
 	LoadDocumentResources {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	LoadFont {
 		font: Font,
@@ -93,7 +95,7 @@ pub enum PortfolioMessage {
 		document_serialized_content: String,
 	},
 	OpenDocumentFileWithId {
-		document_id: u64,
+		document_id: DocumentId,
 		document_name: String,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
@@ -113,20 +115,20 @@ pub enum PortfolioMessage {
 	},
 	PrevDocument,
 	ProcessNodeGraphFrame {
-		document_id: u64,
+		document_id: DocumentId,
 		layer_path: Vec<LayerId>,
 		image_data: Vec<u8>,
 		size: (u32, u32),
 		imaginate_node: Option<Vec<NodeId>>,
 	},
 	SelectDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	SetActiveDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	SetImageBlobUrl {
-		document_id: u64,
+		document_id: DocumentId,
 		layer_path: Vec<LayerId>,
 		blob_url: String,
 		resolution: (f64, f64),
