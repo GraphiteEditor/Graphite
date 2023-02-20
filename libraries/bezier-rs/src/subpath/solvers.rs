@@ -10,11 +10,7 @@ impl Subpath {
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/evaluate/solo" title="Evaluate Demo"></iframe>
 	pub fn evaluate(&self, t: SubpathTValue) -> DVec2 {
-		let (segment_index, t) = match t {
-			SubpathTValue::Parametric { segment_index, t: segment_t } => (segment_index, segment_t),
-			SubpathTValue::GlobalParametric(_) => self.t_value_to_parametric(t),
-			_ => todo!(),
-		};
+		let (segment_index, t) = self.t_value_to_parametric(t);
 		self.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(t))
 	}
 
