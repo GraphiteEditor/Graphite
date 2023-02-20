@@ -151,21 +151,13 @@ impl PropertyHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![
-						MenuBarEntry {
-							label: "Delete Selected".into(),
-							icon: Some("Trash".into()),
-							shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Center View on Selected".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
-							..MenuBarEntry::default()
-						},
-					],
+					vec![MenuBarEntry {
+						label: "Delete Selected".into(),
+						icon: Some("Trash".into()),
+						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
+						..MenuBarEntry::default()
+					}],
 					vec![
 						MenuBarEntry {
 							label: "Grab Selected".into(),
@@ -230,6 +222,12 @@ impl PropertyHolder for MenuBarMessageHandler {
 			MenuBarEntry::new_root(
 				"View".into(),
 				MenuBarEntryChildren(vec![vec![
+					MenuBarEntry {
+						label: "Center View on Selected".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+						..MenuBarEntry::default()
+					},
 					MenuBarEntry {
 						label: "Zoom to Fit".into(),
 						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
