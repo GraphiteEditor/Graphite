@@ -30,7 +30,7 @@ exclude = [
 ]
 
 [workspace.dependencies]
-specta = { git = "https://github.com/oscartbeaumont/specta.git", rev = "3d8f2d965077f1a02a58a814cb31cc9e66d558ea", features = ["glam"] }
+specta = { git = "https://github.com/oscartbeaumont/specta.git", rev = "8c7523df1fdaba6fe5923db9431d6923caae6396", features = ["glam"] }
 
 [profile.release.package.graphite-wasm]
 opt-level = 3
@@ -47,5 +47,5 @@ opt-level = 3
 #[profile.dev]
 #opt-level = 3
 
-[patch.crates-io]
-specta = { git = "https://github.com/oscartbeaumont/specta.git", rev = "3d8f2d965077f1a02a58a814cb31cc9e66d558ea" }
+[patch.'https://github.com/oscartbeaumont/specta']
+specta = { git = "https://github.com/oscartbeaumont/specta//", rev = "8c7523df1fdaba6fe5923db9431d6923caae6396" }

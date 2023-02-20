@@ -13,7 +13,7 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
+const BigIntTupleToVec2 = Transform(({ value }: { value: [string, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
 
@@ -41,7 +41,7 @@ export class UpdateNodeTypes extends JsMessage {
 
 export class UpdateNodeGraphSelection extends JsMessage {
 	@Type(() => BigInt)
-	readonly selected!: bigint[];
+	readonly selected!: string[];
 }
 
 export class UpdateNodeGraphVisibility extends JsMessage {
@@ -64,7 +64,7 @@ export abstract class DocumentDetails {
 
 	readonly isSaved!: boolean;
 
-	readonly id!: bigint | string;
+	readonly id!: string | string;
 
 	get displayName(): string {
 		return `${this.name}${this.isSaved ? "" : "*"}`;
@@ -72,7 +72,7 @@ export abstract class DocumentDetails {
 }
 
 export class FrontendDocumentDetails extends DocumentDetails {
-	readonly id!: bigint;
+	readonly id!: string;
 }
 
 export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "number";
@@ -90,7 +90,7 @@ export class NodeGraphOutput {
 }
 
 export class FrontendNode {
-	readonly id!: bigint;
+	readonly id!: string;
 
 	readonly displayName!: string;
 
@@ -109,13 +109,13 @@ export class FrontendNode {
 }
 
 export class FrontendNodeLink {
-	readonly linkStart!: bigint;
+	readonly linkStart!: string;
 
-	readonly linkStartOutputIndex!: bigint;
+	readonly linkStartOutputIndex!: string;
 
-	readonly linkEnd!: bigint;
+	readonly linkEnd!: string;
 
-	readonly linkEndInputIndex!: bigint;
+	readonly linkEndInputIndex!: string;
 }
 
 export class FrontendNodeType {
@@ -125,7 +125,7 @@ export class FrontendNodeType {
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
-	@Transform(({ value }: { value: bigint }) => value.toString())
+	@Transform(({ value }: { value: string }) => value.toString())
 	id!: string;
 }
 
@@ -140,7 +140,7 @@ export class TriggerIndexedDbWriteDocument extends JsMessage {
 
 export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
-	@Transform(({ value }: { value: bigint }) => value.toString())
+	@Transform(({ value }: { value: string }) => value.toString())
 	documentId!: string;
 }
 
@@ -418,7 +418,7 @@ export class Color {
 }
 
 export class UpdateActiveDocument extends JsMessage {
-	readonly documentId!: bigint;
+	readonly documentId!: string;
 }
 
 export class DisplayDialogPanic extends JsMessage {
@@ -550,11 +550,11 @@ export class TriggerImaginateGenerate extends JsMessage {
 
 	readonly refreshFrequency!: number;
 
-	readonly documentId!: bigint;
+	readonly documentId!: string;
 
-	readonly layerPath!: BigUint64Array;
+	readonly layerPath!: string[];
 
-	readonly nodePath!: BigUint64Array;
+	readonly nodePath!: string[];
 }
 
 export class ImaginateMaskImage {
@@ -596,25 +596,25 @@ export class ImaginateGenerationParameters {
 }
 
 export class TriggerImaginateTerminate extends JsMessage {
-	readonly documentId!: bigint;
+	readonly documentId!: string;
 
-	readonly layerPath!: BigUint64Array;
+	readonly layerPath!: string[];
 
-	readonly nodePath!: BigUint64Array;
+	readonly nodePath!: string[];
 
 	readonly hostname!: string;
 }
 
 export class TriggerNodeGraphFrameGenerate extends JsMessage {
-	readonly documentId!: bigint;
+	readonly documentId!: string;
 
-	readonly layerPath!: BigUint64Array;
+	readonly layerPath!: string[];
 
 	readonly svg!: string;
 
 	readonly size!: [number, number];
 
-	readonly imaginateNode!: BigUint64Array | undefined;
+	readonly imaginateNode!: string[] | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
@@ -630,14 +630,14 @@ export class TriggerSavePreferences extends JsMessage {
 export class DocumentChanged extends JsMessage {}
 
 export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
-	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructureJs[]) {
+	constructor(readonly layerId: string, readonly children: UpdateDocumentLayerTreeStructureJs[]) {
 		super();
 	}
 }
 
 type DataBuffer = {
-	pointer: bigint;
-	length: bigint;
+	pointer: string;
+	length: string;
 };
 
 export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructureJs {
@@ -706,7 +706,7 @@ export class DisplayEditableTextbox extends JsMessage {
 }
 
 export class UpdateImageData extends JsMessage {
-	readonly documentId!: bigint;
+	readonly documentId!: string;
 
 	@Type(() => ImaginateImageData)
 	readonly imageData!: ImaginateImageData[];
@@ -729,8 +729,8 @@ export class LayerPanelEntry {
 
 	layerType!: LayerType;
 
-	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
-	path!: BigUint64Array;
+	@Transform(({ value }: { value: string[] }) => value)
+	path!: string[];
 
 	@Type(() => LayerMetadata)
 	layerMetadata!: LayerMetadata;
@@ -765,7 +765,7 @@ export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 }
 
 export class ImaginateImageData {
-	readonly path!: BigUint64Array;
+	readonly path!: string[];
 
 	readonly mime!: string;
 
@@ -910,7 +910,7 @@ export class IconLabel extends WidgetProps {
 }
 
 export class LayerReferenceInput extends WidgetProps {
-	@Transform(({ value }: { value: BigUint64Array | undefined }) => (value ? String(value) : undefined))
+	@Transform(({ value }: { value: string[] | undefined }) => (value ? String(value) : undefined))
 	value!: string | undefined;
 
 	layerName!: string | undefined;
@@ -1168,7 +1168,7 @@ const widgetSubTypes = [
 export type WidgetPropsSet = InstanceType<typeof widgetSubTypes[number]["value"]>;
 
 export class Widget {
-	constructor(props: WidgetPropsSet, widgetId: bigint) {
+	constructor(props: WidgetPropsSet, widgetId: string) {
 		this.props = props;
 		this.widgetId = widgetId;
 	}
@@ -1176,7 +1176,7 @@ export class Widget {
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: widgetSubTypes }, keepDiscriminatorProperty: true })
 	props!: WidgetPropsSet;
 
-	widgetId!: bigint;
+	widgetId!: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

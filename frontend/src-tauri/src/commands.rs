@@ -345,10 +345,10 @@ pub fn deselect_all_layers() -> Vec<FrontendMessage> {
 /// Move a layer to be next to the specified neighbor
 #[tauri::command]
 #[specta::specta]
-pub fn move_layer_in_tree(folder_path: Vec<LayerId>, insert_index: isize) -> Vec<FrontendMessage> {
+pub fn move_layer_in_tree(folder_path: Vec<LayerId>, insert_index: i32) -> Vec<FrontendMessage> {
 	let message = DocumentMessage::MoveSelectedLayersTo {
 		folder_path,
-		insert_index,
+		insert_index: insert_index as isize,
 		reverse_index: true,
 	};
 	dispatch(message)

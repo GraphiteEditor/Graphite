@@ -1,9 +1,5 @@
 import { invoke } from "@tauri-apps/api";
-import JSONBig from 'json-bigint'
-import * as commands from "./bindings";
-
-/** @internal */
-export const safeJSON = JSONBig({ useNativeBigInt: true })
+import * as commands from "@/bindings";
 
 
 import { createSubscriptionRouter, type SubscriptionRouter } from "@/wasm-communication/subscription-router";
@@ -21,7 +17,7 @@ export class TauriHandle {
 * @param {string} platform
 */
   async initAfterFrontendReady(platform: string) {
-	dispatch_response(await commands.init_after_frontend_ready( platform ));
+	dispatch_response(await commands.initAfterFrontendReady( platform ));
   }
 /**
 * Displays a dialog with an error message
@@ -29,7 +25,7 @@ export class TauriHandle {
 * @param {string} description
 */
   async errorDialog(title: string, description: string) {
-	dispatch_response(await commands.error_dialog( title, description ));
+	dispatch_response(await commands.errorDialog( title, description ));
   }
 /**
 * @param {string} preferences
@@ -58,26 +54,26 @@ async graphiteDocumentVersion(): Promise<string> {
 /**
 * Update layout of a given UI
 * @param {any} layout_target
-* @param {bigint} widget_id
+* @param {string} widget_id
 * @param {any} value
 */
-async updateLayout(layout_target: any, widget_id: bigint, value: any) {
+async updateLayout(layout_target: any, widget_id: string, value: any) {
   let nvalue = value;
   if (!nvalue) { nvalue = "unknown" }
   console.log(nvalue)
-  dispatch_response(await commands.update_layout( layout_target,  widget_id, nvalue ));
+  dispatch_response(await commands.updateLayout( layout_target,  widget_id, nvalue ));
 }
 /**
 * @param {string} preferences
 */
 async loadPreferences(preferences: string) {
-  dispatch_response(await commands.load_preferences( preferences ));
+  dispatch_response(await commands.loadPreferences( preferences ));
 }
 /**
-* @param {bigint} document_id
+* @param {string} document_id
 */
-async selectDocument(document_id: bigint) {
-  dispatch_response(await commands.select_document( document_id ));
+async selectDocument(document_id: string) {
+  dispatch_response(await commands.selectDocument( document_id ));
 }
 /**
 */
@@ -94,34 +90,34 @@ async documentOpen() {
 * @param {string} document_serialized_content
 */
 async openDocumentFile(document_name: string, document_serialized_content: string) {
-  dispatch_response(await commands.open_document_file( document_name,  document_serialized_content ));
+  dispatch_response(await commands.openDocumentFile( document_name,  document_serialized_content ));
 }
 /**
-* @param {bigint} document_id
+* @param {string} document_id
 * @param {string} document_name
 * @param {boolean} document_is_saved
 * @param {string} document_serialized_content
 */
-async openAutoSavedDocument(document_id: bigint, document_name: string, document_is_saved: Promise<boolean>, document_serialized_content: string) {
-  dispatch_response(await commands.open_auto_saved_document( document_id,  document_name,  document_is_saved,  document_serialized_content ));
+async openAutoSavedDocument(document_id: string, document_name: string, document_is_saved: Promise<boolean>, document_serialized_content: string) {
+  dispatch_response(await commands.openAutoSavedDocument( document_id,  document_name,  document_is_saved,  document_serialized_content ));
 }
 /**
-* @param {bigint} document_id
+* @param {string} document_id
 */
-async triggerAutoSave(document_id: bigint) {
-  dispatch_response(await commands.trigger_auto_save( document_id ));
+async triggerAutoSave(document_id: string) {
+  dispatch_response(await commands.triggerAutoSave( document_id ));
 }
 /**
-* @param {bigint} document_id
+* @param {string} document_id
 */
-async closeDocumentWithConfirmation(document_id: bigint) {
-  dispatch_response(await commands.close_document_with_confirmation( document_id ));
+async closeDocumentWithConfirmation(document_id: string) {
+  dispatch_response(await commands.closeDocumentWithConfirmation( document_id ));
 }
 /**
 * @param {string} localized_commit_date
 */
 async requestAboutGraphiteDialogWithLocalizedCommitDate(localized_commit_date: string) {
-  dispatch_response(await commands.request_about_graphite_dialog_with_localized_commit_date( localized_commit_date ));
+  dispatch_response(await commands.requestAboutGraphiteDialogWithLocalizedCommitDate( localized_commit_date ));
 }
 /**
 * Send new bounds when document panel viewports get resized or moved within the editor
@@ -129,7 +125,7 @@ async requestAboutGraphiteDialogWithLocalizedCommitDate(localized_commit_date: s
 * @param {Float64Array} bounds_of_viewports
 */
 async boundsOfViewports(bounds_of_viewports: Float64Array) {
-  dispatch_response(await commands.bounds_of_viewports( bounds_of_viewports ));
+  dispatch_response(await commands.boundsOfViewports( bounds_of_viewports ));
 }
 /**
 * Mouse movement within the screenspace bounds of the viewport
@@ -139,7 +135,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onMouseMove(x: number, y: number, mouse_keys: number, modifiers: number) {
-	dispatch_response(await commands.on_mouse_move( x, y,  mouse_keys, modifiers));
+	dispatch_response(await commands.onMouseMove( x, y,  mouse_keys, modifiers));
   }
 /**
 * Mouse scrolling within the screenspace bounds of the viewport
@@ -152,7 +148,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onWheelScroll(x: number, y: number, mouse_keys: number, wheel_delta_x: number, wheel_delta_y: number, wheel_delta_z: number, modifiers: number) {
-	dispatch_response(await commands.on_wheel_scroll( x, y,  mouse_keys, wheel_delta_x, wheel_delta_y,  wheel_delta_z, modifiers));
+	dispatch_response(await commands.onWheelScroll( x, y,  mouse_keys, wheel_delta_x, wheel_delta_y,  wheel_delta_z, modifiers));
   }
 /**
 * A mouse button depressed within screenspace the bounds of the viewport
@@ -162,7 +158,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onMouseDown(x: number, y: number, mouse_keys: number, modifiers: number) {
-	dispatch_response(await commands.on_mouse_down( x, y,  mouse_keys, modifiers));
+	dispatch_response(await commands.onMouseDown( x, y,  mouse_keys, modifiers));
   }
 /**
 * A mouse button released
@@ -172,7 +168,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onMouseUp(x: number, y: number, mouse_keys: number, modifiers: number) {
-	dispatch_response(await commands.on_mouse_up( x, y,  mouse_keys, modifiers));
+	dispatch_response(await commands.onMouseUp( x, y,  mouse_keys, modifiers));
   }
 /**
 * Mouse double clicked
@@ -182,7 +178,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onDoubleClick(x: number, y: number, mouse_keys: number, modifiers: number) {
-	dispatch_response(await commands.on_double_click( x, y,  mouse_keys, modifiers));
+	dispatch_response(await commands.onDoubleClick( x, y,  mouse_keys, modifiers));
   }
 /**
 * A keyboard button depressed within screenspace the bounds of the viewport
@@ -190,7 +186,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onKeyDown(name: string, modifiers: number) {
-	dispatch_response(await commands.on_key_down( name, modifiers));
+	dispatch_response(await commands.onKeyDown( name, modifiers));
   }
 /**
 * A keyboard button released
@@ -198,14 +194,14 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} modifiers
 */
   async onKeyUp(name: string, modifiers: number) {
-	dispatch_response(await commands.on_key_up( name, modifiers));
+	dispatch_response(await commands.onKeyUp( name, modifiers));
   }
 /**
 * A text box was committed
 * @param {string} new_text
 */
   async onChangeText(new_text: string) {
-	  dispatch_response(await commands.on_change_text(new_text));
+	  dispatch_response(await commands.onChangeText(new_text));
   }
 /**
 * A font has been downloaded
@@ -215,15 +211,15 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {Uint8Array} data
 * @param {boolean} is_default
 */
-  async onFontLoad(font_family: string, font_style: string, preview_url: string, data: Uint8Array, is_default: Promise<boolean>) {
-	dispatch_response(await commands.on_font_load(font_family, font_style, preview_url, data, is_default));
+  async onFontLoad(font_family: string, font_style: string, preview_url: string, data: number[], is_default: Promise<boolean>) {
+	dispatch_response(await commands.onFontLoad(font_family, font_style, preview_url, data, await is_default));
   }
 /**
 * A text box was changed
 * @param {string} new_text
 */
   async updateBounds(new_text: string) {
-	  dispatch_response(await commands.update_bounds(new_text));
+	  dispatch_response(await commands.updateBounds(new_text));
   }
 /**
 * Begin sampling a pixel color from the document by entering eyedropper sampling mode
@@ -239,7 +235,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} alpha
 */
   async updatePrimaryColor(red: number, green: number, blue: number, alpha: number) {
-	  dispatch_response(await commands.update_primary_color(red, green, blue, alpha));
+	  dispatch_response(await commands.updatePrimaryColor(red, green, blue, alpha));
   }
 /**
 * Update secondary color with values on a scale from 0 to 1.
@@ -249,22 +245,22 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 * @param {number} alpha
 */
   async updateSecondaryColor(red: number, green: number, blue: number, alpha: number) {
-	  dispatch_response(await commands.update_secondary_color(red, green, blue, alpha));
+	  dispatch_response(await commands.updateSecondaryColor(red, green, blue, alpha));
   }
 /**
 * Paste layers from a serialized json representation
 * @param {string} data
 */
   async pasteSerializedData(data: string) {
-	  dispatch_response(await commands.paste_serialized_data(data));
+	  dispatch_response(await commands.pasteSerializedData(data));
   }
 /**
 * Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
-* @param {BigUint64Array} layer_path
+* @param {string[]} layer_path
 * @param {boolean} ctrl
 * @param {boolean} shift
 */
-  async selectLayer(layer_path: BigUint64Array, ctrl: Promise<boolean>, shift: boolean) {
+  async selectLayer(layer_path: string[], ctrl: Promise<boolean>, shift: boolean) {
 	  dispatch_response(await commands.select_layer(layer_path, ctrl, shift));
 
   }
@@ -274,21 +270,21 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
   async deselectAllLayers() {}
 /**
 * Move a layer to be next to the specified neighbor
-* @param {BigUint64Array} folder_path
+* @param {string[]} folder_path
 * @param {number} insert_index
 */
-  async moveLayerInTree(folder_path: BigUint64Array, insert_index: number) {
+  async moveLayerInTree(folder_path: string[], insert_index: number) {
 
-	  dispatch_response(await commands.move_layer_in_tree(folder_path, insert_index));
+	  dispatch_response(await commands.moveLayerInTree(folder_path, insert_index));
   }
 /**
 * Set the name for the layer
-* @param {BigUint64Array} layer_path
+* @param {string[]} layer_path
 * @param {string} name
 */
-  async setLayerName(layer_path: BigUint64Array, name: string) {
+  async setLayerName(layer_path: string[], name: string) {
 
-	  dispatch_response(await commands.set_layer_name(layer_path, name));
+	  dispatch_response(await commands.setLayerName(layer_path, name));
   }
 /**
 * Translates document (in viewport coords)
@@ -297,7 +293,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async translateCanvas(delta_x: number, delta_y: number) {
 
-	  dispatch_response(await commands.translate_canvas(delta_x, delta_y));
+	  dispatch_response(await commands.translateCanvas(delta_x, delta_y));
   }
 /**
 * Translates document (in viewport coords)
@@ -306,42 +302,42 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async translateCanvasByFraction(delta_x: number, delta_y: number) {
 
-	  dispatch_response(await commands.translate_canvas_by_fraction(delta_x, delta_y));
+	  dispatch_response(await commands.translateCanvasByFraction(delta_x, delta_y));
   }
 /**
 * Sends the blob URL generated by JS to the Image layer
-* @param {bigint} document_id
-* @param {BigUint64Array} layer_path
+* @param {string} document_id
+* @param {string[]} layer_path
 * @param {string} blob_url
 * @param {number} width
 * @param {number} height
 */
-  async setImageBlobURL(document_id: bigint, layer_path: BigUint64Array, blob_url: string, width: number, height: number) {
-	  dispatch_response(await commands.set_image_blob_url(document_id, layer_path, blob_url, width, height));
+  async setImageBlobURL(document_id: string, layer_path: string[], blob_url: string, width: number, height: number) {
+	  dispatch_response(await commands.setImageBlobUrl(document_id, layer_path, blob_url, width, height));
   }
 /**
 * Sends the blob URL generated by JS to the Imaginate layer in the respective document
-* @param {bigint} document_id
-* @param {BigUint64Array} layer_path
-* @param {BigUint64Array} node_path
+* @param {string} document_id
+* @param {string[]} layer_path
+* @param {string[]} node_path
 * @param {Uint8Array} image_data
 * @param {number} width
 * @param {number} height
 */
-  async setImaginateImageData(document_id: bigint, layer_path: BigUint64Array, node_path: BigUint64Array, image_data: Uint8Array, width: number, height: number) {
+  async setImaginateImageData(document_id: string, layer_path: string[], node_path: BigUint64Array, image_data: Uint8Array, width: number, height: number) {
 
-	  dispatch_response(await commands.set_imaginate_image_data( document_id, layer_path, node_path, image_data, width, height ));
+	  dispatch_response(await commands.setImaginateImageData( document_id, layer_path, node_path, image_data, width, height ));
   }
 /**
 * Notifies the Imaginate layer of a new percentage of completion and whether or not it's currently generating
-* @param {bigint} document_id
-* @param {BigUint64Array} layer_path
-* @param {BigUint64Array} node_path
+* @param {string} document_id
+* @param {string[]} layer_path
+* @param {string[]} node_path
 * @param {number | undefined} percent
 * @param {string} status
 */
-  async setImaginateGeneratingStatus(document_id: bigint, layer_path: BigUint64Array, node_path: BigUint64Array, percent: number | undefined, status: string) {
-	dispatch_response(await commands.set_imaginate_generating_status( document_id, layer_path, node_path,  percent,  status ));
+  async setImaginateGeneratingStatus(document_id: string, layer_path: string[], node_path: BigUint64Array, percent: number | undefined, status: string) {
+	dispatch_response(await commands.setImaginateGeneratingStatus( document_id, layer_path, node_path,  percent,  status ));
   }
 /**
 * Notifies the editor that the Imaginate server is available or unavailable
@@ -349,48 +345,48 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async setImaginateServerStatus(available: Promise<boolean>) {
 
-	  dispatch_response(await commands.set_imaginate_server_status( available ));
+	  dispatch_response(await commands.setImaginateServerStatus( available ));
   }
 /**
 * Sends the blob URL generated by JS to the Imaginate layer in the respective document
-* @param {bigint} document_id
-* @param {BigUint64Array} layer_path
+* @param {string} document_id
+* @param {string[]} layer_path
 * @param {Uint8Array} image_data
 * @param {number} width
 * @param {number} height
-* @param {BigUint64Array | undefined} imaginate_node
+* @param {string[] | undefined} imaginate_node
 */
-  async processNodeGraphFrame(document_id: bigint, layer_path: BigUint64Array, image_data: Uint8Array, width: number, height: number, imaginate_node?: BigUint64Array) {
+  async processNodeGraphFrame(document_id: string, layer_path: string[], image_data: Uint8Array, width: number, height: number, imaginate_node?: BigUint64Array) {
 
-	  dispatch_response(await commands.process_node_graph_frame( document_id, layer_path, image_data, width, height,  imaginate_node ));
+	  dispatch_response(await commands.processNodeGraphFrame( document_id, layer_path, image_data, width, height,  imaginate_node ));
   }
 /**
 * Notifies the backend that the user connected a node's primary output to one of another node's inputs
-* @param {bigint} output_node
+* @param {string} output_node
 * @param {number} output_node_connector_index
-* @param {bigint} input_node
+* @param {string} input_node
 * @param {number} input_node_connector_index
 */
-  async connectNodesByLink(output_node: bigint, output_node_connector_index: number, input_node: bigint, input_node_connector_index: number) {
+  async connectNodesByLink(output_node: string, output_node_connector_index: number, input_node: bigint, input_node_connector_index: number) {
 
-	  dispatch_response(await commands.connect_nodes_by_link( output_node,  output_node_connector_index,  input_node,  input_node_connector_index));
+	  dispatch_response(await commands.connectNodesByLink( output_node,  output_node_connector_index,  input_node,  input_node_connector_index));
   }
 /**
 * Shifts the node and its children to stop nodes going ontop of each other
-* @param {bigint} node_id
+* @param {string} node_id
 */
-  async shiftNode(node_id: bigint) {
+  async shiftNode(node_id: string) {
 
-	  dispatch_response(await commands.shift_node(node_id));
+	  dispatch_response(await commands.shiftNode(node_id));
   }
 /**
 * Notifies the backend that the user disconnected a node
-* @param {bigint} node_id
+* @param {string} node_id
 * @param {number} input_index
 */
-  async disconnectNodes(node_id: bigint, input_index: number) {
+  async disconnectNodes(node_id: string, input_index: number) {
 
-	  dispatch_response(await commands.disconnect_nodes(node_id, input_index));
+	  dispatch_response(await commands.disconnectNodes(node_id, input_index));
   }
 /**
 * Check for intersections between the curve and a rectangle defined by opposite corners
@@ -404,7 +400,7 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async rectangleIntersects(bezier_x: Float64Array, bezier_y: Float64Array, top: number, left: number, bottom: number, right: number): Promise<boolean> {
 
-	  return await commands.rectangle_intersects(bezier_x, bezier_y, top, left, bottom, right);
+	  return await commands.rectangleIntersects(bezier_x, bezier_y, top, left, bottom, right);
   }
 /**
 * Creates a new document node in the node graph
@@ -414,15 +410,15 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async createNode(node_type: string, x: number, y: number) {
 
-	  dispatch_response(await commands.create_node(node_type, x, y));
+	  dispatch_response(await commands.createNode(node_type, x, y));
   }
 /**
 * Notifies the backend that the user selected a node in the node graph
-* @param {BigUint64Array} nodes
+* @param {string[]} nodes
 */
-  async selectNodes(nodes: BigUint64Array) {
+  async selectNodes(nodes: string[]) {
 
-	  dispatch_response(await commands.select_nodes(nodes));
+	  dispatch_response(await commands.selectNodes(nodes));
   }
 /**
 * Pastes the nodes based on serialized data
@@ -430,15 +426,15 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async pasteSerializedNodes(serialized_nodes: string) {
 
-	  dispatch_response(await commands.paste_serialized_nodes(serialized_nodes));
+	  dispatch_response(await commands.pasteSerializedNodes(serialized_nodes));
   }
 /**
 * Notifies the backend that the user double clicked a node
-* @param {bigint} node
+* @param {string} node
 */
-  async doubleClickNode(node: bigint) {
+  async doubleClickNode(node: string) {
 
-	  dispatch_response(await commands.double_click_node(node));
+	  dispatch_response(await commands.doubleClickNode(node));
   }
 /**
 * Notifies the backend that the selected nodes have been moved
@@ -447,14 +443,14 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async moveSelectedNodes(displacement_x: number, displacement_y: number) {
 
-	  dispatch_response(await commands.move_selected_nodes(displacement_x, displacement_y));
+	  dispatch_response(await commands.moveSelectedNodes(displacement_x, displacement_y));
   }
 /**
 * Toggle preview on node
-* @param {bigint} node_id
+* @param {string} node_id
 */
-  async togglePreview(node_id: bigint) {
-	  dispatch_response(await commands.toggle_preview(node_id));
+  async togglePreview(node_id: string) {
+	  dispatch_response(await commands.togglePreview(node_id));
   }
 /**
 * Pastes an image
@@ -466,23 +462,23 @@ async boundsOfViewports(bounds_of_viewports: Float64Array) {
 */
   async pasteImage(image_data: Uint8Array, width: number, height: number, mouse_x?: number, mouse_y?: number) {
 
-	  dispatch_response(await commands.paste_image(image_data, width, height, mouse_x, mouse_y));
+	  dispatch_response(await commands.pasteImage(image_data, width, height, mouse_x, mouse_y));
   }
 /**
 * Toggle visibility of a layer from the layer list
-* @param {BigUint64Array} layer_path
+* @param {string[]} layer_path
 */
-  async toggleLayerVisibility(layer_path: BigUint64Array) {
+  async toggleLayerVisibility(layer_path: string[]) {
 
-	  dispatch_response(await commands.toggle_layer_visibility(layer_path));
+	  dispatch_response(await commands.toggleLayerVisibility(layer_path));
   }
 /**
 * Toggle expansions state of a layer from the layer list
-* @param {BigUint64Array} layer_path
+* @param {string[]} layer_path
 */
-  async toggleLayerExpansion(layer_path: BigUint64Array) {
+  async toggleLayerExpansion(layer_path: string[]) {
 
-	  dispatch_response(await commands.toggle_layer_expansion(layer_path));
+	  dispatch_response(await commands.toggleLayerExpansion(layer_path));
   }
 }
 
