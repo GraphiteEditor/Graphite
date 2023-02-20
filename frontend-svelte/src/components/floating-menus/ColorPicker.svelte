@@ -306,7 +306,7 @@
 						value={newColor.toHexOptionalAlpha() || "-"}
 						on:commitText={({ detail }) => setColorCode(detail)}
 						centered={true}
-						tooltip="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
+						tooltip={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}
 					/>
 				</LayoutRow>
 			</LayoutRow>
@@ -347,8 +347,8 @@
 							unit={channel === "h" ? "°" : "%"}
 							minWidth={56}
 							tooltip={{
-								h: "Hue component, the &quot;color&quot; along the rainbow",
-								s: "Saturation component, the &quot;colorfulness&quot; from gray to vivid",
+								h: `Hue component, the "color" along the rainbow`,
+								s: `Saturation component, the "colorfulness" from gray to vivid`,
 								v: "Value (or Brightness), the distance away from being darkened to black",
 							}[channel]}
 						/>
