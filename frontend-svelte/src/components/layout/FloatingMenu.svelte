@@ -104,10 +104,8 @@
 	// Gets the client bounds of the elements and apply relevant styles to them
 	// TODO: Use the Vue :style attribute more whilst not causing recursive updates
 	afterUpdate(() => {
-		// Turning measuring on and off both cause the component to change, which causes the `updated()` Vue event to fire extraneous times (hurting performance and sometimes causing an infinite loop)
-		if (measuringOngoingGuard) return;
-
-		positionAndStyleFloatingMenu();
+		// Turning measuring on and off both causes the component to change, which causes the `updated()` Vue event to fire extraneous times (hurting performance and sometimes causing an infinite loop)
+		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 
 	function resizeObserverCallback(entries: ResizeObserverEntry[]) {
@@ -204,13 +202,13 @@
 
 	// To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
 	export async function measureAndEmitNaturalWidth(): Promise<void> {
+		if (!measuringOngoingGuard) return;
+
 		// Wait for the changed content which fired the `updated()` Vue event to be put into the DOM
 		await tick();
 
 		// Wait until all fonts have been loaded and rendered so measurements of content involving text are accurate
-		// API is experimental but supported in all browsers - https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		await (document as any).fonts.ready;
+		await document.fonts.ready;
 
 		// Make the component show itself with 0 min-width so it can be measured, and wait until the values have been updated to the DOM
 		measuringOngoing = true;

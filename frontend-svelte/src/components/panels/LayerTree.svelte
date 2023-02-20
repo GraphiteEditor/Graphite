@@ -60,25 +60,20 @@
 	let layerTreeOptionsLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
-			rebuildLayerTree(updateDocumentLayerTreeStructure);
-		});
-
 		editor.subscriptions.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {
 			patchWidgetLayout(layerTreeOptionsLayout, updateLayerTreeOptionsLayout);
 			layerTreeOptionsLayout = layerTreeOptionsLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetPath = updateDocumentLayerDetails.data.path;
-			const targetLayer = updateDocumentLayerDetails.data;
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
+			rebuildLayerTree(updateDocumentLayerTreeStructure);
+		});
 
-			const layer = layerCache.get(targetPath.toString());
-			if (layer) {
-				Object.assign(layer, targetLayer);
-			} else {
-				layerCache.set(targetPath.toString(), targetLayer);
-			}
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
+			const targetLayer = updateDocumentLayerDetails.data;
+			const targetPath = targetLayer.path;
+
+			updateLayerInTree(targetPath, targetLayer);
 		});
 	});
 
@@ -134,34 +129,23 @@
 		window.getSelection()?.removeAllRanges();
 	}
 
-	// TODO: Svelte: test this works
 	function selectLayerWithModifiers(e: MouseEvent, listing: LayerListingInfo) {
-		const ctrl = e.ctrlKey;
-		const meta = e.metaKey;
-		const shift = e.shiftKey;
-		const alt = e.altKey;
+		// Get the pressed state of the modifier keys
+		const [ctrl, meta, shift, alt] = [e.ctrlKey, e.metaKey, e.shiftKey, e.altKey];
+		// Get the state of the platform's accel key and its opposite platform's accel key
+		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
 
-		if (!ctrl && !meta && !shift && !alt) selectLayer(false, false, false, listing, e);
-		else if (!ctrl && !meta && shift && !alt) selectLayer(false, false, true, listing, e);
-		else if (ctrl && !meta && !shift && !alt) selectLayer(true, false, false, listing, e);
-		else if (ctrl && !meta && shift && !alt) selectLayer(true, false, true, listing, e);
-		else if (!ctrl && meta && !shift && !alt) selectLayer(false, true, false, listing, e);
-		else if (!ctrl && meta && shift && !alt) selectLayer(false, true, true, listing, e);
-		else if ((ctrl && meta) || alt) e.stopPropagation();
+		// Select the layer only if the accel and/or shift keys are pressed
+		if (!oppositeAccel && !alt) selectLayer(accel, shift, listing);
+
+		e.stopPropagation();
 	}
 
-	async function selectLayer(ctrl: boolean, cmd: boolean, shift: boolean, listing: LayerListingInfo, event: Event) {
+	function selectLayer(accel: boolean, shift: boolean, listing: LayerListingInfo) {
+		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		const ctrlOrCmd = platformIsMac() ? cmd : ctrl;
-		// Pressing the Ctrl key on a Mac, or the Cmd key on another platform, is a violation of the `.exact` qualifier so we filter it out here
-		const opposite = platformIsMac() ? ctrl : cmd;
-
-		if (!opposite) editor.instance.selectLayer(listing.entry.path, ctrlOrCmd, shift);
-
-		// We always want to stop propagation so the click event doesn't pass through the layer and cause a deselection by clicking the layer panel background
-		// This is also why we cover the remaining cases not considered by the `.exact` qualifier, in the last two bindings on the layer element, with a `stopPropagation()` call
-		event.stopPropagation();
+		editor.instance.selectLayer(listing.entry.path, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -243,7 +227,7 @@
 			fakeHighlight = [layer.path];
 		}
 		const select = (): void => {
-			if (!layer.layerMetadata.selected) selectLayer(false, false, false, listing, event);
+			if (!layer.layerMetadata.selected) selectLayer(false, false, listing);
 		};
 
 		const target = (event.target || undefined) as HTMLElement | undefined;
@@ -283,16 +267,19 @@
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
 		const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
-		const path = [] as bigint[];
-		layers = [] as LayerListingInfo[];
+		const path: bigint[] = [];
 
-		const recurse = (folder: UpdateDocumentLayerTreeStructureJs, layers: LayerListingInfo[], cache: Map<string, LayerPanelEntry>): void => {
+		// Clear the layer tree before rebuilding it
+		layers = [];
+
+		// Build the new layer tree
+		const recurse = (folder: UpdateDocumentLayerTreeStructureJs): void => {
 			folder.children.forEach((item, index) => {
 				// TODO: fix toString
 				const layerId = BigInt(item.layerId.toString());
 				path.push(layerId);
 
-				const mapping = cache.get(path.toString());
+				const mapping = layerCache.get(path.toString());
 				if (mapping) {
 					layers.push({
 						folderIndex: index,
@@ -303,13 +290,24 @@
 				}
 
 				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item, layers, cache);
+				if (item.children.length >= 1) recurse(item);
 
 				path.pop();
 			});
 		};
+		recurse(updateDocumentLayerTreeStructure);
+		layers = layers;
+	}
 
-		recurse(updateDocumentLayerTreeStructure, layers, layerCache);
+	function updateLayerInTree(targetPath: BigUint64Array, targetLayer: LayerPanelEntry) {
+		const path = targetPath.toString();
+		layerCache.set(path, targetLayer);
+
+		const layer = layers.find((layer: LayerListingInfo) => layer.entry.path.toString() === path);
+		if (layer) {
+			layer.entry = targetLayer;
+			layers = layers;
+		}
 	}
 
 	function getLayerTypeData(layerType: LayerType): LayerTypeData {

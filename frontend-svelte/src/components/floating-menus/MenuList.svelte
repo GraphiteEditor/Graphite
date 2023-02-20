@@ -1,3 +1,5 @@
+<svelte:options accessors={true} />
+
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
@@ -28,32 +30,23 @@
 	export let virtualScrollingEntryHeight = 0;
 	export let tooltip: string | undefined = undefined;
 
-	let isOpen = open;
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
 
 	// Called only when `open` is changed from outside this component (with v-model)
 	$: watchOpen(open);
-	$: dispatch("open", isOpen);
-	$: watchEntries(entries, self);
-	$: watchDrawIcon(drawIcon, self);
+	$: watchRemeasureWidth(entries, drawIcon);
 	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 
 	function watchOpen(open: boolean) {
-		isOpen = open;
 		highlighted = activeEntry;
+		dispatch("open", open);
 	}
 
-	// TODO: Svelte: fix infinite loop and reenable
-	function watchEntries(_: MenuListEntry[][], floatingMenu: FloatingMenu) {
-		// floatingMenu?.div().measureAndEmitNaturalWidth();
-	}
-
-	// TODO: Svelte: fix infinite loop and reenable
-	function watchDrawIcon(_: boolean, floatingMenu: FloatingMenu) {
-		// floatingMenu?.div().measureAndEmitNaturalWidth();
+	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
+		self?.measureAndEmitNaturalWidth();
 	}
 
 	function onScroll(e: Event) {
@@ -69,29 +62,29 @@
 		dispatch("activeEntry", menuListEntry);
 
 		// Close the containing menu
-		if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
+		if (menuListEntry.ref) menuListEntry.ref.open = false;
 		dispatch("open", false);
-		isOpen = false; // TODO: This is a hack for MenuBarInput submenus, remove it when we get rid of using `ref`
+		open = false;
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry): void {
 		if (!menuListEntry.children?.length) return;
 
-		if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
+		if (menuListEntry.ref) menuListEntry.ref.open = true;
 		else dispatch("open", true);
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry): void {
 		if (!menuListEntry.children?.length) return;
 
-		if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
+		if (menuListEntry.ref) menuListEntry.ref.open = false;
 		else dispatch("open", false);
 	}
 
 	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
 		if (!menuListEntry.children?.length) return false;
 
-		return open;
+		return menuListEntry.ref?.open || false;
 	}
 
 	/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
@@ -99,13 +92,13 @@
 		// Interactive menus should keep the active entry the same as the highlighted one
 		if (interactive) highlighted = activeEntry;
 
-		const menuOpen = isOpen;
+		const menuOpen = open;
 		const flatEntries = entries.flat().filter((entry) => !entry.disabled);
-		const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
+		const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.open);
 
 		const openSubmenu = (highlighted: MenuListEntry): void => {
 			if (highlighted.ref && highlighted.children?.length) {
-				highlighted.ref.isOpen = true;
+				highlighted.ref.open = true;
 
 				// Highlight first item
 				highlighted.ref.setHighlighted(highlighted.children[0][0]);
@@ -114,7 +107,7 @@
 
 		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
 			// Allow opening menu with space or enter
-			isOpen = true;
+			open = true;
 			highlighted = activeEntry;
 		} else if (menuOpen && openChild >= 0) {
 			// Redirect the keyboard navigation to a submenu if one is open
@@ -125,7 +118,7 @@
 
 			// Handle the child closing the entire menu stack
 			if (shouldCloseStack) {
-				isOpen = false;
+				open = false;
 				return true;
 			}
 		} else if ((menuOpen || interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -145,7 +138,7 @@
 			setHighlighted(newEntry);
 		} else if (menuOpen && e.key === "Escape") {
 			// Close menu with escape key
-			isOpen = false;
+			open = false;
 
 			// Reset active to before open
 			setHighlighted(activeEntry);
@@ -164,7 +157,7 @@
 			openSubmenu(highlighted);
 		} else if (menuOpen && e.key === "ArrowLeft") {
 			// Left arrow closes a submenu
-			if (submenu) isOpen = false;
+			if (submenu) open = false;
 		}
 
 		// By default, keep the menu stack open
@@ -177,20 +170,15 @@
 		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
 	}
 
-	// TODO: Svelte: Re-enable the `export` prefix
 	export function scrollViewTo(distanceDown: number): void {
 		scroller.div().scrollTo(0, distanceDown);
-	}
-
-	export function menuIsOpen(): boolean {
-		return open;
 	}
 </script>
 
 <FloatingMenu
 	class="menu-list"
-	open={isOpen}
-	on:open={({ detail }) => (isOpen = detail)}
+	{open}
+	on:open={({ detail }) => (open = detail)}
 	on:naturalWidth
 	type="Dropdown"
 	windowEdgeMargin={0}
@@ -248,7 +236,7 @@
 					{/if}
 
 					{#if entry.children}
-						<svelte:self on:naturalWidth open={entry.ref?.menuIsOpen() || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
+						<svelte:self on:naturalWidth open={entry.ref?.open || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
 					{/if}
 				</LayoutRow>
 			{/each}
