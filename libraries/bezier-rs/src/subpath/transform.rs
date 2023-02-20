@@ -1,7 +1,7 @@
 use std::vec;
 
 use super::*;
-use crate::compare::compare_points;
+use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{Joint, SubpathTValue, TValue};
 
 use glam::DAffine2;
@@ -322,7 +322,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				let first_segment = subpath2.get_segment(0).unwrap();
 
 				// If the anchors are approximately equal, there is no need to clip / join the segments
-				if compare_points(last_segment.end(), first_segment.start()) {
+				if last_segment.end().abs_diff_eq(first_segment.start(), MAX_ABSOLUTE_DIFFERENCE) {
 					continue;
 				}
 

@@ -326,6 +326,9 @@ mod tests {
 		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
 		let subpath_intersections = subpath.intersections(&line, None, None);
 
+		dbg!(cubic_intersections.clone());
+		dbg!(subpath_intersections.clone());
+
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
 			subpath.evaluate(SubpathTValue::Parametric {
@@ -335,6 +338,9 @@ mod tests {
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
+
+		dbg!(quadratic_1_intersections.clone());
+		dbg!(subpath_intersections.clone());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),

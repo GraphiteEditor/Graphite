@@ -281,7 +281,7 @@ impl Bezier {
 			let transformed_start = utils::scale_point_from_direction_vector(copy.start, copy.normal(TValue::Parametric(0.)), false, start_distance);
 			let transformed_end = utils::scale_point_from_direction_vector(copy.end, copy.normal(TValue::Parametric(1.)), false, end_distance);
 
-			return match self.handles {
+			return match copy.handles {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle: _ } => unreachable!(),
 				BezierHandles::Cubic { handle_start, handle_end } => {
@@ -576,7 +576,7 @@ impl Bezier {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::compare::{compare_arcs, compare_vector_of_beziers};
+	use crate::compare::{compare_arcs, compare_points, compare_vector_of_beziers};
 	use crate::utils::TValue;
 
 	#[test]
@@ -744,30 +744,90 @@ mod tests {
 			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 
-	#[test]
-	fn test_offset() {
-		let p1 = DVec2::new(30., 50.);
-		let p2 = DVec2::new(140., 30.);
-		let p3 = DVec2::new(160., 170.);
-		let bezier1 = Bezier::from_quadratic_dvec2(p1, p2, p3);
-		let expected_bezier_points1 = vec![
-			vec![DVec2::new(31.7888, 59.8387), DVec2::new(44.5924, 57.46446), DVec2::new(56.09375, 57.5)],
-			vec![DVec2::new(56.09375, 57.5), DVec2::new(94.94197, 56.5019), DVec2::new(117.6473, 84.5936)],
-			vec![DVec2::new(117.6473, 84.5936), DVec2::new(142.3985, 113.403), DVec2::new(150.1005, 171.4142)],
-		];
-		assert!(compare_vector_of_beziers(&bezier1.offset(10.), expected_bezier_points1));
+	fn assert_valid_offset(bezier: &Bezier, offset: &[Bezier], expected_distance: f64) {
+		// Verify that the offset is smooth
+		offset.windows(2).for_each(|beziers_pair| {
+			assert!(compare_points(beziers_pair[0].end, beziers_pair[1].start));
+			assert!(compare_points(beziers_pair[0].normal(TValue::Parametric(1.)), beziers_pair[1].normal(TValue::Parametric(0.))));
+		});
 
-		let p4 = DVec2::new(32., 77.);
-		let p5 = DVec2::new(169., 25.);
-		let p6 = DVec2::new(164., 157.);
-		let bezier2 = Bezier::from_quadratic_dvec2(p4, p5, p6);
-		let expected_bezier_points2 = vec![
-			vec![DVec2::new(42.6458, 105.04758), DVec2::new(75.0218, 91.9939), DVec2::new(98.09357, 92.3043)],
-			vec![DVec2::new(98.09357, 92.3043), DVec2::new(116.5995, 88.5479), DVec2::new(123.9055, 102.0401)],
-			vec![DVec2::new(123.9055, 102.0401), DVec2::new(136.6087, 116.9522), DVec2::new(134.1761, 147.9324)],
-			vec![DVec2::new(134.1761, 147.9324), DVec2::new(134.1812, 151.7987), DVec2::new(134.0215, 155.86445)],
-		];
-		assert!(compare_vector_of_beziers(&bezier2.offset(30.), expected_bezier_points2));
+		// Verify that the offset spans the length of the curve
+		let start_distance = bezier.evaluate(TValue::Parametric(0.)).distance(offset[0].evaluate(TValue::Parametric(0.)));
+		assert!(f64_compare(start_distance, expected_distance, MAX_ABSOLUTE_DIFFERENCE));
+		let end_distance = bezier.evaluate(TValue::Parametric(1.)).distance(offset.last().unwrap().evaluate(TValue::Parametric(1.)));
+		assert!(f64_compare(end_distance, expected_distance, MAX_ABSOLUTE_DIFFERENCE));
+
+		let err_threshold = (expected_distance / 10.).max(MAX_ABSOLUTE_DIFFERENCE);
+		let projection_options = ProjectionOptions {
+			lut_size: 20,
+			convergence_epsilon: 0.001,
+			convergence_limit: 5,
+			iteration_limit: 15,
+		};
+		// Sample the curve and verify that the offset lies at the correct distance from the curve.
+		// Collect the t-value associated with the point on the bezier closest to the sample.
+		let t_values: Vec<f64> = offset
+			.iter()
+			.flat_map(|offset_segment| {
+				[0.1, 0.25, 0.75, 0.9]
+					.iter()
+					.map(|t| {
+						let offset_point = offset_segment.evaluate(TValue::Parametric(*t));
+						let closest_point_t = bezier.project(offset_point, projection_options);
+						let closest_point = bezier.evaluate(TValue::Parametric(closest_point_t));
+						let actual_distance = offset_point.distance(closest_point);
+
+						println!("{} != {}", actual_distance, expected_distance);
+						assert!(f64_compare(actual_distance, expected_distance, err_threshold));
+						closest_point_t
+					})
+					.collect::<Vec<f64>>()
+			})
+			.collect();
+
+		// Verify that the curve segments are in the correct order by asserting that t_values is sorted
+		for i in 1..t_values.len() {
+			assert!(t_values[i - 1] < t_values[i]);
+		}
+	}
+
+	#[test]
+	fn test_offset_linear() {
+		let start = DVec2::new(30., 60.);
+		let end = DVec2::new(140., 120.);
+		let bezier = Bezier::from_linear_dvec2(start, end);
+
+		for distance in [-20., -10., 0., 10., 20.] {
+			let offset = bezier.offset(distance);
+			assert_valid_offset(&bezier, &offset, distance.abs());
+		}
+	}
+
+	#[test]
+	fn test_offset_quadratic() {
+		let start = DVec2::new(30., 50.);
+		let handle = DVec2::new(140., 30.);
+		let end = DVec2::new(160., 170.);
+		let bezier = Bezier::from_quadratic_dvec2(start, handle, end);
+
+		for distance in [-20., -10., 0., 10., 20.] {
+			let offset = bezier.offset(distance);
+			assert_valid_offset(&bezier, &offset, distance.abs());
+		}
+	}
+
+	#[test]
+	fn test_offset_cubic() {
+		let start = DVec2::new(30., 30.);
+		let handle1 = DVec2::new(60., 140.);
+		let handle2 = DVec2::new(150., 30.);
+		let end = DVec2::new(160., 160.);
+		let bezier = Bezier::from_cubic_dvec2(start, handle1, handle2, end);
+
+		for distance in [-20., -10., 0., 10., 20.] {
+			let offset = bezier.offset(distance);
+			assert_valid_offset(&bezier, &offset, distance.abs());
+		}
 	}
 
 	#[test]
