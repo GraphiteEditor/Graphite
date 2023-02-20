@@ -128,7 +128,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 				any.into_type_erased()
 			},
-			NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![concrete!(Image), concrete!(BlendMode), concrete!(f64)]),
+			NodeIOTypes::new(
+				concrete!(Image),
+				concrete!(Image),
+				vec![(concrete!(()), concrete!(Image)), (concrete!(()), concrete!(BlendMode)), (concrete!(()), concrete!(f64))],
+			),
 		),
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
