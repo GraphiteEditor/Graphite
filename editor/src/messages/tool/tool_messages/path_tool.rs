@@ -6,9 +6,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::common_functionality::transformation_cage::axis_align_drag;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
 use graphene_std::vector::consts::ManipulatorType;
