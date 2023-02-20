@@ -89,9 +89,9 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 
 	// Gamma correction
 	let gamma = if midtones < 0.5 {
-		(1. + (9. * (1. - midtones * 2.))).min(9.99)
+		1. / (1. + (9. * (1. - midtones * 2.))).min(9.99)
 	} else {
-		((1. - midtones) * 2.).max(0.01)
+		1. / ((1. - midtones) * 2.).max(0.01)
 	};
 
 	// Input levels
