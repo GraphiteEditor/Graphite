@@ -165,6 +165,7 @@ pub fn default_mapping() -> Mapping {
 		// PathToolMessage
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::BeginGrab),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::BeginRotate),
+		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::BeginScale),
 		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
