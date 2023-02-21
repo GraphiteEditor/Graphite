@@ -54,6 +54,7 @@ pub enum PenToolMessage {
 	PointerMove {
 		snap_angle: Key,
 		break_handle: Key,
+		lock_angle: Key,
 	},
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
@@ -148,6 +149,7 @@ struct PenToolData {
 	should_mirror: bool,
 	// Indicates that curve extension is occurring from the first point, rather than (more commonly) the last point
 	from_start: bool,
+	angle: f64,
 }
 
 impl Fsm for PenToolFsmState {
@@ -399,10 +401,11 @@ impl Fsm for PenToolFsmState {
 					tool_data.should_mirror = true;
 					process().unwrap_or(PenToolFsmState::PlacingAnchor)
 				}
-				(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle }) => {
+				(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
 					let mut process = || {
 						// Get subpath
-						let layer_path = tool_data.path.as_ref()?;
+						let data = tool_data.clone();
+						let layer_path = data.path.as_ref()?;
 						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group
@@ -418,7 +421,10 @@ impl Fsm for PenToolFsmState {
 
 						let mouse = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 						let pos = transform.inverse().transform_point2(mouse);
-						let pos = compute_snapped_angle(input, snap_angle, pos, last_anchor.position);
+
+						let snap_angle = input.keyboard.get(snap_angle as usize);
+						let lock_angle = input.keyboard.get(lock_angle as usize);
+						let pos = compute_snapped_angle(tool_data, lock_angle, snap_angle, pos, last_anchor.position);
 
 						// Update points on current segment (to show preview of new handle)
 						let msg = Operation::MoveManipulatorPoint {
@@ -460,10 +466,11 @@ impl Fsm for PenToolFsmState {
 						self
 					}
 				}
-				(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, .. }) => {
+				(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, lock_angle, .. }) => {
 					let mut process = || {
 						// Get subpath
-						let layer_path = tool_data.path.as_ref()?;
+						let data = tool_data.clone();
+						let layer_path = data.path.as_ref()?;
 						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group and the one previous to that
@@ -491,7 +498,9 @@ impl Fsm for PenToolFsmState {
 							if mouse.distance_squared(transform.transform_point2(relative.position)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
 								pos = relative.position;
 							} else {
-								pos = compute_snapped_angle(input, snap_angle, pos, relative.position);
+								let snap_angle = input.keyboard.get(snap_angle as usize);
+								let lock_angle = input.keyboard.get(lock_angle as usize);
+								pos = compute_snapped_angle(tool_data, lock_angle, snap_angle, pos, relative.position);
 							}
 						}
 
@@ -594,8 +603,9 @@ impl Fsm for PenToolFsmState {
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Add Handle")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Anchor")]),
-				HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "Break Handle")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")]),
+				HintGroup(vec![HintInfo::keys([Key::Alt], "Break Handle")]),
+				HintGroup(vec![HintInfo::keys([Key::Control], "Lock Angle")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Path")]),
 			]),
 		};
@@ -610,16 +620,23 @@ impl Fsm for PenToolFsmState {
 
 // TODO: Expand `pos` name below to the full word (position?)
 /// Snap the angle of the line from relative to pos if the key is pressed.
-fn compute_snapped_angle(input: &InputPreprocessorMessageHandler, key: Key, pos: DVec2, relative: DVec2) -> DVec2 {
-	if input.keyboard.get(key as usize) {
-		let delta = relative - pos;
+fn compute_snapped_angle(tool_data: &mut PenToolData, lock_angle: bool, snap_angle: bool, pos: DVec2, relative: DVec2) -> DVec2 {
+	let delta = relative - pos;
+	let mut angle = -delta.angle_between(DVec2::X);
 
-		let length = delta.length();
-		let mut angle = -delta.angle_between(DVec2::X);
+	if lock_angle {
+		angle = tool_data.angle;
+	}
 
+	if snap_angle {
 		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 		angle = (angle / snap_resolution).round() * snap_resolution;
+	}
 
+	tool_data.angle = angle;
+
+	if snap_angle || lock_angle {
+		let length = delta.length();
 		let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
 		relative - rotated
 	} else {
