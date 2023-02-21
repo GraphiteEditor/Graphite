@@ -223,7 +223,10 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	let scale = vibrance as f32 / 100.;
+	let vibrance = vibrance as f32 / 100.;
+	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
+	// So this scales the 0% to -50% range to 0% to -100%.
+	let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
 
 	let channel_max = color.r().max(color.g()).max(color.b());
 	let channel_min = color.r().min(color.g()).min(color.b());
@@ -236,26 +239,38 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	} else {
 		1.
 	};
-	let scale = scale * scale_multiplier * (2. - channel_difference);
+	let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
 	let channel_reduction = channel_min * scale;
 	let scale = 1. + scale * (1. - channel_difference);
 
 	let luminance_initial = color.to_linear_srgb().luminance_srgb();
-	let color = color.map_rgb(|channel| (channel * scale - channel_reduction)).to_linear_srgb();
-	let luminance = color.luminance_srgb();
-	let color = color.map_rgb(|channel| channel * luminance_initial / luminance);
+	let altered_color = color.map_rgb(|channel| (channel * scale - channel_reduction)).to_linear_srgb();
+	let luminance = altered_color.luminance_srgb();
+	let altered_color = altered_color.map_rgb(|channel| channel * luminance_initial / luminance);
 
-	let channel_max = color.r().max(color.g()).max(color.b());
-	let color = if Color::linear_to_srgb(channel_max) > 1. {
+	let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
+	let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
 		let scale = (1. - luminance) / (channel_max - luminance);
-		color.map_rgb(|channel| (channel - luminance) * scale + luminance)
+		altered_color.map_rgb(|channel| (channel - luminance) * scale + luminance)
 	} else {
-		color
+		altered_color
 	};
-	let color = color.to_gamma_srgb();
+	let altered_color = altered_color.to_gamma_srgb();
+
+	let altered_color = if vibrance >= 0. {
+		altered_color
+	} else {
+		// TODO: The result ends up a bit darker than it should be, further investigation is needed
+		let luminance = color.luminance_rec_601();
+
+		// Near -0% vibrance we mostly use `altered_color`.
+		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
+		let factor = -slowed_vibrance;
+		altered_color.map_rgb(|channel| channel * (1. - factor) + luminance * factor)
+	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	color.to_gamma_srgb()
+	altered_color.to_gamma_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
