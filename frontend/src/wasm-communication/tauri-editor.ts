@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api";
 import * as commands from "@/bindings";
+import { type FrontendMessage  } from "@/bindings";
 
 
 import { createSubscriptionRouter, type SubscriptionRouter } from "@/wasm-communication/subscription-router";
@@ -491,16 +492,18 @@ async boundsOfViewports(bounds_of_viewports: number[]) {
 
 const instance = new TauriHandle();
 
-async function dispatch_response(response: any[]) {
+async function dispatch_response(response: FrontendMessage[]) {
 	let array = response;
 	for (let deserialized of array) {
 		let messageType = Object.keys(deserialized)[0];
+		let messageData = Object.values(deserialized)[0];
 		if (typeof deserialized === "string") {
 			messageType = deserialized;
+			messageData = deserialized;
 		}
 		console.log(deserialized);
 
-		subscriptions.handleJsMessage(messageType, deserialized as unknown as Record<string, unknown>, {}, instance);
+		subscriptions.handleJsMessage(messageType, messageData);
 	}
 
 }

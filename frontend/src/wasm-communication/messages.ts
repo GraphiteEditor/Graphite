@@ -1,5 +1,6 @@
 /* eslint-disable max-classes-per-file */
 
+import { type FrontendMessage  } from "@/bindings";
 import { Transform, Type, plainToClass } from "class-transformer";
 
 import { type IconName, type IconSize } from "@/utility-functions/icons";
@@ -1271,7 +1272,7 @@ export class WidgetDiffUpdate extends JsMessage {
 }
 
 type UIItem = LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry;
-type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
+type WidgetDiff = { widgetPath: string[]; newValue: UIItem };
 
 export function defaultWidgetLayout(): WidgetLayout {
 	return {
@@ -1286,8 +1287,11 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
+		console.log("wp", update.widgetPath);
+		console.log("layout", layout);
+		const diffObject = update.widgetPath.reduce((targetLayout, index_string) => {
 			console.log("targetLayout", targetLayout);
+			const index = parseInt(index_string);
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];
