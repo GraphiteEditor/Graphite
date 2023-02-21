@@ -9,6 +9,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
+use document_legacy::LayerId;
 use graphene_std::vector::consts::ManipulatorType;
 
 use glam::DVec2;
@@ -112,6 +113,7 @@ struct PathToolData {
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
+	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<u64, f64>>>,
 }
 
 impl Fsm for PathToolFsmState {
@@ -142,6 +144,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.overlay_renderer.render_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
 
+					tool_data.opposing_handle_lengths = None;
 					// This can happen in any state (which is why we return self)
 					self
 				}
@@ -157,6 +160,8 @@ impl Fsm for PathToolFsmState {
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
 					let shift_pressed = input.keyboard.get(add_to_selection as usize);
+
+					tool_data.opposing_handle_lengths = None;
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = tool_data
@@ -240,12 +245,24 @@ impl Fsm for PathToolFsmState {
 						tool_data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
+							tool_data.opposing_handle_lengths = None;
 							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, responses);
 						}
 					}
 
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+					if shift_pressed {
+						if tool_data.opposing_handle_lengths.is_none() {
+							tool_data.opposing_handle_lengths = Some(tool_data.shape_editor.opposing_handle_lengths(&document.document_legacy));
+						}
+					} else {
+						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
+							tool_data.shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+							tool_data.opposing_handle_lengths = None;
+						}
+					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
