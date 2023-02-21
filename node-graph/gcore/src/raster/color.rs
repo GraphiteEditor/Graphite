@@ -235,7 +235,7 @@ impl Color {
 	}
 
 	pub fn with_luminance(&self, luminance: f32) -> Color {
-		let d = luminance - self.luminance_rec_601();
+		let d = luminance - self.luminance_rec_601_rounded();
 		self.map_rgb(|c| (c + d).clamp(0., 1.))
 	}
 
