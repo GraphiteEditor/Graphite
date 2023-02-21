@@ -167,7 +167,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
-		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop),
+		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		//
 		// PenToolMessage
@@ -280,6 +280,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(-1., 0.) }),
 		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }),
 		entry!(KeyDown(PageDown); action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }),
+		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),

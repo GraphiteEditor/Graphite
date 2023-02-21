@@ -1,4 +1,4 @@
-use crate::consts::{SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
@@ -6,8 +6,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
 use document_legacy::LayerId;
@@ -39,7 +38,9 @@ pub enum PathToolMessage {
 	DragStart {
 		add_to_selection: Key,
 	},
-	DragStop,
+	DragStop {
+		shift_mirror_distance: Key,
+	},
 	InsertPoint,
 	PointerMove {
 		alt_mirror_angle: Key,
@@ -110,6 +111,7 @@ struct PathToolData {
 	snap_manager: SnapManager,
 
 	drag_start_pos: DVec2,
+	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<u64, f64>>>,
 }
@@ -157,14 +159,14 @@ impl Fsm for PathToolFsmState {
 				}
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
-					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
+					let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
 					tool_data.opposing_handle_lengths = None;
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = tool_data
 						.shape_editor
-						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift_pressed, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -191,8 +193,8 @@ impl Fsm for PathToolFsmState {
 
 						let include_handles = tool_data.shape_editor.selected_layers_ref();
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
-
-						tool_data.drag_start_pos = input.mouse.position - selected_points.offset;
+						tool_data.drag_start_pos = input.mouse.position;
+						tool_data.previous_mouse_position = input.mouse.position - selected_points.offset;
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -203,19 +205,26 @@ impl Fsm for PathToolFsmState {
 							.document_legacy
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
-							if toggle_add_to_selection {
+							if shift_pressed {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
+								// Selects the topmost layer when selecting intersecting shapes
+								let top_most_intersection = intersection[intersection.len() - 1].clone();
 								responses.push_back(
 									DocumentMessage::SetSelectedLayers {
-										replacement_selected_layers: intersection,
+										replacement_selected_layers: vec![top_most_intersection.clone()],
 									}
 									.into(),
 								);
+								tool_data.drag_start_pos = input.mouse.position;
+								tool_data.previous_mouse_position = input.mouse.position;
+								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
+								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);
+								return PathToolFsmState::Dragging;
 							}
 						} else {
 							// Clear the previous selection if we didn't find anything
-							if !input.keyboard.get(toggle_add_to_selection as usize) {
+							if !input.keyboard.get(shift_pressed as usize) {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
@@ -257,12 +266,29 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					tool_data.shape_editor.move_selected_points(snapped_position - tool_data.drag_start_pos, shift_pressed, responses);
-					tool_data.drag_start_pos = snapped_position;
+					tool_data
+						.shape_editor
+						.move_selected_points(snapped_position - tool_data.previous_mouse_position, shift_pressed, responses);
+					tool_data.previous_mouse_position = snapped_position;
 					PathToolFsmState::Dragging
 				}
 				// Mouse up
-				(_, PathToolMessage::DragStop) => {
+				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
+					let selected_points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let nearest_point = tool_data.shape_editor.find_nearest_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD);
+					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
+						for point in selected_points {
+							if nearest_point == Some(point) {
+								responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
+								tool_data
+									.shape_editor
+									.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false, responses);
+							}
+						}
+					}
+
 					tool_data.snap_manager.cleanup(responses);
 					PathToolFsmState::Ready
 				}

@@ -374,10 +374,20 @@ mod image {
 		}
 	}
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct ImageFrame {
 		pub image: Image,
 		pub transform: DAffine2,
+	}
+
+	impl ImageFrame {
+		pub const fn empty() -> Self {
+			Self {
+				image: Image::empty(),
+				transform: DAffine2::ZERO,
+			}
+		}
 	}
 }
 

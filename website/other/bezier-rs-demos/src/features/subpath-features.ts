@@ -1,4 +1,4 @@
-import { tSliderOptions } from "@/utils/options";
+import { tSliderOptions, intersectionErrorOptions, minimumSeparationOptions } from "@/utils/options";
 import { TVariant, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
 
 const subpathFeatures = {
@@ -10,8 +10,7 @@ const subpathFeatures = {
 		name: "Insert",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.insert(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseTVariant: true,
+		chooseTVariant: true,
 	},
 	length: {
 		name: "Length",
@@ -31,47 +30,80 @@ const subpathFeatures = {
 	},
 	tangent: {
 		name: "Tangent",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.tangent(options.t),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.tangent(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	normal: {
 		name: "Normal",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.normal(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
+	},
+	"local-extrema": {
+		name: "Local Extrema",
+		callback: (subpath: WasmSubpathInstance): string => subpath.local_extrema(),
+	},
+	"bounding-box": {
+		name: "Bounding Box",
+		callback: (subpath: WasmSubpathInstance): string => subpath.bounding_box(),
+	},
+	inflections: {
+		name: "Inflections",
+		callback: (subpath: WasmSubpathInstance): string => subpath.inflections(),
 	},
 	"intersect-linear": {
 		name: "Intersect (Line Segment)",
-		callback: (subpath: WasmSubpathInstance): string =>
-			subpath.intersect_line_segment([
-				[150, 150],
-				[20, 20],
-			]),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_line_segment(
+				[
+					[150, 150],
+					[20, 20],
+				],
+				options.error,
+				options.minimum_seperation
+			),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	"intersect-quadratic": {
-		name: "Intersect (Quadratic segment)",
-		callback: (subpath: WasmSubpathInstance): string =>
-			subpath.intersect_quadratic_segment([
-				[20, 80],
-				[180, 10],
-				[90, 120],
-			]),
+		name: "Intersect (Quadratic Segment)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_quadratic_segment(
+				[
+					[20, 80],
+					[180, 10],
+					[90, 120],
+				],
+				options.error,
+				options.minimum_seperation
+			),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	"intersect-cubic": {
-		name: "Intersect (Cubic segment)",
-		callback: (subpath: WasmSubpathInstance): string =>
-			subpath.intersect_cubic_segment([
-				[40, 20],
-				[100, 40],
-				[40, 120],
-				[175, 140],
-			]),
+		name: "Intersect (Cubic Segment)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_cubic_segment(
+				[
+					[40, 20],
+					[100, 40],
+					[40, 120],
+					[175, 140],
+				],
+				options.error,
+				options.minimum_seperation
+			),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	"self-intersect": {
+		name: "Self Intersect",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_seperation),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	split: {
 		name: "Split",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.split(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseTVariant: true,
+		chooseTVariant: true,
 	},
 };
 

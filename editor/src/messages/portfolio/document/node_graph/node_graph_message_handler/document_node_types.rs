@@ -8,7 +8,7 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{Color, Image, LuminanceCalculation};
+use graphene_core::raster::{Color, Image, ImageFrame, LuminanceCalculation};
 use graphene_core::*;
 
 use std::collections::VecDeque;
@@ -176,7 +176,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),

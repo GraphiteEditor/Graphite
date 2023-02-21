@@ -9,11 +9,11 @@ pub use std::borrow::Cow;
 pub struct NodeIOTypes {
 	pub input: Type,
 	pub output: Type,
-	pub parameters: Vec<Type>,
+	pub parameters: Vec<(Type, Type)>,
 }
 
 impl NodeIOTypes {
-	pub fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
+	pub fn new(input: Type, output: Type, parameters: Vec<(Type, Type)>) -> Self {
 		Self { input, output, parameters }
 	}
 }
