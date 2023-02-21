@@ -14,7 +14,9 @@ impl Subpath {
 		self.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(t))
 	}
 
-	/// Calculates the intersection points the subpath has with a given curve and returns a list of parameteric `t`-values.
+	/// Calculates the intersection points the subpath has with a given curve and returns a list of `(usize, f64)` tuples,
+	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
+	/// that curve where the intersection occured.
 	/// This function expects the following:
 	/// - `other`: a [Bezier] curve to check intersections against
 	/// - `error`: an optional f64 value to provide an error bound
@@ -65,6 +67,7 @@ impl Subpath {
 		intersections_vec
 	}
 
+	/// Returns a normalized unit vector representing the direction of the normal on the subpath based on the parametric `t`-value provided.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
