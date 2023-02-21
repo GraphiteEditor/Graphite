@@ -404,8 +404,7 @@ impl Fsm for PenToolFsmState {
 				(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
 					let mut process = || {
 						// Get subpath
-						let data = tool_data.clone();
-						let layer_path = data.path.as_ref()?;
+						let layer_path = tool_data.path.as_ref()?;
 						let subpath = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_subpath())?;
 
 						// Get the last manipulator group
@@ -424,7 +423,7 @@ impl Fsm for PenToolFsmState {
 
 						let snap_angle = input.keyboard.get(snap_angle as usize);
 						let lock_angle = input.keyboard.get(lock_angle as usize);
-						let pos = compute_snapped_angle(tool_data, lock_angle, snap_angle, pos, last_anchor.position);
+						let pos = compute_snapped_angle(&mut tool_data.angle, lock_angle, snap_angle, pos, last_anchor.position);
 
 						// Update points on current segment (to show preview of new handle)
 						let msg = Operation::MoveManipulatorPoint {
@@ -500,7 +499,7 @@ impl Fsm for PenToolFsmState {
 							} else {
 								let snap_angle = input.keyboard.get(snap_angle as usize);
 								let lock_angle = input.keyboard.get(lock_angle as usize);
-								pos = compute_snapped_angle(tool_data, lock_angle, snap_angle, pos, relative.position);
+								pos = compute_snapped_angle(&mut tool_data.angle, lock_angle, snap_angle, pos, relative.position);
 							}
 						}
 
@@ -618,14 +617,13 @@ impl Fsm for PenToolFsmState {
 	}
 }
 
-// TODO: Expand `pos` name below to the full word (position?)
-/// Snap the angle of the line from relative to pos if the key is pressed.
-fn compute_snapped_angle(tool_data: &mut PenToolData, lock_angle: bool, snap_angle: bool, pos: DVec2, relative: DVec2) -> DVec2 {
-	let delta = relative - pos;
+/// Snap the angle of the line from relative to position if the key is pressed.
+fn compute_snapped_angle(cached_angle: &mut f64, lock_angle: bool, snap_angle: bool, position: DVec2, relative: DVec2) -> DVec2 {
+	let delta = relative - position;
 	let mut angle = -delta.angle_between(DVec2::X);
 
 	if lock_angle {
-		angle = tool_data.angle;
+		angle = *cached_angle;
 	}
 
 	if snap_angle {
@@ -633,14 +631,14 @@ fn compute_snapped_angle(tool_data: &mut PenToolData, lock_angle: bool, snap_ang
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
-	tool_data.angle = angle;
+	*cached_angle = angle;
 
 	if snap_angle || lock_angle {
 		let length = delta.length();
 		let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
 		relative - rotated
 	} else {
-		pos
+		position
 	}
 }
 
