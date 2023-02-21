@@ -1,5 +1,3 @@
-use std::ptr::null;
-
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -13,20 +11,18 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{RadioEntryD
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use crate::messages::{debug, prelude::*};
 
 use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
-use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::LayerDataType;
-use document_legacy::layers::style::SelectedType;
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
@@ -40,19 +36,28 @@ pub struct SelectTool {
 }
 
 pub struct SelectOptions {
-	selected_type: SelectedType,
+	selected_type: LayerSelectionBehavior,
 }
 
 impl Default for SelectOptions {
 	fn default() -> Self {
-		Self { selected_type: SelectedType::Layer }
+		Self {
+			selected_type: LayerSelectionBehavior::Layer,
+		}
 	}
+}
+
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
+pub enum LayerSelectionBehavior {
+	#[default]
+	Layer,
+	Group,
 }
 
 #[remain::sorted]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
-	Type(SelectedType),
+	Type(LayerSelectionBehavior),
 }
 
 #[remain::sorted]
@@ -113,13 +118,13 @@ impl PropertyHolder for SelectTool {
 					RadioEntryData::new("Layer")
 						.value("layer")
 						.tooltip("Layer")
-						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectedType::Layer)).into()),
+						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Layer)).into()),
 					RadioEntryData::new("Group")
 						.value("group")
 						.tooltip("Group")
-						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(SelectedType::Group)).into()),
+						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Group)).into()),
 				])
-				.selected_index((self.tool_data.selected_type == SelectedType::Group) as u32)
+				.selected_index((self.tool_data.selected_type == LayerSelectionBehavior::Group) as u32)
 				.widget_holder(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
@@ -306,7 +311,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
-	selected_type: SelectedType,
+	selected_type: LayerSelectionBehavior,
 }
 
 impl SelectToolData {
@@ -374,7 +379,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							// Group manipulation
-							if tool_data.selected_type == SelectedType::Group {
+							if tool_data.selected_type == LayerSelectionBehavior::Group {
 								let mut selected_layers = document.selected_layers();
 								// Check if something was previously selected
 								if let Some(layer_path) = selected_layers.next() {
@@ -387,10 +392,9 @@ impl Fsm for SelectToolFsmState {
 											break;
 										}
 									}
-									responses.push_back(DocumentMessage::DeselectAllLayers.into());
 									responses.push_back(
-										DocumentMessage::AddSelectedLayers {
-											additional_layers: vec![new_layer_path_vector],
+										DocumentMessage::SetSelectedLayers {
+											replacement_selected_layers: vec![new_layer_path_vector],
 										}
 										.into(),
 									);
@@ -508,7 +512,7 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
-						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == SelectedType::Layer {
+						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == LayerSelectionBehavior::Layer {
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
@@ -516,12 +520,16 @@ impl Fsm for SelectToolFsmState {
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
 							// Group manipulation
-							if tool_data.selected_type == SelectedType::Group {
+							if tool_data.selected_type == LayerSelectionBehavior::Group {
 								// Control click selects the layer directly
 								if input.keyboard.get(layer_selection as usize) {
-									responses.push_back(DocumentMessage::DeselectAllLayers.into());
 									tool_data.layers_dragging.clear();
-									responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+									responses.push_back(
+										DocumentMessage::SetSelectedLayers {
+											replacement_selected_layers: selected.clone(),
+										}
+										.into(),
+									);
 								} else {
 									tool_data.layers_dragging.clear();
 
@@ -548,10 +556,9 @@ impl Fsm for SelectToolFsmState {
 											new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
 										}
 										tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
-										responses.push_back(DocumentMessage::DeselectAllLayers.into());
 										responses.push_back(
-											DocumentMessage::AddSelectedLayers {
-												additional_layers: new_layer_path_vector.unwrap(),
+											DocumentMessage::SetSelectedLayers {
+												replacement_selected_layers: new_layer_path_vector.unwrap(),
 											}
 											.into(),
 										);
@@ -581,7 +588,7 @@ impl Fsm for SelectToolFsmState {
 						} else {
 							// If group manipulation is toggled and you select nothing deselect
 							// Neccesary since for group, we need to know the current selected layers to determine next
-							if tool_data.selected_type == SelectedType::Group {
+							if tool_data.selected_type == LayerSelectionBehavior::Group {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 								tool_data.layers_dragging.clear();
 							}
@@ -610,9 +617,6 @@ impl Fsm for SelectToolFsmState {
 
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-
-					// Group manipulation
-					// if tool_data.selected_type == SelectedType::Group {
 					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
 						responses.push_front(
 							Operation::TransformLayerInViewport {
@@ -623,20 +627,6 @@ impl Fsm for SelectToolFsmState {
 						);
 					}
 					tool_data.drag_current = mouse_position + closest_move;
-					// }
-					// Layer manipulation
-					// else {
-					// 	for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-					// 		responses.push_front(
-					// 			Operation::TransformLayerInViewport {
-					// 				path: path.clone(),
-					// 				transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
-					// 			}
-					// 			.into(),
-					// 		);
-					// 	}
-					// 	tool_data.drag_current = mouse_position + closest_move;
-					// }
 
 					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
 						tool_data.start_duplicates(document, responses);
