@@ -1,6 +1,6 @@
 /* eslint-disable max-classes-per-file */
 
-import { type FrontendMessage  } from "@/bindings";
+import { type FrontendMessage, type WidgetDiff, type LayoutTarget  } from "@/bindings";
 import { Transform, Type, plainToClass } from "class-transformer";
 
 import { type IconName, type IconSize } from "@/utility-functions/icons";
@@ -1282,14 +1282,15 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, returning the new layout
-export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate): void {
+export function patchWidgetLayout(layout: WidgetLayout, updates: { layoutTarget: LayoutTarget, diff: WidgetDiff[]}): void {
+	debugger;
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		console.log("wp", update.widgetPath);
 		console.log("layout", layout);
-		const diffObject = update.widgetPath.reduce((targetLayout, index_string) => {
+		let diffObject = update.widgetPath.reduce((targetLayout, index_string) => {
 			console.log("targetLayout", targetLayout);
 			const index = parseInt(index_string);
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
@@ -1317,7 +1318,8 @@ export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdat
 		// Assign keys to the new object
 		// `Object.assign` works but `diffObject = update.newValue;` doesn't.
 		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-		Object.assign(diffObject, update.newValue);
+		const newLayout = Object.values(update.newValue)[0];
+		Object.assign(diffObject, newLayout);
 	});
 }
 
