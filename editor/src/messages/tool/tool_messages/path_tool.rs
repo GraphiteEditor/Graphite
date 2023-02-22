@@ -10,8 +10,10 @@ use crate::messages::tool::common_functionality::transformation_cage::axis_align
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::Operation;
+use bezier_rs::ManipulatorGroup;
 use document_legacy::intersection::Quad;
+use document_legacy::Operation;
+use graphene_core::vector::manipulator_point::ManipulatorPoint;
 use graphene_std::vector::consts::ManipulatorType;
 
 use glam::{DAffine2, DVec2};
@@ -137,11 +139,12 @@ struct PathToolData {
 	shape_editor: ShapeEditor,
 	overlay_renderer: OverlayRenderer,
 	snap_manager: SnapManager,
-	center: DVec2,
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	grs_mouse_start: DVec2,
 	alt_debounce: bool,
+	grs_initial_points: Vec<DVec2>,
+	factor: f64,
 }
 
 impl Fsm for PathToolFsmState {
@@ -187,8 +190,6 @@ impl Fsm for PathToolFsmState {
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
 
-					tool_data.center = DVec2::new(0.0,0.0);
-
 					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
 
 					// Select the first point within the threshold (in pixels)
@@ -224,7 +225,7 @@ impl Fsm for PathToolFsmState {
 
 						tool_data.drag_start_pos = input.mouse.position;
 						tool_data.previous_mouse_position = input.mouse.position;
-						
+
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -256,138 +257,141 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				//Rotating
-				
-				(PathToolFsmState::Rotating, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance}) => {
-					
+				(
+					PathToolFsmState::Rotating,
+					PathToolMessage::PointerMove {
+						alt_mirror_angle,
+						shift_mirror_distance,
+					},
+				) => {
 					let path = tool_data.shape_editor.selected_layers_ref();
 					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
 					// let to = document.generate_transform_relative_to_viewport(path[0]);
-				
-					debug!("viewspace {:?}", viewspace.inverse());
-					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
-					
 
-				//make sure that the pivot is in viewspace - fixed with the transofmr_point
-					let mut count:usize = 0;
-					let pivot = points.map(|point| {
-						count += 1;
-						debug!("Viewport Pos: {}", viewspace.transform_point2(point.position));
-						viewspace.transform_point2(point.position)
-					}).sum::<DVec2>() / count as f64;
+					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+
+					//make sure that the pivot is in viewspace - fixed with the transofmr_point
+					let mut count: usize = 0;
+					let pivot = points
+						.map(|point| {
+							count += 1;
+							viewspace.transform_point2(point.position)
+						})
+						.sum::<DVec2>() / count as f64;
 
 					//drag start is in pixels // center is in relative pos
-					let vector_from_mouse_start = pivot - tool_data.grs_mouse_start ;
+					let vector_from_mouse_start = pivot - tool_data.grs_mouse_start;
 					let vector_from_mouse_current = pivot - input.mouse.position;
 					let angle = vector_from_mouse_start.angle_between(vector_from_mouse_current);
-					debug!("Mouse start {}", tool_data.grs_mouse_start);
-					debug!("Pivot {}", pivot);
-					debug!("Angle {}", angle);
+					// tool_data.grs_mouse_start = input.mouse.position;
 					let delta = DAffine2::from_translation(pivot) * DAffine2::from_angle(angle) * DAffine2::from_translation(-pivot);
+
 					//convert pivot position from viewport space (pixels) into layer space using one of the funcs -> DAffine2
-					//modify that matrix (viewspace) inverse to go back to layer then  multiplying it by rotation matrix based on angle -> DAffine2 
-					let viewspace_matrix = viewspace.inverse() * delta;
+					//modify that matrix (viewspace) inverse to go back to layer then  multiplying it by rotation matrix based on angle -> DAffine2
+					let layerspace_rotation = viewspace.inverse() * delta;
 					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
 					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
-				
-					for point in points{
-						debug!("Point {},{}", point.position.x, point.position.y);
-						debug!("Pos {},{}", viewspace.transform_point2(point.position).x, viewspace.transform_point2(point.position).y);
+
+					for point in points {
 						let mut group_id = 0;
-						for man_group in subpath.unwrap().manipulator_groups().enumerate(){
+						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
 							let points_in_group = man_group.1.selected_points();
-							for p in points_in_group{
-								debug!("P {},{}", p.position.x, p.position.y);
-								if p.position == point.position{
-									debug!("man_group.1 {:?}", man_group.0 );
+							for p in points_in_group {
+								if p.position == point.position {
 									group_id = *man_group.0;
 								}
 							}
 						}
-					// self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-						let viewport_point =  viewspace.transform_point2(point.position);
-						debug!("Viewport point {}", viewport_point);
+						// self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
+						let viewport_point = viewspace.transform_point2(point.position);
 
-					// transform the new point from layer position to viewspace position
-						let new_pos = viewspace_matrix.transform_point2(viewport_point);
+						// transform the new point from layer position to viewspace position
+						let new_pos = layerspace_rotation.transform_point2(viewport_point);
 						//TODO: check is this the right pos?
-						debug!("New pos {}", new_pos);
-						// debug!("Group ID {}", group_id);
-						let op = Operation::MoveManipulatorPoint{
-							layer_path : path[0].to_vec(),
-							id : group_id, //manGroupID
-							manipulator_type : point.manipulator_type,
-							position : new_pos.into(),
-						}.into();
-						responses.push_back(op);
-					}
-
-					PathToolFsmState::Rotating
-				}
-				(PathToolFsmState::Scaling, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance}) => 
-				{
-					let path = tool_data.shape_editor.selected_layers_ref();
-					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
-					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
-					
-					let mut count:usize = 0;
-					let pivot = points.map(|point| {
-						count += 1;
-						viewspace.transform_point2(point.position)
-					}).sum::<DVec2>() / count as f64;
-
-					//drag start is in pixels // center is in relative pos
-					let change = {
-								let previous_frame_dist = (tool_data.previous_mouse_position - pivot).length();
-								let current_frame_dist = (input.mouse.position - pivot).length();
-								let start_transform_dist = (tool_data.grs_mouse_start - pivot).length();
-								debug!("previous_frame_dist {}", previous_frame_dist);
-								debug!("current_frame_dist {}", current_frame_dist);
-								debug!("start_transform_dist {}", start_transform_dist);
-								(current_frame_dist - previous_frame_dist) / start_transform_dist
-							};
-					
-
-					
-					debug!("Pivot {}", pivot);
-					debug!("Change {}", change);
-					
-					let delta = DAffine2::from_translation(pivot) * DAffine2::from_scale(DVec2::splat(change)) * DAffine2::from_translation(-pivot);
-					//convert pivot position from viewport space (pixels) into layer space using one of the funcs -> DAffine2
-					//modify that matrix (viewspace) inverse to go back to layer then  multiplying it by rotation matrix based on angle -> DAffine2 
-					let viewspace_matrix = viewspace.inverse() * delta;
-					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
-					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
-				
-					for point in points{
-						let mut group_id = 0;
-						for man_group in subpath.unwrap().manipulator_groups().enumerate(){
-							let points_in_group = man_group.1.selected_points();
-							for p in points_in_group{
-								debug!("P {},{}", p.position.x, p.position.y);
-								if p.position == point.position{
-									debug!("man_group.1 {:?}", man_group.0 );
-									group_id = *man_group.0;
-								}
-							}
+						debug!("group_id rot {}", group_id);
+						let op = Operation::MoveManipulatorPoint {
+							layer_path: path[0].to_vec(),
+							id: group_id, //manGroupID
+							manipulator_type: point.manipulator_type,
+							position: new_pos.into(),
 						}
-						let viewport_point =  viewspace.transform_point2(point.position);
-						debug!("Viewport point {}", viewport_point);
-
-					// transform the new point from layer position to viewspace position
-						let new_pos = viewspace_matrix.transform_point2(viewport_point);
-						debug!("New pos {}", new_pos);
-						let op = Operation::MoveManipulatorPoint{
-							layer_path : path[0].to_vec(),
-							id : group_id, //manGroupID
-							manipulator_type : point.manipulator_type,
-							position : new_pos.into(),
-						}.into();
+						.into();
 						responses.push_back(op);
 					}
 
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);					
-					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);        
+					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);
+					tool_data.previous_mouse_position = axis_aligned_position;
+
+					PathToolFsmState::Rotating
+				}
+				(
+					PathToolFsmState::Scaling,
+					PathToolMessage::PointerMove {
+						alt_mirror_angle,
+						shift_mirror_distance,
+					},
+				) => {
+					let path = tool_data.shape_editor.selected_layers_ref();
+					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
+					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let pivot = tool_data.grs_initial_points.iter().map(|point| viewspace.transform_point2(*point)).sum::<DVec2>() / tool_data.grs_initial_points.len() as f64;
+
+					//drag start is in pixels // center is in relative pos
+					let change = {
+						let previous_frame_dist = (tool_data.previous_mouse_position - pivot).length();
+						let current_frame_dist = (input.mouse.position - pivot).length();
+						let start_transform_dist = (tool_data.grs_mouse_start - pivot).length();
+						debug!("previous_frame_dist {}", previous_frame_dist);
+						debug!("current_frame_dist {}", current_frame_dist);
+						debug!("start_transform_dist {}", start_transform_dist);	
+						(current_frame_dist - previous_frame_dist) / start_transform_dist
+					};
+					tool_data.factor += change;
+
+					debug!("Change {}", change);
+					let pivot_matrix = DAffine2::from_translation(pivot);
+					let delta = pivot_matrix * DAffine2::from_scale(DVec2::splat(tool_data.factor)) * pivot_matrix.inverse();
+
+					//modify that matrix (viewspace) inverse to go back to layer then  multiplying it by rotation matrix based on angle -> DAffine2
+					let layerspace_rotation = viewspace.inverse() * delta;
+					// TODO: make this work for multiple selected layers not just one
+					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
+
+					for (point, initial_point) in points.zip(tool_data.grs_initial_points.iter()) {
+						// let mut group_id= None ;
+						// for man_group in subpath.unwrap().manipulator_groups().iter() {
+						// 	group_id = man_group.selected_points().find(|p| p.position == point.position);
+						// }
+						debug!("Pos {:?}", point.position);
+						let group_id = subpath
+							.unwrap()
+							.manipulator_groups()
+							.iter()
+							.enumerate()
+							.find_map(|(index, group)| group.points().any(|manip_point| manip_point == point).then_some(index));
+
+						let viewport_point = viewspace.transform_point2(*initial_point);
+						debug!("Group ID {:?}", group_id);
+						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+						info!("Old viewport {viewport_point} new point {new_pos_viewport}");
+						let new_pos = viewspace.inverse().transform_point2(new_pos_viewport);
+						debug!("New Pos {:?}", new_pos);
+
+						let op = Operation::MoveManipulatorPoint {
+							layer_path: path[0].to_vec(),
+							id: group_id.unwrap() as u64 + 1, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
+							manipulator_type: point.manipulator_type,
+							position: new_pos_viewport.into(),
+						}
+						.into();
+						responses.push_back(op);
+					}
+
+					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);
 					tool_data.previous_mouse_position = axis_aligned_position;
 
 					PathToolFsmState::Scaling
@@ -414,10 +418,11 @@ impl Fsm for PathToolFsmState {
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
-				
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);					
-					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);        
-					tool_data.shape_editor.move_selected_points(axis_aligned_position - tool_data.previous_mouse_position, shift_pressed, responses);   
+					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);
+					tool_data
+						.shape_editor
+						.move_selected_points(axis_aligned_position - tool_data.previous_mouse_position, shift_pressed, responses);
 					tool_data.previous_mouse_position = axis_aligned_position;
 					PathToolFsmState::Dragging
 				}
@@ -425,31 +430,27 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::BeginGrab) => {
 					tool_data.previous_mouse_position = input.mouse.position;
 					tool_data.drag_start_pos = input.mouse.position;
-					
-					PathToolFsmState::Dragging
 
+					PathToolFsmState::Dragging
 				}
 				(_, PathToolMessage::BeginRotate) => {
-
-					// TODO: need start pos of mouse to calculate angle 
+					// TODO: need start pos of mouse to calculate angle
 					tool_data.grs_mouse_start = input.mouse.position;
-					
+
 					let path = tool_data.shape_editor.selected_layers_ref();
 					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
-					
-					PathToolFsmState::Rotating
 
+					PathToolFsmState::Rotating
 				}
 				(_, PathToolMessage::BeginScale) => {
+					tool_data.previous_mouse_position = input.mouse.position;
 
-					// TODO: need start pos of mouse to calculate angle 
+					let points: Vec<_> = tool_data.shape_editor.selected_points(&document.document_legacy).map(|point| point.position).collect();
+
+					tool_data.grs_initial_points = points;
 					tool_data.grs_mouse_start = input.mouse.position;
-					
-					let path = tool_data.shape_editor.selected_layers_ref();
-					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
-					
-					PathToolFsmState::Scaling
 
+					PathToolFsmState::Scaling
 				}
 
 				// Mouse up
