@@ -98,7 +98,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::node(0, 0),
+				default: NodeInput::value(TaggedValue::None, true),
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
