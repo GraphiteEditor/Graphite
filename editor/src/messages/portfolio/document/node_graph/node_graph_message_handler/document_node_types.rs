@@ -171,11 +171,117 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::input_properties,
 		},
 		DocumentNodeType {
+			name: "Let",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "SetNode".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(Image))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "LetNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::LetNode<_>")),
+						metadata: Default::default(),
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+
+				..Default::default()
+			}),
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::Raster,
+				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			}],
+			outputs: vec![DocumentOutputType {
+				name: "Ref",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
+		},
+		DocumentNodeType {
+			name: "ExtractImage",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "RefNode".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(generic!(T))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::RefNode<_, _>")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "CloneNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
+						metadata: Default::default(),
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, false),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Ref",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+		},
+		DocumentNodeType {
+			name: "EndLet",
+			category: "Structural",
+			identifier: NodeImplementation::proto("graphene_std::memo::EndLetNode<_>"),
+			inputs: vec![
+				DocumentInputType {
+					name: "Scope",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "Output",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Frame",
+				data_type: FrontendGraphDataType::Raster,
+			}],
+
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+		},
+		DocumentNodeType {
 			name: "Output",
 			category: "Ignore",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType {
-				name: "In",
+				name: "Output",
 				data_type: FrontendGraphDataType::Raster,
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],

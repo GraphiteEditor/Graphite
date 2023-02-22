@@ -83,6 +83,13 @@ pub mod dynamic {
 }*/
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct SomeNode;
+#[node_macro::node_fn(SomeNode)]
+fn some<T>(input: T) -> Option<T> {
+	Some(input)
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CloneNode<O>(PhantomData<O>);
 impl<'i, 'n: 'i, O: Clone + 'i> Node<'i, &'n O> for CloneNode<O> {
 	type Output = O;

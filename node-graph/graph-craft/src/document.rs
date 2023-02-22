@@ -75,7 +75,7 @@ impl DocumentNode {
 		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
 			let (input, mut args) = match first {
 				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0);
+					assert_eq!(self.inputs.len(), 0, "{}, {:?}", &self.name, &self.inputs);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index } => {

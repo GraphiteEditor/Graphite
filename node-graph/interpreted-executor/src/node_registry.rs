@@ -10,14 +10,14 @@ use graphene_core::structural::Then;
 use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 
-use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyNode, IntoTypeErasedNode};
+use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyInRefNode, DynAnyNode, DynAnyRefNode, IntoTypeErasedNode};
 
 use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 
 use graph_craft::proto::NodeConstructor;
 
 use graphene_core::{concrete, generic};
-use graphene_std::memo::CacheNode;
+use graphene_std::memo::{CacheNode, LetNode};
 
 use crate::executor::NodeContainer;
 
@@ -104,6 +104,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
+		register_node!(graphene_core::ops::SomeNode, input: Image, params: []),
 		(
 			NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 			|args| {
@@ -143,6 +144,35 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
+		(
+			NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
+			|args| {
+				let input: DowncastBothNode<(), Image> = DowncastBothNode::new(args[0]);
+				let node = graphene_std::memo::EndLetNode::new(input);
+				let any: DynAnyInRefNode<Image, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+				any.into_type_erased()
+			},
+			NodeIOTypes::new(concrete!(&Image), concrete!(Image), vec![(concrete!(()), concrete!(Image))]),
+		),
+		(
+			NodeIdentifier::new("graphene_std::memo::LetNode<_>"),
+			|_| {
+				let node: LetNode<Image> = graphene_std::memo::LetNode::new();
+				let any = graphene_std::any::DynAnyRefNode::new(node);
+				any.into_type_erased()
+			},
+			NodeIOTypes::new(concrete!(Option<Image>), concrete!(&Image), vec![]),
+		),
+		(
+			NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),
+			|args| {
+				let map_fn: DowncastBothRefNode<Option<Image>, Image> = DowncastBothRefNode::new(args[0]);
+				let node = graphene_std::memo::RefNode::new(map_fn);
+				let any = graphene_std::any::DynAnyRefNode::new(node);
+				any.into_type_erased()
+			},
+			NodeIOTypes::new(concrete!(()), concrete!(&Image), vec![]),
+		),
 		(
 			NodeIdentifier::new("graphene_core::structural::MapImageNode"),
 			|args| {
@@ -229,7 +259,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			NodeIdentifier::new("graphene_std::memo::CacheNode"),
 			|_| {
 				let node: CacheNode<Image> = graphene_std::memo::CacheNode::new();
-				let any = graphene_std::any::DynAnyRefNode::new(node);
+				let any = DynAnyRefNode::new(node);
 				any.into_type_erased()
 			},
 			NodeIOTypes::new(concrete!(Image), concrete!(&Image), vec![]),
