@@ -171,7 +171,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Control, break_handle: Shift }),
+		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
 		entry!(KeyDown(Lmb); action_dispatch=PenToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=PenToolMessage::Confirm),
