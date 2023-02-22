@@ -600,11 +600,9 @@ impl Fsm for PenToolFsmState {
 		let hint_data = match self {
 			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Draw Path")])]),
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Add Handle")]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Anchor")]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")]),
-				HintGroup(vec![HintInfo::keys([Key::Alt], "Break Handle")]),
-				HintGroup(vec![HintInfo::keys([Key::Control], "Lock Angle")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Anchor"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Handle")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
+				HintGroup(vec![HintInfo::keys([Key::Alt], "Break Handle")]), // TODO: Show this only when dragging a handle
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Path")]),
 			]),
 		};
