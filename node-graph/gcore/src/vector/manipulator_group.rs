@@ -146,6 +146,7 @@ impl ManipulatorGroup {
 
 		// If the anchor isn't selected, but both handles are, drag only handles
 		if self.both_handles_selected() {
+			self.editor_state.mirror_angle_between_handles = false;
 			for point in self.selected_handles_mut() {
 				move_point(point, delta);
 			}

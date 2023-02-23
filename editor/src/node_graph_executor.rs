@@ -247,34 +247,39 @@ impl NodeGraphExecutor {
 		if let Some(imaginate_node) = imaginate_node {
 			responses.push_back(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, image_frame, persistent_data)?);
 		} else {
-			let ImageFrame { mut image, transform } = self.execute_network(network, image_frame)?;
+			let ImageFrame { image, transform } = self.execute_network(network, image_frame)?;
 
-			// If no image was generated, use the input image
+			// If no image was generated, clear the frame
 			if image.width == 0 || image.height == 0 {
-				image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
+				responses.push_back(DocumentMessage::FrameClear.into());
+			} else {
+				// Update the image data
+				let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
+
+				responses.push_back(
+					Operation::SetNodeGraphFrameImageData {
+						layer_path: layer_path.clone(),
+						image_data: image_data.clone(),
+					}
+					.into(),
+				);
+				let mime = "image/bmp".to_string();
+				let image_data = std::sync::Arc::new(image_data);
+				let image_data = vec![FrontendImageData {
+					path: layer_path.clone(),
+					image_data,
+					mime,
+				}];
+				responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
 			}
 
-			let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
-
-			responses.push_back(
-				Operation::SetNodeGraphFrameImageData {
-					layer_path: layer_path.clone(),
-					image_data: image_data.clone(),
-				}
-				.into(),
-			);
-			let mime = "image/bmp".to_string();
-			let image_data = std::sync::Arc::new(image_data);
-			let image_data = vec![FrontendImageData {
-				path: layer_path.clone(),
-				image_data,
-				mime,
-			}];
-			responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
-
-			// Update the transform based on the graph output
-			let transform = transform.to_cols_array();
-			responses.push_back(Operation::SetLayerTransform { path: layer_path, transform }.into());
+			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
+			if !transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON) {
+				// Update the transform based on the graph output
+				let transform = transform.to_cols_array();
+				responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
+				responses.push_back(Operation::SetLayerVisibility { path: layer_path, visible: true }.into());
+			}
 		}
 
 		Ok(())

@@ -1,4 +1,7 @@
-use crate::consts::{VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE};
+use crate::consts::{
+	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
+	VIEWPORT_ZOOM_WHEEL_RATE,
+};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup};
 use crate::messages::input_mapper::utility_types::input_mouse::{ViewportBounds, ViewportPosition};
@@ -48,9 +51,9 @@ impl Default for NavigationMessageHandler {
 	}
 }
 
-impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHandler)> for NavigationMessageHandler {
+impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)> for NavigationMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, (document, ipp): (&Document, &InputPreprocessorMessageHandler)) {
+	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, (document, ipp, selection_bounds): (&Document, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)) {
 		use NavigationMessage::*;
 
 		#[remain::sorted]
@@ -90,6 +93,18 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 				responses.push_back(DocumentMessage::DirtyRenderDocumentInOutlineView.into());
 				responses.push_back(PortfolioMessage::UpdateDocumentWidgets.into());
 				self.create_document_transform(&ipp.viewport_bounds, responses);
+			}
+			FitViewportToSelection => {
+				if let Some(bounds) = selection_bounds {
+					responses.push_back(
+						FitViewportToBounds {
+							bounds,
+							padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
+							prevent_zoom_past_100: false,
+						}
+						.into(),
+					)
+				}
 			}
 			IncreaseCanvasZoom { center_on_mouse } => {
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.zoom).unwrap_or(&self.zoom);
@@ -272,6 +287,7 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 			WheelCanvasTranslate,
 			TranslateCanvas,
 			TranslateCanvasByViewportFraction,
+			FitViewportToSelection,
 		);
 
 		if self.panning || self.tilting || self.zooming {

@@ -223,6 +223,12 @@ impl PropertyHolder for MenuBarMessageHandler {
 				"View".into(),
 				MenuBarEntryChildren(vec![vec![
 					MenuBarEntry {
+						label: "Zoom to Selected".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+						..MenuBarEntry::default()
+					},
+					MenuBarEntry {
 						label: "Zoom to Fit".into(),
 						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
 						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),

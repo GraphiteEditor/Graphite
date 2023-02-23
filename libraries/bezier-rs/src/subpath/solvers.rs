@@ -1,5 +1,5 @@
 use super::*;
-use crate::consts::MIN_SEPERATION_VALUE;
+use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::SubpathTValue;
 use crate::TValue;
 
@@ -14,33 +14,22 @@ impl Subpath {
 		self.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(t))
 	}
 
-	/// Calculates the intersection points the subpath has with a given curve and returns a list of parameteric `t`-values.
+	/// Calculates the intersection points the subpath has with a given curve and returns a list of `(usize, f64)` tuples,
+	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
+	/// that curve where the intersection occured.
 	/// This function expects the following:
-	/// - other: a [Bezier] curve to check intersections against
-	/// - error: an optional f64 value to provide an error bound
+	/// - `other`: a [Bezier] curve to check intersections against
+	/// - `error`: an optional f64 value to provide an error bound
+	/// - `minimum_seperation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
-	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
 		// TODO: account for either euclidean or parametric type
-		let number_of_curves = self.len_segments() as f64;
-		let intersection_t_values: Vec<f64> = self
+		let intersection_t_values: Vec<(usize, f64)> = self
 			.iter()
 			.enumerate()
-			.flat_map(|(index, bezier)| {
-				bezier
-					.intersections(other, error, minimum_seperation)
-					.into_iter()
-					.map(|t| ((index as f64) + t) / number_of_curves)
-					.collect::<Vec<f64>>()
-			})
+			.flat_map(|(index, bezier)| bezier.intersections(other, error, minimum_seperation).into_iter().map(|t| (index, t)).collect::<Vec<(usize, f64)>>())
 			.collect();
-
-		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
-				accumulator.pop();
-			}
-			accumulator.push(*t);
-			accumulator
-		});
 
 		intersection_t_values
 	}
@@ -52,11 +41,80 @@ impl Subpath {
 		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
 	}
 
+	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_seperation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+	///
+	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
+	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
+		let mut intersections_vec = Vec::new();
+		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
+		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
+		self.iter().enumerate().for_each(|(i, other)| {
+			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (i, value[0])));
+			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
+				intersections_vec.extend(
+					curve
+						.intersections(&other, error, minimum_seperation)
+						.iter()
+						.filter(|&value| value > &err && (1. - value) > err)
+						.map(|value| (j, *value)),
+				);
+			});
+		});
+		intersections_vec
+	}
+
 	/// Returns a normalized unit vector representing the direction of the normal on the subpath based on the parametric `t`-value provided.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		self.get_segment(segment_index).unwrap().normal(TValue::Parametric(t))
+	}
+
+	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric subpaths respectively.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
+	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
+		let number_of_curves = self.len_segments() as f64;
+
+		// TODO: Consider the shared point between adjacent beziers.
+		self.iter().enumerate().fold([Vec::new(), Vec::new()], |mut acc, elem| {
+			let extremas = elem.1.local_extrema();
+			// Convert t-values of bezier curve to t-values of subpath
+			acc[0].extend(extremas[0].iter().map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			acc[1].extend(extremas[1].iter().map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			acc
+		})
+	}
+
+	/// Return the min and max corners that represent the bounding box of the subpath.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
+	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
+	/// Returns list of `t`-values representing the inflection points of the subpath.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
+	pub fn inflections(&self) -> Vec<f64> {
+		let number_of_curves = self.len_segments() as f64;
+		let inflection_t_values: Vec<f64> = self
+			.iter()
+			.enumerate()
+			.flat_map(|(index, bezier)| {
+				bezier
+					.inflections()
+					.into_iter()
+					// Convert t-values of bezier curve to t-values of subpath
+					.map(move |t| ((index as f64) + t) / number_of_curves)
+			})
+			.collect();
+
+		// TODO: Consider the shared point between adjacent beziers.
+		inflection_t_values
 	}
 }
 
@@ -255,21 +313,30 @@ mod tests {
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[0])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[0].0,
+				t: subpath_intersections[0].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[1])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[1].0,
+				t: subpath_intersections[1].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[2])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[2].0,
+				t: subpath_intersections[2].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
@@ -322,14 +389,20 @@ mod tests {
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[0])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[0].0,
+				t: subpath_intersections[0].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[1])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[1].0,
+				t: subpath_intersections[1].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
@@ -381,21 +454,30 @@ mod tests {
 
 		assert!(utils::dvec2_compare(
 			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[0])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[0].0,
+				t: subpath_intersections[0].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[1])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[1].0,
+				t: subpath_intersections[1].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
 
 		assert!(utils::dvec2_compare(
 			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(SubpathTValue::GlobalParametric(subpath_intersections[2])),
+			subpath.evaluate(SubpathTValue::Parametric {
+				segment_index: subpath_intersections[2].0,
+				t: subpath_intersections[2].1
+			}),
 			MAX_ABSOLUTE_DIFFERENCE
 		)
 		.all());
