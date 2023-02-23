@@ -83,7 +83,7 @@ impl NodeGraphExecutor {
 				// If the input is just a value, return that value
 				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
-				NodeInput::Node { node_id, output_index } => {
+				NodeInput::Node { node_id, output_index, .. } => {
 					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
 					break 'outer;
 				}

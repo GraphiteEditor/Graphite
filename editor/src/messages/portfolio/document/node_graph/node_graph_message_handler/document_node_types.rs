@@ -174,8 +174,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Let",
 			category: "Structural",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![0, 2],
+				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(3, 0)],
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
@@ -189,41 +189,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::LetNode<_>")),
 						metadata: Default::default(),
 					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-
-				..Default::default()
-			}),
-			inputs: vec![DocumentInputType {
-				name: "In",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			}],
-			outputs: vec![DocumentOutputType {
-				name: "Ref",
-				data_type: FrontendGraphDataType::General,
-			}],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
-		},
-		DocumentNodeType {
-			name: "ExtractImage",
-			category: "Structural",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 0],
-				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: [
 					DocumentNode {
 						name: "RefNode".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(generic!(T))],
+						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::lambda(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::RefNode<_, _>")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "CloneNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(2, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
 						metadata: Default::default(),
 					},
@@ -238,20 +212,26 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType {
 					name: "In",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::value(TaggedValue::None, false),
-				},
-				DocumentInputType {
-					name: "In",
 					data_type: FrontendGraphDataType::Raster,
 					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, false),
+				},
 			],
-			outputs: vec![DocumentOutputType {
-				name: "Ref",
-				data_type: FrontendGraphDataType::General,
-			}],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			outputs: vec![
+				DocumentOutputType {
+					name: "Scope",
+					data_type: FrontendGraphDataType::General,
+				},
+				DocumentOutputType {
+					name: "Binding",
+					data_type: FrontendGraphDataType::Raster,
+				},
+			],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
 		},
 		DocumentNodeType {
 			name: "EndLet",
@@ -264,7 +244,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					default: NodeInput::value(TaggedValue::None, true),
 				},
 				DocumentInputType {
-					name: "Output",
+					name: "Data",
 					data_type: FrontendGraphDataType::Raster,
 					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				},

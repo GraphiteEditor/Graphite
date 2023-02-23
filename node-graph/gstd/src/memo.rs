@@ -34,7 +34,7 @@ impl<'i, T: 'i> Node<'i, Option<T>> for LetNode<T> {
 	fn eval<'s: 'i>(&'s self, input: Option<T>) -> Self::Output {
 		match input {
 			Some(input) => {
-				self.cache.set(input).map_err(|_| panic!("Let node was set twice but is not mutable")).unwrap();
+				self.cache.set(input).unwrap_or_else(|_| error!("Let node was set twice but is not mutable"));
 				self.cache.get().unwrap()
 			}
 			None => self.cache.get().expect("Let node was not initialized"),
