@@ -397,6 +397,30 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		Subpath::new(manipulator_groups, self.closed)
 	}
+
+	/// Outline returns a single closed subpath (if the original subpath was open) or two closed subpaths (if the original subpath was closed) that forms
+	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
+	/// - `distance` - The outline's distance from the curve.
+	/// - `joint` - The joint type used to cap the endpoints of open bezier curves, and join successive subpath segments.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
+	pub fn outline(&self, distance: f64, joint: Joint) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+		let mut pos_offset = self.offset(distance, joint);
+		let mut neg_offset = self.reverse().offset(distance, joint);
+
+		if self.closed {
+			return (pos_offset, Some(neg_offset));
+		}
+
+		match joint {
+			Joint::Mitre => todo!(),
+			Joint::Rounded => todo!(),
+			Joint::Blunt => {
+				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
+				pos_offset.closed = true;
+				(pos_offset, None)
+			}
+		}
+	}
 }
 
 #[cfg(test)]

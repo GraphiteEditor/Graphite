@@ -127,6 +127,19 @@ const subpathFeatures = {
 			},
 		],
 	},
+	outline: {
+		name: "Outline",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance),
+		sliderOptions: [
+			{
+				variable: "distance",
+				min: 0,
+				max: 25,
+				step: 1,
+				default: 10,
+			},
+		],
+	},
 };
 
 export type SubpathFeatureKey = keyof typeof subpathFeatures;

@@ -385,4 +385,20 @@ impl WasmSubpath {
 
 		wrap_svg_tag(format!("{}{offset_svg}", self.to_default_svg()))
 	}
+
+	pub fn outline(&self, distance: f64) -> String {
+		let (outline_piece1, outline_piece2) = self.0.outline(distance, bezier_rs::Joint::Blunt);
+
+		let mut outline_piece1_svg = String::new();
+		outline_piece1.to_svg(&mut outline_piece1_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+
+		let mut outline_piece2_svg = String::new();
+		if outline_piece2.is_some() {
+			outline_piece2
+				.unwrap()
+				.to_svg(&mut outline_piece2_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+		}
+
+		wrap_svg_tag(format!("{}{outline_piece1_svg}{outline_piece2_svg}", self.to_default_svg()))
+	}
 }

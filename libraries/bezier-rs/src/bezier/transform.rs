@@ -385,7 +385,6 @@ impl Bezier {
 	/// Outline will return a vector of Beziers that creates an outline around the curve at the designated distance away from the curve.
 	/// It makes use of the `offset` function, thus restrictions applicable to `offset` are relevant to this function as well.
 	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
-	///
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
