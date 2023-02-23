@@ -84,7 +84,7 @@ pub mod dynamic {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CloneNode<O>(PhantomData<O>);
-impl<'i, O: Clone + 'i> Node<'i, &'i O> for CloneNode<O> {
+impl<'i, 'n: 'i, O: Clone + 'i> Node<'i, &'n O> for CloneNode<O> {
 	type Output = O;
 	fn eval<'s: 'i>(&'s self, input: &'i O) -> Self::Output {
 		input.clone()
@@ -275,7 +275,6 @@ mod test {
 	pub fn map_result() {
 		let value: ClonedNode<Result<&u32, ()>> = ClonedNode(Ok(&4u32));
 		assert_eq!(value.eval(()), Ok(&4u32));
-		static clone: &CloneNode<u32> = &CloneNode::new();
 		//let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
 		let map_result = MapResultNode::new(ValueNode::new(FnNode::new(|x: &u32| x.clone())));
 		//et type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;

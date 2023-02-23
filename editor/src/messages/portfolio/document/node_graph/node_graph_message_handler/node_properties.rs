@@ -6,8 +6,9 @@ use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::Operation;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
+use graphene_core::raster::{Color, LuminanceCalculation};
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -147,6 +148,47 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
+// TODO: Generalize this for all dropdowns
+fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::LuminanceCalculation(calculation),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let calculation_modes = LuminanceCalculation::list();
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index)));
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			DropdownInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
+}
+
+fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::Color(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			color_props
+				.value(Some(x as Color))
+				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+				.widget_holder(),
+		])
+	}
+	LayoutGroup::Row { widgets }
+}
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
@@ -155,6 +197,51 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _contex
 		.on_update(|_| DocumentMessage::NodeGraphFrameGenerate.into())
 		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
+}
+
+pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+
+	vec![
+		LayoutGroup::Row { widgets: input_shadows },
+		LayoutGroup::Row { widgets: input_midtones },
+		LayoutGroup::Row { widgets: input_highlights },
+		LayoutGroup::Row { widgets: output_minimums },
+		LayoutGroup::Row { widgets: output_maximums },
+	]
+}
+
+pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	const MIN: f64 = -200.;
+	const MAX: f64 = 300.;
+	// TODO: Add tint color (blended above using the "Color" blend mode)
+	let tint = color_widget(document_node, node_id, 1, "Tint", ColorInput::default(), true);
+	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+
+	vec![
+		tint,
+		LayoutGroup::Row { widgets: r_weight },
+		LayoutGroup::Row { widgets: y_weight },
+		LayoutGroup::Row { widgets: g_weight },
+		LayoutGroup::Row { widgets: c_weight },
+		LayoutGroup::Row { widgets: b_weight },
+		LayoutGroup::Row { widgets: m_weight },
+	]
+}
+
+pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+
+	vec![luma_calculation]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -184,9 +271,10 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let thereshold = number_widget(document_node, node_id, 1, "Threshold", NumberInput::default().min(0.).max(1.), true);
+	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+	let thereshold = number_widget(document_node, node_id, 2, "Threshold", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
-	vec![LayoutGroup::Row { widgets: thereshold }]
+	vec![luma_calculation, LayoutGroup::Row { widgets: thereshold }]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -203,7 +291,7 @@ pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(1.), true);
+	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
@@ -335,10 +423,10 @@ pub fn _transform_properties(document_node: &DocumentNode, node_id: NodeId, _con
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
-	let imaginate_node_1 = imaginate_node.clone();
 	let layer_path = context.layer_path.to_vec();
 
 	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let transform_index = resolve_input("Transform");
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -406,6 +494,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	} else {
 		true
 	};
+
+	let transform_not_connected = matches!(document_node.inputs[transform_index], NodeInput::Value { .. });
+
 	let progress = {
 		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
 		let mut interpreted_status = imaginate_status;
@@ -455,12 +546,15 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				widgets.push(
 					TextButton::new("Terminate")
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
-						.on_update(move |_| {
-							DocumentMessage::NodeGraphFrameImaginateTerminate {
-								layer_path: layer_path.clone(),
-								node_path: imaginate_node.clone(),
+						.on_update({
+							let imaginate_node = imaginate_node.clone();
+							move |_| {
+								DocumentMessage::NodeGraphFrameImaginateTerminate {
+									layer_path: layer_path.clone(),
+									node_path: imaginate_node.clone(),
+								}
+								.into()
 							}
-							.into()
 						})
 						.widget_holder(),
 				);
@@ -477,21 +571,28 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
 				IconButton::new("Random", 24)
 					.tooltip("Generate with a new random seed")
-					.on_update(move |_| {
-						DocumentMessage::NodeGraphFrameImaginateRandom {
-							imaginate_node: imaginate_node.clone(),
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginateRandom {
+								imaginate_node: imaginate_node.clone(),
+								then_generate: true,
+							}
+							.into()
 						}
-						.into()
 					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
-					.on_update(move |_| {
-						DocumentMessage::NodeGraphFrameImaginate {
-							imaginate_node: imaginate_node_1.clone(),
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginate {
+								imaginate_node: imaginate_node.clone(),
+							}
+							.into()
 						}
-						.into()
 					})
 					.widget_holder(),
 				WidgetHolder::related_separator(),
@@ -518,7 +619,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Regenerate", 24)
 					.tooltip("Set a new random seed")
-					.on_update(update_value(move |_| TaggedValue::F64((generate_uuid() >> 1) as f64), node_id, seed_index))
+					.on_update({
+						let imaginate_node = imaginate_node.clone();
+						move |_| {
+							DocumentMessage::NodeGraphFrameImaginateRandom {
+								imaginate_node: imaginate_node.clone(),
+								then_generate: false,
+							}
+							.into()
+						}
+					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(seed))
@@ -531,6 +641,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		// Note: Limited by f64. You cannot even have all the possible u64 values :)
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
+
+	// Get the existing layer transform
+	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
+	// Create the input to the graph using an empty image
+	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
+		image: graphene_core::raster::Image::empty(),
+		transform,
+	});
+	// Compute the transform input to the node graph frame
+	let transform: glam::DAffine2 = context.executor.compute_input(context.network, &imaginate_node, 1, image_frame).unwrap_or_default();
 
 	let resolution = {
 		use document_legacy::document::pick_safe_imaginate_resolution;
@@ -549,7 +669,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		{
 			let dimensions_is_auto = vec2.is_none();
 			let vec2 = vec2.unwrap_or_else(|| {
-				let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 				let w = transform.transform_vector2(DVec2::new(1., 0.)).length();
 				let h = transform.transform_vector2(DVec2::new(0., 1.)).length();
 
@@ -572,9 +691,21 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					})
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
-				CheckboxInput::new(!dimensions_is_auto)
+				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit")
-					.tooltip("Set a custom resolution instead of using the frame's rounded dimensions")
+					.tooltip({
+						let message = "Set a custom resolution instead of using the frame's rounded dimensions";
+						let manual_message = "Set a custom resolution instead of using the frame's rounded dimensions.\n\
+							\n\
+							(Resolution must be set manually while the 'Transform' input is disconnected.)";
+
+						if transform_not_connected {
+							manual_message
+						} else {
+							message
+						}
+					})
+					.disabled(transform_not_connected)
 					.on_update(update_value(
 						move |checkbox_input: &CheckboxInput| {
 							if checkbox_input.checked {
@@ -591,7 +722,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				NumberInput::new(Some(vec2.x))
 					.label("W")
 					.unit(" px")
-					.disabled(dimensions_is_auto)
+					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
 						node_id,
@@ -602,7 +733,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				NumberInput::new(Some(vec2.y))
 					.label("H")
 					.unit(" px")
-					.disabled(dimensions_is_auto)
+					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
 						node_id,
@@ -706,18 +837,22 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
 			let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
 
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
-					.disabled(!use_base_image)
-					.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
-					.widget_holder(),
-			]);
+			widgets.push(WidgetHolder::unrelated_separator());
+			if !transform_not_connected {
+				widgets.push(
+					LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
+						.disabled(!use_base_image)
+						.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
+						.widget_holder(),
+				);
+			} else {
+				widgets.push(TextLabel::new("Requires Transform Input").italic(true).widget_holder());
+			}
 		}
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Reference to a layer or folder which masks parts of the input image. Image generation is constrained to masked areas.\n\
 			\n\
-			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale.",
+			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale. (This is the reverse of traditional masks because it is easier to draw black shapes; this will be changed later when the mask input is a bitmap.)",
 		)
 	};
 

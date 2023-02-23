@@ -21,6 +21,7 @@ use crate::messages::portfolio::document::utility_types::vectorize_layer_metadat
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::document::Document as DocumentLegacy;
@@ -104,13 +105,13 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler)> for DocumentMessageHandler {
+impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor)> for DocumentMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: DocumentMessage,
 		responses: &mut VecDeque<Message>,
-		(document_id, ipp, persistent_data, preferences): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler),
+		(document_id, ipp, persistent_data, preferences, executor): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor),
 	) {
 		use DocumentMessage::*;
 
@@ -185,7 +186,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				self.navigation_handler.process_message(message, responses, (&self.document_legacy, ipp));
+				self.navigation_handler
+					.process_message(message, responses, (&self.document_legacy, ipp, self.selected_visible_layers_bounding_box(&render_data)));
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
@@ -203,6 +205,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					artboard_document: &self.artboard_message_handler.artboards_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
 					node_graph_message_handler: &self.node_graph_handler,
+					executor,
 				};
 				self.properties_panel_message_handler
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
@@ -527,18 +530,22 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameImaginateRandom { imaginate_node } => {
+			NodeGraphFrameImaginateRandom { imaginate_node, then_generate } => {
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
 						node_id: *imaginate_node.last().unwrap(),
-						input_index: 1,
+						// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
+						input_index: 2,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
 					.into(),
 				);
+
 				// Generate the image
-				responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+				if then_generate {
+					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+				}
 			}
 			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
 				responses.push_back(
@@ -599,8 +606,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
 				let path = vec![generate_uuid()];
-				let image_node_id = 2;
-				let mut network = graph_craft::document::NodeNetwork::new_network(32, image_node_id);
+				let image_node_id = 100;
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
 
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
 					warn!("Image node should be in registry");
@@ -609,12 +616,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				network.nodes.insert(
 					image_node_id,
-					graph_craft::document::DocumentNode {
-						name: image_node_type.name.to_string(),
-						inputs: vec![graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
-						implementation: image_node_type.generate_implementation(),
-						metadata: graph_craft::document::DocumentNodeMetadata { position: (20, 4).into() },
-					},
+					image_node_type.to_document_node(
+						[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
+						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
+					),
 				);
 
 				responses.push_back(

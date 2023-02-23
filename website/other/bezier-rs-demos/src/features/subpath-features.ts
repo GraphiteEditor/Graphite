@@ -1,74 +1,118 @@
-import { tSliderOptions } from "@/utils/options";
-import { ComputeType, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
+import { tSliderOptions, intersectionErrorOptions, minimumSeparationOptions } from "@/utils/options";
+import { TVariant, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
 
 const subpathFeatures = {
-	Constructor: {
+	constructor: {
+		name: "Constructor",
 		callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
 	},
-	Insert: {
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseComputeType: true,
+	insert: {
+		name: "Insert",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.insert(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
-	Length: {
+	length: {
+		name: "Length",
 		callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 	},
-	Evaluate: {
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-		chooseComputeType: true,
+	evaluate: {
+		name: "Evaluate",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.evaluate(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
-	Project: {
+	project: {
+		name: "Project",
 		callback: (subpath: WasmSubpathInstance, _: Record<string, number>, mouseLocation?: [number, number]): string =>
 			mouseLocation ? subpath.project(mouseLocation[0], mouseLocation[1]) : subpath.to_svg(),
 		triggerOnMouseMove: true,
 	},
-	Tangent: {
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.tangent(options.t),
+	tangent: {
+		name: "Tangent",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.tangent(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
-	Normal: {
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
+	normal: {
+		name: "Normal",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.normal(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
-	"Intersect (Line Segment)": {
-		callback: (subpath: WasmSubpathInstance): string =>
-			subpath.intersect_line_segment([
-				[150, 150],
-				[20, 20],
-			]),
+	"local-extrema": {
+		name: "Local Extrema",
+		callback: (subpath: WasmSubpathInstance): string => subpath.local_extrema(),
 	},
-	"Intersect (Quadratic segment)": {
-		callback: (subpath: WasmSubpathInstance): string =>
-			subpath.intersect_quadratic_segment([
-				[20, 80],
-				[180, 10],
-				[90, 120],
-			]),
+	"bounding-box": {
+		name: "Bounding Box",
+		callback: (subpath: WasmSubpathInstance): string => subpath.bounding_box(),
 	},
-	"Intersect (Cubic segment)": {
-		callback: (subpath: WasmSubpathInstance): string =>
-			subpath.intersect_cubic_segment([
-				[40, 20],
-				[100, 40],
-				[40, 120],
-				[175, 140],
-			]),
+	inflections: {
+		name: "Inflections",
+		callback: (subpath: WasmSubpathInstance): string => subpath.inflections(),
 	},
-	Split: {
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.split(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseComputeType: true,
+	"intersect-linear": {
+		name: "Intersect (Line Segment)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_line_segment(
+				[
+					[150, 150],
+					[20, 20],
+				],
+				options.error,
+				options.minimum_seperation
+			),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	"intersect-quadratic": {
+		name: "Intersect (Quadratic Segment)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_quadratic_segment(
+				[
+					[20, 80],
+					[180, 10],
+					[90, 120],
+				],
+				options.error,
+				options.minimum_seperation
+			),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	"intersect-cubic": {
+		name: "Intersect (Cubic Segment)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_cubic_segment(
+				[
+					[40, 20],
+					[100, 40],
+					[40, 120],
+					[175, 140],
+				],
+				options.error,
+				options.minimum_seperation
+			),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	"self-intersect": {
+		name: "Self Intersect",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_seperation),
+		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	split: {
+		name: "Split",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.split(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 };
 
-export type SubpathFeatureName = keyof typeof subpathFeatures;
+export type SubpathFeatureKey = keyof typeof subpathFeatures;
 export type SubpathFeatureOptions = {
+	name: string;
 	callback: SubpathCallback;
 	sliderOptions?: SliderOption[];
 	triggerOnMouseMove?: boolean;
-	chooseComputeType?: boolean;
+	chooseTVariant?: boolean;
 };
-export default subpathFeatures as Record<SubpathFeatureName, SubpathFeatureOptions>;
+export default subpathFeatures as Record<SubpathFeatureKey, SubpathFeatureOptions>;

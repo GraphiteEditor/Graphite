@@ -1,6 +1,6 @@
 use crate::messages::prelude::*;
 
-use bezier_rs::ComputeType;
+use bezier_rs::TValue;
 use document_legacy::{LayerId, Operation};
 use graphene_std::vector::consts::ManipulatorType;
 use graphene_std::vector::manipulator_group::ManipulatorGroup;
@@ -103,6 +103,7 @@ impl ShapeEditor {
 					manipulator_group_id,
 					manipulator_type: ManipulatorType::from_index(manipulator_point_index),
 				};
+
 				points.push(point_info);
 				responses.push_back(
 					Operation::SelectManipulatorPoints {
@@ -187,6 +188,11 @@ impl ShapeEditor {
 		self.iter(document).flat_map(|shape| shape.manipulator_groups().iter())
 	}
 
+	// Sets the selected points to all points for the corresponding intersection
+	pub fn select_all_anchors(&self, responses: &mut VecDeque<Message>, itersections: Vec<u64>) {
+		responses.push_back(Operation::SelectAllAnchors { layer_path: itersections }.into());
+	}
+
 	/// Provide the currently selected points by reference.
 	pub fn selected_points<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorPoint> {
 		self.selected_manipulator_groups(document).flat_map(|manipulator_group| manipulator_group.selected_points())
@@ -204,6 +210,114 @@ impl ShapeEditor {
 				.into(),
 			);
 		}
+	}
+
+	/// The opposing handle lengths.
+	pub fn opposing_handle_lengths(&self, document: &Document) -> HashMap<Vec<LayerId>, HashMap<u64, f64>> {
+		self.selected_layers()
+			.iter()
+			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
+			.filter_map(|(path, shape)| shape.as_subpath().map(|subpath| (path, subpath)))
+			.map(|(path, shape)| {
+				let opposing_handle_lengths = shape
+					.manipulator_groups()
+					.enumerate()
+					.filter_map(|(id, manipulator_group)| {
+						// We will keep track of the opposing handle length when:
+						// i) Both handles exist and exactly one is selected.
+						// ii) The anchor is not selected.
+						// iii) We have to mirror the angle between handles.
+
+						if !manipulator_group.editor_state.mirror_angle_between_handles {
+							return None;
+						}
+
+						let mut selected_handles = manipulator_group.selected_handles();
+						let handle = selected_handles.next()?;
+
+						// Check that handle is the only selected handle.
+						if selected_handles.next().is_none() {
+							let opposing_handle_position = manipulator_group.opposing_handle(handle)?.position;
+							let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
+							if !anchor.is_selected() {
+								let opposing_handle_length = opposing_handle_position.distance(anchor.position);
+								Some((*id, opposing_handle_length))
+							} else {
+								None
+							}
+						} else {
+							None
+						}
+					})
+					.collect::<HashMap<_, _>>();
+				(path.clone(), opposing_handle_lengths)
+			})
+			.collect::<HashMap<_, _>>()
+	}
+
+	/// Reset the opposing handle lengths.
+	pub fn reset_opposing_handle_lengths(&self, document: &Document, opposing_handle_lengths: &HashMap<Vec<LayerId>, HashMap<u64, f64>>, responses: &mut VecDeque<Message>) {
+		self.selected_layers()
+			.iter()
+			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
+			.filter_map(|(path, shape)| shape.as_subpath().map(|subpath| (path, subpath)))
+			.filter_map(|(path, shape)| opposing_handle_lengths.get(path).map(|layer_opposing_handle_lengths| (path, shape, layer_opposing_handle_lengths)))
+			.flat_map(|(path, shape, layer_opposing_handle_lengths)| {
+				shape
+					.manipulator_groups()
+					.enumerate()
+					.map(move |(id, manipulator_group)| (path, layer_opposing_handle_lengths, id, manipulator_group))
+			})
+			.for_each(|(path, layer_opposing_handle_lengths, id, manipulator_group)| {
+				if !manipulator_group.editor_state.mirror_angle_between_handles {
+					return;
+				}
+
+				let opposing_handle_length = if let Some(length) = layer_opposing_handle_lengths.get(id) {
+					length
+				} else {
+					return;
+				};
+
+				let mut selected_handles = manipulator_group.selected_handles();
+				let handle = if let Some(handle) = selected_handles.next() {
+					handle
+				} else {
+					return;
+				};
+
+				// Check that handle is the only selected handle.
+				if selected_handles.next().is_none() {
+					let opposing_handle = if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
+						opposing_handle
+					} else {
+						return;
+					};
+
+					let anchor = if let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() {
+						anchor
+					} else {
+						return;
+					};
+					if anchor.is_selected() {
+						return;
+					}
+
+					if let Some(offset) = (opposing_handle.position - anchor.position).try_normalize() {
+						let new_opposing_handle_position = anchor.position + offset * (*opposing_handle_length);
+						assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
+						responses.push_back(
+							Operation::MoveManipulatorPoint {
+								layer_path: path.clone(),
+								id: *id,
+								manipulator_type: opposing_handle.manipulator_type,
+								position: new_opposing_handle_position.into(),
+							}
+							.into(),
+						);
+					}
+				}
+			});
 	}
 
 	/// Dissolve the selected points.
@@ -296,7 +410,7 @@ impl ShapeEditor {
 		for bezier_id in document.layer(layer_path).ok()?.as_subpath()?.bezier_iter() {
 			let bezier = bezier_id.internal;
 			let t = bezier.project(layer_pos, projection_options);
-			let layerspace = bezier.evaluate(ComputeType::Parametric(t));
+			let layerspace = bezier.evaluate(TValue::Parametric(t));
 
 			let screenspace = transform.transform_point2(layerspace);
 			let distance_squared = screenspace.distance_squared(position);
@@ -314,7 +428,7 @@ impl ShapeEditor {
 	pub fn split(&self, document: &Document, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
 		for layer_path in &self.selected_layers {
 			if let Some((bezier_id, t)) = self.closest_segment(document, layer_path, position, tolerance) {
-				let [first, second] = bezier_id.internal.split(t);
+				let [first, second] = bezier_id.internal.split(TValue::Parametric(t));
 
 				// Adjust the first manipulator group's out handle
 				let out_handle = Operation::SetManipulatorPoints {

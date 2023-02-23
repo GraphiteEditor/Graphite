@@ -1,6 +1,6 @@
-import { BezierFeatureName } from "@/features/bezier-features";
+import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
 import { renderDemoPane } from "@/utils/render";
-import { BezierCurveType, BEZIER_CURVE_TYPE, ComputeType, BezierDemoOptions, SliderOption, Demo, DemoPane, BezierDemoArgs } from "@/utils/types";
+import { BezierCurveType, BEZIER_CURVE_TYPE, TVariant, BezierDemoOptions, SliderOption, Demo, DemoPane, BezierDemoArgs } from "@/utils/types";
 
 const demoDefaults = {
 	Linear: {
@@ -28,29 +28,31 @@ const demoDefaults = {
 
 class BezierDemoPane extends HTMLElement implements DemoPane {
 	// Props
-	name!: BezierFeatureName;
+	key!: BezierFeatureKey;
+
+	name!: string;
 
 	demoOptions!: BezierDemoOptions;
 
 	triggerOnMouseMove!: boolean;
 
-	chooseComputeType!: boolean;
+	chooseTVariant!: boolean;
 
 	// Data
 	demos!: BezierDemoArgs[];
 
 	id!: string;
 
-	computeType!: ComputeType;
+	tVariant!: TVariant;
 
 	connectedCallback(): void {
-		this.id = `${Math.random()}`.substring(2);
-		this.computeType = "Parametric";
-
-		this.name = (this.getAttribute("name") || "") as BezierFeatureName;
+		this.tVariant = "Parametric";
+		this.key = (this.getAttribute("name") || "") as BezierFeatureKey;
+		this.id = `bezier/${this.key}`;
+		this.name = bezierFeatures[this.key].name;
 		this.demoOptions = JSON.parse(this.getAttribute("demoOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
-		this.chooseComputeType = this.getAttribute("chooseComputeType") === "true";
+		this.chooseTVariant = this.getAttribute("chooseTVariant") === "true";
 		// Use quadratic slider options as a default if sliders are not provided for the other curve types.
 		const defaultSliderOptions: SliderOption[] = this.demoOptions.Quadratic?.sliderOptions || [];
 		this.demos = BEZIER_CURVE_TYPE.map((curveType: BezierCurveType) => {
@@ -74,10 +76,10 @@ class BezierDemoPane extends HTMLElement implements DemoPane {
 		const bezierDemo = document.createElement("bezier-demo");
 		bezierDemo.setAttribute("title", demo.title);
 		bezierDemo.setAttribute("points", JSON.stringify(demo.points));
-		bezierDemo.setAttribute("name", this.name);
+		bezierDemo.setAttribute("key", this.key);
 		bezierDemo.setAttribute("sliderOptions", JSON.stringify(demo.sliderOptions));
 		bezierDemo.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
-		bezierDemo.setAttribute("computetype", this.computeType);
+		bezierDemo.setAttribute("tvariant", this.tVariant);
 		return bezierDemo;
 	}
 }

@@ -1,8 +1,9 @@
 pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
-pub use glam::DVec2;
-use graphene_core::Node;
+pub use glam::{DAffine2, DVec2};
+use graphene_core::raster::LuminanceCalculation;
+use graphene_core::{Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -21,11 +22,14 @@ pub enum TaggedValue {
 	Bool(bool),
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
+	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image),
 	RcImage(Option<Arc<graphene_core::raster::Image>>),
+	ImageFrame(graphene_core::raster::ImageFrame),
 	Color(graphene_core::raster::color::Color),
 	Subpath(graphene_core::vector::subpath::Subpath),
 	RcSubpath(Arc<graphene_core::vector::subpath::Subpath>),
+	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateStatus(ImaginateStatus),
@@ -66,41 +70,54 @@ impl Hash for TaggedValue {
 				8.hash(state);
 				Self::DVec2(*v).hash(state)
 			}
-			Self::Image(i) => {
+			Self::DAffine2(m) => {
 				9.hash(state);
-				i.hash(state)
+				m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
-			Self::RcImage(i) => {
+			Self::Image(i) => {
 				10.hash(state);
 				i.hash(state)
 			}
-			Self::Color(c) => {
+			Self::RcImage(i) => {
 				11.hash(state);
+				i.hash(state)
+			}
+			Self::Color(c) => {
+				12.hash(state);
 				c.hash(state)
 			}
 			Self::Subpath(s) => {
-				12.hash(state);
-				s.hash(state)
-			}
-			Self::RcSubpath(s) => {
 				13.hash(state);
 				s.hash(state)
 			}
-			Self::ImaginateSamplingMethod(m) => {
+			Self::RcSubpath(s) => {
 				14.hash(state);
+				s.hash(state)
+			}
+			Self::LuminanceCalculation(l) => {
+				15.hash(state);
+				l.hash(state)
+			}
+			Self::ImaginateSamplingMethod(m) => {
+				16.hash(state);
 				m.hash(state)
 			}
 			Self::ImaginateMaskStartingFill(f) => {
-				15.hash(state);
+				17.hash(state);
 				f.hash(state)
 			}
 			Self::ImaginateStatus(s) => {
-				16.hash(state);
+				18.hash(state);
 				s.hash(state)
 			}
 			Self::LayerPath(p) => {
-				17.hash(state);
+				19.hash(state);
 				p.hash(state)
+			}
+			Self::ImageFrame(i) => {
+				20.hash(state);
+				i.image.hash(state);
+				i.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
 		}
 	}
@@ -118,15 +135,45 @@ impl<'a> TaggedValue {
 			TaggedValue::Bool(x) => Box::new(x),
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
+			TaggedValue::DAffine2(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::RcImage(x) => Box::new(x),
+			TaggedValue::ImageFrame(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
 			TaggedValue::Subpath(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
+			TaggedValue::LuminanceCalculation(x) => Box::new(x),
 			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
 			TaggedValue::ImaginateStatus(x) => Box::new(x),
 			TaggedValue::LayerPath(x) => Box::new(x),
+		}
+	}
+
+	pub fn ty(&self) -> Type {
+		use graphene_core::TypeDescriptor;
+		use std::borrow::Cow;
+		match self {
+			TaggedValue::None => concrete!(()),
+			TaggedValue::String(_) => concrete!(String),
+			TaggedValue::U32(_) => concrete!(u32),
+			TaggedValue::F32(_) => concrete!(f32),
+			TaggedValue::F64(_) => concrete!(f64),
+			TaggedValue::Bool(_) => concrete!(bool),
+			TaggedValue::DVec2(_) => concrete!(DVec2),
+			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
+			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image),
+			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
+			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame),
+			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
+			TaggedValue::Subpath(_) => concrete!(graphene_core::vector::subpath::Subpath),
+			TaggedValue::RcSubpath(_) => concrete!(Arc<graphene_core::vector::subpath::Subpath>),
+			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
+			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
+			TaggedValue::ImaginateStatus(_) => concrete!(ImaginateStatus),
+			TaggedValue::LayerPath(_) => concrete!(Option<Vec<u64>>),
+			TaggedValue::DAffine2(_) => concrete!(DAffine2),
+			TaggedValue::LuminanceCalculation(_) => concrete!(LuminanceCalculation),
 		}
 	}
 }

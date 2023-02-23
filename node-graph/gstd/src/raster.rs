@@ -1,5 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 
+use glam::DAffine2;
 use graphene_core::raster::{Color, Image};
 use graphene_core::Node;
 
@@ -117,6 +118,14 @@ fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::
 	cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ImageFrameNode<Transform> {
+	transform: Transform,
+}
+#[node_macro::node_fn(ImageFrameNode)]
+fn image_frame(image: Image, transform: DAffine2) -> graphene_core::raster::ImageFrame {
+	graphene_core::raster::ImageFrame { image, transform }
+}
 #[cfg(test)]
 mod test {
 

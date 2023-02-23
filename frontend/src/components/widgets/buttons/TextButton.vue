@@ -63,6 +63,10 @@
 		position: relative;
 		left: -4px;
 	}
+
+	.text-label {
+		overflow: hidden;
+	}
 }
 </style>
 

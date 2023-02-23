@@ -1,4 +1,4 @@
-import { ComputeType, Demo, DemoPane, SliderOption } from "@/utils/types";
+import { TVariant, Demo, DemoPane, SliderOption } from "@/utils/types";
 
 export function renderDemo(demo: Demo): void {
 	const header = document.createElement("h4");
@@ -42,31 +42,40 @@ export function renderDemoPane(demoPane: DemoPane): void {
 	const container = document.createElement("div");
 	container.className = "demo-pane-container";
 
-	const header = document.createElement("h3");
-	header.innerText = demoPane.name;
-	header.className = "demo-pane-header";
+	const headerAnchorLink = document.createElement("a");
+	headerAnchorLink.innerText = "#";
+	const currentHash = window.location.hash.split("/");
+	// Add header and href anchor if not on a solo example page
+	if (currentHash.length !== 3 && currentHash[2] !== "solo") {
+		headerAnchorLink.href = `#${demoPane.id}`;
+		const header = document.createElement("h3");
+		header.innerText = demoPane.name;
+		header.className = "demo-pane-header";
+		header.append(headerAnchorLink);
+		container.append(header);
+	}
 
-	const computeTypeContainer = document.createElement("div");
-	computeTypeContainer.className = "compute-type-choice";
+	const tVariantContainer = document.createElement("div");
+	tVariantContainer.className = "t-variant-choice";
 
-	const computeTypeLabel = document.createElement("strong");
-	computeTypeLabel.innerText = "ComputeType:";
-	computeTypeContainer.append(computeTypeLabel);
+	const tVariantLabel = document.createElement("strong");
+	tVariantLabel.innerText = "TValue Variant:";
+	tVariantContainer.append(tVariantLabel);
 
-	const radioInputs = ["Parametric", "Euclidean"].map((computeType) => {
-		const id = `${demoPane.id}-${computeType}`;
+	const radioInputs = ["Parametric", "Euclidean"].map((tVariant) => {
+		const id = `${demoPane.id}-${tVariant}`;
 		const radioInput = document.createElement("input");
 		radioInput.type = "radio";
 		radioInput.id = id;
-		radioInput.value = computeType;
-		radioInput.name = "ComputeType";
-		radioInput.checked = computeType === "Parametric";
-		computeTypeContainer.append(radioInput);
+		radioInput.value = tVariant;
+		radioInput.name = `TVariant - ${demoPane.id}`;
+		radioInput.checked = tVariant === "Parametric";
+		tVariantContainer.append(radioInput);
 
 		const label = document.createElement("label");
 		label.htmlFor = id;
-		label.innerText = computeType;
-		computeTypeContainer.append(label);
+		label.innerText = tVariant;
+		tVariantContainer.append(label);
 		return radioInput;
 	});
 
@@ -81,18 +90,18 @@ export function renderDemoPane(demoPane: DemoPane): void {
 
 		radioInputs.forEach((radioInput: HTMLElement) => {
 			radioInput.addEventListener("input", (event: Event): void => {
-				demoPane.computeType = (event.target as HTMLInputElement).value as ComputeType;
-				demoComponent.setAttribute("computetype", demoPane.computeType);
+				demoPane.tVariant = (event.target as HTMLInputElement).value as TVariant;
+				demoComponent.setAttribute("tvariant", demoPane.tVariant);
 			});
 		});
 		demoRow.append(demoComponent);
 	});
 
-	container.append(header);
-	if (demoPane.chooseComputeType) {
-		container.append(computeTypeContainer);
-	}
 	container.append(demoRow);
+
+	if (demoPane.chooseTVariant) {
+		container.append(tVariantContainer);
+	}
 
 	demoPane.append(container);
 }

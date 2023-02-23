@@ -12,6 +12,7 @@ pub enum NodeGraphMessage {
 	CloseNodeGraph,
 	ConnectNodesByLink {
 		output_node: u64,
+		output_node_connector_index: usize,
 		input_node: u64,
 		input_node_connector_index: usize,
 	},
