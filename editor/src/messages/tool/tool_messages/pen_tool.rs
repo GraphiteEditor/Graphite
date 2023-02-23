@@ -588,7 +588,7 @@ impl Fsm for PenToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Draw Path")])]),
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => HintData(vec![

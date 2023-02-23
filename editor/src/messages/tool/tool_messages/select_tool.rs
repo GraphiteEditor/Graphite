@@ -264,14 +264,9 @@ impl PropertyHolder for SelectTool {
 
 impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
-		if let ToolMessage::Select(SelectToolMessage::SelectOptions(action)) = message {
-			match action {
-				SelectOptionsUpdate::Type(selected_type) => {
-					self.tool_data.selected_type = selected_type;
-					self.fsm_state.update_hints(responses, &mut self.tool_data);
-				}
-			}
-			return;
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(selected_type))) = message {
+			self.tool_data.selected_type = selected_type;
+			responses.push_back(ToolMessage::UpdateHints.into());
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
@@ -901,97 +896,82 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) {
-		// ToolMessage::UpdateHints => {
-		// 	let hint_data = match self {
-		// 		SelectToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Test Hint")])]),
-		// 	};
-
-		// 	responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
-		// }
-
-		let hint_data: HintData;
-		if tool_data.selected_type == LayerSelectionBehavior::Deepest {
-			hint_data = match self {
-				SelectToolFsmState::Ready => HintData(vec![
-					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-					HintGroup(vec![
-						HintInfo::keys([Key::KeyG], "Grab Selected"),
-						HintInfo::keys([Key::KeyR], "Rotate Selected"),
-						HintInfo::keys([Key::KeyS], "Scale Selected"),
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
+		// Check for standard hits or cursor events
+		match message {
+			ToolMessage::UpdateHints => {
+				let hint_data = match tool_data.selected_type {
+					// Deepest
+					LayerSelectionBehavior::Deepest => HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+						HintGroup(vec![
+							HintInfo::keys([Key::KeyG], "Grab Selected"),
+							HintInfo::keys([Key::KeyR], "Rotate Selected"),
+							HintInfo::keys([Key::KeyS], "Scale Selected"),
+						]),
+						HintGroup(vec![
+							HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
+							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+						]),
+						HintGroup(vec![
+							HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+						]),
+						HintGroup(vec![
+							HintInfo::arrow_keys("Nudge Selected"),
+							HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+							HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+							HintInfo::keys([Key::Shift], "Opp. Corner").prepend_plus(),
+						]),
+						HintGroup(vec![
+							HintInfo::keys([Key::Alt], "Move Duplicate"),
+							HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
+						]),
 					]),
-					HintGroup(vec![
-						HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
-						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+					// Shallowest
+					LayerSelectionBehavior::Shallowest => HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+						HintGroup(vec![
+							HintInfo::keys([Key::KeyG], "Grab Selected"),
+							HintInfo::keys([Key::KeyR], "Rotate Selected"),
+							HintInfo::keys([Key::KeyS], "Scale Selected"),
+						]),
+						HintGroup(vec![
+							HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
+							HintInfo::keys([Key::Control], "Innermost").add_mac_keys([Key::Command]).prepend_plus(),
+							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+						]),
+						HintGroup(vec![
+							HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+						]),
+						HintGroup(vec![
+							HintInfo::arrow_keys("Nudge Selected"),
+							HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+							HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+							HintInfo::keys([Key::Control], "Opp. Corner").prepend_plus(),
+						]),
+						HintGroup(vec![
+							HintInfo::keys([Key::Alt], "Move Duplicate"),
+							HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
+						]),
+						// Todo: Change icon for Double Click, currently single click
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Deeper Layer")]),
 					]),
-					HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-					]),
-					HintGroup(vec![
-						HintInfo::arrow_keys("Nudge Selected"),
-						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
-						HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
-						HintInfo::keys([Key::Shift], "Opp. Corner").prepend_plus(),
-					]),
-					HintGroup(vec![
-						HintInfo::keys([Key::Alt], "Move Duplicate"),
-						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
-					]),
-				]),
-				SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-					HintInfo::keys([Key::Shift], "Constrain to Axis"),
-					HintInfo::keys([Key::Control], "Snap to Points (coming soon)"),
-				])]),
-				SelectToolFsmState::DrawingBox => HintData(vec![]),
-				SelectToolFsmState::ResizingBounds => HintData(vec![]),
-				SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
-				SelectToolFsmState::DraggingPivot => HintData(vec![]),
-			};
-		} else {
-			hint_data = match self {
-				SelectToolFsmState::Ready => HintData(vec![
-					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-					HintGroup(vec![
-						HintInfo::keys([Key::KeyG], "Grab Selected"),
-						HintInfo::keys([Key::KeyR], "Rotate Selected"),
-						HintInfo::keys([Key::KeyS], "Scale Selected"),
-					]),
-					HintGroup(vec![
-						HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
-						HintInfo::keys([Key::Control], "Innermost").add_mac_keys([Key::Command]).prepend_plus(),
-						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-					]),
-					HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-					]),
-					HintGroup(vec![
-						HintInfo::arrow_keys("Nudge Selected"),
-						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
-						HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
-						HintInfo::keys([Key::Control], "Opp. Corner").prepend_plus(),
-					]),
-					HintGroup(vec![
-						HintInfo::keys([Key::Alt], "Move Duplicate"),
-						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
-					]),
-					// Todo: Change icon for Double Click, currently single click
-					HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Deeper Layer")]),
-				]),
-				SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-					HintInfo::keys([Key::Shift], "Constrain to Axis"),
-					HintInfo::keys([Key::Control], "Snap to Points (coming soon)"),
-				])]),
-				SelectToolFsmState::DrawingBox => HintData(vec![]),
-				SelectToolFsmState::ResizingBounds => HintData(vec![]),
-				SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
-				SelectToolFsmState::DraggingPivot => HintData(vec![]),
-			};
+				};
+				messages.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+				self.update_hints(messages);
+				true
+			}
+			ToolMessage::UpdateCursor => {
+				self.update_cursor(messages);
+				true
+			}
+			_ => false,
 		}
-
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
+
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
