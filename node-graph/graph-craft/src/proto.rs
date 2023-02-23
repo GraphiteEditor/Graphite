@@ -43,7 +43,7 @@ impl core::fmt::Display for ProtoNetwork {
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
 				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
-				ProtoNodeInput::Node(_) => f.write_str("Node")?,
+				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
 
@@ -54,7 +54,7 @@ impl core::fmt::Display for ProtoNetwork {
 				}
 				ConstructionArgs::Nodes(nodes) => {
 					for id in nodes {
-						write_node(f, network, *id, indent + 1)?;
+						write_node(f, network, id.0, indent + 1)?;
 					}
 				}
 			}
