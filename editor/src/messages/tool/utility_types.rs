@@ -44,16 +44,16 @@ pub trait Fsm {
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
-	fn update_hints(&self, responses: &mut VecDeque<Message>);
+	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData);
 	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(messages);
+				self.update_hints(messages, tool_data);
 				true
 			}
 			ToolMessage::UpdateCursor => {
@@ -78,7 +78,7 @@ pub trait Fsm {
 		Self: PartialEq + Sized + Copy,
 	{
 		// If this message is one of the standard tool messages, process it and exit early
-		if self.standard_tool_messages(&message, messages) {
+		if self.standard_tool_messages(&message, messages, tool_data) {
 			return;
 		}
 
@@ -88,7 +88,7 @@ pub trait Fsm {
 		// Update state
 		if *self != new_state {
 			*self = new_state;
-			self.update_hints(messages);
+			self.update_hints(messages, tool_data);
 			if update_cursor_on_transition {
 				self.update_cursor(messages);
 			}

@@ -42,7 +42,7 @@ pub struct SelectOptions {
 impl Default for SelectOptions {
 	fn default() -> Self {
 		Self {
-			selected_type: LayerSelectionBehavior::Layer,
+			selected_type: LayerSelectionBehavior::Deepest,
 		}
 	}
 }
@@ -50,8 +50,8 @@ impl Default for SelectOptions {
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum LayerSelectionBehavior {
 	#[default]
-	Layer,
-	Group,
+	Deepest,
+	Shallowest,
 }
 
 #[remain::sorted]
@@ -113,19 +113,49 @@ impl ToolMetadata for SelectTool {
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+			// widgets: vec![
+			// 	WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+			// 		entries: blend_mode_menu_entries,
+			// 		selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
+			// 		disabled: blend_mode.is_none() && !blend_mode_is_mixed,
+			// 		draw_icon: false,
+			// 		..Default::default()
+			// 	})),
+
+			// let blend_mode_menu_entries = BlendMode::list_modes_in_groups()
+			// .iter()
+			// .map(|modes| {
+			// 	modes
+			// 		.iter()
+			// 		.map(|mode| DropdownEntryData {
+			// 			label: mode.to_string(),
+			// 			value: mode.to_string(),
+			// 			on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
+			// 			..Default::default()
+			// 		})
+			// 		.collect()
+			// })
+			// .collect();
 			widgets: vec![
 				RadioInput::new(vec![
-					RadioEntryData::new("Layer")
-						.value("layer")
-						.tooltip("Layer")
-						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Layer)).into()),
-					RadioEntryData::new("Group")
-						.value("group")
-						.tooltip("Group")
-						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Group)).into()),
+					RadioEntryData::new("Deepest")
+						.value("deepest")
+						.tooltip("Deepest")
+						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Deepest)).into()),
+					RadioEntryData::new("Shallowest")
+						.value("shallowest")
+						.tooltip("Shallowest")
+						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Shallowest)).into()),
 				])
-				.selected_index((self.tool_data.selected_type == LayerSelectionBehavior::Group) as u32)
+				.selected_index((self.tool_data.selected_type == LayerSelectionBehavior::Shallowest) as u32)
 				.widget_holder(),
+				WidgetHolder::related_separator(),
+				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
+				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
+					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
+					.widget_holder(),
+				// WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
 					.on_update(|_| {
@@ -227,11 +257,6 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				WidgetHolder::related_separator(),
 				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
-				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
-				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
-				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
-					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
-					.widget_holder(),
 			],
 		}]))
 	}
@@ -243,6 +268,7 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
 			match action {
 				SelectOptionsUpdate::Type(selected_type) => {
 					self.tool_data.selected_type = selected_type;
+					self.fsm_state.update_hints(responses, &mut self.tool_data);
 				}
 			}
 			return;
@@ -345,6 +371,7 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolFsmState::*;
 		use SelectToolMessage::*;
 
+		// self.update_hints(responses, tool_data);
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
@@ -378,8 +405,8 @@ impl Fsm for SelectToolFsmState {
 					// Check the last (top most) intersection layer.
 					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
-							// Group manipulation
-							if tool_data.selected_type == LayerSelectionBehavior::Group {
+							// Shallowest manipulation
+							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								let mut selected_layers = document.selected_layers();
 								// Check if something was previously selected
 								if let Some(layer_path) = selected_layers.next() {
@@ -400,7 +427,7 @@ impl Fsm for SelectToolFsmState {
 									);
 								}
 							}
-							// Layer manipulation
+							// Deepest manipulation
 							else {
 								match intersect.data {
 									LayerDataType::Text(_) => {
@@ -512,15 +539,16 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
-						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == LayerSelectionBehavior::Layer {
+						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == LayerSelectionBehavior::Deepest {
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
 
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
-							// Group manipulation
-							if tool_data.selected_type == LayerSelectionBehavior::Group {
+							// Shallowest manipulation
+							// Todo: Shift click
+							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								// Control click selects the layer directly
 								if input.keyboard.get(layer_selection as usize) {
 									tool_data.layers_dragging.clear();
@@ -575,7 +603,7 @@ impl Fsm for SelectToolFsmState {
 									}
 								}
 							}
-							// Layer Manipulation
+							// Deepest Manipulation
 							else {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 								responses.push_back(DocumentMessage::StartTransaction.into());
@@ -588,7 +616,7 @@ impl Fsm for SelectToolFsmState {
 						} else {
 							// If group manipulation is toggled and you select nothing deselect
 							// Neccesary since for group, we need to know the current selected layers to determine next
-							if tool_data.selected_type == LayerSelectionBehavior::Group {
+							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 								tool_data.layers_dragging.clear();
 							}
@@ -873,44 +901,94 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
-		let hint_data = match self {
-			SelectToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![
-					HintInfo::keys([Key::KeyG], "Grab Selected"),
-					HintInfo::keys([Key::KeyR], "Rotate Selected"),
-					HintInfo::keys([Key::KeyS], "Scale Selected"),
+	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) {
+		// ToolMessage::UpdateHints => {
+		// 	let hint_data = match self {
+		// 		SelectToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Test Hint")])]),
+		// 	};
+
+		// 	responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		// }
+
+		let hint_data: HintData;
+		if tool_data.selected_type == LayerSelectionBehavior::Deepest {
+			hint_data = match self {
+				SelectToolFsmState::Ready => HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+					HintGroup(vec![
+						HintInfo::keys([Key::KeyG], "Grab Selected"),
+						HintInfo::keys([Key::KeyR], "Rotate Selected"),
+						HintInfo::keys([Key::KeyS], "Scale Selected"),
+					]),
+					HintGroup(vec![
+						HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
+						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+					]),
+					HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+					]),
+					HintGroup(vec![
+						HintInfo::arrow_keys("Nudge Selected"),
+						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+						HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+						HintInfo::keys([Key::Shift], "Opp. Corner").prepend_plus(),
+					]),
+					HintGroup(vec![
+						HintInfo::keys([Key::Alt], "Move Duplicate"),
+						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
+					]),
 				]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
-					HintInfo::keys([Key::Control], "Innermost").add_mac_keys([Key::Command]).prepend_plus(),
-					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
+				SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+					HintInfo::keys([Key::Shift], "Constrain to Axis"),
+					HintInfo::keys([Key::Control], "Snap to Points (coming soon)"),
+				])]),
+				SelectToolFsmState::DrawingBox => HintData(vec![]),
+				SelectToolFsmState::ResizingBounds => HintData(vec![]),
+				SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
+				SelectToolFsmState::DraggingPivot => HintData(vec![]),
+			};
+		} else {
+			hint_data = match self {
+				SelectToolFsmState::Ready => HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+					HintGroup(vec![
+						HintInfo::keys([Key::KeyG], "Grab Selected"),
+						HintInfo::keys([Key::KeyR], "Rotate Selected"),
+						HintInfo::keys([Key::KeyS], "Scale Selected"),
+					]),
+					HintGroup(vec![
+						HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
+						HintInfo::keys([Key::Control], "Innermost").add_mac_keys([Key::Command]).prepend_plus(),
+						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+					]),
+					HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+					]),
+					HintGroup(vec![
+						HintInfo::arrow_keys("Nudge Selected"),
+						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+						HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+						HintInfo::keys([Key::Control], "Opp. Corner").prepend_plus(),
+					]),
+					HintGroup(vec![
+						HintInfo::keys([Key::Alt], "Move Duplicate"),
+						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
+					]),
+					// Todo: Change icon for Double Click, currently single click
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Deeper Layer")]),
 				]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
-				]),
-				HintGroup(vec![
-					HintInfo::arrow_keys("Nudge Selected"),
-					HintInfo::keys([Key::Shift], "10x").prepend_plus(),
-					HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
-					HintInfo::keys([Key::Shift], "Opp. Corner").prepend_plus(),
-				]),
-				HintGroup(vec![
-					HintInfo::keys([Key::Alt], "Move Duplicate"),
-					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
-				]),
-			]),
-			SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo::keys([Key::Shift], "Constrain to Axis"),
-				HintInfo::keys([Key::Control], "Snap to Points (coming soon)"),
-			])]),
-			SelectToolFsmState::DrawingBox => HintData(vec![]),
-			SelectToolFsmState::ResizingBounds => HintData(vec![]),
-			SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
-			SelectToolFsmState::DraggingPivot => HintData(vec![]),
-		};
+				SelectToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+					HintInfo::keys([Key::Shift], "Constrain to Axis"),
+					HintInfo::keys([Key::Control], "Snap to Points (coming soon)"),
+				])]),
+				SelectToolFsmState::DrawingBox => HintData(vec![]),
+				SelectToolFsmState::ResizingBounds => HintData(vec![]),
+				SelectToolFsmState::RotatingBounds => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
+				SelectToolFsmState::DraggingPivot => HintData(vec![]),
+			};
+		}
 
 		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
 	}
