@@ -171,7 +171,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::input_properties,
 		},
 		DocumentNodeType {
-			name: "Let",
+			name: "Begin Scope",
 			category: "Structural",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 2],
@@ -234,7 +234,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
 		},
 		DocumentNodeType {
-			name: "EndLet",
+			name: "End Scope",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_std::memo::EndLetNode<_>"),
 			inputs: vec![
@@ -758,12 +758,18 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 				[NodeInput::Network(concrete!(Image)), NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
 				DocumentNodeMetadata::position((8, 4)),
 			),
-			resolve_document_node_type("Output")
-				.expect("Output node does not exist")
-				.to_document_node([NodeInput::node(2, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+			resolve_document_node_type("Begin Scope")
+				.expect("Input node does not exist")
+				.to_document_node([NodeInput::node(0, 0)], DocumentNodeMetadata::position((16, 4))),
+			resolve_document_node_type("End Scope")
+				.expect("End Scope node does not exist")
+				.to_document_node([NodeInput::node(1, 0), NodeInput::node(1, 0)], DocumentNodeMetadata::position((output_offset, 12))),
 			resolve_document_node_type("Image Frame")
 				.expect("Image frame node does not exist")
-				.to_document_node([NodeInput::node(output_node_id, 0), NodeInput::node(0, 1)], DocumentNodeMetadata::position((output_offset, 4))),
+				.to_document_node([NodeInput::node(2, 0), NodeInput::node(0, 1)], DocumentNodeMetadata::position((output_offset + 20, 4))),
+			resolve_document_node_type("Output")
+				.expect("Output node does not exist")
+				.to_document_node([NodeInput::node(3, 0)], DocumentNodeMetadata::position((output_offset + 28, 4))),
 		]
 		.into_iter()
 		.enumerate()
