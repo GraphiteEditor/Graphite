@@ -12,7 +12,7 @@ use document_legacy::intersection::Quad;
 use document_legacy::LayerId;
 use graphene_std::vector::consts::ManipulatorType;
 
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -34,6 +34,9 @@ pub enum PathToolMessage {
 	SelectionChanged,
 
 	// Tool-specific messages
+	BeginGrab,
+	BeginRotate,
+	BeginScale,
 	Delete,
 	DragStart {
 		add_to_selection: Key,
@@ -78,6 +81,9 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
+				BeginGrab,
+				BeginRotate,
+				BeginScale,
 				DragStart,
 				Delete,
 				NudgeSelectedPoints,
@@ -87,6 +93,23 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for PathTool {
 				DragStop,
 				PointerMove,
 				Delete,
+			),
+			Rotating => actions!(PathToolMessageDiscriminant;
+				InsertPoint,
+				DragStop,
+				PointerMove,
+				Delete,
+				BeginGrab,
+				BeginRotate,
+			),
+			Scaling => actions!(PathToolMessageDiscriminant;
+				InsertPoint,
+				DragStop,
+				PointerMove,
+				Delete,
+				BeginGrab,
+				BeginRotate,
+				BeginScale,
 			),
 		}
 	}
@@ -107,6 +130,8 @@ enum PathToolFsmState {
 	#[default]
 	Ready,
 	Dragging,
+	Rotating,
+	Scaling,
 }
 
 #[derive(Default)]
@@ -114,7 +139,7 @@ struct PathToolData {
 	shape_editor: ShapeEditor,
 	overlay_renderer: OverlayRenderer,
 	snap_manager: SnapManager,
-
+	center: DVec2,
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
@@ -162,6 +187,55 @@ impl Fsm for PathToolFsmState {
 
 					self
 				}
+				(_, PathToolMessage::BeginGrab) => {
+					PathToolFsmState::Dragging
+				}
+				(_, PathToolMessage::BeginRotate) => {
+					//pub fn selected_layers_ref(&self) -> Vec<&[LayerId]> {
+					
+					//need to add .transformation to viewspace
+					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let mut count = 0;
+
+					// is the center constantly moving?
+					for point in points{
+						debug!("Point {},{}", point.position.x, point.position.y);
+						debug!("Pos {},{}", point.position.x, point.position.y);
+						tool_data.center.x += point.position.x;
+						tool_data.center.y += point.position.y;
+						count += 1;
+					}
+					debug!("Center1 {}", tool_data.center);
+
+					tool_data.center.x /= count as f64;
+					tool_data.center.y /= count as f64;
+					debug!("Center2 {}", tool_data.center);
+
+					
+					PathToolFsmState::Rotating
+				}
+				(_, PathToolMessage::BeginScale) =>{
+					
+					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let mut count = 0;
+
+					// is the center constantly moving?
+					for point in points{
+						debug!("Point {},{}", point.position.x, point.position.y);
+						debug!("Pos {},{}", point.position.x, point.position.y);
+						tool_data.center.x += point.position.x;
+						tool_data.center.y += point.position.y;
+						count += 1;
+					}
+					debug!("Center1 {}", tool_data.center);
+
+					tool_data.center.x /= count as f64;
+					tool_data.center.y /= count as f64;
+					debug!("Center2 {}", tool_data.center);
+
+					
+					PathToolFsmState::Scaling
+				},
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
 					let shift_pressed = input.keyboard.get(add_to_selection as usize);
@@ -235,6 +309,80 @@ impl Fsm for PathToolFsmState {
 						}
 						PathToolFsmState::Ready
 					}
+				}
+				(PathToolFsmState::Rotating, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance,},) => {
+					
+					//let path = tool_data.shape_editor.selected_layers_ref();
+					//let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
+
+					debug!("Center {}", tool_data.center);
+					let angle = {
+							let start_offset = tool_data.drag_start_pos - tool_data.center;
+							let end_offset = input.mouse.position - tool_data.center;
+							debug!("start_offset {}", start_offset);
+							start_offset.angle_between(end_offset)
+						};
+					debug!("Angle {}", angle);
+					let delta = DAffine2::from_angle(angle);
+					debug!("Delta {}", delta);
+					debug!("Delta {}", shift_mirror_distance);
+					debug!("Delta {}", alt_mirror_angle);
+
+					let x = DVec2::from_angle(angle);
+					debug!("x {}", x);
+					//viewspace.translation = x;
+					// let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+
+					// for point in points{
+					// 	point.position = viewspace.transform_point2(point.position);
+					// }
+					// let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					// let angle = {
+					// 		let start_offset = tool_data.drag_start_pos - tool_data.center;
+					// 		let end_offset = input.mouse.position - tool_data.center;
+					// 		debug!("start_offset {}", start_offset);
+					// 		start_offset.angle_between(end_offset)
+					// 	};
+					//let (cos, sin) = DVec2::from_angle(angle);
+					// for point in points{
+					// 	&point.position = viewspace.transform_point2(point.position);
+					// }
+
+					tool_data.shape_editor.move_selected_points(x, false, responses);
+						
+
+					PathToolFsmState::Rotating
+				}
+				(PathToolFsmState::Scaling, PathToolMessage::PointerMove {alt_mirror_angle,shift_mirror_distance,},) => {
+					
+					//let path = tool_data.shape_editor.selected_layers_ref();
+					//let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
+
+					debug!("Center {}", tool_data.center);
+					let angle = {
+							let start_offset = tool_data.drag_start_pos - tool_data.center;
+							let end_offset = input.mouse.position - tool_data.center;
+							debug!("start_offset {}", start_offset);
+							start_offset.angle_between(end_offset)
+						};
+					debug!("Angle {}", angle);
+					let delta = DAffine2::from_angle(angle);
+					debug!("Delta {}", delta);
+					debug!("Delta {}", shift_mirror_distance);
+					debug!("Delta {}", alt_mirror_angle);
+
+					let x = DVec2::from_angle(angle);
+					debug!("x {}", x);
+					//viewspace.translation = x;
+					// let points = tool_data.shape_editor.selected_points(&document.document_legacy);
+
+					// for point in points{
+					// 	point.position = viewspace.transform_point2(point.position);
+					// }
+
+					tool_data.shape_editor.move_selected_points(x, false, responses);
+						
+					PathToolFsmState::Scaling
 				}
 				// Dragging
 				(
@@ -335,7 +483,6 @@ impl Fsm for PathToolFsmState {
 					let nudge_x = delta_x as f64;
 					let nudge_y = delta_y as f64;
 					tool_data.shape_editor.move_selected_points((nudge_x, nudge_y).into(), true, responses);
-					//responses.push_back(PathToolMessage::DocumentIsDirty.into());
 					PathToolFsmState::Ready
 				}
 			}
@@ -360,6 +507,14 @@ impl Fsm for PathToolFsmState {
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
+				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
+			])]),
+			PathToolFsmState::Rotating => HintData(vec![HintGroup(vec![
+				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
+			])]),
+			PathToolFsmState::Scaling => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
 				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),

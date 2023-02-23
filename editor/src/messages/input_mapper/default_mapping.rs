@@ -170,6 +170,10 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 
+		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::BeginGrab),
+		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::BeginRotate),
+		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::BeginScale),
+		
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: 0}),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_INT, delta_y: 0}),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: -NUDGE_INT}),
