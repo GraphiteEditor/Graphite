@@ -54,7 +54,9 @@ pub enum SelectToolMessage {
 	DragStart {
 		add_to_selection: Key,
 	},
-	DragStop,
+	DragStop {
+		remove_from_selection: Key,
+	},
 	EditLayer,
 	Enter,
 	FlipHorizontal,
@@ -255,6 +257,8 @@ struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>,
+	layer_selected_on_start: Option<Vec<LayerId>>,
+	is_dragging: bool,
 	not_duplicated_layers: Option<Vec<Vec<LayerId>>>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
 	path_outlines: PathOutline,
@@ -296,6 +300,7 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolMessage::*;
 
 		if let ToolMessage::Select(event) = event {
+			debug!("{:?}, {:?}", self, event);
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
 					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
@@ -430,16 +435,6 @@ impl Fsm for SelectToolFsmState {
 
 						RotatingBounds
 					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
-						if input.keyboard.get(add_to_selection as usize) {
-							let last_selected = intersection.last().unwrap();
-							let replacement_selected_layers = document
-								.selected_layers()
-								.filter(|layer| layer != last_selected)
-								.map(|path| path.iter().map(|p| p.clone()).collect())
-								.collect();
-							responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
-							return Ready;
-						}
 
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -457,6 +452,7 @@ impl Fsm for SelectToolFsmState {
 						}
 
 						if let Some(intersection) = intersection.pop() {
+							tool_data.layer_selected_on_start = Some(intersection.clone());
 							selected = vec![intersection];
 							responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 							responses.push_back(DocumentMessage::StartTransaction.into());
@@ -476,6 +472,7 @@ impl Fsm for SelectToolFsmState {
 					state
 				}
 				(Dragging, PointerMove { axis_align, duplicate, .. }) => {
+					tool_data.is_dragging = true;
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 					responses.push_front(SelectToolMessage::DocumentIsDirty.into());
 
@@ -601,7 +598,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(Dragging, DragStop | Enter) => {
+				(Dragging, Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -610,7 +607,33 @@ impl Fsm for SelectToolFsmState {
 					responses.push_front(response.into());
 					Ready
 				}
-				(ResizingBounds, DragStop | Enter) => {
+				(Dragging, DragStop { remove_from_selection }) => {
+					if !tool_data.is_dragging && input.keyboard.get(remove_from_selection as usize) && tool_data.layer_selected_on_start.is_none() {
+						let quad = tool_data.selection_quad();
+						let intersection = document.document_legacy.intersects_quad_root(quad, render_data);
+						if let Some(intersect_layer_path) = intersection.last() {
+							let replacement_selected_layers = document
+								.selected_layers()
+								.filter(|&layer| layer != intersect_layer_path)
+								.map(|path| path.to_vec())
+								.collect();
+							responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+						}
+					}
+
+					tool_data.is_dragging = false;
+					tool_data.layer_selected_on_start = None;
+
+					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+						true => DocumentMessage::Undo,
+						false => DocumentMessage::CommitTransaction,
+					};
+					tool_data.snap_manager.cleanup(responses);
+					responses.push_front(response.into());
+
+					Ready
+				}
+				(ResizingBounds, DragStop {..} | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -625,7 +648,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(RotatingBounds, DragStop | Enter) => {
+				(RotatingBounds, DragStop {..} | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -638,7 +661,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(DraggingPivot, DragStop | Enter) => {
+				(DraggingPivot, DragStop {..} | Enter) => {
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -649,7 +672,7 @@ impl Fsm for SelectToolFsmState {
 
 					Ready
 				}
-				(DrawingBox, DragStop | Enter) => {
+				(DrawingBox, DragStop {..} | Enter) => {
 					let quad = tool_data.selection_quad();
 					responses.push_front(
 						DocumentMessage::AddSelectedLayers {
