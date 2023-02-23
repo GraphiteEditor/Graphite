@@ -9,7 +9,7 @@ use graph_craft::imaginate_input::ImaginateSamplingMethod;
 
 use graph_craft::concrete;
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{BlendNode, Color, Image, ImageFrame, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
 use graphene_core::*;
 
 use std::collections::VecDeque;

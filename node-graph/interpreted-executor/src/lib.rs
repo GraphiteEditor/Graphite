@@ -158,11 +158,6 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let exec = DynamicExecutor::new(protograph).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
-
-		// Double 32
-		let result = exec.execute(32_u32.into_dyn()).unwrap();
-		let val = *dyn_any::downcast::<u32>(result).unwrap();
-		assert_eq!(val, 64_u32);
+		let exec = DynamicExecutor::new(protograph).map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
 	}
 }
