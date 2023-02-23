@@ -1,9 +1,10 @@
 use super::*;
-use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE};
 use crate::utils::SubpathTValue;
 use crate::TValue;
 
 use glam::DVec2;
+use std::vec;
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Calculate the point on the subpath based on the parametric `t`-value provided.
@@ -48,6 +49,27 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
 	}
 
+	// This function removes duplicate intersections from a list of 2-tuples of intersections.
+	// This is necessary, because otherwise the anchor where two successive segments meet would generate two separate intersections when they overlap a third segment.
+	fn filter_subpath_intersection_points(intersections_vec: &[[(usize, f64); 2]], tuple_to_compare: usize, minimum_separation: f64) -> Vec<[(usize, f64); 2]> {
+		let mut filtered_intersections = vec![*intersections_vec.first().unwrap()];
+		for intersection_pair in intersections_vec.iter().skip(1) {
+			let &[last_intersection, _] = filtered_intersections.last().unwrap();
+			// If the points are on the same segment, ensure they are minimum separation apart
+			if intersection_pair[tuple_to_compare].0 == last_intersection.0 {
+				if intersection_pair[tuple_to_compare].1 - last_intersection.1 < minimum_separation {
+					continue;
+				}
+			}
+			// If the points are on successive segments, ensure they are within minimum separation of each other
+			else if (intersection_pair[tuple_to_compare].0 - 1 == last_intersection.0) && (1. + intersection_pair[tuple_to_compare].1 - last_intersection.1 < minimum_separation) {
+				continue;
+			}
+			filtered_intersections.push(*intersection_pair);
+		}
+		filtered_intersections
+	}
+
 	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_seperation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
@@ -55,23 +77,55 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
-	pub fn self_intersections(&self, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<(usize, f64)> {
+	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[(usize, f64); 2]> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
-		self.iter().enumerate().for_each(|(i, other)| {
-			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (i, value[0])));
-			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
+		self.iter().enumerate().for_each(|(i, curve)| {
+			intersections_vec.extend(curve.self_intersections(error).iter().map(|value| [(i, value[0]), (i, value[1])]));
+			self.iter().enumerate().skip(i + 1).for_each(|(j, other)| {
 				intersections_vec.extend(
 					curve
-						.intersections(&other, error, minimum_seperation)
+						// .intersections(&other, error, minimum_separation)
+						.intersections_between_subcurves(0. ..1., &other, 0. ..1., err)
 						.iter()
-						.filter(|&value| value > &err && (1. - value) > err)
-						.map(|value| (j, *value)),
+						.filter(|&value| {
+							if i == j - 1 {
+								// If the intersection falls within err of the endpoint between to successive segments filter the point out
+								return (1. - value[0]) > err && value[1] > err;
+							} else if self.closed && i == 0 && j == self.len_segments() - 1 {
+								return value[0] > err && (1. - value[1]) > err;
+							}
+							true
+						})
+						.map(|value| [(i, value[0]), (j, value[1])]),
 				);
 			});
 		});
-		intersections_vec
+
+		if intersections_vec.is_empty() {
+			return vec![];
+		}
+
+		// Filter out intersection points that are very close together (threshold determined by minimum_separation)
+		let minimum_separation = minimum_separation.unwrap_or(MIN_SEPARATION_VALUE);
+
+		intersections_vec.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap());
+		let mut filtered_intersections = Subpath::filter_subpath_intersection_points(&intersections_vec, 1, minimum_separation);
+		let last = filtered_intersections.last().unwrap()[1];
+
+		filtered_intersections.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap());
+		filtered_intersections = Subpath::filter_subpath_intersection_points(&filtered_intersections, 0, minimum_separation);
+
+		// Final filter for the closed case: remove intersections within minimum_separation from each other that are over the break
+		if filtered_intersections.len() > 1 && self.closed {
+			let first = filtered_intersections.first().unwrap()[0];
+			if first.0 == 0 && last.0 == self.len_segments() - 1 && (1. + first.1 - last.1 < minimum_separation) {
+				filtered_intersections.pop();
+			}
+		}
+
+		filtered_intersections
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal on the subpath based on the parametric `t`-value provided.
