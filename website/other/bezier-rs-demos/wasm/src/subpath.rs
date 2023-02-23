@@ -6,9 +6,18 @@ use glam::DVec2;
 use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
+#[derive(Clone)]
+pub(crate) struct EmptyManipulatorGroupId;
+
+impl bezier_rs::ManipulatorGroupId for EmptyManipulatorGroupId {
+	fn new() -> Self {
+		Self
+	}
+}
+
 /// Wrapper of the `Subpath` struct to be used in JS.
 #[wasm_bindgen]
-pub struct WasmSubpath(Subpath);
+pub struct WasmSubpath(Subpath<EmptyManipulatorGroupId>);
 
 const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 
@@ -31,6 +40,7 @@ impl WasmSubpath {
 				anchor: point_triple[0].unwrap(),
 				in_handle: point_triple[1],
 				out_handle: point_triple[2],
+				id: EmptyManipulatorGroupId,
 			})
 			.collect();
 		WasmSubpath(Subpath::new(manipulator_groups, closed))

@@ -3,12 +3,12 @@ use crate::utils::SubpathTValue;
 use crate::utils::TValue;
 
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
-impl Subpath {
+impl<ManipulatorGroupId: crate::ManipulatorGroupId> Subpath<ManipulatorGroupId> {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
 	/// If the original Subpath was open, two open Subpaths will be returned.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/split/solo" title="Split Demo"></iframe>
-	pub fn split(&self, t: SubpathTValue) -> (Subpath, Option<Subpath>) {
+	pub fn split(&self, t: SubpathTValue) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		let curve = self.get_segment(segment_index).unwrap();
 
@@ -33,6 +33,7 @@ impl Subpath {
 				anchor: first_bezier.end(),
 				in_handle: last_curve.handle_end(),
 				out_handle: None,
+				id: ManipulatorGroupId::new(),
 			});
 		} else {
 			if !first_split.is_empty() {
@@ -52,6 +53,7 @@ impl Subpath {
 					anchor: first_bezier.end(),
 					in_handle: first_bezier.handle_end(),
 					out_handle: None,
+					id: ManipulatorGroupId::new(),
 				});
 			}
 
@@ -62,6 +64,7 @@ impl Subpath {
 						anchor: second_bezier.start(),
 						in_handle: None,
 						out_handle: second_bezier.handle_start(),
+						id: ManipulatorGroupId::new(),
 					},
 				);
 			}
@@ -84,7 +87,7 @@ mod tests {
 	use super::*;
 	use glam::DVec2;
 
-	fn set_up_open_subpath() -> Subpath {
+	fn set_up_open_subpath() -> Subpath<EmptyManipulatorGroupId> {
 		let start = DVec2::new(20., 30.);
 		let middle1 = DVec2::new(80., 90.);
 		let middle2 = DVec2::new(100., 100.);
@@ -100,28 +103,32 @@ mod tests {
 					anchor: start,
 					in_handle: None,
 					out_handle: Some(handle1),
+					id: EmptyManipulatorGroupId,
 				},
 				ManipulatorGroup {
 					anchor: middle1,
 					in_handle: None,
 					out_handle: Some(handle2),
+					id: EmptyManipulatorGroupId,
 				},
 				ManipulatorGroup {
 					anchor: middle2,
 					in_handle: None,
 					out_handle: None,
+					id: EmptyManipulatorGroupId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle3),
+					id: EmptyManipulatorGroupId,
 				},
 			],
 			false,
 		)
 	}
 
-	fn set_up_closed_subpath() -> Subpath {
+	fn set_up_closed_subpath() -> Subpath<EmptyManipulatorGroupId> {
 		let mut subpath = set_up_open_subpath();
 		subpath.closed = true;
 		subpath
@@ -154,7 +161,8 @@ mod tests {
 			ManipulatorGroup {
 				anchor: location,
 				in_handle: None,
-				out_handle: None
+				out_handle: None,
+				id: EmptyManipulatorGroupId,
 			}
 		);
 		assert_eq!(first.manipulator_groups.len(), 1);
@@ -177,7 +185,8 @@ mod tests {
 			ManipulatorGroup {
 				anchor: location,
 				in_handle: None,
-				out_handle: None
+				out_handle: None,
+				id: EmptyManipulatorGroupId,
 			}
 		);
 		assert_eq!(second.manipulator_groups.len(), 1);

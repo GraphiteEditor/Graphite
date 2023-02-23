@@ -4,10 +4,10 @@ use crate::consts::*;
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
-impl Subpath {
+impl<ManipulatorGroupId: crate::ManipulatorGroupId> Subpath<ManipulatorGroupId> {
 	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
-	pub fn new(manipulator_groups: Vec<ManipulatorGroup>, closed: bool) -> Self {
+	pub fn new(manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>, closed: bool) -> Self {
 		assert!(!closed || manipulator_groups.len() > 1, "A closed Subpath must contain more than 1 ManipulatorGroup.");
 		Self { manipulator_groups, closed }
 	}
@@ -20,11 +20,13 @@ impl Subpath {
 					anchor: bezier.start(),
 					in_handle: None,
 					out_handle: bezier.handle_start(),
+					id: ManipulatorGroupId::new(),
 				},
 				ManipulatorGroup {
 					anchor: bezier.end(),
 					in_handle: bezier.handle_end(),
 					out_handle: None,
+					id: ManipulatorGroupId::new(),
 				},
 			],
 			false,
@@ -59,7 +61,7 @@ impl Subpath {
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
-	pub fn iter(&self) -> SubpathIter {
+	pub fn iter(&self) -> SubpathIter<ManipulatorGroupId> {
 		SubpathIter { sub_path: self, index: 0 }
 	}
 
