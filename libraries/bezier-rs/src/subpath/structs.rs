@@ -9,7 +9,7 @@ pub trait ManipulatorGroupId: Sized + Clone {
 }
 
 /// An empty id type for use in tests
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg(test)]
 pub(crate) struct EmptyManipulatorGroupId;
 
