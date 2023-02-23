@@ -239,6 +239,174 @@ impl Color {
 		self.map_rgb(|c| (c + d).clamp(0., 1.))
 	}
 
+	pub fn saturation(&self) -> f32 {
+		let max = (self.red).max(self.green).max(self.blue);
+		let min = (self.red).min(self.green).min(self.blue);
+
+		max - min
+	}
+
+	pub fn with_saturation(&self, saturation: f32) -> Color {
+		let [hue, _, lightness, alpha] = self.to_hsla();
+		Color::from_hsla(hue, saturation, lightness, alpha)
+	}
+
+	pub fn blend_normal(_c_b: f32, c_s: f32) -> f32 {
+		c_s
+	}
+
+	pub fn blend_multiply(c_b: f32, c_s: f32) -> f32 {
+		c_s * c_b
+	}
+
+	pub fn blend_darken(c_b: f32, c_s: f32) -> f32 {
+		c_s.min(c_b)
+	}
+
+	pub fn blend_color_burn(c_b: f32, c_s: f32) -> f32 {
+		if c_b == 1. {
+			1.
+		} else if c_s == 0. {
+			0.
+		} else {
+			1. - ((1. - c_b) / c_s).min(1.)
+		}
+	}
+
+	pub fn blend_linear_burn(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s - 1.
+	}
+
+	pub fn blend_darker_color(&self, other: Color) -> Color {
+		if self.average_rgb_channels() <= other.average_rgb_channels() {
+			*self
+		} else {
+			other
+		}
+	}
+
+	pub fn blend_screen(c_b: f32, c_s: f32) -> f32 {
+		1. - (1. - c_s) * (1. - c_b)
+	}
+
+	pub fn blend_lighten(c_b: f32, c_s: f32) -> f32 {
+		c_s.max(c_b)
+	}
+
+	pub fn blend_color_dodge(c_b: f32, c_s: f32) -> f32 {
+		if c_s == 1. {
+			1.
+		} else {
+			(c_b / (1. - c_s)).min(1.)
+		}
+	}
+
+	pub fn blend_linear_dodge(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s
+	}
+
+	pub fn blend_lighter_color(&self, other: Color) -> Color {
+		if self.average_rgb_channels() >= other.average_rgb_channels() {
+			*self
+		} else {
+			other
+		}
+	}
+
+	pub fn blend_softlight(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			c_b - (1. - 2. * c_s) * c_b * (1. - c_b)
+		} else {
+			let d: fn(f32) -> f32 = |x| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
+			c_b + (2. * c_s - 1.) * (d(c_b) - c_b)
+		}
+	}
+
+	pub fn blend_hardlight(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_multiply(2. * c_s, c_b)
+		} else {
+			Color::blend_screen(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_color_burn(2. * c_s, c_b)
+		} else {
+			Color::blend_color_dodge(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_linear_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_linear_burn(2. * c_s, c_b)
+		} else {
+			Color::blend_linear_dodge(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_pin_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_darken(2. * c_s, c_b)
+		} else {
+			Color::blend_lighten(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_hard_mix(c_b: f32, c_s: f32) -> f32 {
+		if Color::blend_linear_light(c_b, c_s) < 0.5 {
+			0.
+		} else {
+			1.
+		}
+	}
+
+	pub fn blend_difference(c_b: f32, c_s: f32) -> f32 {
+		(c_b - c_s).abs()
+	}
+
+	pub fn blend_exclusion(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s - 2. * c_b * c_s
+	}
+
+	pub fn blend_subtract(c_b: f32, c_s: f32) -> f32 {
+		c_b - c_s
+	}
+
+	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
+		if c_b == 0. {
+			1.
+		} else {
+			c_b / c_s
+		}
+	}
+
+	pub fn blend_hue(&self, c_s: Color) -> Color {
+		let sat_b = self.saturation();
+		let lum_b = self.luminance_rec_601();
+		c_s.with_saturation(sat_b).with_luminance(lum_b)
+	}
+
+	pub fn blend_saturation(&self, c_s: Color) -> Color {
+		let sat_s = c_s.saturation();
+		let lum_b = self.luminance_rec_601();
+
+		self.with_saturation(sat_s).with_luminance(lum_b)
+	}
+
+	pub fn blend_color(&self, c_s: Color) -> Color {
+		let lum_b = self.luminance_rec_601();
+
+		c_s.with_luminance(lum_b)
+	}
+
+	pub fn blend_luminosity(&self, c_s: Color) -> Color {
+		let lum_s = c_s.luminance_rec_601();
+
+		self.with_luminance(lum_s)
+	}
+
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples
@@ -424,6 +592,23 @@ impl Color {
 	}
 	pub fn map_rgb<F: Fn(f32) -> f32>(&self, f: F) -> Self {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
+	}
+	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
+		let color = Color {
+			red: f(self.red, other.red),
+			green: f(self.green, other.green),
+			blue: f(self.blue, other.blue),
+			alpha: self.alpha,
+		};
+		if *self == Color::RED {
+			debug!("{} {} {} {}", color.red, color.green, color.blue, color.alpha);
+		}
+		Color {
+			red: f(self.red, other.red).clamp(0., 1.),
+			green: f(self.green, other.green).clamp(0., 1.),
+			blue: f(self.blue, other.blue).clamp(0., 1.),
+			alpha: self.alpha,
+		}
 	}
 }
 
