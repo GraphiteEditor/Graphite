@@ -71,6 +71,7 @@ impl core::fmt::Display for ProtoNetwork {
 #[derive(Debug, Clone)]
 pub enum ConstructionArgs {
 	Value(value::TaggedValue),
+	// the bool indicates whether to treat the node as lambda node
 	Nodes(Vec<(NodeId, bool)>),
 }
 
@@ -576,7 +577,7 @@ mod test {
 		println!("{:#?}", construction_network);
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
-		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![3, 4]));
+		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(3, false), (4, true)]));
 	}
 
 	#[test]
@@ -592,11 +593,11 @@ mod test {
 			ids,
 			vec![
 				15907139529964845467,
-				14192092348022507362,
-				14714934190542167928,
-				4518275895314664278,
-				13912679582583718470,
-				3236993912700824422
+				1552706903207877482,
+				15211082859148708110,
+				3361684226823984981,
+				16609475913638361514,
+				5640155373642511298
 			]
 		);
 	}
@@ -610,7 +611,7 @@ mod test {
 					7,
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -618,7 +619,7 @@ mod test {
 					1,
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -627,14 +628,14 @@ mod test {
 					ProtoNode {
 						identifier: "cons".into(),
 						input: ProtoNodeInput::Network(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![14]),
+						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 					},
 				),
 				(
 					11,
 					ProtoNode {
 						identifier: "add".into(),
-						input: ProtoNodeInput::Node(10),
+						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),

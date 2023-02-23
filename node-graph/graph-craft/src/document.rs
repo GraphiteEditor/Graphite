@@ -685,7 +685,7 @@ mod test {
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::Network(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![0]),
+			construction_args: ConstructionArgs::Nodes(vec![(0, false)]),
 		};
 		assert_eq!(proto_node, reference);
 	}
@@ -700,7 +700,7 @@ mod test {
 					1,
 					ProtoNode {
 						identifier: "graphene_core::ops::IdNode".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -709,14 +709,14 @@ mod test {
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::Network(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![14]),
+						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 					},
 				),
 				(
 					11,
 					ProtoNode {
 						identifier: "graphene_core::ops::AddNode".into(),
-						input: ProtoNodeInput::Node(10),
+						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
