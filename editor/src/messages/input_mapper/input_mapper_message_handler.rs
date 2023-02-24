@@ -20,6 +20,10 @@ impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, Actio
 }
 
 impl InputMapperMessageHandler {
+	pub fn set_mapping(&mut self, mapping: Mapping) {
+		self.mapping = mapping;
+	}
+
 	pub fn hints(&self, actions: ActionList) -> String {
 		let mut output = String::new();
 		let mut actions = actions

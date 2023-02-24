@@ -1,5 +1,5 @@
 use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup, LayoutKeysGroup};
-use crate::messages::input_mapper::default_mapping::default_mapping;
+use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::prelude::*;
 
@@ -14,22 +14,46 @@ pub struct Mapping {
 	pub pointer_move: KeyMappingEntries,
 }
 
-impl Mapping {
-	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
-		let list = match message {
-			InputMapperMessage::KeyDown(key) => &self.key_down[key as usize],
-			InputMapperMessage::KeyUp(key) => &self.key_up[key as usize],
-			InputMapperMessage::DoubleClick => &self.double_click,
-			InputMapperMessage::WheelScroll => &self.wheel_scroll,
-			InputMapperMessage::PointerMove => &self.pointer_move,
-		};
-		list.match_mapping(keyboard_state, actions)
+impl Default for Mapping {
+	fn default() -> Self {
+		MappingVariant::Default.into()
 	}
 }
 
-impl Default for Mapping {
-	fn default() -> Self {
-		default_mapping()
+impl Mapping {
+	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
+		let list = self.associated_entries(&message);
+		list.match_mapping(keyboard_state, actions)
+	}
+
+	pub fn remove(&mut self, target_entry: &MappingEntry) {
+		let list = self.associated_entries_mut(&target_entry.input);
+		list.remove(target_entry);
+	}
+
+	pub fn add(&mut self, new_entry: MappingEntry) {
+		let list = self.associated_entries_mut(&new_entry.input);
+		list.push(new_entry);
+	}
+
+	fn associated_entries(&self, message: &InputMapperMessage) -> &KeyMappingEntries {
+		match message {
+			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
+			InputMapperMessage::KeyUp(key) => &self.key_up[*key as usize],
+			InputMapperMessage::DoubleClick => &self.double_click,
+			InputMapperMessage::WheelScroll => &self.wheel_scroll,
+			InputMapperMessage::PointerMove => &self.pointer_move,
+		}
+	}
+
+	fn associated_entries_mut(&mut self, message: &InputMapperMessage) -> &mut KeyMappingEntries {
+		match message {
+			InputMapperMessage::KeyDown(key) => &mut self.key_down[*key as usize],
+			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
+			InputMapperMessage::DoubleClick => &mut self.double_click,
+			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
+			InputMapperMessage::PointerMove => &mut self.pointer_move,
+		}
 	}
 }
 
@@ -52,7 +76,11 @@ impl KeyMappingEntries {
 	}
 
 	pub fn push(&mut self, entry: MappingEntry) {
-		self.0.push(entry)
+		self.0.push(entry);
+	}
+
+	pub fn remove(&mut self, target_entry: &MappingEntry) {
+		self.0.retain(|entry| entry != target_entry);
 	}
 
 	pub const fn new() -> Self {
