@@ -232,16 +232,22 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		let len_new_manip_groups = new_manipulator_groups.len();
 
+		// Create Beziers from the first and last pairs of manipulator groups
+		// These will be trimmed to form the start and end of the new subpath
 		let curve1 = new_manipulator_groups[0].to_bezier(&new_manipulator_groups[1]);
 		let curve2 = new_manipulator_groups[len_new_manip_groups - 2].to_bezier(&new_manipulator_groups[len_new_manip_groups - 1]);
 
+		// If the target curve_indices are the same, then the trim must be happening within one bezier
+		// This means curve1 == curve2 must be true, and we can simply call the Bezier trim.
 		if t1_curve_index == t2_curve_index {
 			return Subpath::from_bezier(curve1.trim(TValue::Parametric(t1_curve_t), TValue::Parametric(t2_curve_t)));
 		}
 
+		// Split the bezier's with the according t value and keep the correct half
 		let [_, front_split] = curve1.split(TValue::Parametric(t1_curve_t));
 		let [back_split, _] = curve2.split(TValue::Parametric(t2_curve_t));
 
+		// Update the first two manipulator groups to match the front_split
 		new_manipulator_groups[1].in_handle = front_split.handle_end();
 		new_manipulator_groups[0] = ManipulatorGroup {
 			anchor: front_split.start(),
@@ -250,6 +256,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			id: ManipulatorGroupId::new(),
 		};
 
+		// Update the last two manipulator groups to match the back_split
 		new_manipulator_groups[len_new_manip_groups - 2].out_handle = back_split.handle_start();
 		new_manipulator_groups[len_new_manip_groups - 1] = ManipulatorGroup {
 			anchor: back_split.end(),
