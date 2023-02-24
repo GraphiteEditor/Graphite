@@ -266,4 +266,8 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateZoomWithScroll {
+		#[serde(rename = "zoomWithScroll")]
+		zoom_with_scroll: bool,
+	},
 }
