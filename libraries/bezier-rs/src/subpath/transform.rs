@@ -130,7 +130,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let (mut t1_curve_index, mut t1_curve_t) = self.t_value_to_parametric(t1);
 		let (mut t2_curve_index, mut t2_curve_t) = self.t_value_to_parametric(t2);
 
-		// The only case where t would be 1. is when the input parameter refers to the the very last point on the subpath.
+		// The only case where t would be 1 is when the input parameter refers to the the very last point on the subpath.
 		// We want these index and t pairs to always represent that point as the next curve index with t == 0.
 		if t1_curve_t == 1. {
 			t1_curve_index += 1;
@@ -144,9 +144,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// Check if the trimmed result is in the reverse direction
 		let are_arguments_reversed = t1_curve_index > t2_curve_index || (t1_curve_index == t2_curve_index && t1_curve_t > t2_curve_t);
 
-		// Get a new list from the manipulator groups that will be trimmed at the ends to form the resulting subpath
+		// Get a new list from the manipulator groups that will be trimmed at the ends to form the resulting subpath.
 		// The list will contain enough manipulator groups such that the later code simply needs to trim the first and last bezier segments
-		// and then update the values of the corresponding first and last manipulator groups accordingly
+		// and then update the values of the corresponding first and last manipulator groups accordingly.
 		let mut cloned_manipulator_groups = self.manipulator_groups.clone();
 		let mut new_manipulator_groups = if self.closed && are_arguments_reversed {
 			// Need to rotate the cloned manipulator groups vector
@@ -157,14 +157,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			// Reconnect the two ends in the new order
 			front.extend(cloned_manipulator_groups);
 			if t1_curve_index == t2_curve_index % self.len_segments() {
-				// If the start and end of the trim are in the same bezier segment, we want to add a duplicate of the first two manipulator groups
-				// This is to make sure the the closed loop is correctly represented and because this segment needs to be trimmed on both ends of the resulting subpath
+				// If the start and end of the trim are in the same bezier segment, we want to add a duplicate of the first two manipulator groups.
+				// This is to make sure the the closed loop is correctly represented and because this segment needs to be trimmed on both ends of the resulting subpath.
 				front.push(front[0].clone());
 				front.push(front[1].clone());
 			}
 			if t1_curve_index == t2_curve_index % self.len_segments() + 1 {
-				// If the start and end of the trim are in adjacent bezier segments, we want to add a duplicate of the first manipulator group
-				// This is to make sure the the closed loop is correctly represented
+				// If the start and end of the trim are in adjacent bezier segments, we want to add a duplicate of the first manipulator group.
+				// This is to make sure the the closed loop is correctly represented.
 				front.push(front[0].clone());
 			}
 			front
