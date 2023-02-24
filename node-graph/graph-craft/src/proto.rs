@@ -23,6 +23,51 @@ pub struct ProtoNetwork {
 	pub nodes: Vec<(NodeId, ProtoNode)>,
 }
 
+impl core::fmt::Display for ProtoNetwork {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_str("Proto Network with nodes: ")?;
+		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
+			f.write_str(&"\t".repeat(indent))?;
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else{
+				return f.write_str("{{Unknown Node}}");
+			};
+			f.write_str("Node: ")?;
+			f.write_str(&node.identifier.name)?;
+
+			f.write_str("\n")?;
+			f.write_str(&"\t".repeat(indent))?;
+			f.write_str("{\n")?;
+
+			f.write_str(&"\t".repeat(indent + 1))?;
+			f.write_str("Primary input: ")?;
+			match &node.input {
+				ProtoNodeInput::None => f.write_str("None")?,
+				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
+				ProtoNodeInput::Node(_) => f.write_str("Node")?,
+			}
+			f.write_str("\n")?;
+
+			match &node.construction_args {
+				ConstructionArgs::Value(value) => {
+					f.write_str(&"\t".repeat(indent + 1))?;
+					f.write_fmt(format_args!("Value construction argument: {value:?}"))?
+				}
+				ConstructionArgs::Nodes(nodes) => {
+					for id in nodes {
+						write_node(f, network, *id, indent + 1)?;
+					}
+				}
+			}
+			f.write_str(&"\t".repeat(indent))?;
+			f.write_str("}\n")?;
+			Ok(())
+		}
+
+		let id = self.output;
+		write_node(f, self, id, 0)
+	}
+}
+
 #[derive(Debug, Clone)]
 pub enum ConstructionArgs {
 	Value(value::TaggedValue),
@@ -362,9 +407,9 @@ impl TypingContext {
 					self.inferred
 						.get(id)
 						.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))
-						.map(|node| node.output.clone())
+						.map(|node| (node.input.clone(), node.output.clone()))
 				})
-				.collect::<Result<Vec<Type>, String>>()?,
+				.collect::<Result<Vec<(Type, Type)>, String>>()?,
 		};
 
 		// Get the node input type from the proto node declaration
@@ -384,7 +429,7 @@ impl TypingContext {
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
 		}
-		if parameters.iter().any(|p| matches!(p, Type::Generic(_))) {
+		if parameters.iter().any(|p| matches!(p.1, Type::Generic(_))) {
 			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}
 		let covariant = |output, input| match (&output, &input) {
@@ -397,7 +442,13 @@ impl TypingContext {
 		// List of all implementations that match the input and parameter types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| covariant(input.clone(), node_io.input.clone()) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1.clone(), p2.clone())))
+			.filter(|node_io| {
+				covariant(input.clone(), node_io.input.clone())
+					&& parameters
+						.iter()
+						.zip(node_io.parameters.iter())
+						.all(|(p1, p2)| covariant(p1.0.clone(), p2.0.clone()) && covariant(p1.1.clone(), p2.1.clone()))
+			})
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -445,7 +496,7 @@ impl TypingContext {
 
 /// Returns a list of all generic types used in the node
 fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
-	let inputs = [&types.input].into_iter().chain(types.parameters.iter());
+	let inputs = [&types.input].into_iter().chain(types.parameters.iter().map(|(_, x)| x));
 	let mut generics = inputs
 		.filter_map(|t| match t {
 			Type::Generic(out) => Some(out.clone()),
@@ -460,8 +511,10 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 }
 
 /// Checks if a generic type can be substituted with a concrete type and returns the concrete type
-fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
-	let inputs = [(&types.input, input)].into_iter().chain(types.parameters.iter().zip(parameters.iter()));
+fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[(Type, Type)], generic: &str) -> Result<Type, String> {
+	let inputs = [(&types.input, input)]
+		.into_iter()
+		.chain(types.parameters.iter().map(|(_, x)| x).zip(parameters.iter().map(|(_, x)| x)));
 	let mut concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Type::Generic(input) if generic == input));
 	let (_, out_ty) = concrete_inputs
 		.next()

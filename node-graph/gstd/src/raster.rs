@@ -108,6 +108,24 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct BlendImageNode<Second, MapFn> {
+	second: Second,
+	map_fn: MapFn,
+}
+
+#[node_macro::node_fn(BlendImageNode)]
+fn blend_image<MapFn>(image: Image, second: Image, map_fn: &'any_input MapFn) -> Image
+where
+	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
+{
+	let mut image = image;
+	for (pixel, sec_pixel) in &mut image.data.iter_mut().zip(second.data.iter()) {
+		*pixel = map_fn.eval((*pixel, *sec_pixel));
+	}
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct ImaginateNode<E> {
 	cached: E,
 }

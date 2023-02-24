@@ -45,13 +45,15 @@ export function renderDemoPane(demoPane: DemoPane): void {
 	const headerAnchorLink = document.createElement("a");
 	headerAnchorLink.innerText = "#";
 	const currentHash = window.location.hash.split("/");
-	// Add href anchor if not on a solo example page
-	if (currentHash.length !== 3 && currentHash[2] !== "solo") headerAnchorLink.href = `#${demoPane.id}`;
-
-	const header = document.createElement("h3");
-	header.innerText = demoPane.name;
-	header.className = "demo-pane-header";
-	header.append(headerAnchorLink);
+	// Add header and href anchor if not on a solo example page
+	if (currentHash.length !== 3 && currentHash[2] !== "solo") {
+		headerAnchorLink.href = `#${demoPane.id}`;
+		const header = document.createElement("h3");
+		header.innerText = demoPane.name;
+		header.className = "demo-pane-header";
+		header.append(headerAnchorLink);
+		container.append(header);
+	}
 
 	const tVariantContainer = document.createElement("div");
 	tVariantContainer.className = "t-variant-choice";
@@ -95,11 +97,11 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		demoRow.append(demoComponent);
 	});
 
-	container.append(header);
+	container.append(demoRow);
+
 	if (demoPane.chooseTVariant) {
 		container.append(tVariantContainer);
 	}
-	container.append(demoRow);
 
 	demoPane.append(container);
 }
