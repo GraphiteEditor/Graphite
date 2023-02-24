@@ -51,7 +51,7 @@ pub fn default_mapping() -> Mapping {
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Shift, Alt], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt }),
 		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift }),
-		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop),
+		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
 		entry!(DoubleClick; action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(Rmb); action_dispatch=SelectToolMessage::Abort),
