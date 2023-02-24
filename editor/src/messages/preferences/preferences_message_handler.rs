@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::MappingVariant;
+use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};

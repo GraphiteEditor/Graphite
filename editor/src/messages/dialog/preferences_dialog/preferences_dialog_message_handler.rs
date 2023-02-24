@@ -51,7 +51,7 @@ impl PreferencesDialogMessageHandler {
 			})),
 			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 				checked: preferences.zoom_with_scroll,
-				tooltip: "Use the scroll wheel for zooming instead of vertically panning".into(),
+				tooltip: "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)".into(),
 				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| {
 					PreferencesMessage::ModifyLayout {
 						zoom_with_scroll: checkbox_input.checked,

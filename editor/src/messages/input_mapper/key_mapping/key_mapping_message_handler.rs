@@ -1,5 +1,4 @@
-use super::{utility_types::input_keyboard::KeysGroup, InputMapperMessageHandler};
-
+use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]

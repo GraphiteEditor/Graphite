@@ -1,9 +1,9 @@
 use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
+use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
-use crate::messages::input_mapper::MappingVariant;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
