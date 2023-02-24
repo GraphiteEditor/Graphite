@@ -2,7 +2,7 @@ use super::*;
 use crate::utils::SubpathTValue;
 use crate::utils::TValue;
 
-/// Helper function to ensure the index and t value pair is mapped within a maximimum index value.
+/// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.
 /// - Ex. Via `subpath.iter().nth(index).evaluate(t);`
 fn map_index_within_range(index: usize, t: f64, max_size: usize) -> (usize, f64) {
@@ -90,7 +90,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
-	/// Returns a Subpath that goes in the reverse direction of the original.
+	/// Returns [ManipulatorGroup]s with a reversed winding order.
 	fn reverse_manipulator_groups(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>]) -> Vec<ManipulatorGroup<ManipulatorGroupId>> {
 		manipulator_groups
 			.iter()
@@ -104,7 +104,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.collect::<Vec<ManipulatorGroup<ManipulatorGroupId>>>()
 	}
 
-	/// Returns a Subpath that goes in the reverse direction of the original.
+	/// Returns a [Subpath] with a reversed winding order.
 	pub fn reverse(&self) -> Subpath<ManipulatorGroupId> {
 		Subpath {
 			manipulator_groups: Subpath::reverse_manipulator_groups(&self.manipulator_groups),
@@ -112,10 +112,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
-	/// Returns an open Subpath that result from trimming the original Subpath at the points corresponding to `t1` and `t2`.
-	/// If `t1` > `t2`, then behaviour for computing the resulting Subpath will differ depending on whether the original Subpath is open or closed:
-	/// - If the original Subpath was open, a reversed open subpath from `t1` to `t2` will be returned.
-	/// - If the original Subpath was closed, an open subpath from `t1` to `t2` that crosses the break between 1 and 0 will be returned.
+	/// Returns an open [Subpath] that results from trimming the original Subpath between the points corresponding to `t1` and `t2`.
+	/// If `t1` > `t2`, then behavior for computing the resulting Subpath will differ depending on whether the original Subpath is open or closed:
+	/// - If the original Subpath was open, an open subpath from `t1` to `t2` will be returned (with a winding order reverse that of the original Subpath).
+	/// - If the original Subpath was closed, an open subpath from `t1` to `t2` that crosses the break between 1 and 0 will be returned (winding in the same direction as the original Subpath from `t1` to `t = 1 = 0` to `t2`).
 	///   - If the reversed open path from `t2` to `t1` is desired, swap the input arguments and then use `Subpath::reverse`
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<ManipulatorGroupId> {
