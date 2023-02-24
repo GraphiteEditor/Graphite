@@ -11,11 +11,19 @@ pub enum LuminanceCalculation {
 	SRGB,
 	Perceptual,
 	AverageChannels,
+	MinimumChannels,
+	MaximumChannels,
 }
 
 impl LuminanceCalculation {
-	pub fn list() -> [LuminanceCalculation; 3] {
-		[LuminanceCalculation::SRGB, LuminanceCalculation::Perceptual, LuminanceCalculation::AverageChannels]
+	pub fn list() -> [LuminanceCalculation; 5] {
+		[
+			LuminanceCalculation::SRGB,
+			LuminanceCalculation::Perceptual,
+			LuminanceCalculation::AverageChannels,
+			LuminanceCalculation::MinimumChannels,
+			LuminanceCalculation::MaximumChannels,
+		]
 	}
 }
 
@@ -25,6 +33,123 @@ impl std::fmt::Display for LuminanceCalculation {
 			LuminanceCalculation::SRGB => write!(f, "sRGB"),
 			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
 			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
+			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
+			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
+		}
+	}
+}
+
+impl BlendMode {
+	pub fn list() -> [BlendMode; 26] {
+		[
+			BlendMode::Normal,
+			BlendMode::Multiply,
+			BlendMode::Darken,
+			BlendMode::ColorBurn,
+			BlendMode::LinearBurn,
+			BlendMode::DarkerColor,
+			BlendMode::Screen,
+			BlendMode::Lighten,
+			BlendMode::ColorDodge,
+			BlendMode::LinearDodge,
+			BlendMode::LighterColor,
+			BlendMode::Overlay,
+			BlendMode::SoftLight,
+			BlendMode::HardLight,
+			BlendMode::VividLight,
+			BlendMode::LinearLight,
+			BlendMode::PinLight,
+			BlendMode::HardMix,
+			BlendMode::Difference,
+			BlendMode::Exclusion,
+			BlendMode::Subtract,
+			BlendMode::Divide,
+			BlendMode::Hue,
+			BlendMode::Saturation,
+			BlendMode::Color,
+			BlendMode::Luminosity,
+		]
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
+pub enum BlendMode {
+	#[default]
+	// Basic group
+	Normal,
+	// Not supported by SVG, but we should someday support: Dissolve
+
+	// Darken group
+	Multiply,
+	Darken,
+	ColorBurn,
+	LinearBurn,
+	DarkerColor,
+
+	// Lighten group
+	Screen,
+	Lighten,
+	ColorDodge,
+	LinearDodge,
+	LighterColor,
+
+	// Contrast group
+	Overlay,
+	SoftLight,
+	HardLight,
+	VividLight,
+	LinearLight,
+	PinLight,
+	HardMix,
+
+	// Inversion group
+	Difference,
+	Exclusion,
+	Subtract,
+	Divide,
+
+	// Component group
+	Hue,
+	Saturation,
+	Color,
+	Luminosity,
+}
+
+impl std::fmt::Display for BlendMode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			BlendMode::Normal => write!(f, "Normal"),
+
+			BlendMode::Multiply => write!(f, "Multiply"),
+			BlendMode::Darken => write!(f, "Darken"),
+			BlendMode::ColorBurn => write!(f, "Color Burn"),
+			BlendMode::LinearBurn => write!(f, "Linear Burn"),
+			BlendMode::DarkerColor => write!(f, "Darker Color"),
+
+			BlendMode::Screen => write!(f, "Screen"),
+			BlendMode::Lighten => write!(f, "Lighten"),
+			BlendMode::ColorDodge => write!(f, "Color Dodge"),
+			BlendMode::LinearDodge => write!(f, "Linear Dodge"),
+			BlendMode::LighterColor => write!(f, "Lighter Color"),
+
+			BlendMode::Overlay => write!(f, "Overlay"),
+			BlendMode::SoftLight => write!(f, "Soft Light"),
+			BlendMode::HardLight => write!(f, "Hard Light"),
+			BlendMode::VividLight => write!(f, "Vivid Light"),
+			BlendMode::LinearLight => write!(f, "Linear Light"),
+			BlendMode::PinLight => write!(f, "Pin Light"),
+			BlendMode::HardMix => write!(f, "Hard Mix"),
+
+			BlendMode::Difference => write!(f, "Difference"),
+			BlendMode::Exclusion => write!(f, "Exclusion"),
+			BlendMode::Subtract => write!(f, "Subtract"),
+			BlendMode::Divide => write!(f, "Divide"),
+
+			BlendMode::Hue => write!(f, "Hue"),
+			BlendMode::Saturation => write!(f, "Saturation"),
+			BlendMode::Color => write!(f, "Color"),
+			BlendMode::Luminosity => write!(f, "Luminosity"),
 		}
 	}
 }
@@ -43,6 +168,8 @@ fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) ->
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
@@ -188,6 +315,8 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 
 	if luminance >= threshold {
@@ -198,17 +327,111 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct BlendNode<BlendMode, Opacity> {
+	blend_mode: BlendMode,
+	opacity: Opacity,
+}
+
+#[node_macro::node_fn(BlendNode)]
+fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+	let (source_color, backdrop) = input;
+	let actual_opacity = 1. - (opacity / 100.) as f32;
+	return match blend_mode {
+		BlendMode::Normal => backdrop.blend_rgb(source_color, Color::blend_normal),
+		BlendMode::Multiply => backdrop.blend_rgb(source_color, Color::blend_multiply),
+		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
+		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, Color::blend_color_burn),
+		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, Color::blend_linear_burn),
+		BlendMode::DarkerColor => backdrop.blend_darker_color(source_color),
+
+		BlendMode::Screen => backdrop.blend_rgb(source_color, Color::blend_screen),
+		BlendMode::Lighten => backdrop.blend_rgb(source_color, Color::blend_lighten),
+		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, Color::blend_color_dodge),
+		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, Color::blend_linear_dodge),
+		BlendMode::LighterColor => backdrop.blend_lighter_color(source_color),
+
+		BlendMode::Overlay => source_color.blend_rgb(backdrop, Color::blend_hardlight),
+		BlendMode::SoftLight => backdrop.blend_rgb(source_color, Color::blend_softlight),
+		BlendMode::HardLight => backdrop.blend_rgb(source_color, Color::blend_hardlight),
+		BlendMode::VividLight => backdrop.blend_rgb(source_color, Color::blend_vivid_light),
+		BlendMode::LinearLight => backdrop.blend_rgb(source_color, Color::blend_linear_light),
+		BlendMode::PinLight => backdrop.blend_rgb(source_color, Color::blend_pin_light),
+		BlendMode::HardMix => backdrop.blend_rgb(source_color, Color::blend_hard_mix),
+
+		BlendMode::Difference => backdrop.blend_rgb(source_color, Color::blend_exclusion),
+		BlendMode::Exclusion => backdrop.blend_rgb(source_color, Color::blend_exclusion),
+		BlendMode::Subtract => backdrop.blend_rgb(source_color, Color::blend_subtract),
+		BlendMode::Divide => backdrop.blend_rgb(source_color, Color::blend_divide),
+
+		BlendMode::Hue => backdrop.blend_hue(source_color),
+		BlendMode::Saturation => backdrop.blend_saturation(source_color),
+		BlendMode::Color => backdrop.blend_color(source_color),
+		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
+	}
+	.lerp(backdrop, actual_opacity)
+	.unwrap();
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct VibranceNode<Vibrance> {
 	vibrance: Vibrance,
 }
 
-// TODO: The current results are incorrect, try implementing this from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// From https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	let [hue, saturation, lightness, alpha] = color.to_hsla();
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let color = color.to_linear_srgb();
+
 	let vibrance = vibrance as f32 / 100.;
-	let saturation = saturation + vibrance * (1. - saturation);
-	Color::from_hsla(hue, saturation, lightness, alpha)
+	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
+	// So this scales the 0% to -50% range to 0% to -100%.
+	let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
+
+	let channel_max = color.r().max(color.g()).max(color.b());
+	let channel_min = color.r().min(color.g()).min(color.b());
+	let channel_difference = channel_max - channel_min;
+
+	let scale_multiplier = if channel_max == color.r() {
+		let green_blue_difference = (color.g() - color.b()).abs();
+		let t = (green_blue_difference / channel_difference).min(1.);
+		t * 0.5 + 0.5
+	} else {
+		1.
+	};
+	let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
+	let channel_reduction = channel_min * scale;
+	let scale = 1. + scale * (1. - channel_difference);
+
+	let luminance_initial = color.to_linear_srgb().luminance_srgb();
+	let altered_color = color.map_rgb(|channel| (channel * scale - channel_reduction)).to_linear_srgb();
+	let luminance = altered_color.luminance_srgb();
+	let altered_color = altered_color.map_rgb(|channel| channel * luminance_initial / luminance);
+
+	let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
+	let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
+		let scale = (1. - luminance) / (channel_max - luminance);
+		altered_color.map_rgb(|channel| (channel - luminance) * scale + luminance)
+	} else {
+		altered_color
+	};
+	let altered_color = altered_color.to_gamma_srgb();
+
+	let altered_color = if vibrance >= 0. {
+		altered_color
+	} else {
+		// TODO: The result ends up a bit darker than it should be, further investigation is needed
+		let luminance = color.luminance_rec_601();
+
+		// Near -0% vibrance we mostly use `altered_color`.
+		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
+		let factor = -slowed_vibrance;
+		altered_color.map_rgb(|channel| channel * (1. - factor) + luminance * factor)
+	};
+
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	altered_color.to_gamma_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]

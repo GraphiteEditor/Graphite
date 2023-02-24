@@ -51,7 +51,7 @@ where
 		core::any::type_name::<Self::Output>()
 	}
 	#[cfg(feature = "alloc")]
-	fn to_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes {
+	fn to_node_io(&self, parameters: Vec<(Type, Type)>) -> NodeIOTypes {
 		NodeIOTypes {
 			input: concrete!(<Input as StaticType>::Static),
 			output: concrete!(<Self::Output as StaticType>::Static),

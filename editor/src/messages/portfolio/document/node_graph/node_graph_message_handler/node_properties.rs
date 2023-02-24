@@ -8,7 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
-use graphene_core::raster::{Color, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, Color, LuminanceCalculation};
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -148,7 +148,27 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-// TODO: Generalize this for all dropdowns
+//TODO Use generalized Version of this as soon as it's available
+fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::BlendMode(mode),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let calculation_modes = BlendMode::list();
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(method), node_id, index)));
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
+}
+
+// TODO: Generalize this for all dropdowns ( also see blend_mode )
 fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -236,6 +256,14 @@ pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets: b_weight },
 		LayoutGroup::Row { widgets: m_weight },
 	]
+}
+
+pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorInput::default(), true);
+	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
+
+	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

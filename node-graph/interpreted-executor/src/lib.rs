@@ -115,4 +115,49 @@ mod tests {
 		let val = *dyn_any::downcast::<u32>(result).unwrap();
 		assert_eq!(val, 33_u32);
 	}
+
+	#[test]
+	fn double_number() {
+		use graph_craft::document::*;
+
+		use graph_craft::*;
+
+		let network = NodeNetwork {
+			inputs: vec![0],
+			outputs: vec![NodeOutput::new(1, 0)],
+			nodes: [
+				// Simple identity node taking a number as input from ouside the graph
+				(
+					0,
+					DocumentNode {
+						name: "id".into(),
+						inputs: vec![NodeInput::Network(concrete!(u32))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						metadata: DocumentNodeMetadata::default(),
+					},
+				),
+				// An add node adding the result of the id node to its self
+				(
+					1,
+					DocumentNode {
+						name: "Add".into(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddParameterNode<_>")),
+						metadata: DocumentNodeMetadata::default(),
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		use crate::executor::DynamicExecutor;
+		use graph_craft::executor::{Compiler, Executor};
+
+		let compiler = Compiler {};
+		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
+
+		let exec = DynamicExecutor::new(protograph).map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
+	}
 }

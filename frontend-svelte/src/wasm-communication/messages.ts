@@ -1236,7 +1236,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, returning the new layout
-export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate): void {
+export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: WidgetDiffUpdate): void {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {

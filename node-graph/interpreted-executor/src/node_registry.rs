@@ -45,7 +45,7 @@ macro_rules! register_node {
 				let node = <$path>::new($(
 					graphene_std::any::input_node::<$type>(_node)
 				),*);
-				let params = vec![$(concrete!($type)),*];
+				let params = vec![$((concrete!(()), concrete!($type))),*];
 				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io
@@ -72,7 +72,7 @@ macro_rules! raster_node {
 				Box::pin(any)
 			},
 			{
-				let params = vec![$(concrete!($type)),*];
+				let params = vec![$((concrete!(()), concrete!($type))),*];
 				NodeIOTypes::new(concrete!(Image), concrete!(Image), params)
 			},
 		)
@@ -110,11 +110,30 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let node = ComposeTypeErased::new(args[0], args[1]);
 				node.into_type_erased()
 			},
-			NodeIOTypes::new(generic!(T), generic!(U), vec![generic!(V), generic!(U)]),
+			NodeIOTypes::new(generic!(T), generic!(U), vec![(generic!(T), generic!(V)), (generic!(V), generic!(U))]),
 		),
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
+		(
+			NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
+			|args| {
+				use graphene_core::Node;
+				let image: DowncastBothNode<(), Image> = DowncastBothNode::new(args[0]);
+				let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
+				let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
+				let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(blend_mode.eval(())), ClonedNode::new(opacity.eval(())));
+				let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
+				let _ = &node as &dyn for<'i> Node<'i, Image, Output = Image>;
+				let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+				any.into_type_erased()
+			},
+			NodeIOTypes::new(
+				concrete!(Image),
+				concrete!(Image),
+				vec![(concrete!(()), concrete!(Image)), (concrete!(()), concrete!(BlendMode)), (concrete!(()), concrete!(f64))],
+			),
+		),
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
@@ -146,25 +165,25 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				concrete!(Image),
 				concrete!(Image),
 				vec![
-					concrete!(DAffine2),
-					concrete!(f64),
-					concrete!(Option<DVec2>),
-					concrete!(f64),
-					concrete!(ImaginateSamplingMethod),
-					concrete!(f64),
-					concrete!(String),
-					concrete!(String),
-					concrete!(bool),
-					concrete!(f64),
-					concrete!(Option<Vec<u64>>),
-					concrete!(bool),
-					concrete!(f64),
-					concrete!(ImaginateMaskStartingFill),
-					concrete!(bool),
-					concrete!(bool),
-					concrete!(Option<std::sync::Arc<Image>>),
-					concrete!(f64),
-					concrete!(ImaginateStatus),
+					(concrete!(()), concrete!(DAffine2)),
+					(concrete!(()), concrete!(f64)),
+					(concrete!(()), concrete!(Option<DVec2>)),
+					(concrete!(()), concrete!(f64)),
+					(concrete!(()), concrete!(ImaginateSamplingMethod)),
+					(concrete!(()), concrete!(f64)),
+					(concrete!(()), concrete!(String)),
+					(concrete!(()), concrete!(String)),
+					(concrete!(()), concrete!(bool)),
+					(concrete!(()), concrete!(f64)),
+					(concrete!(()), concrete!(Option<Vec<u64>>)),
+					(concrete!(()), concrete!(bool)),
+					(concrete!(()), concrete!(f64)),
+					(concrete!(()), concrete!(ImaginateMaskStartingFill)),
+					(concrete!(()), concrete!(bool)),
+					(concrete!(()), concrete!(bool)),
+					(concrete!(()), concrete!(Option<std::sync::Arc<Image>>)),
+					(concrete!(()), concrete!(f64)),
+					(concrete!(()), concrete!(ImaginateStatus)),
 				],
 			),
 		),
@@ -203,7 +222,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let node: DynAnyNode<&Image, _, _> = DynAnyNode::new(ValueNode::new(new_image));
 				node.into_type_erased()
 			},
-			NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![concrete!(u32), concrete!(f64)]),
+			NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![(concrete!(()), concrete!(u32)), (concrete!(()), concrete!(f64))]),
 		),
 		//register_node!(graphene_std::memo::CacheNode<_>, input: Image, params: []),
 		(
