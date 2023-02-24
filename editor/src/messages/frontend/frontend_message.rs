@@ -251,10 +251,6 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
-	UpdateScrollAsZoom {
-		#[serde(rename = "scrollAsZoom")]
-		scroll_as_zoom: bool,
-	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -269,5 +265,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateZoomWithScroll {
+		#[serde(rename = "zoomWithScroll")]
+		zoom_with_scroll: bool,
 	},
 }

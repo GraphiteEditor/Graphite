@@ -20,5 +20,5 @@ pub enum MappingVariant {
 	#[default]
 	Default,
 
-	ScrollAsZoom,
+	ZoomWithScroll,
 }

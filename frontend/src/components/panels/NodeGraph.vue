@@ -513,11 +513,11 @@ export default defineComponent({
 		scroll(e: WheelEvent) {
 			const scrollX = e.deltaX;
 			const scrollY = e.deltaY;
-			const scrollAsZoom = this.nodeGraph.state.scrollAsZoom;
+			const zoomWithScroll = this.nodeGraph.state.zoomWithScroll;
 
 			let zoom;
 			let horizontalPan;
-			if (scrollAsZoom) {
+			if (zoomWithScroll) {
 				zoom = !(e.ctrlKey || e.shiftKey);
 				horizontalPan = e.ctrlKey;
 			} else {

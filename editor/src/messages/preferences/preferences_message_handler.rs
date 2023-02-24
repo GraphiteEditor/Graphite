@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,
-	pub scroll_as_zoom: bool,
+	pub zoom_with_scroll: bool,
 }
 
 impl Default for PreferencesMessageHandler {
@@ -15,7 +15,7 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			imaginate_server_hostname: "http://localhost:7860/".into(),
 			imaginate_refresh_frequency: 1.,
-			scroll_as_zoom: matches!(MappingVariant::default(), MappingVariant::ScrollAsZoom),
+			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 		}
 	}
 }
@@ -56,15 +56,15 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.imaginate_server_hostname = hostname;
 				responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
 			}
-			PreferencesMessage::ModifyLayout { scroll_as_zoom } => {
-				self.scroll_as_zoom = scroll_as_zoom;
+			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
+				self.zoom_with_scroll = zoom_with_scroll;
 
-				let variant = match scroll_as_zoom {
+				let variant = match zoom_with_scroll {
 					false => MappingVariant::Default,
-					true => MappingVariant::ScrollAsZoom,
+					true => MappingVariant::ZoomWithScroll,
 				};
 				responses.push_back(KeyMappingMessage::ModifyMapping(variant).into());
-				responses.push_back(FrontendMessage::UpdateScrollAsZoom { scroll_as_zoom }.into());
+				responses.push_back(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll }.into());
 			}
 		}
 

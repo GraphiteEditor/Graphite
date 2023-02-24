@@ -13,7 +13,7 @@ impl From<MappingVariant> for Mapping {
 	fn from(value: MappingVariant) -> Self {
 		match value {
 			MappingVariant::Default => default_mapping(),
-			MappingVariant::ScrollAsZoom => scroll_as_zoom(),
+			MappingVariant::ZoomWithScroll => zoom_with_scroll(),
 		}
 	}
 }
@@ -348,8 +348,8 @@ pub fn default_mapping() -> Mapping {
 	}
 }
 
-/// Default, but scroll without modifiers is bound to zooming, similar to Blender.
-pub fn scroll_as_zoom() -> Mapping {
+/// Defaults except that scrolling without modifiers is bound to zooming instead of vertical panning
+pub fn zoom_with_scroll() -> Mapping {
 	// TODO(multisn8): for other keymaps this patterns might be useful
 	use InputMapperMessage::*;
 

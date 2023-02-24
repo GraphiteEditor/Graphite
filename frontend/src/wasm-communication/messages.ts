@@ -53,8 +53,8 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
-export class UpdateScrollAsZoom extends JsMessage {
-	readonly scrollAsZoom!: boolean;
+export class UpdateZoomWithScroll extends JsMessage {
+	readonly zoomWithScroll!: boolean;
 }
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
@@ -1426,7 +1426,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
-	UpdateScrollAsZoom,
+	UpdateZoomWithScroll,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,

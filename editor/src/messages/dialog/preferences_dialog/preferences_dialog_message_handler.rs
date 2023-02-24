@@ -33,6 +33,35 @@ impl PreferencesDialogMessageHandler {
 	}
 
 	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {
+		let zoom_with_scroll = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Input".into(),
+				min_width: 60,
+				italic: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Zoom with Scroll".into(),
+				table_align: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+				checked: preferences.zoom_with_scroll,
+				tooltip: "Use the scroll wheel for zooming instead of vertically panning".into(),
+				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| {
+					PreferencesMessage::ModifyLayout {
+						zoom_with_scroll: checkbox_input.checked,
+					}
+					.into()
+				}),
+				..Default::default()
+			})),
+		];
+
 		let imaginate_server_hostname = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Imaginate".into(),
@@ -78,35 +107,6 @@ impl PreferencesDialogMessageHandler {
 			})),
 		];
 
-		let scroll_as_zoom = vec![
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Input".into(),
-				min_width: 60,
-				italic: true,
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Scroll As Zoom".into(),
-				table_align: true,
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-				checked: preferences.scroll_as_zoom,
-				tooltip: "Like in Blender, this will make scroll without modifiers correspond to zooming".into(),
-				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| {
-					PreferencesMessage::ModifyLayout {
-						scroll_as_zoom: checkbox_input.checked,
-					}
-					.into()
-				}),
-				..Default::default()
-			})),
-		];
-
 		let button_widgets = vec![
 			WidgetHolder::new(Widget::TextButton(TextButton {
 				label: "Ok".to_string(),
@@ -136,9 +136,9 @@ impl PreferencesDialogMessageHandler {
 					..Default::default()
 				}))],
 			},
+			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: imaginate_server_hostname },
 			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
-			LayoutGroup::Row { widgets: scroll_as_zoom },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
