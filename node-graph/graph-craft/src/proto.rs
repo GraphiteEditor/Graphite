@@ -119,6 +119,7 @@ pub struct ProtoNode {
 pub enum ProtoNodeInput {
 	None,
 	Network(Type),
+	// the bool indicates whether to treat the node as lambda node
 	Node(NodeId, bool),
 }
 
