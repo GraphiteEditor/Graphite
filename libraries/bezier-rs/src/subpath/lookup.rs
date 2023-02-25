@@ -5,7 +5,7 @@ use crate::ProjectionOptions;
 use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
-impl Subpath {
+impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/length/solo" title="Length Demo"></iframe>
@@ -126,16 +126,19 @@ mod tests {
 					anchor: start,
 					in_handle: None,
 					out_handle: Some(handle1),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle,
 					in_handle: None,
 					out_handle: Some(handle2),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle3),
+					id: EmptyId,
 				},
 			],
 			false,
@@ -165,16 +168,19 @@ mod tests {
 					anchor: start,
 					in_handle: Some(handle3),
 					out_handle: None,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle,
 					in_handle: None,
 					out_handle: Some(handle1),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle2),
+					id: EmptyId,
 				},
 			],
 			false,
@@ -191,6 +197,7 @@ mod tests {
 			anchor: DVec2::new(0., 0.),
 			in_handle: None,
 			out_handle: None,
+			id: EmptyId,
 		};
 		let open_subpath = Subpath {
 			manipulator_groups: vec![mock_manipulator_group; 5],
@@ -212,6 +219,7 @@ mod tests {
 			anchor: DVec2::new(0., 0.),
 			in_handle: None,
 			out_handle: None,
+			id: EmptyId,
 		};
 		let closed_subpath = Subpath {
 			manipulator_groups: vec![mock_manipulator_group; 5],

@@ -3,7 +3,7 @@ use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
 use crate::{SubpathTValue, TValue};
 
-impl Subpath {
+impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn insert(&mut self, t: SubpathTValue) {
@@ -22,6 +22,7 @@ impl Subpath {
 			anchor: first.end(),
 			in_handle: first.handle_end(),
 			out_handle: second.handle_start(),
+			id: ManipulatorGroupId::new(),
 		};
 		let number_of_groups = self.manipulator_groups.len() + 1;
 		self.manipulator_groups.insert((segment_index) + 1, new_group);
@@ -37,7 +38,7 @@ mod tests {
 	use super::*;
 	use glam::DVec2;
 
-	fn set_up_open_subpath() -> Subpath {
+	fn set_up_open_subpath() -> Subpath<EmptyId> {
 		let start = DVec2::new(20., 30.);
 		let middle1 = DVec2::new(80., 90.);
 		let middle2 = DVec2::new(100., 100.);
@@ -53,28 +54,32 @@ mod tests {
 					anchor: start,
 					in_handle: None,
 					out_handle: Some(handle1),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle1,
 					in_handle: None,
 					out_handle: Some(handle2),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle2,
 					in_handle: None,
 					out_handle: None,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle3),
+					id: EmptyId,
 				},
 			],
 			false,
 		)
 	}
 
-	fn set_up_closed_subpath() -> Subpath {
+	fn set_up_closed_subpath() -> Subpath<EmptyId> {
 		let mut subpath = set_up_open_subpath();
 		subpath.closed = true;
 		subpath
