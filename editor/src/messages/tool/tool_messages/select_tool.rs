@@ -1,13 +1,15 @@
+use std::fmt;
+
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{RadioEntryData, RadioInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput, DropdownInputEntries, RadioEntryData, RadioInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -52,6 +54,15 @@ pub enum LayerSelectionBehavior {
 	#[default]
 	Deepest,
 	Shallowest,
+}
+
+impl fmt::Display for LayerSelectionBehavior {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			LayerSelectionBehavior::Deepest => write!(f, "Deep Select"),
+			LayerSelectionBehavior::Shallowest => write!(f, "Shallow Select"),
+		}
+	}
 }
 
 #[remain::sorted]
@@ -112,49 +123,33 @@ impl ToolMetadata for SelectTool {
 
 impl PropertyHolder for SelectTool {
 	fn properties(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			// widgets: vec![
-			// 	WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-			// 		entries: blend_mode_menu_entries,
-			// 		selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
-			// 		disabled: blend_mode.is_none() && !blend_mode_is_mixed,
-			// 		draw_icon: false,
-			// 		..Default::default()
-			// 	})),
+		let layer_selection_behavior_entries = [&[LayerSelectionBehavior::Deepest, LayerSelectionBehavior::Shallowest]]
+			.iter()
+			.map(|modes| {
+				modes
+					.iter()
+					.map(|mode| DropdownEntryData {
+						label: mode.to_string(),
+						value: mode.to_string(),
+						on_update: WidgetCallback::new(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(*mode)).into()),
+						..Default::default()
+					})
+					.collect()
+			})
+			.collect();
 
-			// let blend_mode_menu_entries = BlendMode::list_modes_in_groups()
-			// .iter()
-			// .map(|modes| {
-			// 	modes
-			// 		.iter()
-			// 		.map(|mode| DropdownEntryData {
-			// 			label: mode.to_string(),
-			// 			value: mode.to_string(),
-			// 			on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
-			// 			..Default::default()
-			// 		})
-			// 		.collect()
-			// })
-			// .collect();
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				RadioInput::new(vec![
-					RadioEntryData::new("Deepest")
-						.value("deepest")
-						.tooltip("Deepest")
-						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Deepest)).into()),
-					RadioEntryData::new("Shallowest")
-						.value("shallowest")
-						.tooltip("Shallowest")
-						.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::Type(LayerSelectionBehavior::Shallowest)).into()),
-				])
-				.selected_index((self.tool_data.selected_type == LayerSelectionBehavior::Shallowest) as u32)
-				.widget_holder(),
+				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+					entries: layer_selection_behavior_entries,
+					selected_index: Some((self.tool_data.selected_type == LayerSelectionBehavior::Shallowest) as u32),
+					..Default::default()
+				})),
 				WidgetHolder::related_separator(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
 					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
 					.widget_holder(),
-				// WidgetHolder::unrelated_separator(),
 				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
@@ -447,7 +442,6 @@ impl Fsm for SelectToolFsmState {
 					self
 				}
 				(Ready, DragStart { add_to_selection, layer_selection }) => {
-					// check if in group
 					tool_data.path_outlines.clear_hovered(responses);
 
 					tool_data.drag_start = input.mouse.position;
@@ -542,7 +536,6 @@ impl Fsm for SelectToolFsmState {
 						if let Some(intersection) = intersection.pop() {
 							selected = vec![intersection];
 							// Shallowest manipulation
-							// Todo: Shift click
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								// Control click selects the layer directly
 								if input.keyboard.get(layer_selection as usize) {
@@ -554,9 +547,9 @@ impl Fsm for SelectToolFsmState {
 										.into(),
 									);
 								} else {
-									tool_data.layers_dragging.clear();
-
+									// fine tune: multi move, cant shift click and append then drag appended
 									let mut previously_selected_layers = document.selected_layers();
+									let layers: Vec<_> = document.selected_layers().collect();
 									// Check whether a layer is selected for next selection calculations
 									if let Some(previous_layer_path) = previously_selected_layers.next() {
 										let previous_layer_path_vector = previous_layer_path.to_vec();
@@ -578,13 +571,38 @@ impl Fsm for SelectToolFsmState {
 										else if incoming_layer_path_vector.len() < previous_layer_path_vector.len() {
 											new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
 										}
-										tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
-										responses.push_back(
-											DocumentMessage::SetSelectedLayers {
-												replacement_selected_layers: new_layer_path_vector.unwrap(),
+										let new_layer = new_layer_path_vector.clone().unwrap();
+										let mut already_selected: bool = false;
+
+										for layer in layers {
+											if layer.to_vec() == *new_layer.get(0).unwrap() {
+												already_selected = true;
 											}
-											.into(),
-										);
+										}
+
+										// check if the layer clicked on is already selected
+										if !already_selected {
+											if !input.keyboard.get(add_to_selection as usize) {
+												tool_data.layers_dragging.clear();
+											}
+											tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
+
+											if input.keyboard.get(add_to_selection as usize) {
+												responses.push_back(
+													DocumentMessage::AddSelectedLayers {
+														additional_layers: new_layer_path_vector.unwrap(),
+													}
+													.into(),
+												);
+											} else {
+												responses.push_back(
+													DocumentMessage::SetSelectedLayers {
+														replacement_selected_layers: new_layer_path_vector.unwrap(),
+													}
+													.into(),
+												);
+											}
+										}
 									} else {
 										// Select root-most layer
 										let parent_folder_id = selected.first().unwrap().first().unwrap();
@@ -938,8 +956,8 @@ impl Fsm for SelectToolFsmState {
 						]),
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
-							HintInfo::keys([Key::Control], "Innermost").add_mac_keys([Key::Command]).prepend_plus(),
 							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+							HintInfo::keys([Key::Control], "Deepest").add_mac_keys([Key::Command]).prepend_plus(),
 						]),
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
