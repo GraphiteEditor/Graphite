@@ -51,11 +51,11 @@ impl Bezier {
 		}
 	}
 
-	/// Returns the Bezier curve representing the sub-curve starting at the point `t1` and ending at the point `t2` along the curve.
-	/// When `t1 < t2`, returns the reversed sub-curve starting at `t2` and ending at `t1`.
+	/// Returns the Bezier curve representing the sub-curve between the two provided points.
+	/// It will start at the point corresponding to the smaller of `t1` and `t2`, and end at the point corresponding to the larger of `t1` and `t2`.
 	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: TValue, t2: TValue) -> Bezier {
-		let (t1, t2) = (self.t_value_to_parametric(t1), self.t_value_to_parametric(t2));
+		let (mut t1, mut t2) = (self.t_value_to_parametric(t1), self.t_value_to_parametric(t2));
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
 		if f64_compare(t1, t2, MAX_ABSOLUTE_DIFFERENCE) {
 			let point = self.evaluate(TValue::Parametric(t1));
@@ -64,25 +64,13 @@ impl Bezier {
 				BezierHandles::Quadratic { handle: _ } => Bezier::from_quadratic_dvec2(point, point, point),
 				BezierHandles::Cubic { handle_start: _, handle_end: _ } => Bezier::from_cubic_dvec2(point, point, point, point),
 			};
+		} else if t1 > t2 {
+			(t1, t2) = (t2, t1)
 		}
-		// Depending on the order of `t1` and `t2`, determine which half of the split we need to keep
-		let t1_split_side = usize::from(t1 <= t2);
-		let t2_split_side = usize::from(t1 > t2);
-		let bezier_starting_at_t1 = self.split(TValue::Parametric(t1))[t1_split_side];
-		// Adjust the ratio `t2` to its corresponding value on the new curve that was split on `t1`
-		let adjusted_t2 = if t1 < t2 || t1 == 0. {
-			// Case where we took the split from t1 to the end
-			// Also cover the `t1` == t2 case where there would otherwise be a divide by 0
-			(t2 - t1) / (1. - t1)
-		} else {
-			// Case where we took the split from the beginning to `t1`
-			t2 / t1
-		};
-		let result = bezier_starting_at_t1.split(TValue::Parametric(adjusted_t2))[t2_split_side];
-		if t2 < t1 {
-			return result.reverse();
-		}
-		result
+		let bezier_ending_at_t2 = self.split(TValue::Parametric(t2))[0];
+		// Adjust the ratio `t1` to its corresponding value on the new curve that was split on `t2`
+		let adjusted_t1 = t1 / t2;
+		bezier_ending_at_t2.split(TValue::Parametric(adjusted_t1))[1]
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
@@ -638,7 +626,7 @@ mod tests {
 		let cubic_bezier = Bezier::from_cubic_coordinates(80., 80., 40., 40., 70., 70., 150., 150.);
 		let trimmed3 = cubic_bezier.trim(TValue::Parametric(0.25), TValue::Parametric(0.75));
 
-		assert_eq!(trimmed3.start(), cubic_bezier.evaluate(TValue::Parametric(0.25)));
+		assert!(trimmed3.start().abs_diff_eq(cubic_bezier.evaluate(TValue::Parametric(0.25)), MAX_ABSOLUTE_DIFFERENCE));
 		assert_eq!(trimmed3.end(), cubic_bezier.evaluate(TValue::Parametric(0.75)));
 		assert_eq!(trimmed3.evaluate(TValue::Parametric(0.5)), cubic_bezier.evaluate(TValue::Parametric(0.5)));
 	}
@@ -648,13 +636,13 @@ mod tests {
 		// Test trimming quadratic curve when t2 > t1
 		let bezier_quadratic = Bezier::from_quadratic_coordinates(30., 50., 140., 30., 160., 170.);
 		let trim1 = bezier_quadratic.trim(TValue::Parametric(0.25), TValue::Parametric(0.75));
-		let trim2 = bezier_quadratic.trim(TValue::Parametric(0.75), TValue::Parametric(0.25)).reverse();
+		let trim2 = bezier_quadratic.trim(TValue::Parametric(0.75), TValue::Parametric(0.25));
 		assert!(trim1.abs_diff_eq(&trim2, MAX_ABSOLUTE_DIFFERENCE));
 
 		// Test trimming cubic curve when t2 > t1
 		let bezier_cubic = Bezier::from_cubic_coordinates(30., 30., 60., 140., 150., 30., 160., 160.);
 		let trim3 = bezier_cubic.trim(TValue::Parametric(0.25), TValue::Parametric(0.75));
-		let trim4 = bezier_cubic.trim(TValue::Parametric(0.75), TValue::Parametric(0.25)).reverse();
+		let trim4 = bezier_cubic.trim(TValue::Parametric(0.75), TValue::Parametric(0.25));
 		assert!(trim3.abs_diff_eq(&trim4, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
