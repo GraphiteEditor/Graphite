@@ -15,7 +15,6 @@ graph-craft = {path = "../graph-craft" }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
 future-executor = { path = "../future-executor" }
 num-traits = "0.2"
-rand_chacha = "0.3.1"
 log = "0.4"
 serde = { version = "1", features = ["derive", "rc"], optional = true }
 glam = { version = "0.22" }

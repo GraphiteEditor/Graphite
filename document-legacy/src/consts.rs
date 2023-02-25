@@ -1,9 +1,3 @@
-use graphene_core::raster::color::Color;
-
-// RENDERING
-pub const LAYER_OUTLINE_STROKE_COLOR: Color = Color::BLACK;
-pub const LAYER_OUTLINE_STROKE_WEIGHT: f64 = 1.;
-
 // BOOLEAN OPERATIONS
 
 // Bezier curve intersection algorithm
