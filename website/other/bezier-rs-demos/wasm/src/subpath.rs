@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 #[derive(Clone)]
 pub(crate) struct EmptyManipulatorGroupId;
 
-impl bezier_rs::ManipulatorGroupId for EmptyManipulatorGroupId {
+impl bezier_rs::Identifier for EmptyManipulatorGroupId {
 	fn new() -> Self {
 		Self
 	}

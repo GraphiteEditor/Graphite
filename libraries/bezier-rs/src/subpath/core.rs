@@ -4,7 +4,7 @@ use crate::consts::*;
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
-impl<ManipulatorGroupId: crate::ManipulatorGroupId> Subpath<ManipulatorGroupId> {
+impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
 	pub fn new(manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>, closed: bool) -> Self {

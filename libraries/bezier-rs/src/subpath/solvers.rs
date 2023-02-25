@@ -5,7 +5,7 @@ use crate::TValue;
 
 use glam::DVec2;
 
-impl<ManipulatorGroupId: crate::ManipulatorGroupId> Subpath<ManipulatorGroupId> {
+impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Calculate the point on the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/evaluate/solo" title="Evaluate Demo"></iframe>
@@ -144,13 +144,13 @@ mod tests {
 					anchor: start,
 					in_handle: None,
 					out_handle: Some(handle),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 			],
 			false,
@@ -188,19 +188,19 @@ mod tests {
 					anchor: start,
 					in_handle: Some(handle3),
 					out_handle: None,
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle,
 					in_handle: None,
 					out_handle: Some(handle1),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle2),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 			],
 			false,
@@ -295,19 +295,19 @@ mod tests {
 					anchor: cubic_start,
 					in_handle: None,
 					out_handle: Some(cubic_handle_1),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: cubic_end,
 					in_handle: Some(cubic_handle_2),
 					out_handle: None,
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: quadratic_end,
 					in_handle: Some(quadratic_1_handle),
 					out_handle: Some(quadratic_2_handle),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 			],
 			true,
@@ -374,19 +374,19 @@ mod tests {
 					anchor: cubic_start,
 					in_handle: None,
 					out_handle: Some(cubic_handle_1),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: cubic_end,
 					in_handle: Some(cubic_handle_2),
 					out_handle: None,
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: quadratic_end,
 					in_handle: Some(quadratic_1_handle),
 					out_handle: Some(quadratic_2_handle),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 			],
 			true,
@@ -442,19 +442,19 @@ mod tests {
 					anchor: cubic_start,
 					in_handle: None,
 					out_handle: Some(cubic_handle_1),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: cubic_end,
 					in_handle: Some(cubic_handle_2),
 					out_handle: None,
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: quadratic_end,
 					in_handle: Some(quadratic_1_handle),
 					out_handle: Some(quadratic_2_handle),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 			],
 			true,

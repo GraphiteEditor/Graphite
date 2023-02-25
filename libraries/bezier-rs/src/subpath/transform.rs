@@ -3,7 +3,7 @@ use crate::utils::SubpathTValue;
 use crate::utils::TValue;
 
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
-impl<ManipulatorGroupId: crate::ManipulatorGroupId> Subpath<ManipulatorGroupId> {
+impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
 	/// If the original Subpath was open, two open Subpaths will be returned.
@@ -87,7 +87,7 @@ mod tests {
 	use super::*;
 	use glam::DVec2;
 
-	fn set_up_open_subpath() -> Subpath<EmptyManipulatorGroupId> {
+	fn set_up_open_subpath() -> Subpath<EmptyId> {
 		let start = DVec2::new(20., 30.);
 		let middle1 = DVec2::new(80., 90.);
 		let middle2 = DVec2::new(100., 100.);
@@ -103,32 +103,32 @@ mod tests {
 					anchor: start,
 					in_handle: None,
 					out_handle: Some(handle1),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle1,
 					in_handle: None,
 					out_handle: Some(handle2),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle2,
 					in_handle: None,
 					out_handle: None,
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle3),
-					id: EmptyManipulatorGroupId,
+					id: EmptyId,
 				},
 			],
 			false,
 		)
 	}
 
-	fn set_up_closed_subpath() -> Subpath<EmptyManipulatorGroupId> {
+	fn set_up_closed_subpath() -> Subpath<EmptyId> {
 		let mut subpath = set_up_open_subpath();
 		subpath.closed = true;
 		subpath
@@ -162,7 +162,7 @@ mod tests {
 				anchor: location,
 				in_handle: None,
 				out_handle: None,
-				id: EmptyManipulatorGroupId,
+				id: EmptyId,
 			}
 		);
 		assert_eq!(first.manipulator_groups.len(), 1);
@@ -186,7 +186,7 @@ mod tests {
 				anchor: location,
 				in_handle: None,
 				out_handle: None,
-				id: EmptyManipulatorGroupId,
+				id: EmptyId,
 			}
 		);
 		assert_eq!(second.manipulator_groups.len(), 1);

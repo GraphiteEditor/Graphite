@@ -12,18 +12,18 @@ use std::ops::{Index, IndexMut};
 
 /// Structure used to represent a path composed of [Bezier] curves.
 #[derive(Clone, PartialEq)]
-pub struct Subpath<ManipulatorGroupId: crate::ManipulatorGroupId> {
+pub struct Subpath<ManipulatorGroupId: crate::Identifier> {
 	manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>,
 	closed: bool,
 }
 
 /// Iteration structure for iterating across each curve of a `Subpath`, using an intermediate `Bezier` representation.
-pub struct SubpathIter<'a, ManipulatorGroupId: crate::ManipulatorGroupId> {
+pub struct SubpathIter<'a, ManipulatorGroupId: crate::Identifier> {
 	index: usize,
 	sub_path: &'a Subpath<ManipulatorGroupId>,
 }
 
-impl<ManipulatorGroupId: crate::ManipulatorGroupId> Index<usize> for Subpath<ManipulatorGroupId> {
+impl<ManipulatorGroupId: crate::Identifier> Index<usize> for Subpath<ManipulatorGroupId> {
 	type Output = ManipulatorGroup<ManipulatorGroupId>;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -32,14 +32,14 @@ impl<ManipulatorGroupId: crate::ManipulatorGroupId> Index<usize> for Subpath<Man
 	}
 }
 
-impl<ManipulatorGroupId: crate::ManipulatorGroupId> IndexMut<usize> for Subpath<ManipulatorGroupId> {
+impl<ManipulatorGroupId: crate::Identifier> IndexMut<usize> for Subpath<ManipulatorGroupId> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		assert!(index < self.len(), "Index out of bounds in trait IndexMut of SubPath.");
 		&mut self.manipulator_groups[index]
 	}
 }
 
-impl<ManipulatorGroupId: crate::ManipulatorGroupId> Iterator for SubpathIter<'_, ManipulatorGroupId> {
+impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, ManipulatorGroupId> {
 	type Item = Bezier;
 
 	// Returns the Bezier representation of each `Subpath` segment, defined between a pair of adjacent manipulator points.
