@@ -16,7 +16,6 @@ graphene-core = { path = "../gcore", features = ["async", "std", "alloc"] }
 graph-craft = {path = "../graph-craft", features = ["serde"] }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
 num-traits = "0.2"
-rand_chacha = "0.3.1"
 log = "0.4"
 serde = { version = "1", features = ["derive", "rc"]}
 glam = { version = "0.22" }
