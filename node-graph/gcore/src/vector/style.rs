@@ -1,9 +1,7 @@
 //! Contains stylistic options for SVG elements.
 
-use super::text_layer::FontCache;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-
-use graphene_core::raster::color::Color;
+use crate::Color;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -21,36 +19,6 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 	}
 }
 
-/// Represents different ways of rendering an object
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
-pub enum ViewMode {
-	/// Render with normal coloration at the current viewport resolution
-	#[default]
-	Normal,
-	/// Render only the outlines of shapes at the current viewport resolution
-	Outline,
-	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
-	Pixels,
-}
-
-/// Contains metadata for rendering the document as an svg
-#[derive(Debug, Clone, Copy)]
-pub struct RenderData<'a> {
-	pub font_cache: &'a FontCache,
-	pub view_mode: ViewMode,
-	pub culling_bounds: Option<[DVec2; 2]>,
-}
-
-impl<'a> RenderData<'a> {
-	pub fn new(font_cache: &'a FontCache, view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>) -> Self {
-		Self {
-			font_cache,
-			view_mode,
-			culling_bounds,
-		}
-	}
-}
-
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientType {
 	#[default]
@@ -62,7 +30,7 @@ pub enum GradientType {
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, PartialEq, Default, Serialize, Deserialize, specta::Type)]
 pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
@@ -71,7 +39,6 @@ pub struct Gradient {
 	uuid: u64,
 	pub gradient_type: GradientType,
 }
-
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
 	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64, gradient_type: GradientType) -> Self {
@@ -167,6 +134,21 @@ impl Gradient {
 		self.positions.insert(index, (new_position, new_color));
 
 		Some(index)
+	}
+}
+
+impl Clone for Gradient {
+	/// Clones the gradient, with the cloned gradient having the new uuid.
+	/// If multiple gradients have the same id then only one gradient will be shown in the final svg output.
+	fn clone(&self) -> Self {
+		Self {
+			start: self.start,
+			end: self.end,
+			transform: self.transform,
+			positions: self.positions.clone(),
+			uuid: crate::uuid::generate_uuid(),
+			gradient_type: self.gradient_type,
+		}
 	}
 }
 
@@ -410,7 +392,7 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphene_core::vector::style::{Fill, PathStyle};
 	/// # use graphene_core::raster::color::Color;
 	/// let fill = Fill::solid(Color::RED);
 	/// let style = PathStyle::new(None, fill.clone());
@@ -425,7 +407,7 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::style::{Fill, Stroke, PathStyle};
+	/// # use graphene_core::vector::style::{Fill, Stroke, PathStyle};
 	/// # use graphene_core::raster::color::Color;
 	/// let stroke = Stroke::new(Color::GREEN, 42.);
 	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
@@ -440,7 +422,7 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphene_core::vector::style::{Fill, PathStyle};
 	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::default();
 	///
@@ -459,7 +441,7 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::style::{Stroke, PathStyle};
+	/// # use graphene_core::vector::style::{Stroke, PathStyle};
 	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::default();
 	///
@@ -478,7 +460,7 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle};
+	/// # use graphene_core::vector::style::{Fill, PathStyle};
 	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::new(None, Fill::Solid(Color::RED));
 	///
@@ -496,7 +478,7 @@ impl PathStyle {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::style::{Fill, Stroke, PathStyle};
+	/// # use graphene_core::vector::style::{Fill, Stroke, PathStyle};
 	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::new(Some(Stroke::new(Color::GREEN, 42.)), Fill::None);
 	///
@@ -523,4 +505,16 @@ impl PathStyle {
 
 		format!("{}{}", fill_attribute, stroke_attribute)
 	}
+}
+
+/// Represents different ways of rendering an object
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+pub enum ViewMode {
+	/// Render with normal coloration at the current viewport resolution
+	#[default]
+	Normal,
+	/// Render only the outlines of shapes at the current viewport resolution
+	Outline,
+	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
+	Pixels,
 }
