@@ -112,11 +112,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
-	/// Returns an open [Subpath] that results from trimming the original Subpath between the points corresponding to `t1` and `t2`.
-	/// If `t1` > `t2`, then behavior for computing the resulting Subpath will differ depending on whether the original Subpath is open or closed:
-	/// - If the original Subpath was open, an open subpath from `t2` to `t1` will be returned (with winding in the same direction as the original Subpath).
-	/// - If the original Subpath was closed, an open subpath from `t1` to `t2` that crosses the break between 1 and 0 will be returned (winding in the same direction as the original Subpath from `t1` to `t = 1 = 0` to `t2`).
-	///
+	/// Returns an open [Subpath] that results from trimming the original Subpath between the points corresponding to `t1` and `t2`, maintaining the winding order of the original.
+	/// If the original Subpath is closed, the order of arguments does matter.
+	/// The resulting Subpath will wind from the given `t1` to `t2`.
+	/// That means, if the value of `t1` > `t2`, it will cross the break between endpoints from `t1` to `t = 1 = 0` to `t2`.
 	/// If a path winding in the reverse direction is desired, call `trim` on the `Subpath` returned from `Subpath::reverse`.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<ManipulatorGroupId> {
