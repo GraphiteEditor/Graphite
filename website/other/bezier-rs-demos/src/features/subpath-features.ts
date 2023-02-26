@@ -105,6 +105,15 @@ const subpathFeatures = {
 		sliderOptions: [tSliderOptions],
 		chooseTVariant: true,
 	},
+	trim: {
+		name: "Trim",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.trim(options.tVariant1, options.tVariant2, tVariant),
+		sliderOptions: [
+			{ ...tSliderOptions, default: 0.2, variable: "tVariant1" },
+			{ ...tSliderOptions, variable: "tVariant2" },
+		],
+		chooseTVariant: true,
+	},
 };
 
 export type SubpathFeatureKey = keyof typeof subpathFeatures;

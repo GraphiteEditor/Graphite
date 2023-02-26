@@ -1,5 +1,5 @@
 /// Comparison functions used for tests in the bezier module
-use super::{Bezier, CircleArc};
+use super::{Bezier, CircleArc, Subpath};
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
 
@@ -34,4 +34,10 @@ pub fn compare_arcs(arc1: CircleArc, arc2: CircleArc) -> bool {
 		&& f64_compare(arc1.radius, arc1.radius, MAX_ABSOLUTE_DIFFERENCE)
 		&& f64_compare(arc1.start_angle, arc2.start_angle, MAX_ABSOLUTE_DIFFERENCE)
 		&& f64_compare(arc1.end_angle, arc2.end_angle, MAX_ABSOLUTE_DIFFERENCE)
+}
+
+/// Compare Subpath by verifying that their bezier segments match.
+/// In this way, matching quadratic segments where the handles are on opposite manipulator groups will be considered equal.
+pub fn compare_subpaths<ManipulatorGroupId: crate::Identifier>(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> bool {
+	subpath1.len() == subpath2.len() && subpath1.closed() == subpath2.closed() && subpath1.iter().eq(subpath2.iter())
 }
