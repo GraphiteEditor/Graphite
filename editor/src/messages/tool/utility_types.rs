@@ -49,7 +49,7 @@ pub trait Fsm {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {

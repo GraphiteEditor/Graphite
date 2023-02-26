@@ -9,7 +9,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput, DropdownInputEntries, RadioEntryData, RadioInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -37,6 +37,7 @@ pub struct SelectTool {
 	tool_data: SelectToolData,
 }
 
+#[allow(dead_code)]
 pub struct SelectOptions {
 	selected_type: LayerSelectionBehavior,
 }
@@ -47,6 +48,12 @@ impl Default for SelectOptions {
 			selected_type: LayerSelectionBehavior::Deepest,
 		}
 	}
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+pub enum SelectOptionsUpdate {
+	Type(LayerSelectionBehavior),
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
@@ -63,12 +70,6 @@ impl fmt::Display for LayerSelectionBehavior {
 			LayerSelectionBehavior::Shallowest => write!(f, "Shallow Select"),
 		}
 	}
-}
-
-#[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
-pub enum SelectOptionsUpdate {
-	Type(LayerSelectionBehavior),
 }
 
 #[remain::sorted]
@@ -914,11 +915,11 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				let hint_data = match tool_data.selected_type {
+				let hint_data = match _tool_data.selected_type {
 					// Deepest
 					LayerSelectionBehavior::Deepest => HintData(vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
@@ -989,7 +990,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {}
+	fn update_hints(&self, _responses: &mut VecDeque<Message>) {}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
