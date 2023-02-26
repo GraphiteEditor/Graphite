@@ -137,7 +137,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
 	}
 
-	/// Constructs an elipse with `corner1` and `corner2` as the two corners.
+	/// Constructs an elipse with `corner1` and `corner2` as the two corners of the bounding box.
 	pub fn new_ellipse(corner1: DVec2, corner2: DVec2) -> Self {
 		let size = (corner1 - corner2).abs();
 		let center = (corner1 + corner2) / 2.;
@@ -146,9 +146,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let left = DVec2::new(corner1.x, center.y);
 		let right = DVec2::new(corner2.x, center.y);
 
-		// Constant explained here https://stackoverflow.com/a/27863181
-		let curve_constant = 0.55228_3;
-		let handle_offset = size * curve_constant * 0.5;
+		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+		const HANDLE_OFFSET_FACTOR: f64 = (4. / 3.) * std::f64::consts::FRAC_PI_8.tan();
+		let handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
 
 		let manipulator_groups = vec![
 			ManipulatorGroup::new(top, Some(top + handle_offset * DVec2::X), Some(top - handle_offset * DVec2::X)),
@@ -159,9 +159,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::new(manipulator_groups, true)
 	}
 
-	/// Constructs a regular polygon.
-	/// `sides` is the number of sides
-	/// `radius` is the distance from the `center` to any vertex.
+	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
 	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
 		let anchor_positions = (0..sides).map(|i| {
 			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
@@ -176,9 +174,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors([p1, p2], false)
 	}
 
-	/// Construct a spline from a list of points.
+	/// Construct a cubic spline from a list of points.
 	/// Based on https://mathworld.wolfram.com/CubicSpline.html
-	pub fn new_spline(points: Vec<DVec2>) -> Self {
+	pub fn new_cubic_spline(points: Vec<DVec2>) -> Self {
 		// Number of points = number of points to find handles for
 		let len_points = points.len();
 
@@ -187,19 +185,19 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// this algorithm does a variation of the above algorithm.
 		// Instead of using the traditional cubic: a + bt + ct^2 + dt^3, we use the bezier cubic.
 
-		let mut b = vec![DVec2::new(4.0, 4.0); len_points];
-		b[0] = DVec2::new(2.0, 2.0);
-		b[len_points - 1] = DVec2::new(2.0, 2.0);
+		let mut b = vec![DVec2::new(4., 4.); len_points];
+		b[0] = DVec2::new(2., 2.);
+		b[len_points - 1] = DVec2::new(2., 2.);
 
-		let mut c = vec![DVec2::new(1.0, 1.0); len_points];
+		let mut c = vec![DVec2::new(1., 1.); len_points];
 
 		// 'd' is the the second point in a cubic bezier, which is what we solve for
 		let mut d = vec![DVec2::ZERO; len_points];
 
-		d[0] = DVec2::new(2.0 * points[1].x + points[0].x, 2.0 * points[1].y + points[0].y);
-		d[len_points - 1] = DVec2::new(3.0 * points[len_points - 1].x, 3.0 * points[len_points - 1].y);
+		d[0] = DVec2::new(2. * points[1].x + points[0].x, 2. * points[1].y + points[0].y);
+		d[len_points - 1] = DVec2::new(3. * points[len_points - 1].x, 3. * points[len_points - 1].y);
 		for idx in 1..(len_points - 1) {
-			d[idx] = DVec2::new(4.0 * points[idx].x + 2.0 * points[idx + 1].x, 4.0 * points[idx].y + 2.0 * points[idx + 1].y);
+			d[idx] = DVec2::new(4. * points[idx].x + 2. * points[idx + 1].x, 4. * points[idx].y + 2. * points[idx + 1].y);
 		}
 
 		// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
@@ -218,11 +216,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		// at this point b[i] == -a[i + 1], a[i] == 0,
 		// do row operations to eliminate 'c' coefficients and solve
-		d[len_points - 1] *= -1.0;
+		d[len_points - 1] *= -1.;
 		#[allow(clippy::assign_op_pattern)]
 		for i in (0..len_points - 1).rev() {
 			d[i] = d[i] - (c[i] * d[i + 1]);
-			d[i] *= -1.0; //d[i] /= b[i]
+			d[i] *= -1.; //d[i] /= b[i]
 		}
 
 		let mut subpath = Subpath::new(Vec::new(), false);
@@ -231,11 +229,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// to find 'handle1_pos' for the n'th point we need the n-1 cubic bezier
 		subpath.manipulator_groups.push(ManipulatorGroup::new(points[0], None, Some(d[0])));
 		for i in 1..len_points - 1 {
-			subpath.manipulator_groups.push(ManipulatorGroup::new(points[i], Some(2.0 * points[i] - d[i]), Some(d[i])));
+			subpath.manipulator_groups.push(ManipulatorGroup::new(points[i], Some(2. * points[i] - d[i]), Some(d[i])));
 		}
 		subpath
 			.manipulator_groups
-			.push(ManipulatorGroup::new(points[len_points - 1], Some(2.0 * points[len_points - 1] - d[len_points - 1]), None));
+			.push(ManipulatorGroup::new(points[len_points - 1], Some(2. * points[len_points - 1] - d[len_points - 1]), None));
 
 		subpath
 	}
