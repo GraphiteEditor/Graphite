@@ -1,5 +1,5 @@
 import { tSliderOptions } from "@/utils/options";
-import { ComputeType, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
+import { TVariant, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -8,10 +8,9 @@ const subpathFeatures = {
 	},
 	insert: {
 		name: "Insert",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.insert(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseComputeType: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.insert(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	length: {
 		name: "Length",
@@ -19,9 +18,9 @@ const subpathFeatures = {
 	},
 	evaluate: {
 		name: "Evaluate",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.evaluate(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-		chooseComputeType: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.evaluate(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	project: {
 		name: "Project",
@@ -31,13 +30,15 @@ const subpathFeatures = {
 	},
 	tangent: {
 		name: "Tangent",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.tangent(options.t),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.tangent(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	normal: {
 		name: "Normal",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.normal(options.t),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.normal(options.t, tVariant),
 		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 	"intersect-linear": {
 		name: "Intersect (Line Segment)",
@@ -68,10 +69,9 @@ const subpathFeatures = {
 	},
 	split: {
 		name: "Split",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, computeType: ComputeType): string => subpath.split(options.computeArgument, computeType),
-		sliderOptions: [{ ...tSliderOptions, variable: "computeArgument" }],
-		// TODO: Uncomment this after implementing the Euclidean version
-		// chooseComputeType: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.split(options.t, tVariant),
+		sliderOptions: [tSliderOptions],
+		chooseTVariant: true,
 	},
 };
 
@@ -81,6 +81,6 @@ export type SubpathFeatureOptions = {
 	callback: SubpathCallback;
 	sliderOptions?: SliderOption[];
 	triggerOnMouseMove?: boolean;
-	chooseComputeType?: boolean;
+	chooseTVariant?: boolean;
 };
 export default subpathFeatures as Record<SubpathFeatureKey, SubpathFeatureOptions>;

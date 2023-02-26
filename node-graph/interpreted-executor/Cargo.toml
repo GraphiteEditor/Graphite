@@ -16,7 +16,7 @@ quantization = ["graphene-std/quantization"]
 graphene-core = { path = "../gcore", features = ["async", "std" ] }
 graphene-std = { path = "../gstd" }
 graph-craft = { path = "../graph-craft" }
-dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types"] }
+dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "glam"] }
 num-traits = "0.2"
 borrow_stack = { path = "../borrow_stack" }
 dyn-clone = "1.0"
@@ -24,3 +24,4 @@ rand_chacha = "0.3.1"
 log = "0.4"
 serde = { version = "1", features = ["derive"], optional = true }
 glam = { version = "0.22" }
+once_cell = "1.17.0"

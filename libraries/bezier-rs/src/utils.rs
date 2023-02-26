@@ -4,10 +4,28 @@ use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
 
 #[derive(Copy, Clone, PartialEq)]
-pub enum ComputeType {
+/// A structure which can be used to reference a particular point along a `Bezier`.
+/// Assuming a 2-dimensional Bezier is represented as a parametric curve defined by components `(x(f(t), y(f(t))))`, this structure defines variants for `f(t)`.
+/// - The `Parametric` variant represents the point calculated using the parametric equation of the curve at argument `t`. That is, `f(t) = t`. Speed along the curve's parametric form is not constant. `t` must lie in the range `[0, 1]`.
+/// - The `Euclidean` variant represents the point calculated at a distance ratio `t` along the arc length of the curve in the range `[0, 1]`. Speed is constant along the curve's arc length.
+///   - E.g. If `d` is the distance from the start point of a `Bezier` to a certain point along the curve, and `l` is the total arc length of the curve, that certain point lies at a distance ratio `t = d / l`.
+///   - All `Bezier` functions will implicitly convert a Euclidean [TValue] argument to a parametric `t`-value using binary search, computed within a particular error. That is, a point at distance ratio `t*`,
+///     satisfying `|t* - t| <= error`. The default error is `0.001`. Given this requires a lengthier calculation, it is not recommended to use the `Euclidean` or `EuclideanWithinError` variants frequently in computationally intensive tasks.
+/// - The `EuclideanWithinError` variant functions exactly as the `Euclidean` variant, but allows the `error` to be customized when computing `t` internally.
+pub enum TValue {
 	Parametric(f64),
 	Euclidean(f64),
-	EuclideanWithinError { t: f64, epsilon: f64 },
+	EuclideanWithinError { t: f64, error: f64 },
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum SubpathTValue {
+	Parametric { segment_index: usize, t: f64 },
+	GlobalParametric(f64),
+	Euclidean { segment_index: usize, t: f64 },
+	GlobalEuclidean(f64),
+	EuclideanWithinError { segment_index: usize, t: f64, error: f64 },
+	GlobalEuclideanWithinError { t: f64, error: f64 },
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.

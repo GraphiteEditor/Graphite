@@ -137,13 +137,13 @@ where
 }
 
 macro_rules! impl_type {
-    ($($id:ident$(<$($(($l:lifetime, $s:lifetime)),*|)?$($T:ident),*>)?),*) => {
-        $(
-        impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
-            type Static = $id$(<$($($s,)*)?$(<$T as $crate::StaticTypeSized>::Static,)*>)?;
-        }
-        )*
-    };
+	($($id:ident$(<$($(($l:lifetime, $s:lifetime)),*|)?$($T:ident),*>)?),*) => {
+		$(
+		impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
+			type Static = $id$(<$($($s,)*)?$(<$T as $crate::StaticTypeSized>::Static,)*>)?;
+		}
+		)*
+	};
 }
 
 #[cfg(feature = "alloc")]
@@ -206,12 +206,13 @@ use core::{
 	marker::{PhantomData, PhantomPinned},
 	mem::{ManuallyDrop, MaybeUninit},
 	num::Wrapping,
+	ops::Range,
 	time::Duration,
 };
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
-	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>,
+	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>, Range<T>,
 	Wrapping<T>, Duration, bool, f32, f64, char,
 	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64,  usize, AtomicUsize,
 	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64,  isize, AtomicIsize,
@@ -265,19 +266,19 @@ fn test_tuple_of_boxes() {
 }
 
 macro_rules! impl_tuple {
-    (@rec $t:ident) => { };
-    (@rec $_:ident $($t:ident)+) => {
-        impl_tuple! { @impl $($t)* }
-        impl_tuple! { @rec $($t)* }
-    };
-    (@impl $($t:ident)*) => {
-        impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
-            type Static = ($(<$t as $crate::StaticTypeSized>::Static,)*);
-        }
-    };
-    ($($t:ident)*) => {
-        impl_tuple! { @rec _t $($t)* }
-    };
+	(@rec $t:ident) => { };
+	(@rec $_:ident $($t:ident)+) => {
+		impl_tuple! { @impl $($t)* }
+		impl_tuple! { @rec $($t)* }
+	};
+	(@impl $($t:ident)*) => {
+		impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
+			type Static = ($(<$t as $crate::StaticTypeSized>::Static,)*);
+		}
+	};
+	($($t:ident)*) => {
+		impl_tuple! { @rec _t $($t)* }
+	};
 }
 
 impl_tuple! {
