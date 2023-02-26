@@ -9,7 +9,7 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize, specta::Type)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct NodeGraphFrameLayer {
 	// Image stored in layer after generation completes
 	pub mime: String,
