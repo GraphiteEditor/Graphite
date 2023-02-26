@@ -147,7 +147,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let right = DVec2::new(corner2.x, center.y);
 
 		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
-		const HANDLE_OFFSET_FACTOR: f64 = (4. / 3.) * std::f64::consts::FRAC_PI_8.tan();
+		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 		let handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
 
 		let manipulator_groups = vec![
