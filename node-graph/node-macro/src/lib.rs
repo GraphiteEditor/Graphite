@@ -42,7 +42,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	// Extract primary input as first argument
 	let primary_input = function_inputs.next().expect("Primary input required - set to `()` if not needed.");
-	let Pat::Ident(PatIdent{ident: primary_input_ident,..} ) =&*primary_input.pat else {
+	let Pat::Ident(PatIdent{ident: primary_input_ident, mutability: primary_input_mutability,..} ) =&*primary_input.pat else {
 		panic!("Expected ident as primary input.");
 	};
 	let primary_input_ty = &primary_input.ty;
@@ -51,13 +51,15 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	// Extract secondary inputs as all other arguments
 	let parameter_inputs = function_inputs.collect::<Vec<_>>();
-	let parameter_idents = parameter_inputs
+	let parameter_pat_ident_patterns = parameter_inputs
 		.iter()
 		.map(|input| {
-			let Pat::Ident(PatIdent { ident: primary_input_ident,.. }) = &*input.pat else { panic!("Expected ident for secondary input."); };
-			primary_input_ident
+			let Pat::Ident(pat_ident) = &*input.pat else { panic!("Expected ident for secondary input."); };
+			pat_ident
 		})
 		.collect::<Vec<_>>();
+	let parameter_idents = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.ident).collect::<Vec<_>>();
+	let parameter_mutability = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.mutability);
 
 	// Extract the output type of the entire node - `()` by default
 	let output = if let ReturnType::Type(_, ty) = &function.sig.output {
@@ -129,9 +131,9 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		{
 			type Output = #output;
 			#[inline]
-			fn eval<'node: 'input>(&'node self, #primary_input_ident: #primary_input_ty) -> Self::Output {
+			fn eval<'node: 'input>(&'node self, #primary_input_mutability #primary_input_ident: #primary_input_ty) -> Self::Output {
 				#(
-					let #parameter_idents = self.#parameter_idents.eval(());
+					let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(());
 				)*
 
 				#body
