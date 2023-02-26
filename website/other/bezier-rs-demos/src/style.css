@@ -73,3 +73,8 @@ body > h2 {
 	margin-bottom: 20px;
 	border: solid 1px black;
 }
+
+svg text {
+	pointer-events: none;
+	user-select: none;
+}

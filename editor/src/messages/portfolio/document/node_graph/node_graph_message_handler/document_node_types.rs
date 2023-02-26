@@ -7,8 +7,9 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 
+use graph_craft::concrete;
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{Color, Image, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
 use graphene_core::*;
 
 use std::collections::VecDeque;
@@ -98,7 +99,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::node(0, 0),
+				default: NodeInput::value(TaggedValue::None, true),
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
@@ -176,7 +177,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::Image(Image::empty()), true),
+				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
@@ -191,6 +192,19 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
+		},
+		DocumentNodeType {
+			name: "Blend Node",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true),
+				DocumentInputType::value("Second", TaggedValue::Image(Image::empty()), true),
+				DocumentInputType::value("BlendMode", TaggedValue::BlendMode(BlendMode::Normal), false),
+				DocumentInputType::value("Opacity", TaggedValue::F64(100.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::blend_properties,
 		},
 		DocumentNodeType {
 			name: "Levels",

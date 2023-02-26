@@ -53,6 +53,10 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
+export class UpdateZoomWithScroll extends JsMessage {
+	readonly zoomWithScroll!: boolean;
+}
+
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -1232,7 +1236,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, returning the new layout
-export function patchWidgetLayout(layout: WidgetLayout, updates: WidgetDiffUpdate): void {
+export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: WidgetDiffUpdate): void {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
@@ -1432,6 +1436,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateZoomWithScroll,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,

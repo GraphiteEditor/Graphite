@@ -186,7 +186,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				self.navigation_handler.process_message(message, responses, (&self.document_legacy, ipp));
+				self.navigation_handler
+					.process_message(message, responses, (&self.document_legacy, ipp, self.selected_visible_layers_bounding_box(&render_data)));
 			}
 			#[remain::unsorted]
 			Overlays(message) => {

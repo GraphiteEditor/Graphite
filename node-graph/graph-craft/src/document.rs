@@ -4,27 +4,14 @@ use graphene_core::{NodeIdentifier, Type};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
+pub use graphene_core::uuid::generate_uuid;
 use graphene_core::TypeDescriptor;
-use rand_chacha::{
-	rand_core::{RngCore, SeedableRng},
-	ChaCha20Rng,
-};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
 
 pub mod value;
 
 pub type NodeId = u64;
-static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
-
-pub fn generate_uuid() -> u64 {
-	let mut lock = RNG.lock().expect("uuid mutex poisoned");
-	if lock.is_none() {
-		*lock = Some(ChaCha20Rng::seed_from_u64(0));
-	}
-	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
-}
 
 fn merge_ids(a: u64, b: u64) -> u64 {
 	use std::hash::{Hash, Hasher};

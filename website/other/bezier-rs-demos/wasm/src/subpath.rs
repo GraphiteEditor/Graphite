@@ -6,9 +6,18 @@ use glam::DVec2;
 use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
+#[derive(Clone, PartialEq)]
+pub(crate) struct EmptyId;
+
+impl bezier_rs::Identifier for EmptyId {
+	fn new() -> Self {
+		Self
+	}
+}
+
 /// Wrapper of the `Subpath` struct to be used in JS.
 #[wasm_bindgen]
-pub struct WasmSubpath(Subpath);
+pub struct WasmSubpath(Subpath<EmptyId>);
 
 const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 
@@ -31,6 +40,7 @@ impl WasmSubpath {
 				anchor: point_triple[0].unwrap(),
 				in_handle: point_triple[1],
 				out_handle: point_triple[2],
+				id: EmptyId,
 			})
 			.collect();
 		WasmSubpath(Subpath::new(manipulator_groups, closed))
@@ -114,6 +124,62 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}{}{}", self.to_default_svg(), point_text, line_text, normal_end_point))
 	}
 
+	pub fn local_extrema(&self) -> String {
+		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
+
+		let bezier = self.to_default_svg();
+		let circles: String = local_extrema
+			.iter()
+			.zip([RED, GREEN])
+			.flat_map(|(t_value_list, color)| {
+				t_value_list.iter().map(|&t_value| {
+					let point = self.0.evaluate(SubpathTValue::GlobalParametric(t_value));
+					draw_circle(point, 3., color, 1.5, WHITE)
+				})
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+
+		let content = format!(
+			"{bezier}{circles}{}{}",
+			draw_text("X extrema".to_string(), TEXT_OFFSET_X, TEXT_OFFSET_Y - 20., RED),
+			draw_text("Y extrema".to_string(), TEXT_OFFSET_X, TEXT_OFFSET_Y, GREEN),
+		);
+		wrap_svg_tag(content)
+	}
+
+	pub fn bounding_box(&self) -> String {
+		let subpath_svg = self.to_default_svg();
+		let bounding_box = self.0.bounding_box();
+		match bounding_box {
+			None => wrap_svg_tag(subpath_svg),
+			Some(bounding_box) => {
+				let content = format!(
+					"{subpath_svg}<rect x={} y ={} width=\"{}\" height=\"{}\" style=\"fill:{NONE};stroke:{RED};stroke-width:1\" />",
+					bounding_box[0].x,
+					bounding_box[0].y,
+					bounding_box[1].x - bounding_box[0].x,
+					bounding_box[1].y - bounding_box[0].y,
+				);
+				wrap_svg_tag(content)
+			}
+		}
+	}
+
+	pub fn inflections(&self) -> String {
+		let inflections: Vec<f64> = self.0.inflections();
+
+		let bezier = self.to_default_svg();
+		let circles: String = inflections
+			.iter()
+			.map(|&t_value| {
+				let point = self.0.evaluate(SubpathTValue::GlobalParametric(t_value));
+				draw_circle(point, 3., RED, 1.5, WHITE)
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+		let content = format!("{bezier}{circles}");
+		wrap_svg_tag(content)
+	}
+
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
 		let projected_point = self.0.evaluate(SubpathTValue::Parametric { segment_index, t: projected_t });
@@ -123,7 +189,7 @@ impl WasmSubpath {
 		wrap_svg_tag(content)
 	}
 
-	pub fn intersect_line_segment(&self, js_points: JsValue) -> String {
+	pub fn intersect_line_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_linear_dvec2(points[0], points[1]);
 
@@ -141,10 +207,13 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None, None)
+			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(SubpathTValue::GlobalParametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -152,7 +221,7 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_quadratic_segment(&self, js_points: JsValue) -> String {
+	pub fn intersect_quadratic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
 
@@ -170,10 +239,13 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None, None)
+			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(SubpathTValue::GlobalParametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
@@ -181,7 +253,7 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
 	}
 
-	pub fn intersect_cubic_segment(&self, js_points: JsValue) -> String {
+	pub fn intersect_cubic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
 		let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points).unwrap();
 		let line = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
 
@@ -199,15 +271,36 @@ impl WasmSubpath {
 
 		let intersections_svg = self
 			.0
-			.intersections(&line, None, None)
+			.intersections(&line, Some(error), Some(minimum_separation))
 			.iter()
-			.map(|intersection_t| {
-				let point = self.0.evaluate(SubpathTValue::GlobalParametric(*intersection_t));
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
 				draw_circle(point, 4., RED, 1.5, WHITE)
 			})
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
 		wrap_svg_tag(format!("{subpath_svg}{line_svg}{intersections_svg}"))
+	}
+
+	pub fn self_intersections(&self, error: f64, minimum_separation: f64) -> String {
+		let subpath_svg = self.to_default_svg();
+		let self_intersections_svg = self
+			.0
+			.self_intersections(Some(error), Some(minimum_separation))
+			.iter()
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
+				draw_circle(point, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{subpath_svg}{self_intersections_svg}"))
 	}
 
 	pub fn split(&self, t: f64, t_variant: String) -> String {

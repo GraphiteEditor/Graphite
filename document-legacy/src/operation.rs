@@ -125,6 +125,9 @@ pub enum Operation {
 	DeselectAllManipulatorPoints {
 		layer_path: Vec<LayerId>,
 	},
+	SelectAllAnchors {
+		layer_path: Vec<LayerId>,
+	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},

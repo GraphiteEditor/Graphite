@@ -3,15 +3,33 @@ use super::Bezier;
 use glam::DVec2;
 use std::fmt::{Debug, Formatter, Result};
 
+/// An id type used for each [ManipulatorGroup].
+pub trait Identifier: Sized + Clone + PartialEq {
+	fn new() -> Self;
+}
+
+/// An empty id type for use in tests
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
+pub(crate) struct EmptyId;
+
+#[cfg(test)]
+impl Identifier for EmptyId {
+	fn new() -> Self {
+		Self
+	}
+}
+
 /// Structure used to represent a single anchor with up to two optional associated handles along a `Subpath`
 #[derive(Copy, Clone, PartialEq)]
-pub struct ManipulatorGroup {
+pub struct ManipulatorGroup<ManipulatorGroupId: crate::Identifier> {
 	pub anchor: DVec2,
 	pub in_handle: Option<DVec2>,
 	pub out_handle: Option<DVec2>,
+	pub id: ManipulatorGroupId,
 }
 
-impl Debug for ManipulatorGroup {
+impl<ManipulatorGroupId: crate::Identifier> Debug for ManipulatorGroup<ManipulatorGroupId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		if self.in_handle.is_some() && self.out_handle.is_some() {
 			write!(f, "anchor: {}, in: {}, out: {}", self.anchor, self.in_handle.unwrap(), self.out_handle.unwrap())
@@ -25,8 +43,8 @@ impl Debug for ManipulatorGroup {
 	}
 }
 
-impl ManipulatorGroup {
-	pub fn to_bezier(&self, end_group: &ManipulatorGroup) -> Bezier {
+impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId> {
+	pub fn to_bezier(&self, end_group: &ManipulatorGroup<ManipulatorGroupId>) -> Bezier {
 		let start = self.anchor;
 		let end = end_group.anchor;
 		let out_handle = self.out_handle;
