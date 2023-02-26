@@ -1,6 +1,7 @@
 use glam::{DAffine2, DVec2};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::ops::{CloneNode, IdNode, TypeNode};
+use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
@@ -295,6 +296,15 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		],
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_>, input: Image, params: [DAffine2]),
+		register_node!(graphene_core::vector::TransformNode<_, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2]),
+		register_node!(graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>, input: VectorData, params: [ graphene_core::vector::style::FillType, graphene_core::Color, graphene_core::vector::style::GradientType, DVec2, DVec2, DAffine2, Vec<(f64, Option<graphene_core::Color>)>]),
+		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [graphene_core::Color, f64, Vec<f32>, f64, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f64]),
+		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
+		register_node!(
+			graphene_core::vector::generator_nodes::PathGenerator,
+			input: graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>,
+			params: []
+		),
 		/*
 			(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
 				stack.push_fn(|_nodes| {
