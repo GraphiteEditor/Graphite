@@ -217,15 +217,19 @@ impl ShapeEditor {
 	}
 
 	/// Mirror the opposing handles.
-	/// We will keep track of the opposing handle for a manipulator group when:
-	/// i) Exactly one handle is selected.
-	/// ii) The anchor is not selected.
-	/// iii) If the handle selected has an opposing handle, we need manipulator group's angle mirroring to be true.
-	/// If (i) and (ii) are true and there is no opposing handle, we create one
+	///
+	/// We will keep track of the opposing handle of a manipulator group when:
+	/// 1. Exactly one handle is selected.
+	/// 2. The anchor is not selected.
+	/// 3. If the handle selected has an opposing handle, we need manipulator group's angle mirroring to be true.
+	///
+	/// If (1) and (2) are true and there is no opposing handle, we create one
 	/// (irrespective of angle mirroring) and set angle mirroring to true.
+	///
 	/// We return the opposing handle lengths.
-	/// toggle_angle_mirroring decides whether the current angle mirroring will be toggled
-	/// - it is required as messages don't immediately change the manipulator groups.
+	///
+	/// toggle_angle_mirroring decides whether the current angle mirroring will be toggled.
+	/// It is required as messages don't immediately change the manipulator groups.
 	pub fn mirror_opposing_handles(&self, document: &Document, toggle_angle_mirroring: bool, responses: &mut VecDeque<Message>) -> OpposingHandleLengths {
 		self.selected_layers()
 			.iter()
