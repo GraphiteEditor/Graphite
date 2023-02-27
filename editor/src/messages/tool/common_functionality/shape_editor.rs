@@ -40,6 +40,10 @@ pub struct ManipulatorPointInfo<'a> {
 	pub manipulator_type: ManipulatorType,
 }
 
+// Vec<LayerId> represents a layer path, u64 represents the id of a manipulator group within the layer,
+// and Option<f64> represents the opposing handle length before mirroring - None if there was no handle before mirroring.
+pub type OpposingHandleLengths = HashMap<Vec<LayerId>, HashMap<u64, Option<f64>>>;
+
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeEditor {
 	/// Select the first point within the selection threshold.
@@ -212,8 +216,17 @@ impl ShapeEditor {
 		}
 	}
 
-	/// The opposing handle lengths.
-	pub fn opposing_handle_lengths(&self, document: &Document) -> HashMap<Vec<LayerId>, HashMap<u64, f64>> {
+	/// Mirror the opposing handles.
+	/// We will keep track of the opposing handle for a manipulator group when:
+	/// i) Exactly one handle is selected.
+	/// ii) The anchor is not selected.
+	/// iii) If the handle selected has an opposing handle, we need manipulator group's angle mirroring to be true.
+	/// If (i) and (ii) are true and there is no opposing handle, we create one
+	/// (irrespective of angle mirroring) and set angle mirroring to true.
+	/// We return the opposing handle lengths.
+	/// toggle_handle_mirroring decides whether the current handle mirroring will be toggled
+	/// - it is required as messages don't immediately change the manipulator groups.
+	pub fn mirror_opposing_handles(&self, document: &Document, toggle_handle_mirroring: bool, responses: &mut VecDeque<Message>) -> OpposingHandleLengths {
 		self.selected_layers()
 			.iter()
 			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
@@ -223,30 +236,52 @@ impl ShapeEditor {
 					.manipulator_groups()
 					.enumerate()
 					.filter_map(|(id, manipulator_group)| {
-						// We will keep track of the opposing handle length when:
-						// i) Both handles exist and exactly one is selected.
-						// ii) The anchor is not selected.
-						// iii) We have to mirror the angle between handles.
-
-						if !manipulator_group.editor_state.mirror_angle_between_handles {
-							return None;
-						}
-
 						let mut selected_handles = manipulator_group.selected_handles();
 						let handle = selected_handles.next()?;
 
 						// Check that handle is the only selected handle.
-						if selected_handles.next().is_none() {
-							let opposing_handle_position = manipulator_group.opposing_handle(handle)?.position;
-							let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
-							if !anchor.is_selected() {
-								let opposing_handle_length = opposing_handle_position.distance(anchor.position);
-								Some((*id, opposing_handle_length))
-							} else {
-								None
+						if selected_handles.next().is_some() {
+							return None;
+						}
+
+						let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref()?;
+						if anchor.is_selected() {
+							return None;
+						}
+
+						if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
+							if !(manipulator_group.editor_state.mirror_angle_between_handles ^ toggle_handle_mirroring) {
+								return None;
 							}
+
+							let opposing_handle_length = opposing_handle.position.distance(anchor.position);
+							Some((*id, Some(opposing_handle_length)))
 						} else {
-							None
+							if !(manipulator_group.editor_state.mirror_angle_between_handles ^ toggle_handle_mirroring) {
+								// Since we create a new opposing handle to mirror, we set mirror_angle_between_handles to true.
+								responses.push_back(
+									Operation::SetManipulatorHandleMirroring {
+										layer_path: path.clone(),
+										id: *id,
+										mirror_angle: true,
+									}
+									.into(),
+								);
+							}
+
+							// We create a new opposing handle.
+							let new_opposing_handle_position = 2.0 * anchor.position - handle.position;
+							assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
+							responses.push_back(
+								Operation::SetManipulatorPoints {
+									layer_path: path.clone(),
+									id: *id,
+									manipulator_type: handle.manipulator_type.opposite_handle(),
+									position: Some(new_opposing_handle_position.into()),
+								}
+								.into(),
+							);
+							Some((*id, None))
 						}
 					})
 					.collect::<HashMap<_, _>>();
@@ -255,8 +290,8 @@ impl ShapeEditor {
 			.collect::<HashMap<_, _>>()
 	}
 
-	/// Reset the opposing handle lengths.
-	pub fn reset_opposing_handle_lengths(&self, document: &Document, opposing_handle_lengths: &HashMap<Vec<LayerId>, HashMap<u64, f64>>, responses: &mut VecDeque<Message>) {
+	/// Reset the mirrored opposing handles.
+	pub fn reset_mirrored_opposing_handles(&self, document: &Document, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
 		self.selected_layers()
 			.iter()
 			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
@@ -288,12 +323,6 @@ impl ShapeEditor {
 
 				// Check that handle is the only selected handle.
 				if selected_handles.next().is_none() {
-					let opposing_handle = if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
-						opposing_handle
-					} else {
-						return;
-					};
-
 					let anchor = if let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() {
 						anchor
 					} else {
@@ -303,15 +332,32 @@ impl ShapeEditor {
 						return;
 					}
 
-					if let Some(offset) = (opposing_handle.position - anchor.position).try_normalize() {
-						let new_opposing_handle_position = anchor.position + offset * (*opposing_handle_length);
-						assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
+					if let Some(opposing_handle_length) = opposing_handle_length {
+						let opposing_handle = if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
+							opposing_handle
+						} else {
+							return;
+						};
+
+						if let Some(offset) = (opposing_handle.position - anchor.position).try_normalize() {
+							let new_opposing_handle_position = anchor.position + offset * (*opposing_handle_length);
+							assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
+							responses.push_back(
+								Operation::MoveManipulatorPoint {
+									layer_path: path.clone(),
+									id: *id,
+									manipulator_type: opposing_handle.manipulator_type,
+									position: new_opposing_handle_position.into(),
+								}
+								.into(),
+							);
+						}
+					} else {
 						responses.push_back(
-							Operation::MoveManipulatorPoint {
+							Operation::RemoveManipulatorPoint {
 								layer_path: path.clone(),
 								id: *id,
-								manipulator_type: opposing_handle.manipulator_type,
-								position: new_opposing_handle_position.into(),
+								manipulator_type: handle.manipulator_type.opposite_handle(),
 							}
 							.into(),
 						);
