@@ -224,9 +224,9 @@ impl ShapeEditor {
 	/// If (i) and (ii) are true and there is no opposing handle, we create one
 	/// (irrespective of angle mirroring) and set angle mirroring to true.
 	/// We return the opposing handle lengths.
-	/// toggle_handle_mirroring decides whether the current handle mirroring will be toggled
+	/// toggle_angle_mirroring decides whether the current angle mirroring will be toggled
 	/// - it is required as messages don't immediately change the manipulator groups.
-	pub fn mirror_opposing_handles(&self, document: &Document, toggle_handle_mirroring: bool, responses: &mut VecDeque<Message>) -> OpposingHandleLengths {
+	pub fn mirror_opposing_handles(&self, document: &Document, toggle_angle_mirroring: bool, responses: &mut VecDeque<Message>) -> OpposingHandleLengths {
 		self.selected_layers()
 			.iter()
 			.filter_map(|path| document.layer(path).ok().map(|layer| (path, layer)))
@@ -250,14 +250,14 @@ impl ShapeEditor {
 						}
 
 						if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
-							if !(manipulator_group.editor_state.mirror_angle_between_handles ^ toggle_handle_mirroring) {
+							if !(manipulator_group.editor_state.mirror_angle_between_handles ^ toggle_angle_mirroring) {
 								return None;
 							}
 
 							let opposing_handle_length = opposing_handle.position.distance(anchor.position);
 							Some((*id, Some(opposing_handle_length)))
 						} else {
-							if !(manipulator_group.editor_state.mirror_angle_between_handles ^ toggle_handle_mirroring) {
+							if !(manipulator_group.editor_state.mirror_angle_between_handles ^ toggle_angle_mirroring) {
 								// Since we create a new opposing handle to mirror, we set mirror_angle_between_handles to true.
 								responses.push_back(
 									Operation::SetManipulatorHandleMirroring {
