@@ -395,13 +395,13 @@ impl Bezier {
 		.collect()
 	}
 
-	/// Returns a cubic bezier which joins this and the provided bezier curves.
+	/// Returns a cubic bezier which joins this with the provided bezier curve.
 	/// The resulting path formed by the Bezier curves is continuous up to the first derivative.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/join/solo" title="Join Demo"></iframe>
-	pub fn join(&self, bezier2: &Bezier) -> Bezier {
+	pub fn join(&self, other: &Bezier) -> Bezier {
 		let handle1 = self.non_normalized_tangent(1.) / 3. + self.end;
-		let handle2 = bezier2.start - bezier2.non_normalized_tangent(0.) / 3.;
-		Bezier::from_cubic_dvec2(self.end, handle1, handle2, bezier2.start)
+		let handle2 = other.start - other.non_normalized_tangent(0.) / 3.;
+		Bezier::from_cubic_dvec2(self.end, handle1, handle2, other.start)
 	}
 }
 

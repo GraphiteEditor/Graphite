@@ -483,36 +483,38 @@ const bezierFeatures = {
 		},
 		chooseTVariant: true,
 	},
-	"join": {
+	join: {
 		name: "Join",
 		callback: (bezier: WasmBezierInstance): string => {
 			const points = JSON.parse(bezier.get_points());
+			let examplePoints = [];
 			if (points.length === 2) {
-				return bezier.join([
+				examplePoints = [
 					[120, 155],
 					[40, 155],
-				]);
-			}
-			if (points.length === 3) {
-				return bezier.join([
+				];
+			} else if (points.length === 3) {
+				examplePoints = [
 					[40, 150],
 					[95, 195],
 					[155, 145],
-				]);
+				];
+			} else {
+				examplePoints = [
+					[140, 150],
+					[85, 110],
+					[65, 180],
+					[30, 140],
+				];
 			}
-			return bezier.join([
-				[140, 150],
-				[85, 110],
-				[65, 180],
-				[30, 140],
-			]);
+			return bezier.join(examplePoints);
 		},
 		demoOptions: {
 			Linear: {
 				customPoints: [
 					[45, 40],
 					[130, 90],
-				],	
+				],
 			},
 			Quadratic: {
 				customPoints: [
