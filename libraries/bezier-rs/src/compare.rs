@@ -1,5 +1,5 @@
 /// Comparison functions used for tests in the bezier module
-use super::{Bezier, CircleArc, Subpath};
+use super::{CircleArc, Subpath};
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
 
@@ -18,14 +18,6 @@ pub fn compare_points(p1: DVec2, p2: DVec2) -> bool {
 /// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
 pub fn compare_vec_of_points(a: Vec<DVec2>, b: Vec<DVec2>, max_absolute_difference: f64) -> bool {
 	a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
-}
-
-/// Compare vectors of beziers by allowing some maximum absolute difference between points to account for floating point errors
-pub fn compare_vector_of_beziers(beziers: &[Bezier], expected_bezier_points: Vec<Vec<DVec2>>) -> bool {
-	beziers
-		.iter()
-		.zip(expected_bezier_points.iter())
-		.all(|(&a, b)| compare_vec_of_points(a.get_points().collect::<Vec<DVec2>>(), b.to_vec(), MAX_ABSOLUTE_DIFFERENCE))
 }
 
 /// Compare circle arcs by allowing some maximum absolute difference between values to account for floating point errors

@@ -237,7 +237,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// If the target curve_indices are the same, then the trim must be happening within one bezier
 		// This means curve1 == curve2 must be true, and we can simply call the Bezier trim.
 		if t1_curve_index == t2_curve_index {
-			return Subpath::from_bezier(curve1.trim(TValue::Parametric(t1_curve_t), TValue::Parametric(t2_curve_t)));
+			return Subpath::from_bezier(&curve1.trim(TValue::Parametric(t1_curve_t), TValue::Parametric(t2_curve_t)));
 		}
 
 		// Split the bezier's with the according t value and keep the correct half
@@ -275,6 +275,31 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
+	// Smooths a Subpath up to the first derivative, using a weighted averaged based on segment length.
+	pub(crate) fn smooth_cubic_paths(&mut self) {
+		for i in 0..self.len() - 2 {
+			let first_bezier = self.manipulator_groups[i].to_bezier(&self.manipulator_groups[i + 1]);
+			let second_bezier = self.manipulator_groups[i + 1].to_bezier(&self.manipulator_groups[i + 2]);
+			if first_bezier.handle_end().is_none() || second_bezier.handle_end().is_none() {
+				continue;
+			}
+			let end_tangent = first_bezier.non_normalized_tangent(1.);
+			let start_tangent = second_bezier.non_normalized_tangent(0.);
+
+			// Compute an average unit vector, weighing the segments by a rough estimation of their relative size.
+			let segment1_len = first_bezier.length(Some(10));
+			let segment2_len = second_bezier.length(Some(10));
+			let average_unit_tangent = (end_tangent.normalize() * segment1_len + start_tangent.normalize() * segment2_len) / (segment1_len + segment2_len);
+
+			// Adjust start and end handles to fit the average tangent
+			let end_point = first_bezier.end();
+			self.manipulator_groups[i + 1].in_handle = Some((average_unit_tangent / 3. * -1.) * end_tangent.length() + end_point);
+
+			let start_point = second_bezier.start();
+			self.manipulator_groups[i + 1].out_handle = Some((average_unit_tangent / 3.) * start_tangent.length() + start_point);
+		}
+	}
+
 	// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as occasionally the approximation for finding intersections
 	// doesn't return intersections at the very endpoints if it falls within the error threshold.
 	// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that would be trimmed. This could cause the subpath
@@ -305,10 +330,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot outline an empty Subpath.");
 
-		let mut subpaths = self
-			.iter()
-			.map(|bezier| Subpath::from_beziers(bezier.offset(distance), false))
-			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
+		let mut subpaths = self.iter().map(|bezier| bezier.offset(distance)).collect::<Vec<Subpath<ManipulatorGroupId>>>();
 		let mut drop_common_point = vec![true; self.len()];
 
 		if distance != 0. {
@@ -664,7 +686,7 @@ mod tests {
 		let result1 = subpath.trim(SubpathTValue::GlobalParametric(0.8), SubpathTValue::GlobalParametric(0.2));
 		let result2 = subpath.trim(SubpathTValue::GlobalParametric(0.2), SubpathTValue::GlobalParametric(0.8));
 
-		assert!(compare_subpaths(&result1, &result2));
+		assert!(compare_subpaths::<EmptyId>(&result1, &result2));
 	}
 
 	#[test]
@@ -710,7 +732,7 @@ mod tests {
 
 		assert_eq!(result.manipulator_groups[0].anchor, location_front);
 		assert_eq!(result.manipulator_groups[3].anchor, location_back);
-		assert!(compare_subpaths(&subpath, &result));
+		assert!(compare_subpaths::<EmptyId>(&subpath, &result));
 	}
 
 	#[test]

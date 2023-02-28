@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::utils::{f64_compare, TValue};
+use crate::{ManipulatorGroup, Subpath};
 
 use glam::DMat2;
 use std::f64::consts::PI;
@@ -318,26 +319,6 @@ impl Bezier {
 		}
 	}
 
-	// Smooths a vector of cubic Bezier up to the first derivative, using a weighted averaged based on segment length.
-	fn smooth_cubic_beziers(beziers: &mut Vec<Bezier>) {
-		for i in 0..beziers.len() - 1 {
-			let end_tangent = beziers[i].non_normalized_tangent(1.);
-			let start_tangent = beziers[i + 1].non_normalized_tangent(0.);
-
-			// Compute an average unit vector, weighing the segments by a rough estimation of their relative size.
-			let segment1_len = beziers[i].length(Some(10));
-			let segment2_len = beziers[i + 1].length(Some(10));
-			let average_unit_tangent = (end_tangent.normalize() * segment1_len + start_tangent.normalize() * segment2_len) / (segment1_len + segment2_len);
-
-			// Adjust start and end handles to fit the average tangent
-			let end_point = beziers[i].end;
-			beziers[i].set_handle_end((average_unit_tangent / 3. * -1.) * end_tangent.length() + end_point);
-
-			let start_point = beziers[i + 1].start;
-			beziers[i + 1].set_handle_start((average_unit_tangent / 3.) * start_tangent.length() + start_point);
-		}
-	}
-
 	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
 	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
@@ -345,38 +326,42 @@ impl Bezier {
 	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
-	pub fn offset(&self, distance: f64) -> Vec<Bezier> {
-		let mut reduced = self.reduce(None);
-		reduced.iter_mut().for_each(|bezier| *bezier = bezier.scale(distance));
+	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
+		let reduced = self.reduce(None);
+		let mut scaled = Subpath::new(vec![], false);
+		reduced.iter().for_each(|bezier| {
+			let scaled_bezier = bezier.scale(distance);
+			scaled.append_bezier(&scaled_bezier);
+		});
 
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
 		if self.handles != BezierHandles::Linear {
-			Bezier::smooth_cubic_beziers(&mut reduced);
+			scaled.smooth_cubic_paths();
 		}
 
-		reduced
+		scaled
 	}
 
 	/// Version of the `offset` function which scales the offset such that the start of the offset is `start_distance` from the original curve, while the end of
 	/// of the offset is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
 	/// distance along the equation (`t`-value) of the curve. Similarily to the `offset` function, the returned result is an approximation.
-	pub fn graduated_offset(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
+	pub fn graduated_offset<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<ManipulatorGroupId> {
 		let reduced = self.reduce(None);
 		let mut next_start_distance = start_distance;
 		let distance_difference = end_distance - start_distance;
 		let total_length = self.length(None);
 
-		let mut result = vec![];
+		let mut result = Subpath::new(vec![], false);
 		reduced.iter().for_each(|bezier| {
 			let current_length = bezier.length(None);
 			let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
-			result.push(bezier.graduated_scale(next_start_distance, next_end_distance));
+			result.append_bezier(&bezier.graduated_scale(next_start_distance, next_end_distance));
 			next_start_distance = next_end_distance;
 		});
 
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
 		if self.handles != BezierHandles::Linear {
-			Bezier::smooth_cubic_beziers(&mut result);
+			result.smooth_cubic_paths();
 		}
 
 		result
@@ -388,39 +373,43 @@ impl Bezier {
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline(&self, distance: f64) -> Vec<Bezier> {
+	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.offset(distance);
 		let third_segment = self.reverse().offset(distance);
 
 		if first_segment.is_empty() || third_segment.is_empty() {
-			return vec![];
+			return Subpath::new(vec![], false);
 		}
 
-		let second_segment = Bezier::from_linear_dvec2(first_segment.last().unwrap().end, third_segment.first().unwrap().start);
-		let fourth_segment = Bezier::from_linear_dvec2(third_segment.last().unwrap().end, first_segment.first().unwrap().start);
-		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
+		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
+		result_manipulator_groups.extend_from_slice(first_segment.manipulator_groups());
+		// TODO: Handle other caps here
+		result_manipulator_groups.extend_from_slice(third_segment.manipulator_groups());
+		Subpath::new(result_manipulator_groups, true)
 	}
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
-	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> Vec<Bezier> {
+	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<ManipulatorGroupId> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
-	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Vec<Bezier> {
+	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.graduated_offset(distance1, distance2);
 		let third_segment = self.reverse().graduated_offset(distance3, distance4);
 
 		if first_segment.is_empty() || third_segment.is_empty() {
-			return vec![];
+			return Subpath::new(vec![], false);
 		}
 
-		let second_segment = Bezier::from_linear_dvec2(first_segment.last().unwrap().end, third_segment.first().unwrap().start);
-		let fourth_segment = Bezier::from_linear_dvec2(third_segment.last().unwrap().end, first_segment.first().unwrap().start);
-		[first_segment, vec![second_segment], third_segment, vec![fourth_segment]].concat()
+		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
+		result_manipulator_groups.extend_from_slice(first_segment.manipulator_groups());
+		// TODO: Handle other caps here
+		result_manipulator_groups.extend_from_slice(third_segment.manipulator_groups());
+		Subpath::new(result_manipulator_groups, true)
 	}
 
 	/// Approximate a bezier curve with circular arcs.
@@ -575,8 +564,9 @@ impl Bezier {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::compare::{compare_arcs, compare_points, compare_vector_of_beziers};
+	use crate::compare::{compare_arcs, compare_points, compare_vec_of_points};
 	use crate::utils::TValue;
+	use crate::EmptyId;
 
 	#[test]
 	fn test_split() {
@@ -732,28 +722,37 @@ mod tests {
 			vec![DVec2::new(4.2975, 4.2975), DVec2::new(5.6625, 5.6625), DVec2::new(6.9375, 6.9375)],
 		];
 		let reduced_curves = bezier.reduce(None);
-		assert!(compare_vector_of_beziers(&reduced_curves, expected_bezier_points));
+		assert!(reduced_curves.iter().zip(expected_bezier_points.into_iter()).all(|(bezier, points)| compare_vec_of_points(
+			bezier.get_points().collect::<Vec<DVec2>>(),
+			points,
+			MAX_ABSOLUTE_DIFFERENCE
+		)));
 
 		// Check that the reduce helper is correct
 		let (helper_curves, helper_t_values) = bezier.reduced_curves_and_t_values(None);
-		assert_eq!(&reduced_curves, &helper_curves);
+		assert!(reduced_curves
+			.iter()
+			.zip(helper_curves.iter())
+			.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(&bezier2, MAX_ABSOLUTE_DIFFERENCE)));
 		assert!(reduced_curves
 			.iter()
 			.zip(helper_t_values.windows(2))
 			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 
-	fn assert_valid_offset(bezier: &Bezier, offset: &[Bezier], expected_distance: f64) {
+	fn assert_valid_offset<ManipulatorGroupId: crate::Identifier>(bezier: &Bezier, offset: &Subpath<ManipulatorGroupId>, expected_distance: f64) {
 		// Verify that the offset is smooth
-		offset.windows(2).for_each(|beziers_pair| {
-			assert!(compare_points(beziers_pair[0].end, beziers_pair[1].start));
-			assert!(compare_points(beziers_pair[0].normal(TValue::Parametric(1.)), beziers_pair[1].normal(TValue::Parametric(0.))));
-		});
+		if offset.len() > 1 {
+			offset.iter().take(offset.len() - 2).zip(offset.iter().skip(1)).for_each(|beziers_pair| {
+				assert!(compare_points(beziers_pair.0.end, beziers_pair.1.start));
+				assert!(compare_points(beziers_pair.0.normal(TValue::Parametric(1.)), beziers_pair.1.normal(TValue::Parametric(0.))));
+			});
+		}
 
 		// Verify that the offset spans the length of the curve
-		let start_distance = bezier.evaluate(TValue::Parametric(0.)).distance(offset[0].evaluate(TValue::Parametric(0.)));
+		let start_distance = bezier.evaluate(TValue::Parametric(0.)).distance(offset.iter().next().unwrap().evaluate(TValue::Parametric(0.)));
 		assert!(f64_compare(start_distance, expected_distance, MAX_ABSOLUTE_DIFFERENCE));
-		let end_distance = bezier.evaluate(TValue::Parametric(1.)).distance(offset.last().unwrap().evaluate(TValue::Parametric(1.)));
+		let end_distance = bezier.evaluate(TValue::Parametric(1.)).distance(offset.iter().last().unwrap().evaluate(TValue::Parametric(1.)));
 		assert!(f64_compare(end_distance, expected_distance, MAX_ABSOLUTE_DIFFERENCE));
 
 		let err_threshold = (expected_distance / 10.).max(MAX_ABSOLUTE_DIFFERENCE);
@@ -776,7 +775,6 @@ mod tests {
 						let closest_point = bezier.evaluate(TValue::Parametric(closest_point_t));
 						let actual_distance = offset_point.distance(closest_point);
 
-						println!("{} != {}", actual_distance, expected_distance);
 						assert!(f64_compare(actual_distance, expected_distance, err_threshold));
 						closest_point_t
 					})
@@ -797,7 +795,7 @@ mod tests {
 		let bezier = Bezier::from_linear_dvec2(start, end);
 
 		for distance in [-20., -10., 0., 10., 20.] {
-			let offset = bezier.offset(distance);
+			let offset = bezier.offset::<EmptyId>(distance);
 			assert_valid_offset(&bezier, &offset, distance.abs());
 		}
 	}
@@ -810,7 +808,7 @@ mod tests {
 		let bezier = Bezier::from_quadratic_dvec2(start, handle, end);
 
 		for distance in [-20., -10., 0., 10., 20.] {
-			let offset = bezier.offset(distance);
+			let offset = bezier.offset::<EmptyId>(distance);
 			assert_valid_offset(&bezier, &offset, distance.abs());
 		}
 	}
@@ -824,7 +822,7 @@ mod tests {
 		let bezier = Bezier::from_cubic_dvec2(start, handle1, handle2, end);
 
 		for distance in [-20., -10., 0., 10., 20.] {
-			let offset = bezier.offset(distance);
+			let offset = bezier.offset::<EmptyId>(distance);
 			assert_valid_offset(&bezier, &offset, distance.abs());
 		}
 	}
@@ -834,29 +832,29 @@ mod tests {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let line = Bezier::from_linear_dvec2(p1, p2);
-		let outline = line.outline(10.);
+		let outline = line.outline::<EmptyId>(10.);
 
 		assert_eq!(outline.len(), 4);
 
 		// Assert the first length-wise piece of the outline is 10 units from the line
 		assert!(f64_compare(
-			outline[0].evaluate(TValue::Parametric(0.25)).distance(line.evaluate(TValue::Parametric(0.25))),
+			outline.iter().next().unwrap().evaluate(TValue::Parametric(0.25)).distance(line.evaluate(TValue::Parametric(0.25))),
 			10.,
 			MAX_ABSOLUTE_DIFFERENCE
 		)); // f64
 
 		// Assert the first cap touches the line end point at the halfway point
-		assert!(outline[1].evaluate(TValue::Parametric(0.5)).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
+		assert!(outline.iter().nth(1).unwrap().evaluate(TValue::Parametric(0.5)).abs_diff_eq(line.end(), MAX_ABSOLUTE_DIFFERENCE));
 
 		// Assert the second length-wise piece of the outline is 10 units from the line
 		assert!(f64_compare(
-			outline[2].evaluate(TValue::Parametric(0.25)).distance(line.evaluate(TValue::Parametric(0.75))),
+			outline.iter().nth(2).unwrap().evaluate(TValue::Parametric(0.25)).distance(line.evaluate(TValue::Parametric(0.75))),
 			10.,
 			MAX_ABSOLUTE_DIFFERENCE
 		)); // f64
 
 		// Assert the second cap touches the line start point at the halfway point
-		assert!(outline[3].evaluate(TValue::Parametric(0.5)).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+		assert!(outline.iter().nth(3).unwrap().evaluate(TValue::Parametric(0.5)).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]

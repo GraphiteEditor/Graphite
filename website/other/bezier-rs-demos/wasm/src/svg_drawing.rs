@@ -48,19 +48,6 @@ pub fn draw_line(start_x: f64, start_y: f64, end_x: f64, end_y: f64, stroke: &st
 	format!(r#"<line x1="{start_x}" y1="{start_y}" x2="{end_x}" y2="{end_y}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#)
 }
 
-/// Helper function to draw a list of beziers.
-pub fn draw_beziers(beziers: Vec<Bezier>, options: String) -> String {
-	let start_point = beziers.first().unwrap().start();
-	let mut svg = format!("<path d=\"M {} {}", start_point.x, start_point.y);
-
-	beziers.iter().for_each(|bezier| {
-		let _ = write!(svg, " {}", bezier.svg_curve_argument());
-	});
-
-	let _ = write!(svg, " Z\" {}/>", options);
-	svg
-}
-
 // Helper function to convert polar to cartesian coordinates
 fn polar_to_cartesian(center_x: f64, center_y: f64, radius: f64, angle_in_rad: f64) -> [f64; 2] {
 	let x = center_x + radius * angle_in_rad.cos();

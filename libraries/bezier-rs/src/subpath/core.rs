@@ -14,7 +14,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Create a `Subpath` consisting of 2 manipulator groups from a `Bezier`.
-	pub fn from_bezier(bezier: Bezier) -> Self {
+	pub fn from_bezier(bezier: &Bezier) -> Self {
 		Subpath::new(
 			vec![
 				ManipulatorGroup {
@@ -36,7 +36,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Creates a subpath from a vector of [Bezier]. When two consecutive Bezier do not share an end and start point, this function
 	/// resolves the discrepancy by simply taking the start-point of the second Bezier as the anchor of the Manipulator Group.
-	pub fn from_beziers(beziers: Vec<Bezier>, closed: bool) -> Self {
+	pub fn from_beziers(beziers: &[Bezier], closed: bool) -> Self {
 		assert!(!closed || beziers.len() > 1, "A closed Subpath must contain at least 1 Bezier.");
 		if beziers.is_empty() {
 			return Subpath::new(vec![], closed);
