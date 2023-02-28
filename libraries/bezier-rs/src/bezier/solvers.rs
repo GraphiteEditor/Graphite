@@ -52,15 +52,19 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/tangent/solo" title="Tangent Demo"></iframe>
-	pub fn tangent(&self, t: TValue) -> DVec2 {
-		let t = self.t_value_to_parametric(t);
+	/// Returns the non-normalized vector representing the tangent at the point `t` along the curve.
+	fn non_normalized_tangent(&self, t: f64) -> DVec2 {
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
 			_ => self.derivative().unwrap().evaluate(TValue::Parametric(t)),
 		}
-		.normalize()
+	}
+
+	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/tangent/solo" title="Tangent Demo"></iframe>
+	pub fn tangent(&self, t: TValue) -> DVec2 {
+		let t = self.t_value_to_parametric(t);
+		self.non_normalized_tangent(t).normalize()
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -389,6 +393,15 @@ impl Bezier {
 		.iter()
 		.flat_map(|bezier| self.intersections(bezier, None, None))
 		.collect()
+	}
+
+	/// Returns a cubic bezier which joins this with the provided bezier curve.
+	/// The resulting path formed by the Bezier curves is continuous up to the first derivative.
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/join/solo" title="Join Demo"></iframe>
+	pub fn join(&self, other: &Bezier) -> Bezier {
+		let handle1 = self.non_normalized_tangent(1.) / 3. + self.end;
+		let handle2 = other.start - other.non_normalized_tangent(0.) / 3.;
+		Bezier::from_cubic_dvec2(self.end, handle1, handle2, other.start)
 	}
 }
 
