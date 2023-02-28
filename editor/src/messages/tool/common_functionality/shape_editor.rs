@@ -357,6 +357,10 @@ impl ShapeEditor {
 							);
 						}
 					} else {
+						if manipulator_group.opposing_handle(handle).is_none() {
+							return;
+						}
+
 						responses.push_back(
 							Operation::RemoveManipulatorPoint {
 								layer_path: path.clone(),
