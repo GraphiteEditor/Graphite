@@ -39,15 +39,15 @@ DocumentNodeType {
 
 The identifier here must be the same as that of the proto-node which will be discussed soon and is usually the path to the node implementation.
 
-The input names are shown in the graph when an input is exposed (with a dot in the properties panel). The default input is used when a node is first created or when a link is disconnected. An input is comprised from a `TaggedValue` (allowing serialisation of a dynamic type with serde) in addition to an exposed boolean, which defines if the input is shown as a dot in the node graph UI by default. In the gamma node, the "Image" input is shown but the "Gamma" input is hidden from the graph by default, allowing for a less cluttered graph.
+The input names are shown in the graph when an input is exposed (with a dot in the properties panel). The default input is used when a node is first created or when a link is disconnected. An input is comprised from a `TaggedValue` (allowing serialisation of a dynamic type with serde) in addition to an exposed boolean, which defines if the input is shown as a dot in the node graph UI by default. In the opacity node, the "Color" input is shown but the "Factor" input is hidden from the graph by default, allowing for a less cluttered graph.
 
 The properties field is a function that defines a number input, which can be seen by selecting the gamma node in the graph. The code for this property is shown below:
 
 ```rs
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let factor = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
-	vec![LayoutGroup::Row { widgets: gamma }]
+	vec![LayoutGroup::Row { widgets: factor }]
 }
 ```
 
@@ -101,9 +101,9 @@ When the document graph is executed, it is first converted to a proto-graph, whi
 raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 ```
 
-Nodes in the borrow stack take a `Box<dyn DynAny>` as input and output another `Box<dyn DynAny>`, to allow for any type. To use this as the field for our `GammaNode`, we must downcast these types so the input is a `()` and the output is a `f64`. This can be achieved by the `DowncastBothNode`.
-The new `GammaNode` that has been constructed must then be made to have a dynamic input and output using the `DynAnyNode`.
-If the primary input to the node comes from the output of another node, then the `ProtoNodeInput` will be set to a node id. This node is found and then chained with the gamma node using the `.then()` function. If there is no primary input then we simply return the node.
+Nodes in the borrow stack take a `Box<dyn DynAny>` as input and output another `Box<dyn DynAny>`, to allow for any type. To use this as the field for our `OpacityNode`, we must downcast these types so the input is a `()` and the output is a `f64`. This can be achieved by the `DowncastBothNode`.
+The new `OpacityNode` that has been constructed must then be made to have a dynamic input and output using the `DynAnyNode`.
+If the primary input to the node comes from the output of another node, then the `ProtoNodeInput` will be set to a node id. This node is found and then chained with the opacity node using the `.then()` function. If there is no primary input then we simply return the node.
 Finally we call `.into_type_erased()` on the result and that is inserted into the borrow stack.
 
 ## Conclusion
