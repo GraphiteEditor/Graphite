@@ -465,7 +465,6 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						None
 					};
-
 					let rotating_bounds = if let Some(bounding_box) = &mut tool_data.bounding_box_overlays {
 						bounding_box.check_rotate(input.mouse.position)
 					} else {
@@ -533,14 +532,15 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
+						responses.push_back(DocumentMessage::StartTransaction.into());
 						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == LayerSelectionBehavior::Deepest {
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
-
+						// rn its none for deep some for shallow
 						if let Some(intersection) = intersection.pop() {
 							tool_data.layer_selected_on_start = Some(intersection.clone());
-							selected = vec![intersection];
+							selected = vec![intersection.clone()];
 							// Shallowest manipulation
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								// Control click selects the layer directly
@@ -553,13 +553,14 @@ impl Fsm for SelectToolFsmState {
 										.into(),
 									);
 								} else {
-									// fine tune: multi move, cant shift click and append then drag appended
+									// check here
 									let mut previously_selected_layers = document.selected_layers();
 									let layers: Vec<_> = document.selected_layers().collect();
 									// Check whether a layer is selected for next selection calculations
 									if let Some(previous_layer_path) = previously_selected_layers.next() {
 										let previous_layer_path_vector = previous_layer_path.to_vec();
 										let incoming_layer_path_vector = selected.first().unwrap();
+										// check if the previously selected is equal to incoming
 
 										// Single-clicking any layer that's contained within a folder should select its shallowest parent folder
 										let mut new_layer_path_vector = None;
@@ -608,6 +609,10 @@ impl Fsm for SelectToolFsmState {
 													.into(),
 												);
 											}
+										} else {
+											// last worked
+											// todo: QA and check for failing edge cases
+											tool_data.layer_selected_on_start = None;
 										}
 									} else {
 										// Select root-most layer
@@ -624,8 +629,8 @@ impl Fsm for SelectToolFsmState {
 							}
 							// Deepest Manipulation
 							else {
+								// tool_data.layer_selected_on_start = Some(intersection.clone());
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
-								responses.push_back(DocumentMessage::StartTransaction.into());
 								tool_data.layers_dragging.append(&mut selected);
 								tool_data
 									.snap_manager
@@ -788,10 +793,13 @@ impl Fsm for SelectToolFsmState {
 					if !tool_data.is_dragging && input.keyboard.get(remove_from_selection as usize) && tool_data.layer_selected_on_start.is_none() {
 						let quad = tool_data.selection_quad();
 						let intersection = document.document_legacy.intersects_quad_root(quad, render_data);
-						if let Some(intersect_layer_path) = intersection.last() {
-							let replacement_selected_layers = document.selected_layers().filter(|&layer| layer != intersect_layer_path).map(|path| path.to_vec()).collect();
-							responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
-						}
+						let temp_intersection = intersection.clone();
+
+						let path: &[u64] = temp_intersection.last().unwrap();
+						let folders: Vec<_> = (1..path.len() + 1).map(|i| &path[0..i]).collect();
+						let replacement_selected_layers: Vec<Vec<u64>> = document.selected_layers().filter(|&layer| !folders.contains(&layer)).map(|path| path.to_vec()).collect();
+
+						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 					}
 
 					tool_data.is_dragging = false;
