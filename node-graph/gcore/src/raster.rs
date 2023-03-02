@@ -291,6 +291,7 @@ mod image {
 	use super::{Color, ImageSlice};
 	use crate::Node;
 	use alloc::vec::Vec;
+	use core::hash::{Hash, Hasher};
 	use dyn_any::{DynAny, StaticType};
 	use glam::DAffine2;
 
@@ -387,6 +388,13 @@ mod image {
 				image: Image::empty(),
 				transform: DAffine2::ZERO,
 			}
+		}
+	}
+
+	impl Hash for ImageFrame {
+		fn hash<H: Hasher>(&self, state: &mut H) {
+			self.image.hash(state);
+			self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
 }

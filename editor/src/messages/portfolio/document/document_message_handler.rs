@@ -32,7 +32,7 @@ use document_legacy::layers::style::{Fill, RenderData, ViewMode};
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
-use graphene_core::raster::color::Color;
+use graphene_core::raster::{Color, ImageFrame};
 use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
@@ -603,21 +603,37 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			PasteImage { image, mouse } => {
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				responses.push_back(DocumentMessage::StartTransaction.into());
-
-				let path = vec![generate_uuid()];
-				let image_node_id = 100;
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
-
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
 					warn!("Image node should be in registry");
 					return;
 				};
 
+				let path = vec![generate_uuid()];
+				let image_node_id = 100;
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
+
+				// Transform of parent folder
+				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
+
+				// Align the layer with the mouse or center of viewport
+				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
+				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
+				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
+
+				// Make layer the size of the image
+				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
+
+				let transform = (center_in_viewport_layerspace * fit_image_size);
+
+				responses.push_back(DocumentMessage::StartTransaction.into());
+
 				network.nodes.insert(
 					image_node_id,
 					image_node_type.to_document_node(
-						[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Image(image), false)],
+						[graph_craft::document::NodeInput::value(
+							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform }),
+							false,
+						)],
 						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
 					),
 				);
@@ -638,19 +654,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 
-				// Transform of parent folder
-				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
-
-				// Align the layer with the mouse or center of viewport
-				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
-				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
-
-				// Make layer the size of the image
-				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
-
-				let transform = (center_in_viewport_layerspace * fit_image_size).to_cols_array();
-				responses.push_back(DocumentOperation::SetLayerTransform { path, transform }.into());
+				responses.push_back(
+					DocumentOperation::SetLayerTransform {
+						path,
+						transform: transform.to_cols_array(),
+					}
+					.into(),
+				);
 
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 
