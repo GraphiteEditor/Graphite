@@ -44,6 +44,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Bool(_) => Self::Boolean,
 			TaggedValue::DVec2(_) => Self::Vector,
 			TaggedValue::Image(_) => Self::Raster,
+			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) => Self::Subpath,
 			_ => Self::General,

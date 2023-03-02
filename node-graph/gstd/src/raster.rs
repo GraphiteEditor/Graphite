@@ -131,13 +131,14 @@ pub struct BlendImageNode<Second, MapFn> {
 	map_fn: MapFn,
 }
 
+// TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
-fn blend_image<MapFn>(image: Image, second: Image, map_fn: &'any_input MapFn) -> Image
+fn blend_image<MapFn>(image: ImageFrame, second: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
 	let mut image = image;
-	for (pixel, sec_pixel) in &mut image.data.iter_mut().zip(second.data.iter()) {
+	for (pixel, sec_pixel) in &mut image.image.data.iter_mut().zip(second.image.data.iter()) {
 		*pixel = map_fn.eval((*pixel, *sec_pixel));
 	}
 	image

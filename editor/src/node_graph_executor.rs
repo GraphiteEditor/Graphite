@@ -1,4 +1,5 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
+use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMode;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -20,16 +21,18 @@ pub struct NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(&mut self, mut network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
-		network.duplicate_outputs(&mut generate_uuid);
-		network.remove_dead_nodes();
+	fn execute_network<T: dyn_any::StaticType>(&mut self, network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
+		let mut scoped_network = wrap_network_in_scope(network);
 
-		debug!("Execute document network:\n{network:#?}");
+		scoped_network.duplicate_outputs(&mut generate_uuid);
+		scoped_network.remove_dead_nodes();
+
+		debug!("Execute document network:\n{scoped_network:#?}");
 
 		// We assume only one output
-		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
+		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile_single(network, true)?;
+		let proto_network = c.compile_single(scoped_network, true)?;
 		debug!("Execute proto network:\n{proto_network}");
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
