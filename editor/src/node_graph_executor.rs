@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 
 use document_legacy::{document::pick_safe_imaginate_resolution, layers::layer_info::LayerDataType};
 use document_legacy::{LayerId, Operation};
-use graph_craft::document::{generate_uuid, value::TaggedValue, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
 use graphene_core::raster::{Image, ImageFrame};
 use interpreted_executor::executor::DynamicExecutor;
