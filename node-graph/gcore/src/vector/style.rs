@@ -3,6 +3,7 @@
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::Color;
 
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Write};
@@ -19,7 +20,7 @@ fn format_opacity(name: &str, opacity: f32) -> String {
 	}
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, DynAny, specta::Type)]
 pub enum GradientType {
 	#[default]
 	Linear,
@@ -30,30 +31,41 @@ pub enum GradientType {
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, PartialEq, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, DynAny, specta::Type)]
 pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
 	pub transform: DAffine2,
 	pub positions: Vec<(f64, Option<Color>)>,
-	uuid: u64,
 	pub gradient_type: GradientType,
+}
+impl core::hash::Hash for Gradient {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.positions.len().hash(state);
+		[].iter()
+			.chain(self.start.to_array().iter())
+			.chain(self.end.to_array().iter())
+			.chain(self.transform.to_cols_array().iter())
+			.chain(self.positions.iter().map(|(position, _)| position))
+			.for_each(|x| x.to_bits().hash(state));
+		self.positions.iter().for_each(|(_, color)| color.hash(state));
+		self.gradient_type.hash(state);
+	}
 }
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, uuid: u64, gradient_type: GradientType) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, _uuid: u64, gradient_type: GradientType) -> Self {
 		Gradient {
 			start,
 			end,
 			positions: vec![(0., Some(start_color)), (1., Some(end_color))],
 			transform,
-			uuid,
 			gradient_type,
 		}
 	}
 
-	/// Adds the gradient def with the uuid specified
-	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) {
+	/// Adds the gradient def, returning the gradient id
+	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 		let updated_transform = multiplied_transform * bound_transform;
@@ -78,12 +90,13 @@ impl Gradient {
 			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
 			.collect::<String>();
 
+		let gradient_id = crate::uuid::generate_uuid();
 		match self.gradient_type {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
 					r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
-					self.uuid, start.x, end.x, start.y, end.y, transform, positions
+					gradient_id, start.x, end.x, start.y, end.y, transform, positions
 				);
 			}
 			GradientType::Radial => {
@@ -91,10 +104,12 @@ impl Gradient {
 				let _ = write!(
 					svg_defs,
 					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}" gradientTransform="matrix({})">{}</radialGradient>"#,
-					self.uuid, start.x, start.y, radius, transform, positions
+					gradient_id, start.x, start.y, radius, transform, positions
 				);
 			}
 		}
+
+		gradient_id
 	}
 
 	/// Insert a stop into the gradient, the index if successful
@@ -137,26 +152,11 @@ impl Gradient {
 	}
 }
 
-impl Clone for Gradient {
-	/// Clones the gradient, with the cloned gradient having the new uuid.
-	/// If multiple gradients have the same id then only one gradient will be shown in the final svg output.
-	fn clone(&self) -> Self {
-		Self {
-			start: self.start,
-			end: self.end,
-			transform: self.transform,
-			positions: self.positions.clone(),
-			uuid: crate::uuid::generate_uuid(),
-			gradient_type: self.gradient_type,
-		}
-	}
-}
-
 /// Describes the fill of a layer.
 ///
 /// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, DynAny, Hash, specta::Type)]
 pub enum Fill {
 	#[default]
 	None,
@@ -186,8 +186,8 @@ impl Fill {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::Gradient(gradient) => {
-				gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
-				format!(r##" fill="url('#{}')""##, gradient.uuid)
+				let gradient_id = gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				format!(r##" fill="url('#{}')""##, gradient_id)
 			}
 		}
 	}
@@ -207,9 +207,18 @@ impl Fill {
 	}
 }
 
+/// Enum describing the type of [Fill]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, DynAny, Hash, specta::Type)]
+pub enum FillType {
+	None,
+	Solid,
+	Gradient,
+}
+
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
 pub enum LineCap {
 	Butt,
 	Round,
@@ -227,7 +236,7 @@ impl Display for LineCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
 pub enum LineJoin {
 	Miter,
 	Bevel,
@@ -245,25 +254,42 @@ impl Display for LineJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, DynAny, specta::Type)]
 pub struct Stroke {
 	/// Stroke color
-	color: Option<Color>,
+	pub color: Option<Color>,
 	/// Line thickness
-	weight: f64,
-	dash_lengths: Vec<f32>,
-	dash_offset: f64,
-	line_cap: LineCap,
-	line_join: LineJoin,
-	line_join_miter_limit: f64,
+	pub weight: f64,
+	pub dash_lengths: Vec<f32>,
+	pub dash_offset: f64,
+	pub line_cap: LineCap,
+	pub line_join: LineJoin,
+	pub line_join_miter_limit: f64,
+}
+
+impl core::hash::Hash for Stroke {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.color.hash(state);
+		self.weight.to_bits().hash(state);
+		self.dash_lengths.len().hash(state);
+		self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
+		self.dash_offset.to_bits().hash(state);
+		self.line_cap.hash(state);
+		self.line_join.hash(state);
+		self.line_join_miter_limit.to_bits().hash(state);
+	}
 }
 
 impl Stroke {
-	pub fn new(color: Color, weight: f64) -> Self {
+	pub const fn new(color: Color, weight: f64) -> Self {
 		Self {
 			color: Some(color),
 			weight,
-			..Default::default()
+			dash_lengths: Vec::new(),
+			dash_offset: 0.,
+			line_cap: LineCap::Butt,
+			line_join: LineJoin::Miter,
+			line_join_miter_limit: 4.,
 		}
 	}
 
@@ -278,7 +304,11 @@ impl Stroke {
 	}
 
 	pub fn dash_lengths(&self) -> String {
-		self.dash_lengths.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
+		if self.dash_lengths.is_empty() {
+			"none".to_string()
+		} else {
+			self.dash_lengths.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
+		}
 	}
 
 	pub fn dash_offset(&self) -> f64 {
@@ -367,7 +397,7 @@ impl Default for Stroke {
 		Self {
 			weight: 0.,
 			color: Some(Color::from_rgba8(0, 0, 0, 255)),
-			dash_lengths: vec![0.],
+			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
@@ -377,14 +407,14 @@ impl Default for Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, DynAny, Hash, specta::Type)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Fill,
 }
 
 impl PathStyle {
-	pub fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
+	pub const fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
 		Self { stroke, fill }
 	}
 
@@ -508,7 +538,7 @@ impl PathStyle {
 }
 
 /// Represents different ways of rendering an object
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Hash, DynAny, specta::Type)]
 pub enum ViewMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]

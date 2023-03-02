@@ -32,7 +32,7 @@ impl DocumentInputType {
 		Self { name, data_type, default }
 	}
 
-	pub const fn _none() -> Self {
+	pub const fn none() -> Self {
 		Self {
 			name: "None",
 			data_type: FrontendGraphDataType::General,
@@ -589,18 +589,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::add_properties,
 		},
 		(*IMAGINATE_NODE).clone(),
-		/*DocumentNodeType {
+		DocumentNodeType {
 			name: "Unit Circle Generator",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]),
-			inputs: vec![DocumentInputType::none()],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::no_properties,
-		},
-		DocumentNodeType {
-			name: "Unit Square Generator",
-			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_std::vector::generator_nodes::UnitSquareGenerator", &[]),
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitCircleGenerator"),
 			inputs: vec![DocumentInputType::none()],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
@@ -608,40 +600,63 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Path Generator",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator"),
 			inputs: vec![DocumentInputType {
 				name: "Path Data",
 				data_type: FrontendGraphDataType::Subpath,
-				default: NodeInput::value(TaggedValue::Subpath(Subpath::new()), false),
+				default: NodeInput::value(TaggedValue::Subpath(bezier_rs::Subpath::new(Vec::new(), false)), false),
 			}],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
-			name: "Transform Subpath",
+			name: "Transform",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_std::vector::generator_nodes::TransformSubpathNode", &[]),
+			identifier: NodeImplementation::proto("graphene_core::vector::TransformNode<_, _, _, _>"),
 			inputs: vec![
-				DocumentInputType::new("Subpath", TaggedValue::Subpath(Subpath::empty()), true),
-				DocumentInputType::new("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::new("Rotation", TaggedValue::F64(0.), false),
-				DocumentInputType::new("Scale", TaggedValue::DVec2(DVec2::ONE), false),
-				DocumentInputType::new("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
+				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::transform_properties,
 		},
 		DocumentNodeType {
-			name: "Blit Subpath",
+			name: "Fill",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_std::vector::generator_nodes::BlitSubpath", &[]),
+			identifier: NodeImplementation::proto("graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
-				DocumentInputType::new("Image", TaggedValue::Image(Image::empty()), true),
-				DocumentInputType::new("Subpath", TaggedValue::Subpath(Subpath::empty()), true),
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Fill Type", TaggedValue::FillType(vector::style::FillType::Solid), false),
+				DocumentInputType::value("Solid Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Gradient Type", TaggedValue::GradientType(vector::style::GradientType::Linear), false),
+				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 0.5)), false),
+				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(1., 0.5)), false),
+				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
+				DocumentInputType::value("Positions", TaggedValue::GradientPositions(vec![(0., Some(Color::BLACK)), (1., Some(Color::WHITE))]), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
-		},*/
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::fill_properties,
+		},
+		DocumentNodeType {
+			name: "Stroke",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Weight", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Dash Lengths", TaggedValue::VecF32(Vec::new()), false),
+				DocumentInputType::value("Dash Offset", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Line Cap", TaggedValue::LineCap(graphene_core::vector::style::LineCap::Butt), false),
+				DocumentInputType::value("Line Join", TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter), false),
+				DocumentInputType::value("Miter Limit", TaggedValue::F64(4.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::stroke_properties,
+		},
 	]
 }
 
@@ -718,13 +733,24 @@ impl DocumentNodeType {
 		DocumentNodeImplementation::Network(inner_network)
 	}
 
+	/// Converts the [DocumentNodeType] type to a [DocumentNode], based on the inputs from the graph (which must be the correct length) and the metadata
 	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: graph_craft::document::DocumentNodeMetadata) -> DocumentNode {
+		let inputs: Vec<_> = inputs.into_iter().collect();
+		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 		DocumentNode {
 			name: self.name.to_string(),
-			inputs: inputs.into_iter().collect(),
+			inputs,
 			implementation: self.generate_implementation(),
 			metadata,
 		}
+	}
+
+	/// Converts the [DocumentNodeType] type to a [DocumentNode], using the provided `input_override` and falling back to the default inputs.
+	/// `input_override` does not have to be the correct length.
+	pub fn to_document_node_default_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>, metadata: graph_craft::document::DocumentNodeMetadata) -> DocumentNode {
+		let mut input_override = input_override.into_iter();
+		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
+		self.to_document_node(inputs, metadata)
 	}
 }
 
@@ -764,10 +790,44 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		nodes: [
 			resolve_document_node_type("Input")
 				.expect("Input node does not exist")
-				.to_document_node([NodeInput::Network(concrete!(ImageFrame))], DocumentNodeMetadata::position((8, 4))),
+				.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
 				.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+		]
+		.into_iter()
+		.enumerate()
+		.map(|(id, node)| (id as NodeId, node))
+		.collect(),
+		..Default::default()
+	}
+}
+
+pub fn new_vector_network(subpath: bezier_rs::Subpath<uuid::ManipulatorGroupId>) -> NodeNetwork {
+	let input = resolve_document_node_type("Input").expect("Input node does not exist");
+	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
+	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
+	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
+	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
+	let output = resolve_document_node_type("Output").expect("Output node does not exist");
+
+	let mut pos = 0;
+	let mut next_pos = || {
+		let node_pos = DocumentNodeMetadata::position((pos, 4));
+		pos += 8;
+		node_pos
+	};
+
+	NodeNetwork {
+		inputs: vec![0],
+		outputs: vec![NodeOutput::new(5, 0)],
+		nodes: [
+			input.to_document_node_default_inputs([], next_pos()),
+			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpath(subpath), false))], next_pos()),
+			transform.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
+			fill.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
+			stroke.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
+			output.to_document_node_default_inputs([Some(NodeInput::node(4, 0))], next_pos()),
 		]
 		.into_iter()
 		.enumerate()

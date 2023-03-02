@@ -33,7 +33,7 @@ impl DocumentNodeMetadata {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -122,7 +122,7 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
@@ -165,7 +165,7 @@ impl NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
@@ -202,7 +202,7 @@ impl NodeOutput {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny, specta::Type)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
