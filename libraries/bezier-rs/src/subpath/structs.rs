@@ -1,15 +1,18 @@
 use super::Bezier;
 
-use glam::DVec2;
-use std::fmt::{Debug, Formatter, Result};
+use glam::{DAffine2, DVec2};
+use std::{
+	fmt::{Debug, Formatter, Result},
+	hash::Hash,
+};
 
 /// An id type used for each [ManipulatorGroup].
-pub trait Identifier: Sized + Clone + PartialEq {
+pub trait Identifier: Sized + Clone + PartialEq + Hash + 'static {
 	fn new() -> Self;
 }
 
 /// An empty id type for use in tests
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[cfg(test)]
 pub(crate) struct EmptyId;
 
@@ -22,11 +25,29 @@ impl Identifier for EmptyId {
 
 /// Structure used to represent a single anchor with up to two optional associated handles along a `Subpath`
 #[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorGroup<ManipulatorGroupId: crate::Identifier> {
 	pub anchor: DVec2,
 	pub in_handle: Option<DVec2>,
 	pub out_handle: Option<DVec2>,
 	pub id: ManipulatorGroupId,
+}
+
+// TODO: Remove once we no longer need to hash floats in Graphite
+impl<ManipulatorGroupId: crate::Identifier> Hash for ManipulatorGroup<ManipulatorGroupId> {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.anchor.to_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.in_handle.is_some().hash(state);
+		self.in_handle.map(|in_handle| in_handle.to_array().iter().for_each(|x| x.to_bits().hash(state)));
+		self.out_handle.is_some().hash(state);
+		self.out_handle.map(|out_handle| out_handle.to_array().iter().for_each(|x| x.to_bits().hash(state)));
+		self.id.hash(state);
+	}
+}
+
+#[cfg(feature = "dyn-any")]
+impl<ManipulatorGroupId: crate::Identifier> dyn_any::StaticType for ManipulatorGroup<ManipulatorGroupId> {
+	type Static = ManipulatorGroup<ManipulatorGroupId>;
 }
 
 impl<ManipulatorGroupId: crate::Identifier> Debug for ManipulatorGroup<ManipulatorGroupId> {
@@ -40,6 +61,18 @@ impl<ManipulatorGroupId: crate::Identifier> Debug for ManipulatorGroup<Manipulat
 }
 
 impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId> {
+	/// Construct a new manipulator group from an anchor, in handle and out handle
+	pub fn new(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>) -> Self {
+		let id = ManipulatorGroupId::new();
+		Self { anchor, in_handle, out_handle, id }
+	}
+
+	/// Construct a new manipulator point with just an anchor position
+	pub fn new_anchor(anchor: DVec2) -> Self {
+		Self::new(anchor, Some(anchor), Some(anchor))
+	}
+
+	/// Create a bezier curve that starts at the current manipulator group and finishes in the `end_group` manipulator group.
 	pub fn to_bezier(&self, end_group: &ManipulatorGroup<ManipulatorGroupId>) -> Bezier {
 		let start = self.anchor;
 		let end = end_group.anchor;
@@ -51,5 +84,12 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 			(Some(handle), None) | (None, Some(handle)) => Bezier::from_quadratic_dvec2(start, handle, end),
 			(None, None) => Bezier::from_linear_dvec2(start, end),
 		}
+	}
+
+	/// Apply a transformation to all of the [ManipulatorGroup] points
+	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
+		self.anchor = affine_transform.transform_point2(self.anchor);
+		self.in_handle = self.in_handle.map(|in_handle| affine_transform.transform_point2(in_handle));
+		self.out_handle = self.out_handle.map(|out_handle| affine_transform.transform_point2(out_handle));
 	}
 }

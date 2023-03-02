@@ -2,6 +2,8 @@ use super::*;
 use crate::utils::SubpathTValue;
 use crate::utils::TValue;
 
+use glam::DAffine2;
+
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.
 /// - Ex. Via `subpath.iter().nth(index).evaluate(t);`
@@ -261,6 +263,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Subpath {
 			manipulator_groups: new_manipulator_groups,
 			closed: false,
+		}
+	}
+
+	/// Apply a transformation to all of the [ManipulatorGroup]s in the [Subpath].
+	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
+		for manipulator_group in &mut self.manipulator_groups {
+			manipulator_group.apply_transform(affine_transform);
 		}
 	}
 }
@@ -718,5 +727,11 @@ mod tests {
 		assert!(result.manipulator_groups[0].in_handle.is_none());
 		assert!(result.manipulator_groups[0].out_handle.is_none());
 		assert_eq!(result.manipulator_groups.len(), 1);
+	}
+
+	fn transform_subpath() {
+		let mut subpath = set_up_open_subpath();
+		subpath.apply_transform(glam::DAffine2::IDENTITY);
+		assert_eq!(subpath, set_up_open_subpath());
 	}
 }

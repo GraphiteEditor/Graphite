@@ -6,7 +6,7 @@ use glam::DVec2;
 use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Hash)]
 pub(crate) struct EmptyId;
 
 impl bezier_rs::Identifier for EmptyId {

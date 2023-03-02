@@ -153,7 +153,7 @@ mod tests {
 		};
 
 		use crate::executor::DynamicExecutor;
-		use graph_craft::executor::{Compiler, Executor};
+		use graph_craft::executor::Compiler;
 
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");

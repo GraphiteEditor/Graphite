@@ -70,7 +70,8 @@ mod uuid_generation {
 
 pub use uuid_generation::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorGroupId(u64);
 
 impl bezier_rs::Identifier for ManipulatorGroupId {

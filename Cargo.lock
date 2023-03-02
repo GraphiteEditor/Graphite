@@ -281,7 +281,9 @@ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 name = "bezier-rs"
 version = "0.1.0"
 dependencies = [
+ "dyn-any",
  "glam",
+ "serde",
 ]
 
 [[package]]

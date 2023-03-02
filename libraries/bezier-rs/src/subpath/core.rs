@@ -1,6 +1,7 @@
 use super::*;
 use crate::consts::*;
 
+use glam::DVec2;
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
@@ -65,6 +66,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		SubpathIter { subpath: self, index: 0 }
 	}
 
+	/// Returns a slice of the [ManipulatorGroup]s in the `Subpath`.
+	pub fn manipulator_groups(&self) -> &[ManipulatorGroup<ManipulatorGroupId>] {
+		&self.manipulator_groups
+	}
+
 	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.
 	pub fn curve_to_svg(&self, svg: &mut String, attributes: String) {
 		let curve_start_argument = format!("{SVG_ARG_MOVE}{} {}", self[0].anchor.x, self[0].anchor.y);
@@ -119,5 +125,116 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		if !handle_attributes.is_empty() {
 			self.handles_to_svg(svg, handle_attributes);
 		}
+	}
+
+	/// Construct a [Subpath] from an iter of anchor positions.
+	pub fn from_anchors(anchor_positions: impl IntoIterator<Item = DVec2>, closed: bool) -> Self {
+		Self::new(anchor_positions.into_iter().map(|anchor| ManipulatorGroup::new_anchor(anchor)).collect(), closed)
+	}
+
+	/// Constructs a rectangle with `corner1` and `corner2` as the two corners.
+	pub fn new_rect(corner1: DVec2, corner2: DVec2) -> Self {
+		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
+	}
+
+	/// Constructs an elipse with `corner1` and `corner2` as the two corners of the bounding box.
+	pub fn new_ellipse(corner1: DVec2, corner2: DVec2) -> Self {
+		let size = (corner1 - corner2).abs();
+		let center = (corner1 + corner2) / 2.;
+		let top = DVec2::new(center.x, corner1.y);
+		let bottom = DVec2::new(center.x, corner2.y);
+		let left = DVec2::new(corner1.x, center.y);
+		let right = DVec2::new(corner2.x, center.y);
+
+		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
+		let handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(top, Some(top + handle_offset * DVec2::X), Some(top - handle_offset * DVec2::X)),
+			ManipulatorGroup::new(right, Some(right + handle_offset * DVec2::Y), Some(right - handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(bottom, Some(bottom - handle_offset * DVec2::X), Some(bottom + handle_offset * DVec2::X)),
+			ManipulatorGroup::new(left, Some(left - handle_offset * DVec2::Y), Some(left + handle_offset * DVec2::Y)),
+		];
+		Self::new(manipulator_groups, true)
+	}
+
+	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
+	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
+		let anchor_positions = (0..sides).map(|i| {
+			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
+			let center = center + DVec2::ONE * radius;
+			DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5
+		});
+		Self::from_anchors(anchor_positions, true)
+	}
+
+	/// Constructs a line from `p1` to `p2`
+	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
+		Self::from_anchors([p1, p2], false)
+	}
+
+	/// Construct a cubic spline from a list of points.
+	/// Based on https://mathworld.wolfram.com/CubicSpline.html
+	pub fn new_cubic_spline(points: Vec<DVec2>) -> Self {
+		// Number of points = number of points to find handles for
+		let len_points = points.len();
+
+		// matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html)
+		// because the 'a' coefficients are all 1 they need not be stored
+		// this algorithm does a variation of the above algorithm.
+		// Instead of using the traditional cubic: a + bt + ct^2 + dt^3, we use the bezier cubic.
+
+		let mut b = vec![DVec2::new(4., 4.); len_points];
+		b[0] = DVec2::new(2., 2.);
+		b[len_points - 1] = DVec2::new(2., 2.);
+
+		let mut c = vec![DVec2::new(1., 1.); len_points];
+
+		// 'd' is the the second point in a cubic bezier, which is what we solve for
+		let mut d = vec![DVec2::ZERO; len_points];
+
+		d[0] = DVec2::new(2. * points[1].x + points[0].x, 2. * points[1].y + points[0].y);
+		d[len_points - 1] = DVec2::new(3. * points[len_points - 1].x, 3. * points[len_points - 1].y);
+		for idx in 1..(len_points - 1) {
+			d[idx] = DVec2::new(4. * points[idx].x + 2. * points[idx + 1].x, 4. * points[idx].y + 2. * points[idx + 1].y);
+		}
+
+		// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
+		// do row operations to eliminate `a` coefficients
+		c[0] /= -b[0];
+		d[0] /= -b[0];
+		#[allow(clippy::assign_op_pattern)]
+		for i in 1..len_points {
+			b[i] += c[i - 1];
+			// for some reason the below line makes the borrow checker mad
+			//d[i] += d[i-1]
+			d[i] = d[i] + d[i - 1];
+			c[i] /= -b[i];
+			d[i] /= -b[i];
+		}
+
+		// at this point b[i] == -a[i + 1], a[i] == 0,
+		// do row operations to eliminate 'c' coefficients and solve
+		d[len_points - 1] *= -1.;
+		#[allow(clippy::assign_op_pattern)]
+		for i in (0..len_points - 1).rev() {
+			d[i] = d[i] - (c[i] * d[i + 1]);
+			d[i] *= -1.; //d[i] /= b[i]
+		}
+
+		let mut subpath = Subpath::new(Vec::new(), false);
+
+		// given the second point in the n'th cubic bezier, the third point is given by 2 * points[n+1] - b[n+1].
+		// to find 'handle1_pos' for the n'th point we need the n-1 cubic bezier
+		subpath.manipulator_groups.push(ManipulatorGroup::new(points[0], None, Some(d[0])));
+		for i in 1..len_points - 1 {
+			subpath.manipulator_groups.push(ManipulatorGroup::new(points[i], Some(2. * points[i] - d[i]), Some(d[i])));
+		}
+		subpath
+			.manipulator_groups
+			.push(ManipulatorGroup::new(points[len_points - 1], Some(2. * points[len_points - 1] - d[len_points - 1]), None));
+
+		subpath
 	}
 }
