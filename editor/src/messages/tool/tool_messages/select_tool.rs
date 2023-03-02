@@ -537,7 +537,6 @@ impl Fsm for SelectToolFsmState {
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
-						// rn its none for deep some for shallow
 						if let Some(intersection) = intersection.pop() {
 							tool_data.layer_selected_on_start = Some(intersection.clone());
 							selected = vec![intersection.clone()];
@@ -545,77 +544,104 @@ impl Fsm for SelectToolFsmState {
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								// Control click selects the layer directly
 								if input.keyboard.get(layer_selection as usize) {
-									tool_data.layers_dragging.clear();
-									responses.push_back(
-										DocumentMessage::SetSelectedLayers {
-											replacement_selected_layers: selected.clone(),
-										}
-										.into(),
-									);
+									// Control + Shift
+									if input.keyboard.get(add_to_selection as usize) {
+										tool_data.layers_dragging.clear();
+										responses.push_back(
+											DocumentMessage::SetSelectedLayers {
+												replacement_selected_layers: selected.clone(),
+											}
+											.into(),
+										);
+									} else {
+										tool_data.layers_dragging.append(&mut selected.clone());
+										responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+									}
 								} else {
-									// check here
 									let mut previously_selected_layers = document.selected_layers();
 									let layers: Vec<_> = document.selected_layers().collect();
 									// Check whether a layer is selected for next selection calculations
 									if let Some(previous_layer_path) = previously_selected_layers.next() {
-										let previous_layer_path_vector = previous_layer_path.to_vec();
+										let mut previous_layer_path_vector = previous_layer_path.to_vec();
 										let incoming_layer_path_vector = selected.first().unwrap();
-										// check if the previously selected is equal to incoming
 
-										// Single-clicking any layer that's contained within a folder should select its shallowest parent folder
-										let mut new_layer_path_vector = None;
-										// Traverse laterally across layer tree hierarchy
-										if incoming_layer_path_vector.len() == previous_layer_path_vector.len() {
-											new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
-										}
-										// Traverse laterally across layer tree hierarchy if the selected layer is a folder
-										else if incoming_layer_path_vector.len() > previous_layer_path_vector.len() {
-											// Update layer path to the root most folder containing the layer
-											let updated_layer_path_vector = &incoming_layer_path_vector[..previous_layer_path_vector.len()];
-											new_layer_path_vector = Some(vec![updated_layer_path_vector.to_vec()]);
-										}
-										// Traverse up layer tree hierarchy
-										else if incoming_layer_path_vector.len() < previous_layer_path_vector.len() {
-											new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
-										}
-										let new_layer = new_layer_path_vector.clone().unwrap();
-										let mut already_selected: bool = false;
+										// Compare root folders of already selected with incoming selected
+										// The new selected layer depends on whether it belongs to the same root folder or not
+										let previous_parent = *previous_layer_path_vector.clone().first().unwrap();
+										let incoming_parent = *incoming_layer_path_vector.clone().first().unwrap();
+										let same_parent = previous_parent == incoming_parent.clone();
+										if same_parent {
+											// Single-clicking any layer that's contained within a folder should select its shallowest parent folder
+											let mut new_layer_path_vector = None;
+											// Traverse laterally across layer tree hierarchy
+											if incoming_layer_path_vector.len() == previous_layer_path_vector.len() {
+												new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
+											}
+											// Traverse laterally across layer tree hierarchy if the selected layer is a folder
+											else if incoming_layer_path_vector.len() > previous_layer_path_vector.len() {
+												// Update layer path to the root most folder containing the layer
+												let updated_layer_path_vector = &incoming_layer_path_vector[..previous_layer_path_vector.len()];
+												new_layer_path_vector = Some(vec![updated_layer_path_vector.to_vec()]);
+											}
+											// Traverse up layer tree hierarchy
+											else if incoming_layer_path_vector.len() < previous_layer_path_vector.len() {
+												new_layer_path_vector = Some(vec![incoming_layer_path_vector.to_vec()]);
+											}
 
-										for layer in layers {
-											if layer.to_vec() == *new_layer.get(0).unwrap() {
-												already_selected = true;
+											let new_layer = new_layer_path_vector.clone().unwrap();
+											let mut already_selected: bool = false;
+											for layer in layers {
+												if layer.to_vec() == *new_layer.get(0).unwrap() {
+													already_selected = true;
+												}
+											}
+
+											// If the new layer is not selected, set/append new layer
+											if !already_selected {
+												if !input.keyboard.get(add_to_selection as usize) {
+													tool_data.layers_dragging.clear();
+												}
+												tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
+
+												if input.keyboard.get(add_to_selection as usize) {
+													responses.push_back(
+														DocumentMessage::AddSelectedLayers {
+															additional_layers: new_layer_path_vector.unwrap(),
+														}
+														.into(),
+													);
+												} else {
+													responses.push_back(
+														DocumentMessage::SetSelectedLayers {
+															replacement_selected_layers: new_layer_path_vector.unwrap(),
+														}
+														.into(),
+													);
+												}
+											} else {
+												tool_data.layer_selected_on_start = None;
 											}
 										}
-
-										// check if the layer clicked on is already selected
-										if !already_selected {
-											if !input.keyboard.get(add_to_selection as usize) {
-												tool_data.layers_dragging.clear();
-											}
-											tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
-
+										// If the incoming selected layer doesn't share a root folder set/append the rootmost layer
+										else {
 											if input.keyboard.get(add_to_selection as usize) {
 												responses.push_back(
 													DocumentMessage::AddSelectedLayers {
-														additional_layers: new_layer_path_vector.unwrap(),
+														additional_layers: vec![vec![incoming_parent]],
 													}
 													.into(),
 												);
 											} else {
 												responses.push_back(
 													DocumentMessage::SetSelectedLayers {
-														replacement_selected_layers: new_layer_path_vector.unwrap(),
+														replacement_selected_layers: vec![vec![incoming_parent]],
 													}
 													.into(),
 												);
 											}
-										} else {
-											// last worked
-											// todo: QA and check for failing edge cases
-											tool_data.layer_selected_on_start = None;
 										}
 									} else {
-										// Select root-most layer
+										// Select root-most layer if no layers are selected
 										let parent_folder_id = selected.first().unwrap().first().unwrap();
 										tool_data.layers_dragging.append(&mut vec![vec![*parent_folder_id]]);
 										responses.push_back(
@@ -629,7 +655,6 @@ impl Fsm for SelectToolFsmState {
 							}
 							// Deepest Manipulation
 							else {
-								// tool_data.layer_selected_on_start = Some(intersection.clone());
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 								tool_data.layers_dragging.append(&mut selected);
 								tool_data
@@ -995,7 +1020,7 @@ impl Fsm for SelectToolFsmState {
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
 							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-							HintInfo::keys([Key::Control], "Deepest").add_mac_keys([Key::Command]).prepend_plus(),
+							HintInfo::keys([Key::Control], "Deepest").add_mac_keys([Key::Control]).prepend_plus(),
 						]),
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
