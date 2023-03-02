@@ -454,7 +454,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let layer_path = context.layer_path.to_vec();
 
 	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-	let transform_index = resolve_input("Transform");
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -523,7 +522,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		true
 	};
 
-	let transform_not_connected = matches!(document_node.inputs[transform_index], NodeInput::Value { .. });
+	let transform_not_connected = false;
 
 	let progress = {
 		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
