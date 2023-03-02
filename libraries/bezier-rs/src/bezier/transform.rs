@@ -1,7 +1,8 @@
 use super::*;
 
+use crate::compare::compare_points;
 use crate::utils::{f64_compare, TValue};
-use crate::{ManipulatorGroup, Subpath};
+use crate::{AppendType, ManipulatorGroup, Subpath};
 
 use glam::DMat2;
 use std::f64::consts::PI;
@@ -156,7 +157,11 @@ impl Bezier {
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
 
-		let extrema = self.get_extrema_t_list();
+		let mut extrema = self.get_extrema_t_list();
+		if let BezierHandles::Cubic { handle_start: _, handle_end: _ } = self.handles {
+			extrema.append(&mut self.inflections());
+			extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+		}
 
 		// Split each subcurve such that each resulting segment is scalable.
 		let mut result_beziers: Vec<Bezier> = Vec::new();
@@ -169,15 +174,6 @@ impl Bezier {
 			// Perform no processing on the subcurve if it's already scalable.
 			if subcurve.is_scalable() {
 				result_beziers.push(subcurve);
-				result_t_values.push(t_subcurve_end);
-				return;
-			}
-			// According to <https://pomax.github.io/bezierinfo/#offsetting>, it is generally sufficient to split subcurves with no local extrema at `t = 0.5` to generate two scalable segments.
-			let [first_half, second_half] = subcurve.split(TValue::Parametric(0.5));
-			if first_half.is_scalable() && second_half.is_scalable() {
-				result_beziers.push(first_half);
-				result_beziers.push(second_half);
-				result_t_values.push(t_subcurve_start + (t_subcurve_end - t_subcurve_start) / 2.);
 				result_t_values.push(t_subcurve_end);
 				return;
 			}
@@ -319,7 +315,7 @@ impl Bezier {
 		}
 	}
 
-	/// Offset will get all the reduceable subcurves, and for each subcurve, it will scale the subcurve a set distance away from the original curve.
+	/// Offset will break down the Bezier into reducible subcurves, and scale each subcurve a set distance from the original curve.
 	/// Note that not all bezier curves are possible to offset, so this function first reduces the curve to scalable segments and then offsets those segments.
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
 	/// Offset takes the following parameter:
@@ -329,9 +325,13 @@ impl Bezier {
 	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
 		let reduced = self.reduce(None);
 		let mut scaled = Subpath::new(vec![], false);
-		reduced.iter().for_each(|bezier| {
+		reduced.iter().enumerate().for_each(|(index, bezier)| {
 			let scaled_bezier = bezier.scale(distance);
-			scaled.append_bezier(&scaled_bezier);
+			if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
+				scaled.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
+			} else {
+				scaled.append_bezier(&scaled_bezier, AppendType::IgnoreStart);
+			}
 		});
 
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
@@ -352,10 +352,16 @@ impl Bezier {
 		let total_length = self.length(None);
 
 		let mut result = Subpath::new(vec![], false);
-		reduced.iter().for_each(|bezier| {
+		reduced.iter().enumerate().for_each(|(index, bezier)| {
 			let current_length = bezier.length(None);
 			let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
-			result.append_bezier(&bezier.graduated_scale(next_start_distance, next_end_distance));
+			let scaled_bezier = bezier.graduated_scale(next_start_distance, next_end_distance);
+
+			if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
+				result.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
+			} else {
+				result.append_bezier(&scaled_bezier, AppendType::IgnoreStart);
+			}
 			next_start_distance = next_end_distance;
 		});
 
@@ -733,7 +739,7 @@ mod tests {
 		assert!(reduced_curves
 			.iter()
 			.zip(helper_curves.iter())
-			.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(&bezier2, MAX_ABSOLUTE_DIFFERENCE)));
+			.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(bezier2, MAX_ABSOLUTE_DIFFERENCE)));
 		assert!(reduced_curves
 			.iter()
 			.zip(helper_t_values.windows(2))
