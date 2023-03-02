@@ -197,6 +197,16 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIOTypes::new(generic!(T), concrete!(ImageFrame), vec![(concrete!(()), concrete!(ImageFrame))]),
 			),
 			(
+				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
+				|args| {
+					let input: DowncastBothNode<(), VectorData> = DowncastBothNode::new(args[0]);
+					let node = graphene_std::memo::EndLetNode::new(input);
+					let any: DynAnyInRefNode<ImageFrame, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(generic!(T), concrete!(ImageFrame), vec![(concrete!(()), concrete!(VectorData))]),
+			),
+			(
 				NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),
 				|args| {
 					let map_fn: DowncastBothRefNode<Option<ImageFrame>, ImageFrame> = DowncastBothRefNode::new(args[0]);

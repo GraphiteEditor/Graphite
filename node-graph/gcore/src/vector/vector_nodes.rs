@@ -5,17 +5,15 @@ use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TransformNode<Translation, Rotation, Scale, Shear> {
-	translate: Translation,
-	rotate: Rotation,
+	translation: Translation,
+	angle: Rotation,
 	scale: Scale,
 	shear: Shear,
 }
 
 #[node_macro::node_fn(TransformNode)]
-fn transform_vector_data(mut vector_data: VectorData, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
-	let (sin, cos) = rotate.sin_cos();
-
-	vector_data.transform = vector_data.transform * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
+fn transform_vector_data(mut vector_data: VectorData, translation: DVec2, angle: f64, scale: DVec2, shear: DVec2) -> VectorData {
+	vector_data.transform = vector_data.transform * DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	vector_data
 }
 

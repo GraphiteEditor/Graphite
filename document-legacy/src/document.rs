@@ -865,6 +865,12 @@ impl Document {
 				}
 				Some(vec![DocumentChanged, LayerChanged { path }])
 			}
+			Operation::SetVectorData { path, vector_data } => {
+				if let LayerDataType::NodeGraphFrame(graph) = &mut self.layer_mut(&path)?.data {
+					graph.vector_data = Some(vector_data);
+				}
+				Some(Vec::new())
+			}
 			Operation::InsertManipulatorGroup {
 				layer_path,
 				manipulator_group,

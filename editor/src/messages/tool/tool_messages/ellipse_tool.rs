@@ -1,15 +1,15 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::portfolio::document::node_graph;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
 use document_legacy::Operation;
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -100,7 +100,7 @@ impl Fsm for EllipseToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -117,15 +117,18 @@ impl Fsm for EllipseToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
+					let network = node_graph::new_vector_network(bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE));
+
 					responses.push_back(
-						Operation::AddEllipse {
+						Operation::AddNodeGraphFrame {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
+							network,
 						}
 						.into(),
 					);
+					responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 
 					Drawing
 				}

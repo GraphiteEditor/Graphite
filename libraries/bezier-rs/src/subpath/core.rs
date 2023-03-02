@@ -123,6 +123,20 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let _ = write!(svg, r#"<path d="{} {}" {attributes}/>"#, curve_start_argument, curve_arguments.join(" "));
 	}
 
+	/// Write the curve argument to the string (the d="..." part)
+	pub fn subpath_to_svg(&self, svg: &mut String, transform: glam::DAffine2) -> std::fmt::Result {
+		let start = transform.transform_point2(self[0].anchor);
+		write!(svg, "{SVG_ARG_MOVE}{},{}", start.x, start.y)?;
+		for bezier in self.iter() {
+			bezier.apply_transformation(|pos| transform.transform_point2(pos)).write_curve_argument(svg)?;
+			svg.push(' ');
+		}
+		if self.closed {
+			svg.push_str(SVG_ARG_CLOSED);
+		}
+		Ok(())
+	}
+
 	/// Appends to the `svg` mutable string with an SVG shape representation of the handle lines.
 	pub fn handle_lines_to_svg(&self, svg: &mut String, attributes: String) {
 		let handle_lines: Vec<String> = self.iter().filter_map(|bezier| bezier.svg_handle_line_argument()).collect();
@@ -192,10 +206,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
 
 		let manipulator_groups = vec![
-			ManipulatorGroup::new(top, Some(top + handle_offset * DVec2::X), Some(top - handle_offset * DVec2::X)),
-			ManipulatorGroup::new(right, Some(right + handle_offset * DVec2::Y), Some(right - handle_offset * DVec2::Y)),
-			ManipulatorGroup::new(bottom, Some(bottom - handle_offset * DVec2::X), Some(bottom + handle_offset * DVec2::X)),
-			ManipulatorGroup::new(left, Some(left - handle_offset * DVec2::Y), Some(left + handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(top, Some(top - handle_offset * DVec2::X), Some(top + handle_offset * DVec2::X)),
+			ManipulatorGroup::new(right, Some(right - handle_offset * DVec2::Y), Some(right + handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(bottom, Some(bottom + handle_offset * DVec2::X), Some(bottom - handle_offset * DVec2::X)),
+			ManipulatorGroup::new(left, Some(left + handle_offset * DVec2::Y), Some(left - handle_offset * DVec2::Y)),
 		];
 		Self::new(manipulator_groups, true)
 	}
