@@ -7,6 +7,7 @@ extern crate alloc;
 #[cfg(feature = "log")]
 extern crate log;
 
+pub mod consts;
 pub mod generic;
 pub mod ops;
 pub mod structural;
@@ -22,6 +23,7 @@ pub mod raster;
 pub mod vector;
 
 use core::any::TypeId;
+pub use raster::Color;
 
 // pub trait Node: for<'n> NodeIO<'n> {
 pub trait Node<'i, Input: 'i>: 'i {

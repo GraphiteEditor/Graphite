@@ -513,9 +513,20 @@ export default defineComponent({
 		scroll(e: WheelEvent) {
 			const scrollX = e.deltaX;
 			const scrollY = e.deltaY;
+			const zoomWithScroll = this.nodeGraph.state.zoomWithScroll;
+
+			let zoom;
+			let horizontalPan;
+			if (zoomWithScroll) {
+				zoom = !(e.ctrlKey || e.shiftKey);
+				horizontalPan = e.ctrlKey;
+			} else {
+				zoom = e.ctrlKey;
+				horizontalPan = !(e.ctrlKey || e.shiftKey);
+			}
 
 			// Zoom
-			if (e.ctrlKey) {
+			if (zoom) {
 				let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 				if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
@@ -541,11 +552,11 @@ export default defineComponent({
 				e.preventDefault();
 			}
 			// Pan
-			else if (!e.shiftKey) {
+			else if (horizontalPan) {
+				this.transform.x -= scrollY / this.transform.scale;
+			} else {
 				this.transform.x -= scrollX / this.transform.scale;
 				this.transform.y -= scrollY / this.transform.scale;
-			} else {
-				this.transform.x -= scrollY / this.transform.scale;
 			}
 		},
 		keydown(e: KeyboardEvent): void {

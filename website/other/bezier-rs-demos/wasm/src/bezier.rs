@@ -621,4 +621,44 @@ impl WasmBezier {
 			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
 		wrap_svg_tag(arcs_svg)
 	}
+
+	pub fn join(&self, js_points: &JsValue) -> String {
+		let other_bezier: Bezier = match self.0.get_points().count() {
+			2 => {
+				let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points.into()).unwrap();
+				Bezier::from_linear_dvec2(points[0], points[1])
+			}
+			3 => {
+				let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points.into()).unwrap();
+				Bezier::from_quadratic_dvec2(points[0], points[1], points[2])
+			}
+			4 => {
+				let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points.into()).unwrap();
+				Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3])
+			}
+			_ => unreachable!(),
+		};
+
+		let mut other_bezier_svg = String::new();
+		other_bezier.to_svg(
+			&mut other_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, GRAY),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, GRAY),
+			String::new(),
+			String::new(),
+		);
+
+		let joining_bezier: Bezier = self.0.join(&other_bezier);
+		let mut joining_bezier_svg = String::new();
+		joining_bezier.to_svg(
+			&mut joining_bezier_svg,
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
+			String::new(),
+			String::new(),
+		);
+
+		let bezier_svg = self.get_bezier_path();
+		wrap_svg_tag(format!("{bezier_svg}{joining_bezier_svg}{other_bezier_svg}"))
+	}
 }

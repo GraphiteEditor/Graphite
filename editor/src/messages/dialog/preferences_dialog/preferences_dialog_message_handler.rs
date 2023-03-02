@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::{NumberInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, NumberInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
@@ -33,6 +33,35 @@ impl PreferencesDialogMessageHandler {
 	}
 
 	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {
+		let zoom_with_scroll = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Input".into(),
+				min_width: 60,
+				italic: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Zoom with Scroll".into(),
+				table_align: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+				checked: preferences.zoom_with_scroll,
+				tooltip: "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)".into(),
+				on_update: WidgetCallback::new(|checkbox_input: &CheckboxInput| {
+					PreferencesMessage::ModifyLayout {
+						zoom_with_scroll: checkbox_input.checked,
+					}
+					.into()
+				}),
+				..Default::default()
+			})),
+		];
+
 		let imaginate_server_hostname = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Imaginate".into(),
@@ -107,6 +136,7 @@ impl PreferencesDialogMessageHandler {
 					..Default::default()
 				}))],
 			},
+			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: imaginate_server_hostname },
 			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 			LayoutGroup::Row { widgets: button_widgets },

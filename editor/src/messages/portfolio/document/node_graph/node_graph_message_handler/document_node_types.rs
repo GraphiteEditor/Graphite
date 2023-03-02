@@ -133,7 +133,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(Image))],
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 						metadata: Default::default(),
 					},
@@ -154,13 +154,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(Image)),
+					default: NodeInput::Network(concrete!(ImageFrame)),
 				},
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 			],
 			outputs: vec![
 				DocumentOutputType {
-					name: "Image",
+					name: "Image Frame",
 					data_type: FrontendGraphDataType::Raster,
 				},
 				DocumentOutputType {
@@ -671,8 +671,8 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	category: "Image Synthesis",
 	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>"),
 	inputs: vec![
-		DocumentInputType::value("Input Image", TaggedValue::Image(Image::empty()), true),
-		DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
+		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+		DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `NodeGraphFrameImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::value("Samples", TaggedValue::F64(30.), false),
@@ -787,10 +787,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 			),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
-				.to_document_node([NodeInput::node(2, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
-			resolve_document_node_type("Image Frame")
-				.expect("Image frame node does not exist")
-				.to_document_node([NodeInput::node(output_node_id, 0), NodeInput::node(0, 1)], DocumentNodeMetadata::position((output_offset, 4))),
+				.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
 		]
 		.into_iter()
 		.enumerate()

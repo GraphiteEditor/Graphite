@@ -1629,7 +1629,6 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
- "rand_chacha 0.3.1",
  "serde",
  "specta",
 ]
@@ -1647,8 +1646,10 @@ dependencies = [
  "log",
  "node-macro",
  "once_cell",
+ "rand_chacha 0.3.1",
  "serde",
  "specta",
+ "spin 0.9.4",
  "spirv-std",
 ]
 
@@ -1738,12 +1739,10 @@ dependencies = [
  "kurbo",
  "log",
  "once_cell",
- "rand_chacha 0.3.1",
  "remain",
  "serde",
  "serde_json",
  "specta",
- "spin 0.9.4",
  "test-case",
  "thiserror",
 ]
@@ -2173,7 +2172,6 @@ dependencies = [
  "log",
  "num-traits",
  "once_cell",
- "rand_chacha 0.3.1",
  "serde",
 ]
 
@@ -5122,7 +5120,6 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
- "rand_chacha 0.3.1",
  "serde",
  "vulkano",
 ]
@@ -5477,7 +5474,6 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
- "rand_chacha 0.3.1",
  "serde",
  "spirv",
  "wgpu",
