@@ -214,7 +214,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>"),
 				|args| {
-					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[16]);
+					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[15]);
 					let node = graphene_std::raster::ImaginateNode::new(cached);
 					let any = DynAnyNode::new(ValueNode::new(node));
 					any.into_type_erased()
@@ -223,7 +223,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					concrete!(ImageFrame),
 					concrete!(ImageFrame),
 					vec![
-						(concrete!(()), concrete!(DAffine2)),
 						(concrete!(()), concrete!(f64)),
 						(concrete!(()), concrete!(Option<DVec2>)),
 						(concrete!(()), concrete!(f64)),
