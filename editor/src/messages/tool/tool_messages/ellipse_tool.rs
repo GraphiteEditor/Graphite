@@ -117,8 +117,6 @@ impl Fsm for EllipseToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					let network = node_graph::new_vector_network(bezier_rs::Subpath::new_ellipse(glam::DVec2::ZERO, glam::DVec2::ONE));
-
 					responses.push_back(
 						Operation::AddEllipse {
 							path: shape_data.path.clone().unwrap(),
