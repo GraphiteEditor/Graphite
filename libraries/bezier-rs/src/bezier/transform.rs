@@ -2,7 +2,7 @@ use super::*;
 
 use crate::compare::compare_points;
 use crate::utils::{f64_compare, TValue};
-use crate::{AppendType, ManipulatorGroup, Subpath};
+use crate::{AppendType, ManipulatorGroup, Subpath, SubpathTValue};
 
 use glam::DMat2;
 use std::f64::consts::PI;
@@ -363,6 +363,30 @@ impl Bezier {
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
 		if self.handles != BezierHandles::Linear {
 			scaled.smooth_open_subpath();
+		}
+
+		let subpath_self_intersections = scaled.self_intersections(None, None);
+		if !subpath_self_intersections.is_empty() && self.self_intersections(None).is_empty() {
+			let [(first_intersect_index, first_intersect_t), (cross_intersect_index, cross_intersect_t)] = subpath_self_intersections[0];
+			let mut trim_start = scaled.trim(
+				SubpathTValue::GlobalParametric(0.),
+				SubpathTValue::Parametric {
+					segment_index: first_intersect_index,
+					t: first_intersect_t,
+				},
+			);
+			let trim_end = scaled.trim(
+				SubpathTValue::Parametric {
+					segment_index: cross_intersect_index,
+					t: cross_intersect_t,
+				},
+				SubpathTValue::GlobalParametric(1.),
+			);
+
+			let start_length = trim_start.len();
+			trim_start[start_length - 1].out_handle = trim_end[0].in_handle;
+			trim_start.append(&mut trim_end.manipulator_groups()[1..].to_vec());
+			return trim_start;
 		}
 
 		scaled

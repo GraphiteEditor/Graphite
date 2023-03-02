@@ -111,11 +111,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let minimum_separation = minimum_separation.unwrap_or(MIN_SEPARATION_VALUE);
 
 		intersections_vec.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap());
-		let mut filtered_intersections = Subpath::filter_subpath_intersection_points(&intersections_vec, 1, minimum_separation);
+		let mut filtered_intersections = Subpath::<ManipulatorGroupId>::filter_subpath_intersection_points(&intersections_vec, 1, minimum_separation);
 		let last = filtered_intersections.last().unwrap()[1];
 
 		filtered_intersections.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap());
-		filtered_intersections = Subpath::filter_subpath_intersection_points(&filtered_intersections, 0, minimum_separation);
+		filtered_intersections = Subpath::<ManipulatorGroupId>::filter_subpath_intersection_points(&filtered_intersections, 0, minimum_separation);
 
 		// Final filter for the closed case: remove intersections within minimum_separation from each other that are over the break
 		if filtered_intersections.len() > 1 && self.closed {

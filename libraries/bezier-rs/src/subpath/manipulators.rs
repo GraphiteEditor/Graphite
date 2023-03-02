@@ -35,6 +35,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.manipulator_groups[(segment_index + 2) % number_of_groups].in_handle = second.handle_end();
 	}
 
+	/// Moves all elements of `other` into `self`, leaving `other` empty.
+	pub fn append(&mut self, other: &mut Vec<ManipulatorGroup<ManipulatorGroupId>>) {
+		self.manipulator_groups.append(other);
+	}
+
 	/// Append a [Bezier] to the end of a subpath from a vector of [Bezier].
 	/// The `append_type` parameter determines how the function behaves when the subpath's last anchor is not equal to the Bezier's start point.
 	/// - `IgnoreStart`: drops the bezier's start point in favor of the subpath's last anchor
