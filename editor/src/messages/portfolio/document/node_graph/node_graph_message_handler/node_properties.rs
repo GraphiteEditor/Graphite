@@ -586,7 +586,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					.unit(" px")
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				WidgetHolder::related_separator(),
 				NumberInput::new(Some(vec2.y))
 					.label("Y")
 					.unit(" px")
@@ -639,7 +639,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					.label("X")
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				WidgetHolder::related_separator(),
 				NumberInput::new(Some(vec2.y))
 					.label("Y")
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
