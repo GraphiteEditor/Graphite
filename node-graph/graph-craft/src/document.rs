@@ -43,17 +43,17 @@ pub struct DocumentNode {
 }
 
 impl DocumentNode {
-	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize) {
+	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool) {
 		let input = self
 			.inputs
 			.iter()
 			.enumerate()
 			.filter(|(_, input)| matches!(input, NodeInput::Network(_)))
 			.nth(offset)
-			.expect("no network input");
+			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
 		let index = input.0;
-		self.inputs[index] = NodeInput::Node { node_id, output_index };
+		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
@@ -62,12 +62,12 @@ impl DocumentNode {
 		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
 			let (input, mut args) = match first {
 				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0);
+					assert_eq!(self.inputs.len(), 0, "{}, {:?}", &self.name, &self.inputs);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
-				NodeInput::Node { node_id, output_index } => {
+				NodeInput::Node { node_id, output_index, lambda } => {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode.");
-					(ProtoNodeInput::Node(node_id), ConstructionArgs::Nodes(vec![]))
+					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
 			};
@@ -81,7 +81,7 @@ impl DocumentNode {
 
 			if let ConstructionArgs::Nodes(nodes) = &mut args {
 				nodes.extend(self.inputs.iter().map(|input| match input {
-					NodeInput::Node { node_id, .. } => *node_id,
+					NodeInput::Node { node_id, lambda, .. } => (*node_id, *lambda),
 					_ => unreachable!(),
 				}));
 			}
@@ -103,11 +103,15 @@ impl DocumentNode {
 		P: Fn(String, usize) -> Option<NodeInput>,
 	{
 		for (index, input) in self.inputs.iter_mut().enumerate() {
-			let &mut NodeInput::Node{node_id: id, output_index} = input else {
+			let &mut NodeInput::Node{node_id: id, output_index, lambda} = input else {
 				continue;
 			};
 			if let Some(&new_id) = new_ids.get(&id) {
-				*input = NodeInput::Node { node_id: new_id, output_index };
+				*input = NodeInput::Node {
+					node_id: new_id,
+					output_index,
+					lambda,
+				};
 			} else if let Some(new_input) = default_input(self.name.clone(), index) {
 				*input = new_input;
 			} else {
@@ -121,21 +125,28 @@ impl DocumentNode {
 #[derive(Debug, Clone, PartialEq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
-	Node { node_id: NodeId, output_index: usize },
+	Node { node_id: NodeId, output_index: usize, lambda: bool },
 	Value { tagged_value: value::TaggedValue, exposed: bool },
 	Network(Type),
 }
 
 impl NodeInput {
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
-		Self::Node { node_id, output_index }
+		Self::Node { node_id, output_index, lambda: false }
+	}
+	pub const fn lambda(node_id: NodeId, output_index: usize) -> Self {
+		Self::Node { node_id, output_index, lambda: true }
 	}
 	pub const fn value(tagged_value: value::TaggedValue, exposed: bool) -> Self {
 		Self::Value { tagged_value, exposed }
 	}
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let &mut NodeInput::Node { node_id, output_index } = self {
-			*self = NodeInput::Node { node_id: f(node_id), output_index }
+		if let &mut NodeInput::Node { node_id, output_index, lambda } = self {
+			*self = NodeInput::Node {
+				node_id: f(node_id),
+				output_index,
+				lambda,
+			}
 		}
 	}
 	pub fn is_exposed(&self) -> bool {
@@ -246,7 +257,7 @@ impl NodeNetwork {
 			}
 
 			for input in &mut node.inputs {
-				let &mut NodeInput::Node { node_id, output_index} = input else {
+				let &mut NodeInput::Node { node_id, output_index, .. } = input else {
 					continue;
 				};
 				// Use the initial node when getting the first output
@@ -362,9 +373,9 @@ impl NodeNetwork {
 				for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
 					let offset = network_offsets.entry(network_input).or_insert(0);
 					match document_input {
-						NodeInput::Node { node_id, output_index } => {
+						NodeInput::Node { node_id, output_index, lambda } => {
 							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.populate_first_network_input(node_id, output_index, *offset);
+							network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 						}
 						NodeInput::Value { tagged_value, exposed } => {
 							// Skip formatting very large values for seconds in performance speedup
@@ -386,7 +397,7 @@ impl NodeNetwork {
 							assert!(!self.nodes.contains_key(&new_id));
 							self.nodes.insert(new_id, value_node);
 							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.populate_first_network_input(new_id, 0, *offset);
+							network_input.populate_first_network_input(new_id, 0, *offset, false);
 						}
 						NodeInput::Network(_) => {
 							*network_offsets.get_mut(network_input).unwrap() += 1;
@@ -403,6 +414,7 @@ impl NodeNetwork {
 					.map(|&NodeOutput { node_id, node_output_index }| NodeInput::Node {
 						node_id,
 						output_index: node_output_index,
+						lambda: false,
 					})
 					.collect();
 
@@ -660,7 +672,7 @@ mod test {
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::Network(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![0]),
+			construction_args: ConstructionArgs::Nodes(vec![(0, false)]),
 		};
 		assert_eq!(proto_node, reference);
 	}
@@ -675,7 +687,7 @@ mod test {
 					1,
 					ProtoNode {
 						identifier: "graphene_core::ops::IdNode".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -684,14 +696,14 @@ mod test {
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::Network(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![14]),
+						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 					},
 				),
 				(
 					11,
 					ProtoNode {
 						identifier: "graphene_core::ops::AddNode".into(),
-						input: ProtoNodeInput::Node(10),
+						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
