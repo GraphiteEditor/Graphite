@@ -354,16 +354,19 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				let angle = out_tangent.angle_between(in_tangent);
 
 				// The angle is concave. The Subpath overlap and must be clipped
+				let mut apply_joint = true;
 				if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
-					// If the angle is close enough to zero, subpath intersections could find no intersections. In this case,
-					// the points are likely close enough that we can approximate the points as being on top of one another.
+					// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
+					// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
+					// the points as being on top of one another.
 					if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(subpath1, subpath2) {
 						subpaths[i] = clipped_subpath1;
 						subpaths[j] = clipped_subpath2;
+						apply_joint = false;
 					}
 				}
 				// The angle is convex. The Subpath must be joined using the specified Joint type
-				else {
+				if apply_joint {
 					match joint {
 						Joint::Mitre => todo!(),
 						Joint::Rounded => todo!(),
@@ -380,14 +383,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
 				let angle = out_tangent.angle_between(in_tangent);
 
+				let mut apply_joint = true;
 				if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
 					if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
 						// Merge the clipped subpaths
 						let last_index = subpaths.len() - 1;
 						subpaths[last_index] = clipped_subpath1;
 						subpaths[0] = clipped_subpath2;
+						apply_joint = false;
 					}
-				} else {
+				}
+				if apply_joint {
 					match joint {
 						Joint::Mitre => todo!(),
 						Joint::Rounded => todo!(),
