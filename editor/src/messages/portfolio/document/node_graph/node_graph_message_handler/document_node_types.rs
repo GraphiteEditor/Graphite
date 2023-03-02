@@ -736,6 +736,7 @@ impl DocumentNodeType {
 			}
 			NodeImplementation::DocumentNode(network) => network.clone(),
 		};
+
 		DocumentNodeImplementation::Network(inner_network)
 	}
 
@@ -745,6 +746,32 @@ impl DocumentNodeType {
 			inputs: inputs.into_iter().collect(),
 			implementation: self.generate_implementation(),
 			metadata,
+		}
+	}
+	fn wrap_network_in_scope(&self) -> DocumentNode {
+		assert_eq!(self.inputs.len(), 1);
+		let input_type = NodeInput::Network(self.inputs[0].default.ty());
+		// wrap the inner network in a scope
+		let nodes = vec![
+			resolve_document_node_type("Begin Scope")
+				.expect("Begin Scope node type not found")
+				.to_document_node(vec![input_type.clone()], DocumentNodeMetadata::default()),
+			self.to_document_node(vec![NodeInput::node(0, 1)], DocumentNodeMetadata::default()),
+			resolve_document_node_type("End Scope")
+				.expect("End Scope node type not found")
+				.to_document_node(vec![NodeInput::node(0, 0), NodeInput::node(1, 0)], DocumentNodeMetadata::default()),
+		];
+		let network = NodeNetwork {
+			inputs: vec![0],
+			outputs: vec![NodeOutput::new(2, 0)],
+			nodes: nodes.into_iter().enumerate().map(|(id, node)| (id as NodeId, node)).collect(),
+			..Default::default()
+		};
+		DocumentNode {
+			name: "Scope".to_string(),
+			implementation: DocumentNodeImplementation::Network(network),
+			inputs: vec![input_type],
+			metadata: DocumentNodeMetadata::default(),
 		}
 	}
 }
@@ -758,18 +785,12 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 				[NodeInput::Network(concrete!(Image)), NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), false)],
 				DocumentNodeMetadata::position((8, 4)),
 			),
-			resolve_document_node_type("Begin Scope")
-				.expect("Input node does not exist")
-				.to_document_node([NodeInput::node(0, 0)], DocumentNodeMetadata::position((16, 4))),
-			resolve_document_node_type("End Scope")
-				.expect("End Scope node does not exist")
-				.to_document_node([NodeInput::node(1, 0), NodeInput::node(1, 0)], DocumentNodeMetadata::position((output_offset, 12))),
-			resolve_document_node_type("Image Frame")
-				.expect("Image frame node does not exist")
-				.to_document_node([NodeInput::node(2, 0), NodeInput::node(0, 1)], DocumentNodeMetadata::position((output_offset + 20, 4))),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
-				.to_document_node([NodeInput::node(3, 0)], DocumentNodeMetadata::position((output_offset + 28, 4))),
+				.to_document_node([NodeInput::node(2, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+			resolve_document_node_type("Image Frame")
+				.expect("Image frame node does not exist")
+				.to_document_node([NodeInput::node(output_node_id, 0), NodeInput::node(0, 1)], DocumentNodeMetadata::position((output_offset, 4))),
 		]
 		.into_iter()
 		.enumerate()
