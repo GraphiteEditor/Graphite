@@ -19,17 +19,8 @@ pub struct NodeGraphExecutor {
 }
 
 impl NodeGraphExecutor {
-	/// Sets the transform property on the input node
-	fn set_input_transform(network: &mut NodeNetwork, transform: DAffine2) {
-		let Some(input_node) = network.nodes.get_mut(&network.inputs[0]) else {
-			return;
-		};
-		input_node.inputs[1] = NodeInput::value(TaggedValue::DAffine2(transform), false);
-	}
-
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
 	fn execute_network<T: dyn_any::StaticType>(&mut self, mut network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
-		Self::set_input_transform(&mut network, image_frame.transform);
 		network.duplicate_outputs(&mut generate_uuid);
 		network.remove_dead_nodes();
 
@@ -49,7 +40,7 @@ impl NodeGraphExecutor {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		let boxed = self.executor.execute(image_frame.image.into_dyn()).map_err(|e| e.to_string())?;
+		let boxed = self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string())?;
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
