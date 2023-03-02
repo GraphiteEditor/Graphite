@@ -1,7 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::portfolio::document::node_graph;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -121,11 +120,11 @@ impl Fsm for EllipseToolFsmState {
 					let network = node_graph::new_vector_network(bezier_rs::Subpath::new_ellipse(glam::DVec2::ZERO, glam::DVec2::ONE));
 
 					responses.push_back(
-						Operation::AddNodeGraphFrame {
+						Operation::AddEllipse {
 							path: shape_data.path.clone().unwrap(),
 							insert_index: -1,
 							transform: DAffine2::ZERO.to_cols_array(),
-							network,
+							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
 						}
 						.into(),
 					);
