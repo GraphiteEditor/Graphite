@@ -731,7 +731,7 @@ mod tests {
 
 	fn transform_subpath() {
 		let mut subpath = set_up_open_subpath();
-		subpath.apply_transform(DAffine2::IDENTITY);
+		subpath.apply_transform(glam::DAffine2::IDENTITY);
 		assert_eq!(subpath, set_up_open_subpath());
 	}
 }
