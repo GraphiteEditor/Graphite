@@ -11,7 +11,7 @@ use crate::executor::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TaggedValue {
 	None,
@@ -27,17 +27,26 @@ pub enum TaggedValue {
 	RcImage(Option<Arc<graphene_core::raster::Image>>),
 	ImageFrame(graphene_core::raster::ImageFrame),
 	Color(graphene_core::raster::color::Color),
-	Subpath(graphene_core::vector::subpath::Subpath),
-	RcSubpath(Arc<graphene_core::vector::subpath::Subpath>),
+	Subpath(bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>),
+	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateStatus(ImaginateStatus),
 	LayerPath(Option<Vec<u64>>),
+	VectorData(graphene_core::vector::VectorData),
+	Fill(graphene_core::vector::style::Fill),
+	Stroke(graphene_core::vector::style::Stroke),
+	VecF32(Vec<f32>),
+	LineCap(graphene_core::vector::style::LineCap),
+	LineJoin(graphene_core::vector::style::LineJoin),
+	FillType(graphene_core::vector::style::FillType),
+	GradientType(graphene_core::vector::style::GradientType),
+	GradientPositions(Vec<(f64, Option<graphene_core::Color>)>),
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for TaggedValue {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		match self {
@@ -120,9 +129,51 @@ impl Hash for TaggedValue {
 				p.hash(state)
 			}
 			Self::ImageFrame(i) => {
-				20.hash(state);
+				21.hash(state);
 				i.image.hash(state);
 				i.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+			}
+			Self::VectorData(vector_data) => {
+				22.hash(state);
+				vector_data.subpaths.hash(state);
+				vector_data.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+				vector_data.style.hash(state);
+			}
+			Self::Fill(fill) => {
+				23.hash(state);
+				fill.hash(state);
+			}
+			Self::Stroke(stroke) => {
+				24.hash(state);
+				stroke.hash(state);
+			}
+			Self::VecF32(vec_f32) => {
+				25.hash(state);
+				vec_f32.iter().for_each(|val| val.to_bits().hash(state));
+			}
+			Self::LineCap(line_cap) => {
+				26.hash(state);
+				line_cap.hash(state);
+			}
+			Self::LineJoin(line_join) => {
+				27.hash(state);
+				line_join.hash(state);
+			}
+			Self::FillType(fill_type) => {
+				28.hash(state);
+				fill_type.hash(state);
+			}
+			Self::GradientType(gradient_type) => {
+				29.hash(state);
+				gradient_type.hash(state);
+			}
+			Self::GradientPositions(gradient_positions) => {
+				30.hash(state);
+				gradient_positions.len().hash(state);
+				for (position, color) in gradient_positions {
+					position.to_bits().hash(state);
+					color.hash(state);
+				}
 			}
 		}
 	}
@@ -153,6 +204,15 @@ impl<'a> TaggedValue {
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
 			TaggedValue::ImaginateStatus(x) => Box::new(x),
 			TaggedValue::LayerPath(x) => Box::new(x),
+			TaggedValue::VectorData(x) => Box::new(x),
+			TaggedValue::Fill(x) => Box::new(x),
+			TaggedValue::Stroke(x) => Box::new(x),
+			TaggedValue::VecF32(x) => Box::new(x),
+			TaggedValue::LineCap(x) => Box::new(x),
+			TaggedValue::LineJoin(x) => Box::new(x),
+			TaggedValue::FillType(x) => Box::new(x),
+			TaggedValue::GradientType(x) => Box::new(x),
+			TaggedValue::GradientPositions(x) => Box::new(x),
 		}
 	}
 
@@ -172,8 +232,8 @@ impl<'a> TaggedValue {
 			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
 			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
-			TaggedValue::Subpath(_) => concrete!(graphene_core::vector::subpath::Subpath),
-			TaggedValue::RcSubpath(_) => concrete!(Arc<graphene_core::vector::subpath::Subpath>),
+			TaggedValue::Subpath(_) => concrete!(bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>),
+			TaggedValue::RcSubpath(_) => concrete!(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
 			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
@@ -181,6 +241,15 @@ impl<'a> TaggedValue {
 			TaggedValue::LayerPath(_) => concrete!(Option<Vec<u64>>),
 			TaggedValue::DAffine2(_) => concrete!(DAffine2),
 			TaggedValue::LuminanceCalculation(_) => concrete!(LuminanceCalculation),
+			TaggedValue::VectorData(_) => concrete!(graphene_core::vector::VectorData),
+			TaggedValue::Fill(_) => concrete!(graphene_core::vector::style::Fill),
+			TaggedValue::Stroke(_) => concrete!(graphene_core::vector::style::Stroke),
+			TaggedValue::VecF32(_) => concrete!(Vec<f32>),
+			TaggedValue::LineCap(_) => concrete!(graphene_core::vector::style::LineCap),
+			TaggedValue::LineJoin(_) => concrete!(graphene_core::vector::style::LineJoin),
+			TaggedValue::FillType(_) => concrete!(graphene_core::vector::style::FillType),
+			TaggedValue::GradientType(_) => concrete!(graphene_core::vector::style::GradientType),
+			TaggedValue::GradientPositions(_) => concrete!(Vec<(f64, Option<graphene_core::Color>)>),
 		}
 	}
 }

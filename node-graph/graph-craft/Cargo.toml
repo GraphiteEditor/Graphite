@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = []
-serde = ["dep:serde", "graphene-core/serde", "glam/serde"]
+serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -19,6 +19,7 @@ log = "0.4"
 serde = { version = "1", features = ["derive", "rc"], optional = true }
 glam = { version = "0.22" }
 base64 = "0.13"
+bezier-rs = { path = "../../libraries/bezier-rs", features = ["dyn-any"] }
 specta.workspace = true
 
 bytemuck = {version = "1.8"  }
