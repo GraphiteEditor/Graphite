@@ -623,7 +623,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
 
-				let transform = (center_in_viewport_layerspace * fit_image_size);
+				let transform = center_in_viewport_layerspace * fit_image_size;
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
