@@ -30,7 +30,7 @@ macro_rules! construct_node {
 		args.reverse();
 		<$path>::new($(graphene_core::value::ClonedNode::new(
 			graphene_std::any::input_node::<$type>(args.pop()
-				.expect("Not enough arguments provided to construct node"))).eval(())
+				.expect("Not enough arguments provided to construct node")).eval(()))
 			),*
 		)
 	}}

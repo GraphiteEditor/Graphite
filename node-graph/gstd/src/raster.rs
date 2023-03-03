@@ -117,7 +117,6 @@ fn map_image<MapFn>(mut image_frame: ImageFrame, map_fn: &'any_input MapFn) -> I
 where
 	MapFn: for<'any_input> Node<'any_input, Color, Output = Color> + 'input,
 {
-	let mut image_frame = image_frame;
 	for pixel in &mut image_frame.image.data {
 		*pixel = map_fn.eval(*pixel);
 	}
