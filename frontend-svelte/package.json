@@ -5,7 +5,7 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"author": "Graphite Authors <contact@graphite.rs>",
 	"scripts": {
-		"dev": "cargo watch -s \"wasm-pack build frontend-svelte/wasm --dev\" & vite || kill $!",
+		"dev": "concurrently -k --handle-input \"vite\" \"npm run watch:wasm\"",
 		"lint": "eslint src",
 		"build": "npm run build-wasm && vite build",
 		"build-wasm": "wasm-pack build ./wasm --release",
@@ -29,6 +29,7 @@
 		"eslint-config-prettier": "^8.6.0",
 		"eslint-plugin-import": "^2.26.0",
 		"eslint-plugin-svelte3": "^4.0.0",
+		"concurrently": "^7.6.0",
 		"prettier": "^2.8.2",
 		"rollup-plugin-license": "^3.0.1",
 		"sass": "^1.57.1",
