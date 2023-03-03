@@ -34,6 +34,47 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.manipulator_groups[segment_index % number_of_groups].out_handle = first.handle_start();
 		self.manipulator_groups[(segment_index + 2) % number_of_groups].in_handle = second.handle_end();
 	}
+
+	/// Append a [Bezier] to the end of a subpath from a vector of [Bezier].
+	/// The `append_type` parameter determines how the function behaves when the subpath's last anchor is not equal to the Bezier's start point.
+	/// - `IgnoreStart`: drops the bezier's start point in favor of the subpath's last anchor
+	/// - `SmoothJoin(f64)`: joins the subpath's endpoint with the bezier's start with a another Bezier segment that is continuous up to the second derivative
+	///   if the difference between the subpath's end point and Bezier's start point exceeds the wrapped integer value.
+	/// This function assumes that the position of the [Bezier]'s starting point is equal to that of the Subpath's last manipulator group.
+	pub fn append_bezier(&mut self, bezier: &Bezier, append_type: AppendType) {
+		if self.manipulator_groups.is_empty() {
+			self.manipulator_groups = vec![ManipulatorGroup {
+				anchor: bezier.start(),
+				in_handle: None,
+				out_handle: None,
+				id: ManipulatorGroupId::new(),
+			}];
+		}
+		let mut last_index = self.manipulator_groups.len() - 1;
+		let last_anchor = self.manipulator_groups[last_index].anchor;
+
+		if let AppendType::SmoothJoin(max_absolute_difference) = append_type {
+			// If the provided Bezier does not start at a location similar to the end of the Subpath,
+			// add an additional manipulator group to represent a smooth join with a new bezier in between
+			if !last_anchor.abs_diff_eq(bezier.start(), max_absolute_difference) {
+				let last_bezier = if self.manipulator_groups.len() > 1 {
+					self.manipulator_groups[last_index - 1].to_bezier(&self.manipulator_groups[last_index])
+				} else {
+					Bezier::from_linear_dvec2(last_anchor, last_anchor)
+				};
+				let join_bezier = last_bezier.join(bezier);
+				self.append_bezier(&join_bezier, AppendType::IgnoreStart);
+				last_index = self.manipulator_groups.len() - 1;
+			}
+		}
+		self.manipulator_groups[last_index].out_handle = bezier.handle_start();
+		self.manipulator_groups.push(ManipulatorGroup {
+			anchor: bezier.end(),
+			in_handle: bezier.handle_end(),
+			out_handle: None,
+			id: ManipulatorGroupId::new(),
+		});
+	}
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use crate::svg_drawing::*;
-use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, ProjectionOptions, TValue};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, ProjectionOptions, TValue};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -46,6 +46,16 @@ fn parse_t_variant(t_variant: &String, t: f64) -> TValue {
 		"Parametric" => TValue::Parametric(t),
 		"Euclidean" => TValue::Euclidean(t),
 		_ => panic!("Unexpected TValue string: '{}'", t_variant),
+	}
+}
+
+/// An empty id type for use in tests
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct EmptyId;
+
+impl Identifier for EmptyId {
+	fn new() -> Self {
+		Self
 	}
 }
 
@@ -542,7 +552,7 @@ impl WasmBezier {
 		let original_curve_svg = self.get_bezier_path();
 		let bezier_curves_svg = self
 			.0
-			.offset(distance)
+			.offset::<EmptyId>(distance)
 			.iter()
 			.enumerate()
 			.map(|(index, bezier_curve)| {
@@ -561,36 +571,39 @@ impl WasmBezier {
 	}
 
 	pub fn outline(&self, distance: f64) -> String {
-		let outline_beziers = self.0.outline(distance);
-		if outline_beziers.is_empty() {
+		let outline_subpath = self.0.outline::<EmptyId>(distance);
+		if outline_subpath.is_empty() {
 			return String::new();
 		}
 
-		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let mut outline_svg = String::new();
+		outline_subpath.to_svg(&mut outline_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 		let bezier_svg = self.get_bezier_path();
 
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
 	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> String {
-		let outline_beziers = self.0.graduated_outline(start_distance, end_distance);
-		if outline_beziers.is_empty() {
+		let outline_subpath = self.0.graduated_outline::<EmptyId>(start_distance, end_distance);
+		if outline_subpath.is_empty() {
 			return String::new();
 		}
 
-		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let mut outline_svg = String::new();
+		outline_subpath.to_svg(&mut outline_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 		let bezier_svg = self.get_bezier_path();
 
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
 	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> String {
-		let outline_beziers = self.0.skewed_outline(distance1, distance2, distance3, distance4);
-		if outline_beziers.is_empty() {
+		let outline_subpath = self.0.skewed_outline::<EmptyId>(distance1, distance2, distance3, distance4);
+		if outline_subpath.is_empty() {
 			return String::new();
 		}
 
-		let outline_svg = draw_beziers(outline_beziers, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED));
+		let mut outline_svg = String::new();
+		outline_subpath.to_svg(&mut outline_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 		let bezier_svg = self.get_bezier_path();
 
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
