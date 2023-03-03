@@ -7,6 +7,7 @@ use crate::messages::frontend::utility_types::{FileType, FrontendImageData};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::{PivotAssist, PivotPosition};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
@@ -23,7 +24,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::boolean_ops::BooleanOperationError;
+use document_legacy::boolean_ops::{BooleanOperation, BooleanOperationError};
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
@@ -221,6 +222,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				if !self.undo_in_progress {
 					self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
 					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
+					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 				}
 			}
 			AddSelectedLayers { additional_layers } => {
@@ -233,6 +235,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 
 				self.update_layer_tree_options_bar_widgets(responses, &render_data);
+				self.update_tool_options_widgets(responses, &additional_layers);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -320,6 +323,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
 				responses.push_front(BroadcastEvent::ToolAbort.into());
 				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
+				responses.push_back(DocumentMessage::DeselectAllLayers.into());
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
@@ -874,6 +878,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into())
 				});
 
+				self.update_tool_options_widgets(responses, &replacement_selected_layers);
 				let additional_layers = replacement_selected_layers;
 				responses.push_front(AddSelectedLayers { additional_layers }.into());
 			}
@@ -1982,6 +1987,189 @@ impl DocumentMessageHandler {
 			LayoutMessage::SendLayout {
 				layout: Layout::WidgetLayout(layer_tree_options),
 				layout_target: LayoutTarget::LayerTreeOptions,
+			}
+			.into(),
+		);
+	}
+
+	pub fn update_tool_options_widgets(&self, responses: &mut VecDeque<Message>, selected_layers: &Vec<Vec<u64>>) {
+		let mut widgets = vec![
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "AlignLeft".into(),
+				tooltip: "Align Left".into(),
+				on_update: WidgetCallback::new(|_| {
+					DocumentMessage::AlignSelectedLayers {
+						axis: AlignAxis::X,
+						aggregate: AlignAggregate::Min,
+					}
+					.into()
+				}),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "AlignHorizontalCenter".into(),
+				tooltip: "Align Horizontal Center".into(),
+				on_update: WidgetCallback::new(|_| {
+					DocumentMessage::AlignSelectedLayers {
+						axis: AlignAxis::X,
+						aggregate: AlignAggregate::Center,
+					}
+					.into()
+				}),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "AlignRight".into(),
+				tooltip: "Align Right".into(),
+				on_update: WidgetCallback::new(|_| {
+					DocumentMessage::AlignSelectedLayers {
+						axis: AlignAxis::X,
+						aggregate: AlignAggregate::Max,
+					}
+					.into()
+				}),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "AlignTop".into(),
+				tooltip: "Align Top".into(),
+				on_update: WidgetCallback::new(|_| {
+					DocumentMessage::AlignSelectedLayers {
+						axis: AlignAxis::Y,
+						aggregate: AlignAggregate::Min,
+					}
+					.into()
+				}),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "AlignVerticalCenter".into(),
+				tooltip: "Align Vertical Center".into(),
+				on_update: WidgetCallback::new(|_| {
+					DocumentMessage::AlignSelectedLayers {
+						axis: AlignAxis::Y,
+						aggregate: AlignAggregate::Center,
+					}
+					.into()
+				}),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "AlignBottom".into(),
+				tooltip: "Align Bottom".into(),
+				on_update: WidgetCallback::new(|_| {
+					DocumentMessage::AlignSelectedLayers {
+						axis: AlignAxis::Y,
+						aggregate: AlignAggregate::Max,
+					}
+					.into()
+				}),
+				..IconButton::default()
+			})),
+			WidgetHolder::related_separator(),
+			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+				header: "Align".into(),
+				text: "Coming soon".into(),
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Section,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "FlipHorizontal".into(),
+				tooltip: "Flip Horizontal".into(),
+				on_update: WidgetCallback::new(|_| SelectToolMessage::FlipHorizontal.into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "FlipVertical".into(),
+				tooltip: "Flip Vertical".into(),
+				on_update: WidgetCallback::new(|_| SelectToolMessage::FlipVertical.into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::related_separator(),
+			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+				header: "Flip".into(),
+				text: "Coming soon".into(),
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Section,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "BooleanUnion".into(),
+				tooltip: "Boolean Union".into(),
+				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "BooleanSubtractFront".into(),
+				tooltip: "Boolean Subtract Front".into(),
+				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "BooleanSubtractBack".into(),
+				tooltip: "Boolean Subtract Back".into(),
+				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "BooleanIntersect".into(),
+				tooltip: "Boolean Intersect".into(),
+				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::new(Widget::IconButton(IconButton {
+				size: 24,
+				icon: "BooleanDifference".into(),
+				tooltip: "Boolean Difference".into(),
+				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
+				..IconButton::default()
+			})),
+			WidgetHolder::related_separator(),
+			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
+				header: "Boolean".into(),
+				text: "Coming soon".into(),
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Section,
+				direction: SeparatorDirection::Horizontal,
+			})),
+		];
+
+		let mut pivot_disabled = false;
+		if selected_layers.is_empty() {
+			pivot_disabled = true;
+		}
+
+		widgets.extend([WidgetHolder::new(Widget::PivotAssist(PivotAssist {
+			position: PivotPosition::Center,
+			disabled: pivot_disabled,
+			on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
+		}))]);
+
+		let tool_options_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+
+		responses.push_back(
+			LayoutMessage::SendLayout {
+				layout: Layout::WidgetLayout(tool_options_layout),
+				layout_target: LayoutTarget::ToolOptions,
 			}
 			.into(),
 		);
