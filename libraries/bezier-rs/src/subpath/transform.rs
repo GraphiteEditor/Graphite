@@ -300,10 +300,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
-	// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as occasionally the approximation for finding intersections
-	// doesn't return intersections at the very endpoints if it falls within the error threshold.
-	// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that would be trimmed. This could cause the subpath
-	//  subpaths to clip at the incorrect location. This can be avoided by first trimming the two subpaths at any extrema, effectively ignoring loopbacks.
+	// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
+	// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that would be trimmed. This could cause the subpaths to be clipped
+	// at the incorrect location. This can be avoided by first trimming the two subpaths at any extrema, effectively ignoring loopbacks.
 	fn clip_subpaths(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> Option<(Subpath<ManipulatorGroupId>, Subpath<ManipulatorGroupId>)> {
 		// Split the first subpath at its last intersection
 		let intersections1 = subpath1.subpath_intersections(subpath2, None, None);
@@ -330,76 +329,79 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot outline an empty Subpath.");
 
+		// An offset at a distance 0 from the curve is simply the same curve
+		if distance == 0. {
+			return self.clone();
+		}
+
 		let mut subpaths = self.iter().map(|bezier| bezier.offset(distance)).collect::<Vec<Subpath<ManipulatorGroupId>>>();
 		let mut drop_common_point = vec![true; self.len()];
 
-		if distance != 0. {
-			// Clip or joining consecutive Subpaths
-			for i in 0..subpaths.len() - 1 {
-				let j = i + 1;
-				let subpath1 = &subpaths[i];
-				let subpath2 = &subpaths[j];
+		// Clip or join consecutive Subpaths
+		for i in 0..subpaths.len() - 1 {
+			let j = i + 1;
+			let subpath1 = &subpaths[i];
+			let subpath2 = &subpaths[j];
 
-				let last_segment = subpath1.get_segment(subpath1.len_segments() - 1).unwrap();
-				let first_segment = subpath2.get_segment(0).unwrap();
+			let last_segment = subpath1.get_segment(subpath1.len_segments() - 1).unwrap();
+			let first_segment = subpath2.get_segment(0).unwrap();
 
-				// If the anchors are approximately equal, there is no need to clip / join the segments
-				if last_segment.end().abs_diff_eq(first_segment.start(), MAX_ABSOLUTE_DIFFERENCE) {
-					continue;
+			// If the anchors are approximately equal, there is no need to clip / join the segments
+			if last_segment.end().abs_diff_eq(first_segment.start(), MAX_ABSOLUTE_DIFFERENCE) {
+				continue;
+			}
+
+			// Calculate the angle formed between two consecutive Subpaths
+			let out_tangent = self.get_segment(i).unwrap().tangent(TValue::Parametric(1.));
+			let in_tangent = self.get_segment(j).unwrap().tangent(TValue::Parametric(0.));
+			let angle = out_tangent.angle_between(in_tangent);
+
+			// The angle is concave. The Subpath overlap and must be clipped
+			let mut apply_joint = true;
+			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
+				// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
+				// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
+				// the points as being on top of one another.
+				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(subpath1, subpath2) {
+					subpaths[i] = clipped_subpath1;
+					subpaths[j] = clipped_subpath2;
+					apply_joint = false;
 				}
-
-				// Calculate the angle formed between two consecutive Subpaths
-				let out_tangent = self.get_segment(i).unwrap().tangent(TValue::Parametric(1.));
-				let in_tangent = self.get_segment(j).unwrap().tangent(TValue::Parametric(0.));
-				let angle = out_tangent.angle_between(in_tangent);
-
-				// The angle is concave. The Subpath overlap and must be clipped
-				let mut apply_joint = true;
-				if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
-					// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
-					// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
-					// the points as being on top of one another.
-					if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(subpath1, subpath2) {
-						subpaths[i] = clipped_subpath1;
-						subpaths[j] = clipped_subpath2;
-						apply_joint = false;
-					}
-				}
-				// The angle is convex. The Subpath must be joined using the specified Joint type
-				if apply_joint {
-					match joint {
-						Joint::Mitre => todo!(),
-						Joint::Rounded => todo!(),
-						Joint::Blunt => {
-							drop_common_point[j] = false;
-						}
+			}
+			// The angle is convex. The Subpath must be joined using the specified Joint type
+			if apply_joint {
+				match joint {
+					Joint::Mitre => todo!(),
+					Joint::Rounded => todo!(),
+					Joint::Blunt => {
+						drop_common_point[j] = false;
 					}
 				}
 			}
+		}
 
-			// Clip any overlap in the last segment
-			if self.closed {
-				let out_tangent = self.get_segment(self.len_segments() - 1).unwrap().tangent(TValue::Parametric(1.));
-				let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
-				let angle = out_tangent.angle_between(in_tangent);
+		// Clip any overlap in the last segment
+		if self.closed {
+			let out_tangent = self.get_segment(self.len_segments() - 1).unwrap().tangent(TValue::Parametric(1.));
+			let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
+			let angle = out_tangent.angle_between(in_tangent);
 
-				let mut apply_joint = true;
-				if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
-					if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
-						// Merge the clipped subpaths
-						let last_index = subpaths.len() - 1;
-						subpaths[last_index] = clipped_subpath1;
-						subpaths[0] = clipped_subpath2;
-						apply_joint = false;
-					}
+			let mut apply_joint = true;
+			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
+				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
+					// Merge the clipped subpaths
+					let last_index = subpaths.len() - 1;
+					subpaths[last_index] = clipped_subpath1;
+					subpaths[0] = clipped_subpath2;
+					apply_joint = false;
 				}
-				if apply_joint {
-					match joint {
-						Joint::Mitre => todo!(),
-						Joint::Rounded => todo!(),
-						Joint::Blunt => {
-							drop_common_point[0] = false;
-						}
+			}
+			if apply_joint {
+				match joint {
+					Joint::Mitre => todo!(),
+					Joint::Rounded => todo!(),
+					Joint::Blunt => {
+						drop_common_point[0] = false;
 					}
 				}
 			}
@@ -721,7 +723,7 @@ mod tests {
 		let result = subpath.trim(SubpathTValue::GlobalParametric(0.), SubpathTValue::GlobalParametric(1.));
 
 		// Assume that resulting subpath would no longer have the any meaningless handles
-		let mut expected_subpath = subpath.clone();
+		let mut expected_subpath = subpath;
 		expected_subpath[3].out_handle = None;
 
 		assert_eq!(result.manipulator_groups[0].anchor, location_front);
@@ -904,11 +906,5 @@ mod tests {
 		assert!(result.manipulator_groups[0].in_handle.is_none());
 		assert!(result.manipulator_groups[0].out_handle.is_none());
 		assert_eq!(result.manipulator_groups.len(), 1);
-	}
-
-	fn transform_subpath() {
-		let mut subpath = set_up_open_subpath();
-		subpath.apply_transform(glam::DAffine2::IDENTITY);
-		assert_eq!(subpath, set_up_open_subpath());
 	}
 }

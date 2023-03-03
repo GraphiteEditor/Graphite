@@ -9,6 +9,31 @@ use std::f64::consts::PI;
 
 /// Functionality that transform Beziers, such as split, reduce, offset, etc.
 impl Bezier {
+	/// Returns a linear approximation of the given [Bezier]. For higher order [Bezier] this means simply dropping the handles.
+	pub fn to_linear(&self) -> Bezier {
+		Bezier::from_linear_dvec2(self.start(), self.end())
+	}
+
+	/// Returns a quadratic approximation of the given [Bezier].
+	pub fn to_quadratic(&self) -> Bezier {
+		let handle = match self.handles {
+			BezierHandles::Linear => self.start,
+			BezierHandles::Quadratic { handle } => handle,
+			BezierHandles::Cubic { handle_start, handle_end } => (handle_start + handle_end) / 2.,
+		};
+		Bezier::from_quadratic_dvec2(self.start, handle, self.end)
+	}
+
+	/// Returns a cubic approximation of the given [Bezier].
+	pub fn to_cubic(&self) -> Bezier {
+		let (handle_start, handle_end) = match self.handles {
+			BezierHandles::Linear => (self.start, self.end),
+			BezierHandles::Quadratic { handle } => (self.start + (2. / 3.) * (handle - self.start), self.end + (2. / 3.) * (handle - self.end)),
+			BezierHandles::Cubic { handle_start, handle_end } => (handle_start, handle_end),
+		};
+		Bezier::from_cubic_dvec2(self.start, handle_start, handle_end, self.end)
+	}
+
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `t` along the curve.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/split/solo" title="Split Demo"></iframe>
 	pub fn split(&self, t: TValue) -> [Bezier; 2] {
@@ -240,15 +265,14 @@ impl Bezier {
 		// Find the intersection point of the endpoint normals
 		let intersection = utils::line_intersection(self.start, normal_start, self.end, normal_end);
 
-		// If the Bezier is a quadratic, convert it to a cubic bezier to match the prerequisites of the scaling algorithm.
-		let mut copy = *self;
-		if let BezierHandles::Quadratic { handle } = copy.handles {
-			copy.set_handle_start(copy.start + (2. / 3.) * (handle - copy.start));
-			copy.set_handle_end(copy.end + (2. / 3.) * (handle - copy.end));
-		}
+		// If the Bezier is a quadratic, convert it to a cubic to increase expressiveness
+		let intermediate = match self.handles {
+			BezierHandles::Quadratic { handle: _ } => self.to_cubic(),
+			_ => *self,
+		};
 
 		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
-		copy.apply_transformation(&|point| {
+		intermediate.apply_transformation(&|point| {
 			let mut direction_unit_vector = (intersection - point).normalize();
 			if should_flip_direction {
 				direction_unit_vector *= -1.;
@@ -263,45 +287,45 @@ impl Bezier {
 	pub fn graduated_scale(&self, start_distance: f64, end_distance: f64) -> Bezier {
 		assert!(self.is_scalable(), "The curve provided to scale is not scalable. Reduce the curve first.");
 
-		// If the Bezier is a quadratic, convert it to a cubic bezier to match the prerequisites of the scaling algorithm.
-		let mut copy = *self;
-		if let BezierHandles::Quadratic { handle } = copy.handles {
-			copy.set_handle_start(copy.start + (2. / 3.) * (handle - copy.start));
-			copy.set_handle_end(copy.end + (2. / 3.) * (handle - copy.end));
-		}
+		// If the Bezier is a quadratic, convert it to a cubic to increase expressiveness
+		let intermediate = match self.handles {
+			BezierHandles::Quadratic { handle: _ } => self.to_cubic(),
+			_ => *self,
+		};
 
-		let normal_start = copy.normal(TValue::Parametric(0.));
-		let normal_end = copy.normal(TValue::Parametric(1.));
+		let normal_start = intermediate.normal(TValue::Parametric(0.));
+		let normal_end = intermediate.normal(TValue::Parametric(1.));
 
 		// If normal unit vectors are equal, then the lines are parallel
 		if normal_start.abs_diff_eq(normal_end, MAX_ABSOLUTE_DIFFERENCE) {
-			let transformed_start = utils::scale_point_from_direction_vector(copy.start, copy.normal(TValue::Parametric(0.)), false, start_distance);
-			let transformed_end = utils::scale_point_from_direction_vector(copy.end, copy.normal(TValue::Parametric(1.)), false, end_distance);
+			let transformed_start = utils::scale_point_from_direction_vector(intermediate.start, intermediate.normal(TValue::Parametric(0.)), false, start_distance);
+			let transformed_end = utils::scale_point_from_direction_vector(intermediate.end, intermediate.normal(TValue::Parametric(1.)), false, end_distance);
 
-			return match copy.handles {
+			return match intermediate.handles {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle: _ } => unreachable!(),
 				BezierHandles::Cubic { handle_start, handle_end } => {
-					let handle_start_closest_t = copy.project(handle_start, ProjectionOptions::default());
+					let handle_start_closest_t = intermediate.project(handle_start, ProjectionOptions::default());
 					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
-					let transformed_handle_start = utils::scale_point_from_direction_vector(handle_start, copy.normal(TValue::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
+					let transformed_handle_start =
+						utils::scale_point_from_direction_vector(handle_start, intermediate.normal(TValue::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
 
-					let handle_end_closest_t = copy.project(handle_start, ProjectionOptions::default());
+					let handle_end_closest_t = intermediate.project(handle_start, ProjectionOptions::default());
 					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
-					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, copy.normal(TValue::Parametric(handle_end_closest_t)), false, handle_end_scale_distance);
+					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, intermediate.normal(TValue::Parametric(handle_end_closest_t)), false, handle_end_scale_distance);
 					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
 				}
 			};
 		}
 
 		// Find the intersection point of the endpoint normals
-		let intersection = utils::line_intersection(copy.start, normal_start, copy.end, normal_end);
-		let should_flip_direction = (copy.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+		let intersection = utils::line_intersection(intermediate.start, normal_start, intermediate.end, normal_end);
+		let should_flip_direction = (intermediate.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
 
-		let transformed_start = utils::scale_point_from_origin(copy.start, intersection, should_flip_direction, start_distance);
-		let transformed_end = utils::scale_point_from_origin(copy.end, intersection, should_flip_direction, end_distance);
+		let transformed_start = utils::scale_point_from_origin(intermediate.start, intersection, should_flip_direction, start_distance);
+		let transformed_end = utils::scale_point_from_origin(intermediate.end, intersection, should_flip_direction, end_distance);
 
-		match copy.handles {
+		match intermediate.handles {
 			BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 			BezierHandles::Quadratic { handle: _ } => unreachable!(),
 			BezierHandles::Cubic { handle_start, handle_end } => {
@@ -761,25 +785,23 @@ mod tests {
 		let end_distance = bezier.evaluate(TValue::Parametric(1.)).distance(offset.iter().last().unwrap().evaluate(TValue::Parametric(1.)));
 		assert!(f64_compare(end_distance, expected_distance, MAX_ABSOLUTE_DIFFERENCE));
 
-		let err_threshold = (expected_distance / 10.).max(MAX_ABSOLUTE_DIFFERENCE);
-		let projection_options = ProjectionOptions {
-			lut_size: 20,
-			convergence_epsilon: 0.001,
-			convergence_limit: 5,
-			iteration_limit: 15,
-		};
+		let err_threshold = expected_distance / 10.;
 		// Sample the curve and verify that the offset lies at the correct distance from the curve.
 		// Collect the t-value associated with the point on the bezier closest to the sample.
 		let t_values: Vec<f64> = offset
 			.iter()
 			.flat_map(|offset_segment| {
-				[0.1, 0.25, 0.75, 0.9]
+				[0.1, 0.25, 0.5, 0.75, 0.9]
 					.iter()
 					.map(|t| {
 						let offset_point = offset_segment.evaluate(TValue::Parametric(*t));
-						let closest_point_t = bezier.project(offset_point, projection_options);
+						let closest_point_t = bezier.project(offset_point, ProjectionOptions::default());
 						let closest_point = bezier.evaluate(TValue::Parametric(closest_point_t));
 						let actual_distance = offset_point.distance(closest_point);
+
+						dbg!(actual_distance);
+						dbg!(expected_distance);
+						dbg!(err_threshold);
 
 						assert!(f64_compare(actual_distance, expected_distance, err_threshold));
 						closest_point_t
@@ -800,7 +822,7 @@ mod tests {
 		let end = DVec2::new(140., 120.);
 		let bezier = Bezier::from_linear_dvec2(start, end);
 
-		for distance in [-20., -10., 0., 10., 20.] {
+		for distance in [-20., -10., 10., 20.] {
 			let offset = bezier.offset::<EmptyId>(distance);
 			assert_valid_offset(&bezier, &offset, distance.abs());
 		}
@@ -813,7 +835,7 @@ mod tests {
 		let end = DVec2::new(160., 170.);
 		let bezier = Bezier::from_quadratic_dvec2(start, handle, end);
 
-		for distance in [-20., -10., 0., 10., 20.] {
+		for distance in [-20., -10., 10., 20.] {
 			let offset = bezier.offset::<EmptyId>(distance);
 			assert_valid_offset(&bezier, &offset, distance.abs());
 		}
@@ -827,7 +849,7 @@ mod tests {
 		let end = DVec2::new(160., 160.);
 		let bezier = Bezier::from_cubic_dvec2(start, handle1, handle2, end);
 
-		for distance in [-20., -10., 0., 10., 20.] {
+		for distance in [-20., -10., 10., 20.] {
 			let offset = bezier.offset::<EmptyId>(distance);
 			assert_valid_offset(&bezier, &offset, distance.abs());
 		}

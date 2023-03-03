@@ -50,7 +50,7 @@ fn parse_t_variant(t_variant: &String, t: f64) -> TValue {
 }
 
 /// An empty id type for use in tests
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct EmptyId;
 
 impl Identifier for EmptyId {
@@ -560,7 +560,7 @@ impl WasmBezier {
 				bezier_curve.to_svg(
 					&mut curve_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
-					ANCHOR_ATTRIBUTES.to_string().replace(GRAY, &format!("hsl({}, 100%, 50%)", (40 * index))),
+					String::new(),
 					String::new(),
 					String::new(),
 				);
