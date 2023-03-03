@@ -1,50 +1,69 @@
-use std::marker::PhantomData;
+use std::{
+	collections::hash_map::DefaultHasher,
+	hash::{Hash, Hasher},
+	marker::PhantomData,
+};
 
 use graphene_core::Node;
-use once_cell::sync::OnceCell;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
 pub struct CacheNode<T> {
-	cache: OnceCell<T>,
+	cache: boxcar::Vec<(u64, T)>,
 }
-impl<'i, T: 'i> Node<'i, T> for CacheNode<T> {
+impl<'i, T: 'i + Hash> Node<'i, T> for CacheNode<T> {
 	type Output = &'i T;
 	fn eval<'s: 'i>(&'s self, input: T) -> Self::Output {
-		self.cache.get_or_init(|| {
-			trace!("Creating new cache node");
-			input
-		})
+		let mut hasher = DefaultHasher::new();
+		input.hash(&mut hasher);
+		let hash = hasher.finish();
+
+		if let Some((_, cached_value)) = self.cache.iter().find(|(h, _)| *h == hash) {
+			return cached_value;
+		} else {
+			trace!("Cache miss");
+			let index = self.cache.push((hash, input));
+			return &self.cache[index].1;
+		}
 	}
 }
 
 impl<T> CacheNode<T> {
-	pub const fn new() -> CacheNode<T> {
-		CacheNode { cache: OnceCell::new() }
+	pub fn new() -> CacheNode<T> {
+		CacheNode { cache: boxcar::Vec::new() }
 	}
 }
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LetNode<T> {
-	cache: OnceCell<T>,
+	cache: boxcar::Vec<(u64, T)>,
 }
-impl<'i, T: 'i> Node<'i, Option<T>> for LetNode<T> {
+impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 	type Output = &'i T;
 	fn eval<'s: 'i>(&'s self, input: Option<T>) -> Self::Output {
 		match input {
 			Some(input) => {
-				self.cache.set(input).unwrap_or_else(|_| error!("Let node was set twice but is not mutable"));
-				self.cache.get().unwrap()
+				let mut hasher = DefaultHasher::new();
+				input.hash(&mut hasher);
+				let hash = hasher.finish();
+
+				if let Some((_, cached_value)) = self.cache.iter().find(|(h, _)| *h == hash) {
+					return cached_value;
+				} else {
+					trace!("Cache miss");
+					let index = self.cache.push((hash, input));
+					return &self.cache[index].1;
+				}
 			}
-			None => self.cache.get().expect("Let node was not initialized"),
+			None => &self.cache.iter().last().expect("Let node was not initialized").1,
 		}
 	}
 }
 
 impl<T> LetNode<T> {
-	pub const fn new() -> LetNode<T> {
-		LetNode { cache: OnceCell::new() }
+	pub fn new() -> LetNode<T> {
+		LetNode { cache: boxcar::Vec::new() }
 	}
 }
 

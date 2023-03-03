@@ -360,6 +360,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxcar"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38c99613cb3cd7429889a08dfcf651721ca971c86afa30798461f8eee994de47"
+
+[[package]]
 name = "brotli"
 version = "3.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1663,6 +1669,7 @@ dependencies = [
  "autoquant",
  "bezier-rs",
  "borrow_stack",
+ "boxcar",
  "bytemuck",
  "compilation-client",
  "dyn-any",
