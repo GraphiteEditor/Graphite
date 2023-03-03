@@ -1,14 +1,14 @@
-use std::{
-	collections::hash_map::DefaultHasher,
-	hash::{Hash, Hasher},
-	marker::PhantomData,
-};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 
 use graphene_core::Node;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
 pub struct CacheNode<T> {
+	// We have to use an append only data structure to make sure the references
+	// to the cache entries are always valid
 	cache: boxcar::Vec<(u64, T)>,
 }
 impl<'i, T: 'i + Hash> Node<'i, T> for CacheNode<T> {
@@ -35,8 +35,15 @@ impl<T> CacheNode<T> {
 }
 
 /// Caches the output of a given Node and acts as a proxy
+/// It provides two modes of operation, it can either be set
+/// when calling the node with a `Some<T>` variant or the last
+/// value that was added is returned when calling it with `None`
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LetNode<T> {
+	// We have to use an append only data structure to make sure the references
+	// to the cache entries are always valid
+	// TODO: We only ever access the last value so there is not really a reason for us
+	// to store the previous entries. This should be reworked in the future
 	cache: boxcar::Vec<(u64, T)>,
 }
 impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
@@ -48,13 +55,14 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 				input.hash(&mut hasher);
 				let hash = hasher.finish();
 
-				if let Some((_, cached_value)) = self.cache.iter().find(|(h, _)| *h == hash) {
-					return cached_value;
-				} else {
-					trace!("Cache miss");
-					let index = self.cache.push((hash, input));
-					return &self.cache[index].1;
+				if let Some((cached_hash, cached_value)) = self.cache.iter().last() {
+					if hash == cached_hash {
+						return cached_value;
+					}
 				}
+				trace!("Cache miss");
+				let index = self.cache.push((hash, input));
+				return &self.cache[index].1;
 			}
 			None => &self.cache.iter().last().expect("Let node was not initialized").1,
 		}
