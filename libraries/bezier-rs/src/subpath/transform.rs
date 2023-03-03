@@ -275,11 +275,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 	}
 
-	// Smooths a Subpath up to the first derivative, using a weighted averaged based on segment length.
-	pub(crate) fn smooth_cubic_paths(&mut self) {
-		for i in 0..self.len() - 2 {
-			let first_bezier = self.manipulator_groups[i].to_bezier(&self.manipulator_groups[i + 1]);
-			let second_bezier = self.manipulator_groups[i + 1].to_bezier(&self.manipulator_groups[i + 2]);
+	/// Smooths a Subpath up to the first derivative, using a weighted averaged based on segment length.
+	/// The Subpath must be open, and contain no quadratic segments.
+	pub(crate) fn smooth_open_subpath(&mut self) {
+		for i in 1..self.len() - 1 {
+			let first_bezier = self.manipulator_groups[i - 1].to_bezier(&self.manipulator_groups[i]);
+			let second_bezier = self.manipulator_groups[i].to_bezier(&self.manipulator_groups[i + 1]);
 			if first_bezier.handle_end().is_none() || second_bezier.handle_end().is_none() {
 				continue;
 			}
@@ -287,23 +288,24 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let start_tangent = second_bezier.non_normalized_tangent(0.);
 
 			// Compute an average unit vector, weighing the segments by a rough estimation of their relative size.
-			let segment1_len = first_bezier.length(Some(10));
-			let segment2_len = second_bezier.length(Some(10));
+			let segment1_len = first_bezier.length(Some(5));
+			let segment2_len = second_bezier.length(Some(5));
 			let average_unit_tangent = (end_tangent.normalize() * segment1_len + start_tangent.normalize() * segment2_len) / (segment1_len + segment2_len);
 
 			// Adjust start and end handles to fit the average tangent
 			let end_point = first_bezier.end();
-			self.manipulator_groups[i + 1].in_handle = Some((average_unit_tangent / 3. * -1.) * end_tangent.length() + end_point);
+			self.manipulator_groups[i].in_handle = Some((average_unit_tangent / 3. * -1.) * end_tangent.length() + end_point);
 
 			let start_point = second_bezier.start();
-			self.manipulator_groups[i + 1].out_handle = Some((average_unit_tangent / 3.) * start_tangent.length() + start_point);
+			self.manipulator_groups[i].out_handle = Some((average_unit_tangent / 3.) * start_tangent.length() + start_point);
 		}
 	}
 
-	// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
-	// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that would be trimmed. This could cause the subpaths to be clipped
-	// at the incorrect location. This can be avoided by first trimming the two subpaths at any extrema, effectively ignoring loopbacks.
-	fn clip_subpaths(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> Option<(Subpath<ManipulatorGroupId>, Subpath<ManipulatorGroupId>)> {
+	// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the Subpaths to be clipped
+	// at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
+	/// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
+	/// Assumes that the Subpaths represents simple Bezier segments, and clips the Subpaths at the last intersection of the first Subpath, and first intersection of the last Subpath.
+	fn clip_simple_subpaths(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> Option<(Subpath<ManipulatorGroupId>, Subpath<ManipulatorGroupId>)> {
 		// Split the first subpath at its last intersection
 		let intersections1 = subpath1.subpath_intersections(subpath2, None, None);
 		if intersections1.is_empty() {
@@ -327,7 +329,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// The intersections of segments of the subpath are joined using the method specified by the `joint` argument.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
-		assert!(self.len_segments() > 1, "Cannot outline an empty Subpath.");
+		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
 		// An offset at a distance 0 from the curve is simply the same curve
 		if distance == 0. {
@@ -362,7 +364,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
 				// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
 				// the points as being on top of one another.
-				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(subpath1, subpath2) {
+				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_simple_subpaths(subpath1, subpath2) {
 					subpaths[i] = clipped_subpath1;
 					subpaths[j] = clipped_subpath2;
 					apply_joint = false;
@@ -371,11 +373,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			// The angle is convex. The Subpath must be joined using the specified Joint type
 			if apply_joint {
 				match joint {
-					Joint::Mitre => todo!(),
-					Joint::Rounded => todo!(),
-					Joint::Blunt => {
+					Joint::Bevel => {
 						drop_common_point[j] = false;
 					}
+					_ => unimplemented!(),
 				}
 			}
 		}
@@ -388,7 +389,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 			let mut apply_joint = true;
 			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
-				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
+				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_simple_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
 					// Merge the clipped subpaths
 					let last_index = subpaths.len() - 1;
 					subpaths[last_index] = clipped_subpath1;
@@ -398,11 +399,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			}
 			if apply_joint {
 				match joint {
-					Joint::Mitre => todo!(),
-					Joint::Rounded => todo!(),
-					Joint::Blunt => {
+					Joint::Bevel => {
 						drop_common_point[0] = false;
 					}
+					_ => unimplemented!(),
 				}
 			}
 		}
@@ -428,6 +428,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Subpath::new(manipulator_groups, self.closed)
 	}
 
+	// TODO: Replace this return type with `Path`, once the `Path` data type has been created.
 	/// Outline returns a single closed subpath (if the original subpath was open) or two closed subpaths (if the original subpath was closed) that forms
 	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
 	/// - `distance` - The outline's distance from the curve.
@@ -442,13 +443,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 
 		match joint {
-			Joint::Mitre => todo!(),
-			Joint::Rounded => todo!(),
-			Joint::Blunt => {
+			Joint::Bevel => {
 				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
 				pos_offset.closed = true;
 				(pos_offset, None)
 			}
+			_ => unimplemented!(),
 		}
 	}
 }

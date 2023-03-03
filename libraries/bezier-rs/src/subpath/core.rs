@@ -34,7 +34,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		)
 	}
 
-	/// Creates a subpath from a vector of [Bezier]. When two consecutive Bezier do not share an end and start point, this function
+	/// Creates a subpath from a slice of [Bezier]. When two consecutive Beziers do not share an end and start point, this function
 	/// resolves the discrepancy by simply taking the start-point of the second Bezier as the anchor of the Manipulator Group.
 	pub fn from_beziers(beziers: &[Bezier], closed: bool) -> Self {
 		assert!(!closed || beziers.len() > 1, "A closed Subpath must contain at least 1 Bezier.");

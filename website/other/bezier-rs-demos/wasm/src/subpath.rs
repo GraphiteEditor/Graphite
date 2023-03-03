@@ -378,7 +378,7 @@ impl WasmSubpath {
 	}
 
 	pub fn offset(&self, distance: f64) -> String {
-		let offset_subpath = self.0.offset(distance, bezier_rs::Joint::Blunt);
+		let offset_subpath = self.0.offset(distance, bezier_rs::Joint::Bevel);
 
 		let mut offset_svg = String::new();
 		offset_subpath.to_svg(&mut offset_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
@@ -387,7 +387,7 @@ impl WasmSubpath {
 	}
 
 	pub fn outline(&self, distance: f64) -> String {
-		let (outline_piece1, outline_piece2) = self.0.outline(distance, bezier_rs::Joint::Blunt);
+		let (outline_piece1, outline_piece2) = self.0.outline(distance, bezier_rs::Joint::Bevel);
 
 		let mut outline_piece1_svg = String::new();
 		outline_piece1.to_svg(&mut outline_piece1_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());

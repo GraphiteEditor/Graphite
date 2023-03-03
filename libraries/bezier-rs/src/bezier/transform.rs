@@ -9,12 +9,13 @@ use std::f64::consts::PI;
 
 /// Functionality that transform Beziers, such as split, reduce, offset, etc.
 impl Bezier {
-	/// Returns a linear approximation of the given [Bezier]. For higher order [Bezier] this means simply dropping the handles.
+	/// Returns a linear approximation of the given [Bezier]. For higher order [Bezier], this means simply dropping the handles.
 	pub fn to_linear(&self) -> Bezier {
 		Bezier::from_linear_dvec2(self.start(), self.end())
 	}
 
-	/// Returns a quadratic approximation of the given [Bezier].
+	/// Returns a quadratic approximation of the given [Bezier]. For cubic Bezier, which typically cannot be represented by a single
+	/// quadratic segment, this function simply takes the average of the cubic handles to be the new quadratic handle.
 	pub fn to_quadratic(&self) -> Bezier {
 		let handle = match self.handles {
 			BezierHandles::Linear => self.start,
@@ -28,8 +29,9 @@ impl Bezier {
 	pub fn to_cubic(&self) -> Bezier {
 		let (handle_start, handle_end) = match self.handles {
 			BezierHandles::Linear => (self.start, self.end),
+			// Conversion reference source: https://stackoverflow.com/a/63059651/775283
 			BezierHandles::Quadratic { handle } => (self.start + (2. / 3.) * (handle - self.start), self.end + (2. / 3.) * (handle - self.end)),
-			BezierHandles::Cubic { handle_start, handle_end } => (handle_start, handle_end),
+			BezierHandles::Cubic { handle_start: _, handle_end: _ } => return *self,
 		};
 		Bezier::from_cubic_dvec2(self.start, handle_start, handle_end, self.end)
 	}
@@ -360,7 +362,7 @@ impl Bezier {
 
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
 		if self.handles != BezierHandles::Linear {
-			scaled.smooth_cubic_paths();
+			scaled.smooth_open_subpath();
 		}
 
 		scaled
@@ -368,7 +370,7 @@ impl Bezier {
 
 	/// Version of the `offset` function which scales the offset such that the start of the offset is `start_distance` from the original curve, while the end of
 	/// of the offset is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
-	/// distance along the equation (`t`-value) of the curve. Similarily to the `offset` function, the returned result is an approximation.
+	/// distance along the equation (`t`-value) of the curve. Similarly to the `offset` function, the returned result is an approximation.
 	pub fn graduated_offset<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<ManipulatorGroupId> {
 		let reduced = self.reduce(None);
 		let mut next_start_distance = start_distance;
@@ -391,7 +393,7 @@ impl Bezier {
 
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
 		if self.handles != BezierHandles::Linear {
-			result.smooth_cubic_paths();
+			result.smooth_open_subpath();
 		}
 
 		result
@@ -798,10 +800,6 @@ mod tests {
 						let closest_point_t = bezier.project(offset_point, ProjectionOptions::default());
 						let closest_point = bezier.evaluate(TValue::Parametric(closest_point_t));
 						let actual_distance = offset_point.distance(closest_point);
-
-						dbg!(actual_distance);
-						dbg!(expected_distance);
-						dbg!(err_threshold);
 
 						assert!(f64_compare(actual_distance, expected_distance, err_threshold));
 						closest_point_t

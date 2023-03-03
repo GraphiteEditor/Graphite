@@ -37,8 +37,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Append a [Bezier] to the end of a subpath from a vector of [Bezier].
 	/// The `append_type` parameter determines how the function behaves when the subpath's last anchor is not equal to the Bezier's start point.
-	/// - `IgnoreStart`: drops the bezier's start point in favour of the subpaths last anchor
-	/// - `SmoothJoin(f64)`: joins the subpaths endpoint with the beziers start with a another Bezier segment that is continuous up to the second derivative
+	/// - `IgnoreStart`: drops the bezier's start point in favor of the subpath's last anchor
+	/// - `SmoothJoin(f64)`: joins the subpath's endpoint with the bezier's start with a another Bezier segment that is continuous up to the second derivative
 	///   if the difference between the subpath's end point and Bezier's start point exceeds the wrapped integer value.
 	/// This function assumes that the position of the [Bezier]'s starting point is equal to that of the Subpath's last manipulator group.
 	pub fn append_bezier(&mut self, bezier: &Bezier, append_type: AppendType) {

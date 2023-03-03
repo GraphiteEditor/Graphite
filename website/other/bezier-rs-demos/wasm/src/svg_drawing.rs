@@ -1,6 +1,4 @@
-use bezier_rs::Bezier;
 use glam::DVec2;
-use std::fmt::Write;
 
 // SVG drawing constants
 pub const SVG_OPEN_TAG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px">"#;
