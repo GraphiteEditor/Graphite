@@ -1,50 +1,77 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 use graphene_core::Node;
-use once_cell::sync::OnceCell;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
 pub struct CacheNode<T> {
-	cache: OnceCell<T>,
+	// We have to use an append only data structure to make sure the references
+	// to the cache entries are always valid
+	cache: boxcar::Vec<(u64, T)>,
 }
-impl<'i, T: 'i> Node<'i, T> for CacheNode<T> {
+impl<'i, T: 'i + Hash> Node<'i, T> for CacheNode<T> {
 	type Output = &'i T;
 	fn eval<'s: 'i>(&'s self, input: T) -> Self::Output {
-		self.cache.get_or_init(|| {
-			trace!("Creating new cache node");
-			input
-		})
+		let mut hasher = DefaultHasher::new();
+		input.hash(&mut hasher);
+		let hash = hasher.finish();
+
+		if let Some((_, cached_value)) = self.cache.iter().find(|(h, _)| *h == hash) {
+			return cached_value;
+		} else {
+			trace!("Cache miss");
+			let index = self.cache.push((hash, input));
+			return &self.cache[index].1;
+		}
 	}
 }
 
 impl<T> CacheNode<T> {
-	pub const fn new() -> CacheNode<T> {
-		CacheNode { cache: OnceCell::new() }
+	pub fn new() -> CacheNode<T> {
+		CacheNode { cache: boxcar::Vec::new() }
 	}
 }
 
 /// Caches the output of a given Node and acts as a proxy
+/// It provides two modes of operation, it can either be set
+/// when calling the node with a `Some<T>` variant or the last
+/// value that was added is returned when calling it with `None`
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LetNode<T> {
-	cache: OnceCell<T>,
+	// We have to use an append only data structure to make sure the references
+	// to the cache entries are always valid
+	// TODO: We only ever access the last value so there is not really a reason for us
+	// to store the previous entries. This should be reworked in the future
+	cache: boxcar::Vec<(u64, T)>,
 }
-impl<'i, T: 'i> Node<'i, Option<T>> for LetNode<T> {
+impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 	type Output = &'i T;
 	fn eval<'s: 'i>(&'s self, input: Option<T>) -> Self::Output {
 		match input {
 			Some(input) => {
-				self.cache.set(input).unwrap_or_else(|_| error!("Let node was set twice but is not mutable"));
-				self.cache.get().unwrap()
+				let mut hasher = DefaultHasher::new();
+				input.hash(&mut hasher);
+				let hash = hasher.finish();
+
+				if let Some((cached_hash, cached_value)) = self.cache.iter().last() {
+					if hash == *cached_hash {
+						return cached_value;
+					}
+				}
+				trace!("Cache miss");
+				let index = self.cache.push((hash, input));
+				return &self.cache[index].1;
 			}
-			None => self.cache.get().expect("Let node was not initialized"),
+			None => &self.cache.iter().last().expect("Let node was not initialized").1,
 		}
 	}
 }
 
 impl<T> LetNode<T> {
-	pub const fn new() -> LetNode<T> {
-		LetNode { cache: OnceCell::new() }
+	pub fn new() -> LetNode<T> {
+		LetNode { cache: boxcar::Vec::new() }
 	}
 }
 
