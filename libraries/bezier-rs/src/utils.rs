@@ -1,4 +1,4 @@
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPERATION_VALUE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 
 use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
@@ -26,6 +26,13 @@ pub enum SubpathTValue {
 	GlobalEuclidean(f64),
 	EuclideanWithinError { segment_index: usize, t: f64, error: f64 },
 	GlobalEuclideanWithinError { t: f64, error: f64 },
+}
+
+#[derive(Copy, Clone)]
+pub enum Joint {
+	Miter,
+	Bevel,
+	Round,
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
@@ -115,7 +122,7 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 		let a_divided_by_3 = a / 3.;
 		let root_1 = 2. * cube_root(-q_divided_by_2) - a_divided_by_3;
 		let root_2 = cube_root(q_divided_by_2) - a_divided_by_3;
-		if (root_1 - root_2).abs() > MIN_SEPERATION_VALUE {
+		if (root_1 - root_2).abs() > MIN_SEPARATION_VALUE {
 			roots.push(root_1);
 		}
 		roots.push(root_2);
