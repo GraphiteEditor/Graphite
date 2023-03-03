@@ -8,7 +8,6 @@ import license from "rollup-plugin-license"
 import * as path from "path";
 import svgLoader from 'vite-svg-loader'
 
-
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue(), toplevelawait(), wasm() , svgLoader()],
@@ -29,4 +28,7 @@ export default defineConfig({
 			],
 		},
 	},
+    server: {
+        port: 8080
+    }
 })

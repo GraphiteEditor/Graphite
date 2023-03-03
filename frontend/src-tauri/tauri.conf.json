@@ -4,7 +4,7 @@
 		"beforeBuildCommand": "npm run build",
 		"beforeDevCommand": "npm run tauri:dev",
 		"distDir": "../dist",
-		"devPath": "http://127.0.0.1:5173/"
+		"devPath": "http://127.0.0.1:8080/"
 	},
 	"package": {
 		"productName": "graphite-tauri",
