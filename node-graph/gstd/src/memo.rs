@@ -56,7 +56,7 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 				let hash = hasher.finish();
 
 				if let Some((cached_hash, cached_value)) = self.cache.iter().last() {
-					if hash == cached_hash {
+					if hash == *cached_hash {
 						return cached_value;
 					}
 				}
