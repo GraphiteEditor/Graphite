@@ -4,6 +4,7 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"author": "Graphite Authors <contact@graphite.rs>",
 	"scripts": {
+		"start": "npm run dev",
 		"dev": "wasm-pack build ./wasm --dev && concurrently -k --handle-input \"vite\" \"npm run watch:wasm\"",
 		"tauri:dev": "vite",
 		"build": "npm run build-wasm && vite build || (npm run print-building-help && exit 1)",
