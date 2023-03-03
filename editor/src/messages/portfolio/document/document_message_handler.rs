@@ -1993,11 +1993,22 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_tool_options_widgets(&self, responses: &mut VecDeque<Message>, selected_layers: &Vec<Vec<u64>>) {
-		let mut widgets = vec![
+		let mut alignment_buttons_disabled = false;
+		if selected_layers.len() < 2 {
+			alignment_buttons_disabled = true;
+		}
+
+		let mut pivot_assist_disabled = false;
+		if selected_layers.is_empty() {
+			pivot_assist_disabled = true;
+		}
+
+		let widgets = vec![
 			WidgetHolder::new(Widget::IconButton(IconButton {
 				size: 24,
 				icon: "AlignLeft".into(),
 				tooltip: "Align Left".into(),
+				disabled: alignment_buttons_disabled,
 				on_update: WidgetCallback::new(|_| {
 					DocumentMessage::AlignSelectedLayers {
 						axis: AlignAxis::X,
@@ -2011,6 +2022,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "AlignHorizontalCenter".into(),
 				tooltip: "Align Horizontal Center".into(),
+				disabled: alignment_buttons_disabled,
 				on_update: WidgetCallback::new(|_| {
 					DocumentMessage::AlignSelectedLayers {
 						axis: AlignAxis::X,
@@ -2024,6 +2036,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "AlignRight".into(),
 				tooltip: "Align Right".into(),
+				disabled: alignment_buttons_disabled,
 				on_update: WidgetCallback::new(|_| {
 					DocumentMessage::AlignSelectedLayers {
 						axis: AlignAxis::X,
@@ -2037,6 +2050,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "AlignTop".into(),
 				tooltip: "Align Top".into(),
+				disabled: alignment_buttons_disabled,
 				on_update: WidgetCallback::new(|_| {
 					DocumentMessage::AlignSelectedLayers {
 						axis: AlignAxis::Y,
@@ -2050,6 +2064,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "AlignVerticalCenter".into(),
 				tooltip: "Align Vertical Center".into(),
+				disabled: alignment_buttons_disabled,
 				on_update: WidgetCallback::new(|_| {
 					DocumentMessage::AlignSelectedLayers {
 						axis: AlignAxis::Y,
@@ -2063,6 +2078,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "AlignBottom".into(),
 				tooltip: "Align Bottom".into(),
+				disabled: alignment_buttons_disabled,
 				on_update: WidgetCallback::new(|_| {
 					DocumentMessage::AlignSelectedLayers {
 						axis: AlignAxis::Y,
@@ -2151,18 +2167,12 @@ impl DocumentMessageHandler {
 				separator_type: SeparatorType::Section,
 				direction: SeparatorDirection::Horizontal,
 			})),
+			WidgetHolder::new(Widget::PivotAssist(PivotAssist {
+				position: PivotPosition::Center,
+				disabled: pivot_assist_disabled,
+				on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
+			})),
 		];
-
-		let mut pivot_disabled = false;
-		if selected_layers.is_empty() {
-			pivot_disabled = true;
-		}
-
-		widgets.extend([WidgetHolder::new(Widget::PivotAssist(PivotAssist {
-			position: PivotPosition::Center,
-			disabled: pivot_disabled,
-			on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into()),
-		}))]);
 
 		let tool_options_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
