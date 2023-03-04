@@ -10,7 +10,7 @@
 		"build": "npm run build-wasm && vite build || (npm run print-building-help && exit 1)",
 		"lint": "eslint src || (npm run print-linting-help && exit 1)",
 		"build-wasm": "wasm-pack build ./wasm --release",
-		"watch:wasm": "cd wasm && cargo watch -s \"wasm-pack build --dev\"",
+		"watch:wasm": "cargo watch -s \"wasm-pack build ./frontend/wasm --dev\"",
 		"preview": "vite preview",
 		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
 		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
