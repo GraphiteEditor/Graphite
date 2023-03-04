@@ -107,7 +107,7 @@ const subpathFeatures = {
 	},
 	offset: {
 		name: "Offset",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance, options.joint),
 		inputOptions: [
 			{
 				variable: "distance",
@@ -116,11 +116,19 @@ const subpathFeatures = {
 				step: 1,
 				default: 10,
 			},
+			{
+				variable: "joint",
+				min: 0,
+				max: 2,
+				step: 1,
+				default: 0,
+				unit: [": Bevel", ": Miter", ": Round"],
+			},
 		],
 	},
 	outline: {
 		name: "Outline",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance, options.joint),
 		inputOptions: [
 			{
 				variable: "distance",
@@ -128,6 +136,14 @@ const subpathFeatures = {
 				max: 25,
 				step: 1,
 				default: 10,
+			},
+			{
+				variable: "joint",
+				min: 0,
+				max: 2,
+				step: 1,
+				default: 0,
+				unit: [": Bevel", ": Miter", ": Round"],
 			},
 		],
 	},

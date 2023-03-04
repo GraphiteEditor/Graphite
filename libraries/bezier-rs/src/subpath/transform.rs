@@ -376,8 +376,18 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					Joint::Bevel => {
 						drop_common_point[j] = false;
 					}
+					Joint::Miter => {
+						let miter_manipulator_group = subpaths[i].miter_line_join(&subpaths[j]);
+						if let Some(miter_manipulator_group) = miter_manipulator_group {
+							subpaths[i].manipulator_groups.push(miter_manipulator_group);
+						}
+						drop_common_point[j] = false;
+					}
 					_ => unimplemented!(),
 				}
+			} else {
+				// Otherwise, default to the bevel join
+				drop_common_point[j] = false;
 			}
 		}
 
@@ -400,6 +410,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			if apply_joint {
 				match joint {
 					Joint::Bevel => {
+						drop_common_point[0] = false;
+					}
+					Joint::Miter => {
+						let last_subpath_index = subpaths.len() - 1;
+						let miter_manipulator_group = subpaths[last_subpath_index].miter_line_join(&subpaths[0]);
+						if let Some(miter_manipulator_group) = miter_manipulator_group {
+							subpaths[last_subpath_index].manipulator_groups.push(miter_manipulator_group);
+						}
 						drop_common_point[0] = false;
 					}
 					_ => unimplemented!(),
@@ -444,6 +462,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		match joint {
 			Joint::Bevel => {
+				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
+				pos_offset.closed = true;
+				(pos_offset, None)
+			}
+			Joint::Miter => {
 				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
 				pos_offset.closed = true;
 				(pos_offset, None)

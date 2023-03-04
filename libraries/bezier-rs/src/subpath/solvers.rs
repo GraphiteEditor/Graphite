@@ -1,6 +1,6 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::SubpathTValue;
+use crate::utils::{line_intersection, SubpathTValue};
 use crate::TValue;
 
 use glam::DVec2;
@@ -134,6 +134,28 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Does a path contain a point? Based on the non zero winding
 	pub fn contains_point(&self, target_point: DVec2) -> bool {
 		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
+	}
+
+	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
+		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
+		let out_segment = other.get_segment(0).unwrap();
+		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
+		let out_tangent = out_segment.tangent(TValue::Parametric(0.));
+
+		let intersection = line_intersection(in_segment.end(), in_tangent, out_segment.start(), out_tangent);
+
+		// Draw the miter join if the intersection occurs in the correct direction with respect to the path
+		if (intersection - in_segment.end()).normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			&& (out_segment.start() - intersection).normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+		{
+			return Some(ManipulatorGroup {
+				anchor: intersection,
+				in_handle: None,
+				out_handle: None,
+				id: ManipulatorGroupId::new(),
+			});
+		}
+		None
 	}
 }
 
