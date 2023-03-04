@@ -12,6 +12,7 @@
 		"build-wasm": "wasm-pack build ./wasm --release",
 		"watch:wasm": "cargo watch --postpone -C wasm -s \"wasm-pack build . --dev\"",
 		"preview": "vite preview",
+		"--------------------": "",
 		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
 		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
 	},

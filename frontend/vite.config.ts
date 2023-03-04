@@ -1,18 +1,19 @@
 // vite.config.js
 
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import wasm from "vite-plugin-wasm";
-import toplevelawait from "vite-plugin-top-level-await"
-import license from "rollup-plugin-license"
 import * as path from "path";
-import svgLoader from 'vite-svg-loader'
+
+import vue from "@vitejs/plugin-vue";
+import license from "rollup-plugin-license";
+import { defineConfig } from "vite";
+import toplevelawait from "vite-plugin-top-level-await";
+import wasm from "vite-plugin-wasm";
+import svgLoader from "vite-svg-loader";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue(), toplevelawait(), wasm() , svgLoader()],
-  resolve: {
-		extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.vue'],
+	plugins: [vue(), toplevelawait(), wasm(), svgLoader()],
+	resolve: {
+		extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".vue"],
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
 		},
@@ -28,7 +29,7 @@ export default defineConfig({
 			],
 		},
 	},
-    server: {
-        port: 8080
-    }
-})
+	server: {
+		port: 8080,
+	},
+});

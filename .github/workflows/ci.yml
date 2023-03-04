@@ -50,8 +50,8 @@ jobs:
         NODE_ENV: production
       run: |
         cd frontend
-        #npm run lint
-        echo "Currently skipping linting because we'll switch to svelte soon"
+        # npm run lint
+        echo "Currently skipping linting, it should be reenabled after switching to Svelte."
 
     - name: 🔬 Check Rust formatting
       run: |
