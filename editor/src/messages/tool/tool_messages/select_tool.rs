@@ -1066,7 +1066,7 @@ impl Fsm for SelectToolFsmState {
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
 							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-							HintInfo::keys([Key::Control], "Deepest").add_mac_keys([Key::Control]).prepend_plus(),
+							HintInfo::keys([Key::Accel], "Deepest").prepend_plus(),
 						]),
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
