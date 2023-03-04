@@ -1,6 +1,3 @@
-#[cfg(test)]
-pub(super) mod compare;
-
 mod core;
 mod lookup;
 mod manipulators;
@@ -18,6 +15,7 @@ use std::fmt::{Debug, Formatter, Result};
 
 /// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum BezierHandles {
 	Linear,
 	/// Handles for a quadratic curve.
@@ -34,8 +32,14 @@ enum BezierHandles {
 	},
 }
 
+#[cfg(feature = "dyn-any")]
+impl dyn_any::StaticType for BezierHandles {
+	type Static = BezierHandles;
+}
+
 /// Representation of a bezier curve with 2D points.
 #[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bezier {
 	/// Start point of the bezier curve.
 	start: DVec2,
@@ -47,6 +51,18 @@ pub struct Bezier {
 
 impl Debug for Bezier {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		write!(f, "{:?}", self.get_points().collect::<Vec<DVec2>>())
+		let mut debug_struct = f.debug_struct("Bezier");
+		let mut debug_struct_ref = debug_struct.field("start", &self.start);
+		debug_struct_ref = match self.handles {
+			BezierHandles::Linear => debug_struct_ref,
+			BezierHandles::Quadratic { handle } => debug_struct_ref.field("handle", &handle),
+			BezierHandles::Cubic { handle_start, handle_end } => debug_struct_ref.field("handle_start", &handle_start).field("handle_end", &handle_end),
+		};
+		debug_struct_ref.field("end", &self.end).finish()
 	}
+}
+
+#[cfg(feature = "dyn-any")]
+impl dyn_any::StaticType for Bezier {
+	type Static = Bezier;
 }

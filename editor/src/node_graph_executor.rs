@@ -1,11 +1,12 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
+use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMode;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use document_legacy::{document::pick_safe_imaginate_resolution, layers::layer_info::LayerDataType};
 use document_legacy::{LayerId, Operation};
-use graph_craft::document::{generate_uuid, value::TaggedValue, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
 use graphene_core::raster::{Image, ImageFrame};
 use interpreted_executor::executor::DynamicExecutor;
@@ -19,26 +20,19 @@ pub struct NodeGraphExecutor {
 }
 
 impl NodeGraphExecutor {
-	/// Sets the transform property on the input node
-	fn set_input_transform(network: &mut NodeNetwork, transform: DAffine2) {
-		let Some(input_node) = network.nodes.get_mut(&network.inputs[0]) else {
-			return;
-		};
-		input_node.inputs[1] = NodeInput::value(TaggedValue::DAffine2(transform), false);
-	}
-
 	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(&mut self, mut network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
-		Self::set_input_transform(&mut network, image_frame.transform);
-		network.duplicate_outputs(&mut generate_uuid);
-		network.remove_dead_nodes();
+	fn execute_network<T: dyn_any::StaticType>(&mut self, network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
+		let mut scoped_network = wrap_network_in_scope(network);
 
-		debug!("Execute document network:\n{network:#?}");
+		scoped_network.duplicate_outputs(&mut generate_uuid);
+		scoped_network.remove_dead_nodes();
+
+		debug!("Execute document network:\n{scoped_network:#?}");
 
 		// We assume only one output
-		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
+		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile_single(network, true)?;
+		let proto_network = c.compile_single(scoped_network, true)?;
 		debug!("Execute proto network:\n{proto_network}");
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
@@ -49,7 +43,7 @@ impl NodeGraphExecutor {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		let boxed = self.executor.execute(image_frame.image.into_dyn()).map_err(|e| e.to_string())?;
+		let boxed = self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string())?;
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
@@ -83,7 +77,7 @@ impl NodeGraphExecutor {
 				// If the input is just a value, return that value
 				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
-				NodeInput::Node { node_id, output_index } => {
+				NodeInput::Node { node_id, output_index, .. } => {
 					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
 					break 'outer;
 				}
@@ -127,7 +121,9 @@ impl NodeGraphExecutor {
 
 		let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
-		let transform: DAffine2 = self.compute_input(&network, &imaginate_node, get("Transform"), Cow::Borrowed(&image_frame))?;
+		// Get the node graph layer
+		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+		let transform = layer.transform;
 
 		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image_frame))?;
 		let resolution = resolution.unwrap_or_else(|| {

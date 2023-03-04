@@ -28,7 +28,7 @@ impl Default for ManipulatorPoint {
 	}
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for ManipulatorPoint {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.position.to_array().iter().for_each(|x| x.to_bits().hash(state));

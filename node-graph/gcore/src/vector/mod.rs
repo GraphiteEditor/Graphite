@@ -14,3 +14,8 @@ pub use vector_data::VectorData;
 
 mod id_vec;
 pub use id_vec::IdBackedVec;
+
+mod vector_nodes;
+pub use vector_nodes::*;
+
+pub use bezier_rs;

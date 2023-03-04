@@ -1,7 +1,7 @@
 use dyn_any::{DynAny, StaticType};
 
 use glam::DAffine2;
-use graphene_core::raster::{Color, Image};
+use graphene_core::raster::{Color, Image, ImageFrame};
 use graphene_core::Node;
 
 use std::path::Path;
@@ -108,18 +108,36 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct MapImageFrameNode<MapFn> {
+	map_fn: MapFn,
+}
+
+#[node_macro::node_fn(MapImageFrameNode)]
+fn map_image<MapFn>(mut image_frame: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
+where
+	MapFn: for<'any_input> Node<'any_input, Color, Output = Color> + 'input,
+{
+	for pixel in &mut image_frame.image.data {
+		*pixel = map_fn.eval(*pixel);
+	}
+
+	image_frame
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct BlendImageNode<Second, MapFn> {
 	second: Second,
 	map_fn: MapFn,
 }
 
+// TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
-fn blend_image<MapFn>(image: Image, second: Image, map_fn: &'any_input MapFn) -> Image
+fn blend_image<MapFn>(image: ImageFrame, second: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
 	let mut image = image;
-	for (pixel, sec_pixel) in &mut image.data.iter_mut().zip(second.data.iter()) {
+	for (pixel, sec_pixel) in &mut image.image.data.iter_mut().zip(second.image.data.iter()) {
 		*pixel = map_fn.eval((*pixel, *sec_pixel));
 	}
 	image
@@ -131,9 +149,13 @@ pub struct ImaginateNode<E> {
 }
 
 #[node_macro::node_fn(ImaginateNode)]
-fn imaginate(image: Image, cached: Option<std::sync::Arc<graphene_core::raster::Image>>) -> Image {
-	info!("Imaginating image with {} pixels", image.data.len());
-	cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image)
+fn imaginate(image_frame: ImageFrame, cached: Option<std::sync::Arc<graphene_core::raster::Image>>) -> ImageFrame {
+	info!("Imaginating image with {} pixels", image_frame.image.data.len());
+	let cached_image = cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image_frame.image);
+	ImageFrame {
+		image: cached_image,
+		transform: image_frame.transform,
+	}
 }
 
 #[derive(Debug, Clone, Copy)]

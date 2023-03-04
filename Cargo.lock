@@ -281,7 +281,9 @@ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 name = "bezier-rs"
 version = "0.1.0"
 dependencies = [
+ "dyn-any",
  "glam",
+ "serde",
 ]
 
 [[package]]
@@ -356,6 +358,12 @@ version = "0.1.0"
 dependencies = [
  "dyn-any",
 ]
+
+[[package]]
+name = "boxcar"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38c99613cb3cd7429889a08dfcf651721ca971c86afa30798461f8eee994de47"
 
 [[package]]
 name = "brotli"
@@ -1622,6 +1630,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
+ "bezier-rs",
  "bytemuck",
  "dyn-any",
  "dyn-clone",
@@ -1660,6 +1669,7 @@ dependencies = [
  "autoquant",
  "bezier-rs",
  "borrow_stack",
+ "boxcar",
  "bytemuck",
  "compilation-client",
  "dyn-any",
