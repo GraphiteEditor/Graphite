@@ -403,20 +403,44 @@ impl Fsm for SelectToolFsmState {
 							// Shallowest manipulation
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								let mut selected_layers = document.selected_layers();
-								// Check if something was previously selected
-								if let Some(layer_path) = selected_layers.next() {
-									let mut new_layer_path_vector = layer_path.to_vec();
-									// Double-clicking any layer within an already selected folder should select that layer
-									// Add the first layer path not already included from the intersected to our new layer path
+								// Double-clicking any layer within an already selected folder should select that layer
+								// Add the first layer path not already included from the intersected to our new layer path
+								let _layers: Vec<_> = document.selected_layers().collect();
+								let incoming_parent = *intersect_layer_path.first().unwrap();
+								let previous_parents: Vec<_> = (0.._layers.clone().len()).map(|i| &_layers.clone().get(i).unwrap()[..1]).collect();
+								let mut incoming_parent_selected = false;
+								if previous_parents.contains(&&[incoming_parent].as_slice()) {
+									incoming_parent_selected = true;
+								}
+								if incoming_parent_selected {
+									let temp = intersect_layer_path.clone();
+									let mut intersected_layer_perm: Vec<Vec<u64>> = vec![];
+									// Permuations of intersected layer
+									for i in 1..temp.len() + 1 {
+										intersected_layer_perm.append(&mut vec![temp[..i].to_vec()]);
+									}
+									intersected_layer_perm.reverse();
+									let mut new_layer_path: Vec<u64> = vec![];
+									// Set the base layer path to the deepest layer that is currently selected
+									for perm in intersected_layer_perm {
+										for layer in _layers.clone().iter() {
+											if perm == *layer.to_vec() {
+												new_layer_path.append(&mut perm.clone());
+											}
+										}
+									}
+									// Append the sub layer to the base to create the deeper layer path
 									for path in intersect_layer_path {
-										if !new_layer_path_vector.contains(path) {
-											new_layer_path_vector.push(*path);
+										if !new_layer_path.contains(path) {
+											new_layer_path.push(*path);
 											break;
 										}
 									}
+									tool_data.layers_dragging.clear();
+									tool_data.layers_dragging.append(&mut vec![new_layer_path.clone()]);
 									responses.push_back(
 										DocumentMessage::SetSelectedLayers {
-											replacement_selected_layers: vec![new_layer_path_vector],
+											replacement_selected_layers: vec![new_layer_path],
 										}
 										.into(),
 									);
@@ -534,6 +558,7 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == LayerSelectionBehavior::Deepest {
+							// TODO:
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
@@ -542,10 +567,28 @@ impl Fsm for SelectToolFsmState {
 							selected = vec![intersection.clone()];
 							// Shallowest manipulation
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
+								let layers: Vec<_> = document.selected_layers().collect();
+								let incoming_layer_path_vector = selected.first().unwrap();
+								let incoming_parent = *incoming_layer_path_vector.clone().first().unwrap();
 								// Control click selects the layer directly
 								if input.keyboard.get(layer_selection as usize) {
 									// Control + Shift
 									if input.keyboard.get(add_to_selection as usize) {
+										// Checks if the incoming layer's root parent is already selected
+										// If so we need to update the selected layer to the deeper of the two
+										let mut layers_without_incoming_parent: Vec<Vec<u64>> =
+											document.selected_layers().filter(|&layer| layer != [incoming_parent].as_slice()).map(|path| path.to_vec()).collect();
+										if layers.contains(&&[incoming_parent.clone()].as_slice()) {
+											// Add incoming layer
+											tool_data.layers_dragging.clear();
+											responses.push_back(DocumentMessage::DeselectAllLayers.into());
+											layers_without_incoming_parent.append(&mut selected.clone());
+											selected = layers_without_incoming_parent;
+										}
+
+										tool_data.layers_dragging.append(&mut selected.clone());
+										responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+									} else {
 										tool_data.layers_dragging.clear();
 										responses.push_back(
 											DocumentMessage::SetSelectedLayers {
@@ -553,24 +596,21 @@ impl Fsm for SelectToolFsmState {
 											}
 											.into(),
 										);
-									} else {
-										tool_data.layers_dragging.append(&mut selected.clone());
-										responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 									}
 								} else {
 									let mut previously_selected_layers = document.selected_layers();
-									let layers: Vec<_> = document.selected_layers().collect();
 									// Check whether a layer is selected for next selection calculations
 									if let Some(previous_layer_path) = previously_selected_layers.next() {
-										let mut previous_layer_path_vector = previous_layer_path.to_vec();
-										let incoming_layer_path_vector = selected.first().unwrap();
-
+										let previous_layer_path_vector = previous_layer_path.to_vec();
 										// Compare root folders of already selected with incoming selected
 										// The new selected layer depends on whether it belongs to the same root folder or not
-										let previous_parent = *previous_layer_path_vector.clone().first().unwrap();
-										let incoming_parent = *incoming_layer_path_vector.clone().first().unwrap();
-										let same_parent = previous_parent == incoming_parent.clone();
-										if same_parent {
+										let _previous_parent = *previous_layer_path_vector.clone().first().unwrap();
+										let previous_parents: Vec<_> = (0..layers.len()).map(|i| &layers.get(i).unwrap()[..1]).collect();
+										let mut already_selected_parent = false;
+										if previous_parents.contains(&&[incoming_parent].as_slice()) {
+											already_selected_parent = true;
+										}
+										if already_selected_parent {
 											// Single-clicking any layer that's contained within a folder should select its shallowest parent folder
 											let mut new_layer_path_vector = None;
 											// Traverse laterally across layer tree hierarchy
@@ -598,26 +638,23 @@ impl Fsm for SelectToolFsmState {
 
 											// If the new layer is not selected, set/append new layer
 											if !already_selected {
-												if !input.keyboard.get(add_to_selection as usize) {
-													tool_data.layers_dragging.clear();
-												}
-												tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
-
 												if input.keyboard.get(add_to_selection as usize) {
 													responses.push_back(
 														DocumentMessage::AddSelectedLayers {
-															additional_layers: new_layer_path_vector.unwrap(),
+															additional_layers: new_layer_path_vector.clone().unwrap(),
 														}
 														.into(),
 													);
 												} else {
+													tool_data.layers_dragging.clear();
 													responses.push_back(
 														DocumentMessage::SetSelectedLayers {
-															replacement_selected_layers: new_layer_path_vector.unwrap(),
+															replacement_selected_layers: new_layer_path_vector.clone().unwrap(),
 														}
 														.into(),
 													);
 												}
+												tool_data.layers_dragging.append(&mut new_layer_path_vector.clone().unwrap());
 											} else {
 												tool_data.layer_selected_on_start = None;
 											}
@@ -632,6 +669,7 @@ impl Fsm for SelectToolFsmState {
 													.into(),
 												);
 											} else {
+												tool_data.layers_dragging.clear();
 												responses.push_back(
 													DocumentMessage::SetSelectedLayers {
 														replacement_selected_layers: vec![vec![incoming_parent]],
@@ -639,6 +677,7 @@ impl Fsm for SelectToolFsmState {
 													.into(),
 												);
 											}
+											tool_data.layers_dragging.append(&mut vec![vec![incoming_parent]]);
 										}
 									} else {
 										// Select root-most layer if no layers are selected
@@ -824,25 +863,29 @@ impl Fsm for SelectToolFsmState {
 						let folders: Vec<_> = (1..path.len() + 1).map(|i| &path[0..i]).collect();
 						let replacement_selected_layers: Vec<Vec<u64>> = document.selected_layers().filter(|&layer| !folders.contains(&layer)).map(|path| path.to_vec()).collect();
 
+						tool_data.layers_dragging.clear();
+						tool_data.layers_dragging.append(&mut replacement_selected_layers.clone());
+
 						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 					}
 
 					tool_data.is_dragging = false;
 					tool_data.layer_selected_on_start = None;
 
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
+					// let _response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					// 	true => DocumentMessage::Undo,
+					// 	false => DocumentMessage::CommitTransaction,
+					// };
+					responses.push_back(DocumentMessage::CommitTransaction.into());
 					tool_data.snap_manager.cleanup(responses);
 					Ready
 				}
 				(ResizingBounds, DragStop { .. } | Enter) => {
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					let _response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
-					responses.push_back(response.into());
+					responses.push_back(_response.into());
 
 					tool_data.snap_manager.cleanup(responses);
 
