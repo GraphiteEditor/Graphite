@@ -402,12 +402,11 @@ impl Fsm for SelectToolFsmState {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							// Shallowest manipulation
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
-								let mut selected_layers = document.selected_layers();
 								// Double-clicking any layer within an already selected folder should select that layer
 								// Add the first layer path not already included from the intersected to our new layer path
-								let _layers: Vec<_> = document.selected_layers().collect();
+								let _selected_layers: Vec<_> = document.selected_layers().collect();
 								let incoming_parent = *intersect_layer_path.first().unwrap();
-								let previous_parents: Vec<_> = (0.._layers.clone().len()).map(|i| &_layers.clone().get(i).unwrap()[..1]).collect();
+								let previous_parents: Vec<_> = (0.._selected_layers.clone().len()).map(|i| &_selected_layers.clone().get(i).unwrap()[..1]).collect();
 								let mut incoming_parent_selected = false;
 								if previous_parents.contains(&&[incoming_parent].as_slice()) {
 									incoming_parent_selected = true;
@@ -423,7 +422,7 @@ impl Fsm for SelectToolFsmState {
 									let mut new_layer_path: Vec<u64> = vec![];
 									// Set the base layer path to the deepest layer that is currently selected
 									for perm in intersected_layer_perm {
-										for layer in _layers.clone().iter() {
+										for layer in _selected_layers.clone().iter() {
 											if perm == *layer.to_vec() {
 												new_layer_path.append(&mut perm.clone());
 											}
@@ -436,14 +435,19 @@ impl Fsm for SelectToolFsmState {
 											break;
 										}
 									}
-									tool_data.layers_dragging.clear();
-									tool_data.layers_dragging.append(&mut vec![new_layer_path.clone()]);
-									responses.push_back(
-										DocumentMessage::SetSelectedLayers {
-											replacement_selected_layers: vec![new_layer_path],
-										}
-										.into(),
-									);
+
+									if !_selected_layers.contains(&new_layer_path.clone().as_slice()) {
+										tool_data.layers_dragging.clear();
+										tool_data.layers_dragging.append(&mut vec![new_layer_path.clone()]);
+										responses.push_back(
+											DocumentMessage::SetSelectedLayers {
+												replacement_selected_layers: vec![new_layer_path],
+											}
+											.into(),
+										);
+									} else {
+										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+									}
 								}
 							}
 							// Deepest manipulation
@@ -558,7 +562,6 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 						if !input.keyboard.get(add_to_selection as usize) && tool_data.selected_type == LayerSelectionBehavior::Deepest {
-							// TODO:
 							responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							tool_data.layers_dragging.clear();
 						}
