@@ -6,9 +6,11 @@
 	"scripts": {
 		"start": "npm run dev",
 		"dev": "wasm-pack build ./wasm --dev && concurrently -k --handle-input \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
-		"tauri:dev": "vite",
 		"build": "npm run build-wasm && vite build || (npm run print-building-help && exit 1)",
 		"lint": "eslint src || (npm run print-linting-help && exit 1)",
+		"tauri:dev": "echo 'Make sure you build the wasm binary for tauri using `npm run tauri:build-wasm`' && vite",
+		"tauri:build": "npm run tauri:build-wasm && vite build || (npm run print-building-help && exit 1)",
+		"tauri:build-wasm": "wasm-pack build ./wasm --release -- --features tauri",
 		"build-wasm": "wasm-pack build ./wasm --release",
 		"watch:wasm": "cargo watch --postpone -C wasm -s \"wasm-pack build . --dev\"",
 		"preview": "vite preview",
