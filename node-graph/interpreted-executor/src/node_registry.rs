@@ -24,8 +24,7 @@ use crate::executor::NodeContainer;
 
 use dyn_any::StaticType;
 
-#[cfg(feature = "quantization")]
-use graphene_core::quantization::{Quantization, QuantizationChannels};
+use graphene_core::quantization::QuantizationChannels;
 
 macro_rules! construct_node {
 	($args: ident, $path:ty, [$($type:tt),*]) => {{
@@ -220,7 +219,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>"),
 				|args| {
-					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[16]);
+					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[15]);
 					let node = graphene_std::raster::ImaginateNode::new(cached);
 					let any = DynAnyNode::new(ValueNode::new(node));
 					any.into_type_erased()
@@ -229,7 +228,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					concrete!(ImageFrame),
 					concrete!(ImageFrame),
 					vec![
-						(concrete!(()), concrete!(DAffine2)),
 						(concrete!(()), concrete!(f64)),
 						(concrete!(()), concrete!(Option<DVec2>)),
 						(concrete!(()), concrete!(f64)),
@@ -298,7 +296,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 				NodeIOTypes::new(concrete!(Image), concrete!(&Image), vec![]),
 			),
-			#[cfg(feature = "quantization")]
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
 				|_| {
@@ -313,11 +310,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::ImageFrameNode<_>, input: Image, params: [DAffine2]),
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame, params: [u32, u32]),
-		#[cfg(feature = "quantization")]
 		raster_node!(graphene_core::quantization::QuantizeNode<_>, params: [QuantizationChannels]),
-		#[cfg(feature = "quantization")]
 		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, params: [QuantizationChannels]),
-		#[cfg(feature = "quantization")]
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		register_node!(graphene_core::vector::TransformNode<_, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2]),
 		register_node!(graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>, input: VectorData, params: [ graphene_core::vector::style::FillType, graphene_core::Color, graphene_core::vector::style::GradientType, DVec2, DVec2, DAffine2, Vec<(f64, Option<graphene_core::Color>)>]),
