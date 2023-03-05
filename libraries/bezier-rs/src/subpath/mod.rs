@@ -8,23 +8,30 @@ pub use structs::*;
 
 use crate::Bezier;
 
+use std::fmt::{Debug, Formatter, Result};
 use std::ops::{Index, IndexMut};
 
 /// Structure used to represent a path composed of [Bezier] curves.
-#[derive(Clone, PartialEq)]
-pub struct Subpath {
-	manipulator_groups: Vec<ManipulatorGroup>,
+#[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Subpath<ManipulatorGroupId: crate::Identifier> {
+	manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>,
 	closed: bool,
 }
 
-/// Iteration structure for iterating across each curve of a `Subpath`, using an intermediate `Bezier` representation.
-pub struct SubpathIter<'a> {
-	index: usize,
-	sub_path: &'a Subpath,
+#[cfg(feature = "dyn-any")]
+impl<ManipulatorGroupId: crate::Identifier> dyn_any::StaticType for Subpath<ManipulatorGroupId> {
+	type Static = Subpath<ManipulatorGroupId>;
 }
 
-impl Index<usize> for Subpath {
-	type Output = ManipulatorGroup;
+/// Iteration structure for iterating across each curve of a `Subpath`, using an intermediate `Bezier` representation.
+pub struct SubpathIter<'a, ManipulatorGroupId: crate::Identifier> {
+	index: usize,
+	subpath: &'a Subpath<ManipulatorGroupId>,
+}
+
+impl<ManipulatorGroupId: crate::Identifier> Index<usize> for Subpath<ManipulatorGroupId> {
+	type Output = ManipulatorGroup<ManipulatorGroupId>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		assert!(index < self.len(), "Index out of bounds in trait Index of SubPath.");
@@ -32,20 +39,20 @@ impl Index<usize> for Subpath {
 	}
 }
 
-impl IndexMut<usize> for Subpath {
+impl<ManipulatorGroupId: crate::Identifier> IndexMut<usize> for Subpath<ManipulatorGroupId> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		assert!(index < self.len(), "Index out of bounds in trait IndexMut of SubPath.");
 		&mut self.manipulator_groups[index]
 	}
 }
 
-impl Iterator for SubpathIter<'_> {
+impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, ManipulatorGroupId> {
 	type Item = Bezier;
 
 	// Returns the Bezier representation of each `Subpath` segment, defined between a pair of adjacent manipulator points.
 	fn next(&mut self) -> Option<Self::Item> {
-		let len = self.sub_path.len() - 1
-			+ match self.sub_path.closed {
+		let len = self.subpath.len() - 1
+			+ match self.subpath.closed {
 				true => 1,
 				false => 0,
 			};
@@ -53,20 +60,15 @@ impl Iterator for SubpathIter<'_> {
 			return None;
 		}
 		let start_index = self.index;
-		let end_index = (self.index + 1) % self.sub_path.len();
+		let end_index = (self.index + 1) % self.subpath.len();
 		self.index += 1;
 
-		let start = self.sub_path[start_index].anchor;
-		let end = self.sub_path[end_index].anchor;
-		let out_handle = self.sub_path[start_index].out_handle;
-		let in_handle = self.sub_path[end_index].in_handle;
+		Some(self.subpath[start_index].to_bezier(&self.subpath[end_index]))
+	}
+}
 
-		if let (Some(handle1), Some(handle2)) = (out_handle, in_handle) {
-			Some(Bezier::from_cubic_dvec2(start, handle1, handle2, end))
-		} else if let Some(handle) = out_handle.or(in_handle) {
-			Some(Bezier::from_quadratic_dvec2(start, handle, end))
-		} else {
-			Some(Bezier::from_linear_dvec2(start, end))
-		}
+impl<ManipulatorGroupId: crate::Identifier> Debug for Subpath<ManipulatorGroupId> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		f.debug_struct("Subpath").field("closed", &self.closed).field("manipulator_groups", &self.manipulator_groups).finish()
 	}
 }

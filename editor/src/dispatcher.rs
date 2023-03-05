@@ -18,8 +18,8 @@ struct DispatcherMessageHandlers {
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
 	globals_message_handler: GlobalsMessageHandler,
-	input_mapper_message_handler: InputMapperMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
+	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
@@ -133,20 +133,20 @@ impl Dispatcher {
 				Globals(message) => {
 					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
 				}
-				InputMapper(message) => {
-					let actions = self.collect_actions();
-
-					self.message_handlers
-						.input_mapper_message_handler
-						.process_message(message, &mut queue, (&self.message_handlers.input_preprocessor_message_handler, actions));
-				}
 				InputPreprocessor(message) => {
 					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
 					self.message_handlers.input_preprocessor_message_handler.process_message(message, &mut queue, keyboard_platform);
 				}
+				KeyMapping(message) => {
+					let actions = self.collect_actions();
+
+					self.message_handlers
+						.key_mapping_message_handler
+						.process_message(message, &mut queue, (&self.message_handlers.input_preprocessor_message_handler, actions));
+				}
 				Layout(message) => {
-					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.input_mapper_message_handler.action_input_mapping(action_to_find);
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, action_input_mapping);
 				}
@@ -195,7 +195,7 @@ impl Dispatcher {
 		let mut list = Vec::new();
 		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
-		list.extend(self.message_handlers.input_mapper_message_handler.actions());
+		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
 		if self.message_handlers.portfolio_message_handler.active_document().is_some() {
 			list.extend(self.message_handlers.tool_message_handler.actions());

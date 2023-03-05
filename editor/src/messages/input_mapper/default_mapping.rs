@@ -1,4 +1,5 @@
 use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
+use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
@@ -7,6 +8,15 @@ use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
 use glam::DVec2;
+
+impl From<MappingVariant> for Mapping {
+	fn from(value: MappingVariant) -> Self {
+		match value {
+			MappingVariant::Default => default_mapping(),
+			MappingVariant::ZoomWithScroll => zoom_with_scroll(),
+		}
+	}
+}
 
 pub fn default_mapping() -> Mapping {
 	use InputMapperMessage::*;
@@ -51,7 +61,7 @@ pub fn default_mapping() -> Mapping {
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Shift, Alt], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt }),
 		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift }),
-		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop),
+		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
 		entry!(DoubleClick; action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(Rmb); action_dispatch=SelectToolMessage::Abort),
@@ -174,7 +184,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Control, break_handle: Shift }),
+		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
 		entry!(KeyDown(Lmb); action_dispatch=PenToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=PenToolMessage::Confirm),
@@ -338,5 +348,42 @@ pub fn default_mapping() -> Mapping {
 		double_click,
 		wheel_scroll,
 		pointer_move,
+	}
+}
+
+/// Defaults except that scrolling without modifiers is bound to zooming instead of vertical panning
+pub fn zoom_with_scroll() -> Mapping {
+	// TODO(multisn8): for other keymaps this patterns might be useful
+	use InputMapperMessage::*;
+
+	let mut mapping = default_mapping();
+
+	let remove = [
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasZoom),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
+	];
+	let add = [
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasZoom),
+	];
+
+	apply_mapping_patch(&mut mapping, remove, add);
+
+	mapping
+}
+
+fn apply_mapping_patch<'a, const N: usize, const M: usize, const X: usize, const Y: usize>(
+	mapping: &mut Mapping,
+	remove: impl IntoIterator<Item = &'a [&'a [MappingEntry; N]; M]>,
+	add: impl IntoIterator<Item = &'a [&'a [MappingEntry; X]; Y]>,
+) {
+	for entry in remove.into_iter().flat_map(|inner| inner.iter()).flat_map(|inner| inner.iter()) {
+		mapping.remove(entry);
+	}
+
+	for entry in add.into_iter().flat_map(|inner| inner.iter()).flat_map(|inner| inner.iter()) {
+		mapping.add(entry.clone());
 	}
 }

@@ -20,7 +20,8 @@ use bytemuck::{Pod, Zeroable};
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "gpu", derive(Pod, Zeroable))]
-#[derive(Debug, Clone, Copy, PartialEq, Default, DynAny, specta::Type)]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -28,9 +29,9 @@ pub struct Color {
 	alpha: f32,
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Color {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.red.to_bits().hash(state);
 		self.green.to_bits().hash(state);
 		self.blue.to_bits().hash(state);
@@ -119,7 +120,6 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
-	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
 		let temp1 = if lightness < 0.5 {
 			lightness * (saturation + 1.)
@@ -127,12 +127,16 @@ impl Color {
 			lightness + saturation - lightness * saturation
 		};
 		let temp2 = 2. * lightness - temp1;
+		#[cfg(not(target_arch = "spirv"))]
+		let rem = |x: f32| x.rem_euclid(1.);
+		#[cfg(target_arch = "spirv")]
+		let rem = |x: f32| x.rem_euclid(&1.);
 
-		let mut red = (hue + 1. / 3.).rem_euclid(1.);
-		let mut green = hue.rem_euclid(1.);
-		let mut blue = (hue - 1. / 3.).rem_euclid(1.);
+		let mut red = rem(hue + 1. / 3.);
+		let mut green = rem(hue);
+		let mut blue = rem(hue - 1. / 3.);
 
-		for channel in [&mut red, &mut green, &mut blue] {
+		fn map_channel(channel: &mut f32, temp2: f32, temp1: f32) {
 			*channel = if *channel * 6. < 1. {
 				temp2 + (temp1 - temp2) * 6. * *channel
 			} else if *channel * 2. < 1. {
@@ -144,6 +148,9 @@ impl Color {
 			}
 			.clamp(0., 1.);
 		}
+		map_channel(&mut red, temp2, temp1);
+		map_channel(&mut green, temp2, temp1);
+		map_channel(&mut blue, temp2, temp1);
 
 		Color { red, green, blue, alpha }
 	}
@@ -239,6 +246,174 @@ impl Color {
 		self.map_rgb(|c| (c + d).clamp(0., 1.))
 	}
 
+	pub fn saturation(&self) -> f32 {
+		let max = (self.red).max(self.green).max(self.blue);
+		let min = (self.red).min(self.green).min(self.blue);
+
+		max - min
+	}
+
+	pub fn with_saturation(&self, saturation: f32) -> Color {
+		let [hue, _, lightness, alpha] = self.to_hsla();
+		Color::from_hsla(hue, saturation, lightness, alpha)
+	}
+
+	pub fn blend_normal(_c_b: f32, c_s: f32) -> f32 {
+		c_s
+	}
+
+	pub fn blend_multiply(c_b: f32, c_s: f32) -> f32 {
+		c_s * c_b
+	}
+
+	pub fn blend_darken(c_b: f32, c_s: f32) -> f32 {
+		c_s.min(c_b)
+	}
+
+	pub fn blend_color_burn(c_b: f32, c_s: f32) -> f32 {
+		if c_b == 1. {
+			1.
+		} else if c_s == 0. {
+			0.
+		} else {
+			1. - ((1. - c_b) / c_s).min(1.)
+		}
+	}
+
+	pub fn blend_linear_burn(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s - 1.
+	}
+
+	pub fn blend_darker_color(&self, other: Color) -> Color {
+		if self.average_rgb_channels() <= other.average_rgb_channels() {
+			*self
+		} else {
+			other
+		}
+	}
+
+	pub fn blend_screen(c_b: f32, c_s: f32) -> f32 {
+		1. - (1. - c_s) * (1. - c_b)
+	}
+
+	pub fn blend_lighten(c_b: f32, c_s: f32) -> f32 {
+		c_s.max(c_b)
+	}
+
+	pub fn blend_color_dodge(c_b: f32, c_s: f32) -> f32 {
+		if c_s == 1. {
+			1.
+		} else {
+			(c_b / (1. - c_s)).min(1.)
+		}
+	}
+
+	pub fn blend_linear_dodge(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s
+	}
+
+	pub fn blend_lighter_color(&self, other: Color) -> Color {
+		if self.average_rgb_channels() >= other.average_rgb_channels() {
+			*self
+		} else {
+			other
+		}
+	}
+
+	pub fn blend_softlight(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			c_b - (1. - 2. * c_s) * c_b * (1. - c_b)
+		} else {
+			let d: fn(f32) -> f32 = |x| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
+			c_b + (2. * c_s - 1.) * (d(c_b) - c_b)
+		}
+	}
+
+	pub fn blend_hardlight(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_multiply(2. * c_s, c_b)
+		} else {
+			Color::blend_screen(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_color_burn(2. * c_s, c_b)
+		} else {
+			Color::blend_color_dodge(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_linear_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_linear_burn(2. * c_s, c_b)
+		} else {
+			Color::blend_linear_dodge(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_pin_light(c_b: f32, c_s: f32) -> f32 {
+		if c_s <= 0.5 {
+			Color::blend_darken(2. * c_s, c_b)
+		} else {
+			Color::blend_lighten(2. * c_s - 1., c_b)
+		}
+	}
+
+	pub fn blend_hard_mix(c_b: f32, c_s: f32) -> f32 {
+		if Color::blend_linear_light(c_b, c_s) < 0.5 {
+			0.
+		} else {
+			1.
+		}
+	}
+
+	pub fn blend_difference(c_b: f32, c_s: f32) -> f32 {
+		(c_b - c_s).abs()
+	}
+
+	pub fn blend_exclusion(c_b: f32, c_s: f32) -> f32 {
+		c_b + c_s - 2. * c_b * c_s
+	}
+
+	pub fn blend_subtract(c_b: f32, c_s: f32) -> f32 {
+		c_b - c_s
+	}
+
+	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
+		if c_b == 0. {
+			1.
+		} else {
+			c_b / c_s
+		}
+	}
+
+	pub fn blend_hue(&self, c_s: Color) -> Color {
+		let sat_b = self.saturation();
+		let lum_b = self.luminance_rec_601();
+		c_s.with_saturation(sat_b).with_luminance(lum_b)
+	}
+
+	pub fn blend_saturation(&self, c_s: Color) -> Color {
+		let sat_s = c_s.saturation();
+		let lum_b = self.luminance_rec_601();
+
+		self.with_saturation(sat_s).with_luminance(lum_b)
+	}
+
+	pub fn blend_color(&self, c_s: Color) -> Color {
+		let lum_b = self.luminance_rec_601();
+
+		c_s.with_luminance(lum_b)
+	}
+
+	pub fn blend_luminosity(&self, c_s: Color) -> Color {
+		let lum_s = c_s.luminance_rec_601();
+
+		self.with_luminance(lum_s)
+	}
+
 	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
 	///
 	/// # Examples
@@ -259,6 +434,7 @@ impl Color {
 	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
 	/// assert!("7C67FA61" == color.rgba_hex())
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn rgba_hex(&self) -> String {
 		format!(
 			"{:02X?}{:02X?}{:02X?}{:02X?}",
@@ -275,6 +451,7 @@ impl Color {
 	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
 	/// assert!("7C67FA" == color.rgb_hex())
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn rgb_hex(&self) -> String {
 		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8,)
 	}
@@ -368,9 +545,9 @@ impl Color {
 	/// Linearly interpolates between two colors based on t.
 	///
 	/// T must be between 0 and 1.
-	pub fn lerp(self, other: Color, t: f32) -> Option<Self> {
+	pub fn lerp(self, other: Color, t: f32) -> Self {
 		assert!((0. ..=1.).contains(&t));
-		Color::from_rgbaf32(
+		Color::from_rgbaf32_unchecked(
 			self.red + ((other.red - self.red) * t),
 			self.green + ((other.green - self.green) * t),
 			self.blue + ((other.blue - self.blue) * t),
@@ -424,6 +601,24 @@ impl Color {
 	}
 	pub fn map_rgb<F: Fn(f32) -> f32>(&self, f: F) -> Self {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
+	}
+	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
+		let color = Color {
+			red: f(self.red, other.red),
+			green: f(self.green, other.green),
+			blue: f(self.blue, other.blue),
+			alpha: self.alpha,
+		};
+		#[cfg(feature = "log")]
+		if *self == Color::RED {
+			debug!("{} {} {} {}", color.red, color.green, color.blue, color.alpha);
+		}
+		Color {
+			red: f(self.red, other.red).clamp(0., 1.),
+			green: f(self.green, other.green).clamp(0., 1.),
+			blue: f(self.blue, other.blue).clamp(0., 1.),
+			alpha: self.alpha,
+		}
 	}
 }
 

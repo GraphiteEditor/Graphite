@@ -40,6 +40,28 @@ impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 		Self { node, _i: core::marker::PhantomData }
 	}
 }
+pub struct DynAnyInRefNode<I, O, Node> {
+	node: Node,
+	_i: PhantomData<(I, O)>,
+}
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyInRefNode<_I, _O, N>
+where
+	N: for<'any_input> Node<'any_input, &'any_input _I, Output = _O>,
+{
+	type Output = Any<'input>;
+	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
+		{
+			let node_name = core::any::type_name::<N>();
+			let input: Box<&_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {e} in:\n{node_name}"));
+			Box::new(self.node.eval(*input))
+		}
+	}
+}
+impl<_I, _O, S0> DynAnyInRefNode<_I, _O, S0> {
+	pub const fn new(node: S0) -> Self {
+		Self { node, _i: core::marker::PhantomData }
+	}
+}
 
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedPinned<'n>;

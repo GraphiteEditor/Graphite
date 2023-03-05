@@ -3,7 +3,12 @@ use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
 use crate::{SubpathTValue, TValue};
 
-impl Subpath {
+impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+	/// Get whether the subpath is closed.
+	pub fn closed(&self) -> bool {
+		self.closed
+	}
+
 	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn insert(&mut self, t: SubpathTValue) {
@@ -22,11 +27,53 @@ impl Subpath {
 			anchor: first.end(),
 			in_handle: first.handle_end(),
 			out_handle: second.handle_start(),
+			id: ManipulatorGroupId::new(),
 		};
 		let number_of_groups = self.manipulator_groups.len() + 1;
 		self.manipulator_groups.insert((segment_index) + 1, new_group);
 		self.manipulator_groups[segment_index % number_of_groups].out_handle = first.handle_start();
 		self.manipulator_groups[(segment_index + 2) % number_of_groups].in_handle = second.handle_end();
+	}
+
+	/// Append a [Bezier] to the end of a subpath from a vector of [Bezier].
+	/// The `append_type` parameter determines how the function behaves when the subpath's last anchor is not equal to the Bezier's start point.
+	/// - `IgnoreStart`: drops the bezier's start point in favor of the subpath's last anchor
+	/// - `SmoothJoin(f64)`: joins the subpath's endpoint with the bezier's start with a another Bezier segment that is continuous up to the second derivative
+	///   if the difference between the subpath's end point and Bezier's start point exceeds the wrapped integer value.
+	/// This function assumes that the position of the [Bezier]'s starting point is equal to that of the Subpath's last manipulator group.
+	pub fn append_bezier(&mut self, bezier: &Bezier, append_type: AppendType) {
+		if self.manipulator_groups.is_empty() {
+			self.manipulator_groups = vec![ManipulatorGroup {
+				anchor: bezier.start(),
+				in_handle: None,
+				out_handle: None,
+				id: ManipulatorGroupId::new(),
+			}];
+		}
+		let mut last_index = self.manipulator_groups.len() - 1;
+		let last_anchor = self.manipulator_groups[last_index].anchor;
+
+		if let AppendType::SmoothJoin(max_absolute_difference) = append_type {
+			// If the provided Bezier does not start at a location similar to the end of the Subpath,
+			// add an additional manipulator group to represent a smooth join with a new bezier in between
+			if !last_anchor.abs_diff_eq(bezier.start(), max_absolute_difference) {
+				let last_bezier = if self.manipulator_groups.len() > 1 {
+					self.manipulator_groups[last_index - 1].to_bezier(&self.manipulator_groups[last_index])
+				} else {
+					Bezier::from_linear_dvec2(last_anchor, last_anchor)
+				};
+				let join_bezier = last_bezier.join(bezier);
+				self.append_bezier(&join_bezier, AppendType::IgnoreStart);
+				last_index = self.manipulator_groups.len() - 1;
+			}
+		}
+		self.manipulator_groups[last_index].out_handle = bezier.handle_start();
+		self.manipulator_groups.push(ManipulatorGroup {
+			anchor: bezier.end(),
+			in_handle: bezier.handle_end(),
+			out_handle: None,
+			id: ManipulatorGroupId::new(),
+		});
 	}
 }
 
@@ -37,7 +84,7 @@ mod tests {
 	use super::*;
 	use glam::DVec2;
 
-	fn set_up_open_subpath() -> Subpath {
+	fn set_up_open_subpath() -> Subpath<EmptyId> {
 		let start = DVec2::new(20., 30.);
 		let middle1 = DVec2::new(80., 90.);
 		let middle2 = DVec2::new(100., 100.);
@@ -53,28 +100,32 @@ mod tests {
 					anchor: start,
 					in_handle: None,
 					out_handle: Some(handle1),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle1,
 					in_handle: None,
 					out_handle: Some(handle2),
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: middle2,
 					in_handle: None,
 					out_handle: None,
+					id: EmptyId,
 				},
 				ManipulatorGroup {
 					anchor: end,
 					in_handle: None,
 					out_handle: Some(handle3),
+					id: EmptyId,
 				},
 			],
 			false,
 		)
 	}
 
-	fn set_up_closed_subpath() -> Subpath {
+	fn set_up_closed_subpath() -> Subpath<EmptyId> {
 		let mut subpath = set_up_open_subpath();
 		subpath.closed = true;
 		subpath

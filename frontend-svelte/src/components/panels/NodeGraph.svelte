@@ -175,11 +175,21 @@
 	}
 
 	function scroll(e: WheelEvent) {
-		const scrollX = e.deltaX;
-		const scrollY = e.deltaY;
+		const [scrollX, scrollY] = [e.deltaX, e.deltaY];
+
+		// If zoom with scroll is enabled: horizontal pan with Ctrl, vertical pan with Shift
+		const zoomWithScroll = $nodeGraph.zoomWithScroll;
+		const zoom = zoomWithScroll ? !e.ctrlKey && !e.shiftKey : e.ctrlKey;
+		const horizontalPan = zoomWithScroll ? e.ctrlKey : !e.ctrlKey && e.shiftKey;
+
+		// Prevent the web page from being zoomed
+		if (e.ctrlKey) e.preventDefault();
+
+		// Always pan horizontally in response to a horizontal scroll wheel movement
+		transform.x -= scrollX / transform.scale;
 
 		// Zoom
-		if (e.ctrlKey) {
+		if (zoom) {
 			let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 			if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
@@ -199,15 +209,14 @@
 			transform.x -= (deltaX / transform.scale) * zoomFactor;
 			transform.y -= (deltaY / transform.scale) * zoomFactor;
 
-			// Prevent actually zooming into the page when pinch-zooming on laptop trackpads
-			e.preventDefault();
+			return;
 		}
+
 		// Pan
-		else if (!e.shiftKey) {
-			transform.x -= scrollX / transform.scale;
-			transform.y -= scrollY / transform.scale;
-		} else {
+		if (horizontalPan) {
 			transform.x -= scrollY / transform.scale;
+		} else {
+			transform.y -= scrollY / transform.scale;
 		}
 	}
 
@@ -218,13 +227,17 @@
 		}
 	}
 
-	// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
+	// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the whole browser window) works
 	function pointerDown(e: PointerEvent) {
-		// Exit the add node popup by clicking elsewhere in the graph
-		if (nodeListLocation && !(e.target as HTMLElement).closest("[data-node-list]")) nodeListLocation = undefined;
+		const [lmb, rmb] = [e.button === 0, e.button === 2];
 
-		// Handle the add node popup on right click
-		if (e.button === 2) {
+		const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
+		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+		const nodeId = node?.getAttribute("data-node") || undefined;
+		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
+
+		// Create the add node popup on right click, then exit
+		if (rmb) {
 			const graphBounds = graph.div().getBoundingClientRect();
 			nodeListLocation = {
 				x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
@@ -239,20 +252,19 @@
 			return;
 		}
 
-		const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
-		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		const nodeId = node?.getAttribute("data-node") || undefined;
-		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
-
 		// If the user is clicking on the add nodes list, exit here
-		if (nodeList) return;
+		if (lmb && nodeList) return;
 
-		if (e.altKey && nodeId) {
+		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
+		if (lmb) nodeListLocation = undefined;
+
+		// Alt-click sets the clicked node as previewed
+		if (lmb && e.altKey && nodeId) {
 			editor.instance.togglePreview(BigInt(nodeId));
 		}
 
 		// Clicked on a port dot
-		if (port && node) {
+		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
 
 			if (isOutput) linkInProgressFromConnector = port;
@@ -279,7 +291,7 @@
 		}
 
 		// Clicked on a node
-		if (nodeId) {
+		if (lmb && nodeId) {
 			let modifiedSelected = false;
 
 			const id = BigInt(nodeId);
@@ -306,11 +318,13 @@
 		}
 
 		// Clicked on the graph background
-		panning = true;
-		if (selected.length !== 0) {
+		if (lmb && selected.length !== 0) {
 			selected = [];
-			editor.instance.selectNodes(new BigUint64Array(selected));
+			editor.instance.selectNodes(new BigUint64Array([]));
 		}
+
+		// LMB clicked on the graph background or MMB clicked anywhere
+		panning = true;
 	}
 
 	function doubleClick(e: MouseEvent) {
