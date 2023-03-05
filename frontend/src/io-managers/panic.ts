@@ -4,8 +4,7 @@ import { type IconName } from "@/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@/utility-functions/platform";
 import { stripIndents } from "@/utility-functions/strip-indents";
 import { type Editor } from "@/wasm-communication/editor";
-import type { TextLabel } from "@/wasm-communication/messages";
-import { type TextButtonWidget, type WidgetLayout, Widget, DisplayDialogPanic } from "@/wasm-communication/messages";
+import { type TextButtonWidget, type TextLabel, type WidgetLayout, Widget, DisplayDialogPanic } from "@/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
@@ -67,10 +66,10 @@ function githubUrl(panicDetails: string): string {
 		**Steps To Reproduce**
 		Describe precisely how the crash occurred, step by step, starting with a new editor window.
 		1. Open the Graphite Editor at https://editor.graphite.rs
-		2. 
-		3. 
-		4. 
-		5. 
+		2.
+		3.
+		4.
+		5.
 
 		**Additional Details**
 		Provide any further information or context that you think would be helpful in fixing the issue. Screenshots or video can be linked or attached to this issue.
