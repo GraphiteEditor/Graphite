@@ -15,7 +15,6 @@ use http::{Response, StatusCode};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tauri::Manager;
 
 static IMAGES: Mutex<Option<HashMap<String, FrontendImageData>>> = Mutex::new(None);
 static EDITOR: Mutex<Option<Editor>> = Mutex::new(None);
@@ -66,8 +65,9 @@ async fn main() {
 
 	tauri::Builder::default()
 		.invoke_handler(tauri::generate_handler![set_random_seed, handle_message])
-		.setup(|app| {
-			//app.get_window("main").unwrap().open_devtools();
+		.setup(|_app| {
+			//use tauri::Manager;
+			//_app.get_window("main").unwrap().open_devtools();
 			Ok(())
 		})
 		.run(tauri::generate_context!())

@@ -1,4 +1,4 @@
-use crate::raster::{Color, ImageFrame};
+use crate::raster::Color;
 use crate::Node;
 use dyn_any::{DynAny, StaticType};
 
