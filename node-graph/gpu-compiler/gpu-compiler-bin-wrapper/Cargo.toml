@@ -16,3 +16,4 @@ log = "0.4"
 anyhow = "1.0.66"
 serde_json = "1.0.91"
 serde = { version = "1.0", features = ["derive"] }
+tempfile = "3.4.0"

@@ -24,7 +24,7 @@ base64 = "0.13"
 bytemuck = { version = "1.8" }
 nvtx = { version = "1.1.1", optional = true }
 tempfile = "3"
-spirv-builder = { version = "0.4",  default-features = false, features=["use-installed-tools"] }
+spirv-builder = { version = "0.5",  default-features = false, features=["use-installed-tools"] }
 tera = { version = "1.17.1" }
 anyhow = "1.0.66"
 serde_json = "1.0.91"

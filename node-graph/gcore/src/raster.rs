@@ -2,6 +2,9 @@ use core::{fmt::Debug, marker::PhantomData};
 
 use crate::Node;
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::float::Float;
+
 pub mod color;
 pub use self::color::Color;
 
@@ -180,6 +183,7 @@ impl<'a> ImageWindowIterator<'a> {
 	}
 }
 
+#[cfg(not(target_arch = "spriv"))]
 impl<'a> Iterator for ImageWindowIterator<'a> {
 	type Item = (Color, (i32, i32));
 	#[inline]
@@ -194,6 +198,9 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 		if self.y > max_y {
 			return None;
 		}
+		#[cfg(feature = "gpu")]
+		let value = None;
+		#[cfg(not(feature = "gpu"))]
 		let value = Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x as i32 - start_x, self.y as i32 - start_y)));
 
 		self.x += 1;
@@ -245,21 +252,49 @@ where
 	input.for_each(|x| map_node.eval(x));
 }
 
+#[cfg(target_arch = "spirv")]
+const NOTHING: () = ();
+
 use dyn_any::{DynAny, StaticType};
-#[derive(Clone, Debug, PartialEq, DynAny, Default, Copy)]
+#[derive(Clone, Debug, PartialEq, DynAny, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ImageSlice<'a> {
 	pub width: u32,
 	pub height: u32,
+	#[cfg(not(target_arch = "spirv"))]
 	pub data: &'a [Color],
+	#[cfg(target_arch = "spirv")]
+	pub data: &'a (),
+}
+
+#[allow(clippy::derivable_impls)]
+impl<'a> Default for ImageSlice<'a> {
+	#[cfg(not(target_arch = "spirv"))]
+	fn default() -> Self {
+		Self {
+			width: Default::default(),
+			height: Default::default(),
+			data: Default::default(),
+		}
+	}
+	#[cfg(target_arch = "spirv")]
+	fn default() -> Self {
+		Self {
+			width: Default::default(),
+			height: Default::default(),
+			data: &NOTHING,
+		}
+	}
 }
 
 impl ImageSlice<'_> {
+	#[cfg(not(target_arch = "spirv"))]
 	pub const fn empty() -> Self {
 		Self { width: 0, height: 0, data: &[] }
 	}
 }
 
+#[cfg(not(target_arch = "spirv"))]
 impl<'a> IntoIterator for ImageSlice<'a> {
 	type Item = &'a Color;
 	type IntoIter = core::slice::Iter<'a, Color>;
@@ -268,6 +303,7 @@ impl<'a> IntoIterator for ImageSlice<'a> {
 	}
 }
 
+#[cfg(not(target_arch = "spirv"))]
 impl<'a> IntoIterator for &'a ImageSlice<'a> {
 	type Item = &'a Color;
 	type IntoIter = core::slice::Iter<'a, Color>;

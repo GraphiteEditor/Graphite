@@ -24,6 +24,9 @@ use crate::executor::NodeContainer;
 
 use dyn_any::StaticType;
 
+#[cfg(feature = "quantization")]
+use graphene_core::quantization::{Quantization, QuantizationChannels};
+
 macro_rules! construct_node {
 	($args: ident, $path:ty, [$($type:tt),*]) => {{
 		let mut args: Vec<TypeErasedPinnedRef<'static>> = $args.clone();
@@ -133,6 +136,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
 		register_node!(graphene_core::ops::SomeNode, input: ImageFrame, params: []),
+		#[cfg(feature = "gpu")]
+		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image, params: [String]),
 		vec![(
 			NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 			|args| {
@@ -215,7 +220,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>"),
 				|args| {
-					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[15]);
+					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[16]);
 					let node = graphene_std::raster::ImaginateNode::new(cached);
 					let any = DynAnyNode::new(ValueNode::new(node));
 					any.into_type_erased()
@@ -224,6 +229,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					concrete!(ImageFrame),
 					concrete!(ImageFrame),
 					vec![
+						(concrete!(()), concrete!(DAffine2)),
 						(concrete!(()), concrete!(f64)),
 						(concrete!(()), concrete!(Option<DVec2>)),
 						(concrete!(()), concrete!(f64)),
@@ -292,9 +298,27 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 				NodeIOTypes::new(concrete!(Image), concrete!(&Image), vec![]),
 			),
+			#[cfg(feature = "quantization")]
+			(
+				NodeIdentifier::new("graphene_std::memo::CacheNode"),
+				|_| {
+					let node: CacheNode<QuantizationChannels> = graphene_std::memo::CacheNode::new();
+					let any = DynAnyRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(QuantizationChannels), concrete!(&QuantizationChannels), vec![]),
+			),
 		],
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_>, input: Image, params: [DAffine2]),
+		#[cfg(feature = "quantization")]
+		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame, params: [u32, u32]),
+		#[cfg(feature = "quantization")]
+		raster_node!(graphene_core::quantization::QuantizeNode<_>, params: [QuantizationChannels]),
+		#[cfg(feature = "quantization")]
+		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, params: [QuantizationChannels]),
+		#[cfg(feature = "quantization")]
+		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		register_node!(graphene_core::vector::TransformNode<_, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2]),
 		register_node!(graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>, input: VectorData, params: [ graphene_core::vector::style::FillType, graphene_core::Color, graphene_core::vector::style::GradientType, DVec2, DVec2, DAffine2, Vec<(f64, Option<graphene_core::Color>)>]),
 		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [graphene_core::Color, f64, Vec<f32>, f64, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f64]),
@@ -305,157 +329,46 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			params: []
 		),
 		/*
-			(NodeIdentifier::new("graphene_std::raster::ImageNode", &[concrete!("&str")]), |_proto_node, stack| {
-				stack.push_fn(|_nodes| {
-					let image = FnNode::new(|s: &str| graphene_std::raster::image_node::<&str>().eval(s).unwrap());
-					let node: DynAnyNode<_, &str, _, _> = DynAnyNode::new(image);
+		(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]), |_proto_node, stack| {
+			stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitCircleGenerator).into_type_erased())
+		}),
+		(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitSquareGenerator", &[]), |_proto_node, stack| {
+			stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitSquareGenerator).into_type_erased())
+		}),
+		(NodeIdentifier::new("graphene_std::vector::generator_nodes::BlitSubpath", &[]), |proto_node, stack| {
+			stack.push_fn(move |nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("BlitSubpath without subpath input") };
+				let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
+				let input_node: DowncastBothNode<_, (), Subpath> = DowncastBothNode::new(value_node);
+				let node = DynAnyNode::new(graphene_std::vector::generator_nodes::BlitSubpath::new(input_node));
+
+				if let ProtoNodeInput::Node(node_id) = proto_node.input {
+					let pre_node = nodes.get(node_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
 					node.into_type_erased()
-				})
-			}),
-			(NodeIdentifier::new("graphene_std::raster::ExportImageNode", &[concrete!("&str")]), |proto_node, stack| {
-				stack.push_fn(|nodes| {
-					let pre_node = nodes.get(proto_node.input.unwrap_node() as usize).unwrap();
+				}
+			})
+		}),
+		(NodeIdentifier::new("graphene_std::vector::generator_nodes::TransformSubpathNode", &[]), |proto_node, stack| {
+			stack.push_fn(move |nodes| {
+				let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("TransformSubpathNode without subpath input") };
+				let translate_node: DowncastBothNode<_, (), DVec2> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
+				let rotate_node: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[1] as usize).unwrap());
+				let scale_node: DowncastBothNode<_, (), DVec2> = DowncastBothNode::new(nodes.get(construction_nodes[2] as usize).unwrap());
+				let shear_node: DowncastBothNode<_, (), DVec2> = DowncastBothNode::new(nodes.get(construction_nodes[3] as usize).unwrap());
 
-					let image = FnNode::new(|input: (Image, &str)| graphene_std::raster::export_image_node().eval(input).unwrap());
-					let node: DynAnyNode<_, (Image, &str), _, _> = DynAnyNode::new(image);
-					let node = (pre_node).then(node);
+				let node = DynAnyNode::new(graphene_std::vector::generator_nodes::TransformSubpathNode::new(translate_node, rotate_node, scale_node, shear_node));
+
+				if let ProtoNodeInput::Node(node_id) = proto_node.input {
+					let pre_node = nodes.get(node_id as usize).unwrap();
+					(pre_node).then(node).into_type_erased()
+				} else {
 					node.into_type_erased()
-				})
-			}),
-			(
-				NodeIdentifier::new("graphene_core::structural::ConsNode", &[concrete!("Image"), concrete!("&str")]),
-				|proto_node, stack| {
-					let node_id = proto_node.input.unwrap_node() as usize;
-					if let ConstructionArgs::Nodes(cons_node_arg) = proto_node.construction_args {
-						stack.push_fn(move |nodes| {
-							let pre_node = nodes.get(node_id).unwrap();
-							let cons_node_arg = nodes.get(cons_node_arg[0] as usize).unwrap();
-
-							let cons_node = ConsNode::new(DowncastNode::<_, &str>::new(cons_node_arg));
-							let node: DynAnyNode<_, Image, _, _> = DynAnyNode::new(cons_node);
-							let node = (pre_node).then(node);
-							node.into_type_erased()
-						})
-					} else {
-						unimplemented!()
-					}
-				},
-			),
-			(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitCircleGenerator", &[]), |_proto_node, stack| {
-				stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitCircleGenerator).into_type_erased())
-			}),
-			(NodeIdentifier::new("graphene_std::vector::generator_nodes::UnitSquareGenerator", &[]), |_proto_node, stack| {
-				stack.push_fn(|_nodes| DynAnyNode::new(graphene_std::vector::generator_nodes::UnitSquareGenerator).into_type_erased())
-			}),
-			(NodeIdentifier::new("graphene_std::vector::generator_nodes::BlitSubpath", &[]), |proto_node, stack| {
-				stack.push_fn(move |nodes| {
-					let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("BlitSubpath without subpath input") };
-					let value_node = nodes.get(construction_nodes[0] as usize).unwrap();
-					let input_node: DowncastBothNode<_, (), Subpath> = DowncastBothNode::new(value_node);
-					let node = DynAnyNode::new(graphene_std::vector::generator_nodes::BlitSubpath::new(input_node));
-
-					if let ProtoNodeInput::Node(node_id) = proto_node.input {
-						let pre_node = nodes.get(node_id as usize).unwrap();
-						(pre_node).then(node).into_type_erased()
-					} else {
-						node.into_type_erased()
-					}
-				})
-			}),
-			(NodeIdentifier::new("graphene_std::vector::generator_nodes::TransformSubpathNode", &[]), |proto_node, stack| {
-				stack.push_fn(move |nodes| {
-					let ConstructionArgs::Nodes(construction_nodes) = proto_node.construction_args else { unreachable!("TransformSubpathNode without subpath input") };
-					let translate_node: DowncastBothNode<_, (), DVec2> = DowncastBothNode::new(nodes.get(construction_nodes[0] as usize).unwrap());
-					let rotate_node: DowncastBothNode<_, (), f64> = DowncastBothNode::new(nodes.get(construction_nodes[1] as usize).unwrap());
-					let scale_node: DowncastBothNode<_, (), DVec2> = DowncastBothNode::new(nodes.get(construction_nodes[2] as usize).unwrap());
-					let shear_node: DowncastBothNode<_, (), DVec2> = DowncastBothNode::new(nodes.get(construction_nodes[3] as usize).unwrap());
-
-					let node = DynAnyNode::new(graphene_std::vector::generator_nodes::TransformSubpathNode::new(translate_node, rotate_node, scale_node, shear_node));
-
-					if let ProtoNodeInput::Node(node_id) = proto_node.input {
-						let pre_node = nodes.get(node_id as usize).unwrap();
-						(pre_node).then(node).into_type_erased()
-					} else {
-						node.into_type_erased()
-					}
-				})
-			}),
-			#[cfg(feature = "gpu")]
-			(
-				NodeIdentifier::new("graphene_std::executor::MapGpuNode", &[concrete!("&TypeErasedNode"), concrete!("Color"), concrete!("Color")]),
-				|proto_node, stack| {
-					if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
-						stack.push_fn(move |nodes| {
-							info!("Map image Depending upon id {:?}", operation_node_id);
-							let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
-							let input_node: DowncastBothNode<_, (), &graph_craft::document::NodeNetwork> = DowncastBothNode::new(operation_node);
-							let map_node: graphene_std::executor::MapGpuNode<_, Vec<u32>, u32, u32> = graphene_std::executor::MapGpuNode::new(input_node);
-							let map_node = DynAnyNode::new(map_node);
-
-							if let ProtoNodeInput::Node(node_id) = proto_node.input {
-								let pre_node = nodes.get(node_id as usize).unwrap();
-								(pre_node).then(map_node).into_type_erased()
-							} else {
-								map_node.into_type_erased()
-							}
-						})
-					} else {
-						unimplemented!()
-					}
-				},
-			),
-			#[cfg(feature = "gpu")]
-			(
-				NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode", &[concrete!("&TypeErasedNode")]),
-				|proto_node, stack| {
-					if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
-						stack.push_fn(move |nodes| {
-							info!("Map image Depending upon id {:?}", operation_node_id);
-							let operation_node = nodes.get(operation_node_id[0] as usize).unwrap();
-							let input_node: DowncastBothNode<_, (), String> = DowncastBothNode::new(operation_node);
-							let map_node = graphene_std::executor::MapGpuSingleImageNode(input_node);
-							let map_node = DynAnyNode::new(map_node);
-
-							if let ProtoNodeInput::Node(node_id) = proto_node.input {
-								let pre_node = nodes.get(node_id as usize).unwrap();
-								(pre_node).then(map_node).into_type_erased()
-							} else {
-								map_node.into_type_erased()
-							}
-						})
-					} else {
-						unimplemented!()
-					}
-				},
-			),
-			#[cfg(feature = "quantization")]
-			(
-				NodeIdentifier::new("graphene_std::quantization::GenerateQuantizationNode", &[concrete!("&TypeErasedNode")]),
-				|proto_node, stack| {
-					if let ConstructionArgs::Nodes(operation_node_id) = proto_node.construction_args {
-						stack.push_fn(move |nodes| {
-							info!("Quantization Depending upon id {:?}", operation_node_id);
-							let samples_node = nodes.get(operation_node_id[0] as usize).unwrap();
-							let index_node = nodes.get(operation_node_id[1] as usize).unwrap();
-							let samples_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(samples_node);
-							let index_node: DowncastBothNode<_, (), u32> = DowncastBothNode::new(index_node);
-							let map_node = graphene_std::quantization::GenerateQuantizationNode::new(samples_node, index_node);
-							let map_node = DynAnyNode::new(map_node);
-
-							if let ProtoNodeInput::Node(node_id) = proto_node.input {
-								let pre_node = nodes.get(node_id as usize).unwrap();
-								(pre_node).then(map_node).into_type_erased()
-							} else {
-								map_node.into_type_erased()
-							}
-						})
-					} else {
-						unimplemented!()
-					}
-				},
-			),
-		<<<<<<< HEAD
-			*/
+				}
+			})
+		}),
+		*/
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {
