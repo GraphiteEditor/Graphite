@@ -5,13 +5,20 @@
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"author": "Graphite Authors <contact@graphite.rs>",
 	"scripts": {
-		"dev": "concurrently -k --handle-input \"vite\" \"npm run watch:wasm\"",
-		"lint": "eslint src",
+		"start": "npm run dev",
+        "dev": "wasm-pack build ./wasm --dev && concurrently -k --handle-input \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
+		"lint": "eslint src || (npm run print-linting-help && exit 1)",
+		"tauri:dev": "echo 'Make sure you build the wasm binary for tauri using `npm run tauri:build-wasm`' && vite",
+        "tauri:build": "npm run tauri:build-wasm && vite build || (npm run print-building-help && exit 1)",
+        "tauri:build-wasm": "wasm-pack build ./wasm --release -- --features tauri",
 		"build": "npm run build-wasm && vite build",
 		"build-wasm": "wasm-pack build ./wasm --release",
-		"watch:wasm": "cd wasm && cargo watch -s \"wasm-pack build --dev\"",
+		"watch:wasm": "cargo watch --postpone -C wasm -s \"wasm-pack build . --dev\"",
 		"preview": "vite preview",
-		"check": "svelte-check --tsconfig ./tsconfig.json"
+		"check": "svelte-check --tsconfig ./tsconfig.json",
+		"--------------------": "",
+        "print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
+        "print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^1.2.0",
