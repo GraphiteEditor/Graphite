@@ -1,7 +1,8 @@
-use crate::consts::{SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
@@ -10,9 +11,8 @@ use crate::messages::tool::common_functionality::transformation_cage::axis_align
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use bezier_rs::ManipulatorGroup;
+use document_legacy::{LayerId, Operation};
 use document_legacy::intersection::Quad;
-use document_legacy::Operation;
 use graphene_core::vector::manipulator_point::ManipulatorPoint;
 use graphene_std::vector::consts::ManipulatorType;
 
@@ -45,7 +45,9 @@ pub enum PathToolMessage {
 	DragStart {
 		add_to_selection: Key,
 	},
-	DragStop,
+	DragStop {
+		shift_mirror_distance: Key,
+	},
 	InsertPoint,
 	PointerMove {
 		alt_mirror_angle: Key,
@@ -145,6 +147,8 @@ struct PathToolData {
 	alt_debounce: bool,
 	grs_initial_points: Vec<DVec2>,
 	factor: f64,
+	// bounding_box_overlays: Option<BoundingBoxOverlays>,
+	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<u64, f64>>>,
 }
 
 impl Fsm for PathToolFsmState {
@@ -175,6 +179,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.overlay_renderer.render_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
 
+					tool_data.opposing_handle_lengths = None;
 					// This can happen in any state (which is why we return self)
 					self
 				}
@@ -189,13 +194,14 @@ impl Fsm for PathToolFsmState {
 				}
 				// Mouse down
 				(_, PathToolMessage::DragStart { add_to_selection }) => {
+					let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
-					let toggle_add_to_selection = input.keyboard.get(add_to_selection as usize);
+					tool_data.opposing_handle_lengths = None;
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = tool_data
 						.shape_editor
-						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, toggle_add_to_selection, responses)
+						.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift_pressed, responses)
 					{
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
@@ -236,19 +242,26 @@ impl Fsm for PathToolFsmState {
 							.document_legacy
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
-							if toggle_add_to_selection {
+							if shift_pressed {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
 							} else {
+								// Selects the topmost layer when selecting intersecting shapes
+								let top_most_intersection = intersection[intersection.len() - 1].clone();
 								responses.push_back(
 									DocumentMessage::SetSelectedLayers {
-										replacement_selected_layers: intersection,
+										replacement_selected_layers: vec![top_most_intersection.clone()],
 									}
 									.into(),
 								);
+								tool_data.drag_start_pos = input.mouse.position;
+								tool_data.previous_mouse_position = input.mouse.position;
+								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
+								tool_data.shape_editor.select_all_anchors(responses, top_most_intersection);
+								return PathToolFsmState::Dragging;
 							}
 						} else {
 							// Clear the previous selection if we didn't find anything
-							if !input.keyboard.get(toggle_add_to_selection as usize) {
+							if !input.keyboard.get(shift_pressed as usize) {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
@@ -260,7 +273,7 @@ impl Fsm for PathToolFsmState {
 				(
 					PathToolFsmState::Rotating,
 					PathToolMessage::PointerMove {
-						alt_mirror_angle,
+						alt_mirror_angle: _,
 						shift_mirror_distance,
 					},
 				) => {
@@ -291,8 +304,8 @@ impl Fsm for PathToolFsmState {
 					let layerspace_rotation = viewspace.inverse() * delta;
 					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
 					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
-
-					for point in points {
+					let point_count = 0;
+					for (point_count, point) in points.enumerate() {
 						let mut group_id = 0;
 						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
 							let points_in_group = man_group.1.selected_points();
@@ -307,12 +320,11 @@ impl Fsm for PathToolFsmState {
 
 						// transform the new point from layer position to viewspace position
 						let new_pos = layerspace_rotation.transform_point2(viewport_point);
-						//TODO: check is this the right pos?
-						debug!("group_id rot {}", group_id);
+						let manip_type = point.manipulator_type;
 						let op = Operation::MoveManipulatorPoint {
 							layer_path: path[0].to_vec(),
 							id: group_id, //manGroupID
-							manipulator_type: point.manipulator_type,
+							manipulator_type: manip_type,
 							position: new_pos.into(),
 						}
 						.into();
@@ -329,7 +341,7 @@ impl Fsm for PathToolFsmState {
 				(
 					PathToolFsmState::Scaling,
 					PathToolMessage::PointerMove {
-						alt_mirror_angle,
+						alt_mirror_angle: _,
 						shift_mirror_distance,
 					},
 				) => {
@@ -337,15 +349,13 @@ impl Fsm for PathToolFsmState {
 					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
 					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
 					let pivot = tool_data.grs_initial_points.iter().map(|point| viewspace.transform_point2(*point)).sum::<DVec2>() / tool_data.grs_initial_points.len() as f64;
-
-					//drag start is in pixels // center is in relative pos
 					let change = {
 						let previous_frame_dist = (tool_data.previous_mouse_position - pivot).length();
 						let current_frame_dist = (input.mouse.position - pivot).length();
 						let start_transform_dist = (tool_data.grs_mouse_start - pivot).length();
 						debug!("previous_frame_dist {}", previous_frame_dist);
 						debug!("current_frame_dist {}", current_frame_dist);
-						debug!("start_transform_dist {}", start_transform_dist);	
+						debug!("start_transform_dist {}", start_transform_dist);
 						(current_frame_dist - previous_frame_dist) / start_transform_dist
 					};
 					tool_data.factor += change;
@@ -411,12 +421,24 @@ impl Fsm for PathToolFsmState {
 						tool_data.alt_debounce = alt_pressed;
 						// Only on alt down
 						if alt_pressed {
+							tool_data.opposing_handle_lengths = None;
 							tool_data.shape_editor.toggle_handle_mirroring_on_selected(true, responses);
 						}
 					}
 
 					// Determine when shift state changes
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+					if shift_pressed {
+						if tool_data.opposing_handle_lengths.is_none() {
+							tool_data.opposing_handle_lengths = Some(tool_data.shape_editor.opposing_handle_lengths(&document.document_legacy));
+						}
+					} else {
+						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
+							tool_data.shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+							tool_data.opposing_handle_lengths = None;
+						}
+					}
 
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					let axis_aligned_position = axis_align_drag(shift_pressed, snapped_position, tool_data.drag_start_pos);
@@ -454,7 +476,22 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// Mouse up
-				(_, PathToolMessage::DragStop) => {
+				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
+					let selected_points = tool_data.shape_editor.selected_points(&document.document_legacy);
+					let nearest_point = tool_data.shape_editor.find_nearest_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD);
+					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
+						for point in selected_points {
+							if nearest_point == Some(point) {
+								responses.push_back(DocumentMessage::DeselectAllManipulatorPoints.into());
+								tool_data
+									.shape_editor
+									.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false, responses);
+							}
+						}
+					}
+
 					tool_data.snap_manager.cleanup(responses);
 					PathToolFsmState::Ready
 				}

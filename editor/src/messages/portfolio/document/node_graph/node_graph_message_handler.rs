@@ -10,12 +10,13 @@ use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graphene_core::*;
 mod document_node_types;
 mod node_properties;
 
 use glam::IVec2;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
 	#[default]
 	#[serde(rename = "general")]
@@ -310,7 +311,7 @@ impl NodeGraphMessageHandler {
 				exposed_inputs: node
 					.inputs
 					.iter()
-					.zip(node_type.inputs)
+					.zip(node_type.inputs.iter())
 					.skip(1)
 					.filter(|(input, _)| input.is_exposed())
 					.map(|(_, input_type)| NodeGraphInput {
@@ -769,7 +770,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					if let Some(node) = network.nodes.get_mut(node_id) {
 						// Extend number of inputs if not already large enough
 						if input_index >= node.inputs.len() {
-							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network));
+							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network(generic!(T))));
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 						if network.connected_to_output(*node_id) {

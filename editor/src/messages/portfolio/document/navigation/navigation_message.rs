@@ -17,6 +17,7 @@ pub enum NavigationMessage {
 		padding_scale_factor: Option<f32>,
 		prevent_zoom_past_100: bool,
 	},
+	FitViewportToSelection,
 	IncreaseCanvasZoom {
 		center_on_mouse: bool,
 	},

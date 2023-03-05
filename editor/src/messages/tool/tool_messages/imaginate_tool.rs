@@ -120,7 +120,7 @@ impl Fsm for ImaginateToolFsmState {
 
 					use graph_craft::document::*;
 
-					let imaginate_node_type = IMAGINATE_NODE;
+					let imaginate_node_type = &*IMAGINATE_NODE;
 
 					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
 					imaginate_inputs[0] = NodeInput::node(0, 0);
