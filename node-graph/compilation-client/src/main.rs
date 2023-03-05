@@ -1,6 +1,5 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
 use graph_craft::concrete;
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 
 use graph_craft::*;
@@ -18,13 +17,7 @@ fn main() {
 			0,
 			DocumentNode {
 				name: "Inc Node".into(),
-				inputs: vec![
-					NodeInput::Network(concrete!(u32)),
-					NodeInput::Value {
-						tagged_value: TaggedValue::U32(1),
-						exposed: false,
-					},
-				],
+				inputs: vec![NodeInput::Network(concrete!(u32))],
 				implementation: DocumentNodeImplementation::Network(add_network()),
 				metadata: DocumentNodeMetadata::default(),
 			},
@@ -34,13 +27,13 @@ fn main() {
 	};
 
 	let compile_request = CompileRequest::new(network, "u32".to_owned(), "u32".to_owned());
-	let response = client.post("http://localhost:3000/compile/spriv").json(&compile_request).send().unwrap();
+	let response = client.post("http://localhost:3000/compile/spirv").json(&compile_request).send().unwrap();
 	println!("response: {:?}", response);
 }
 
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
-		inputs: vec![0, 0],
+		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		disabled: vec![],
 		previous_outputs: None,
@@ -48,10 +41,10 @@ fn add_network() -> NodeNetwork {
 			(
 				0,
 				DocumentNode {
-					name: "Cons".into(),
-					inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
+					name: "Dup".into(),
+					inputs: vec![NodeInput::Network(concrete!(u32))],
 					metadata: DocumentNodeMetadata::default(),
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode")),
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::DupNode")),
 				},
 			),
 			(

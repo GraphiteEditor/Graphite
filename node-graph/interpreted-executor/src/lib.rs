@@ -158,6 +158,6 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let exec = DynamicExecutor::new(protograph).map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
+		let _exec = DynamicExecutor::new(protograph).map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
 	}
 }

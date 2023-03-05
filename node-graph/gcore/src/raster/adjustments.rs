@@ -4,8 +4,12 @@ use crate::Node;
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::float::Float;
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
 pub enum LuminanceCalculation {
 	#[default]
 	SRGB,
@@ -27,8 +31,8 @@ impl LuminanceCalculation {
 	}
 }
 
-impl std::fmt::Display for LuminanceCalculation {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for LuminanceCalculation {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			LuminanceCalculation::SRGB => write!(f, "sRGB"),
 			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
@@ -73,7 +77,8 @@ impl BlendMode {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
 pub enum BlendMode {
 	#[default]
 	// Basic group
@@ -116,8 +121,8 @@ pub enum BlendMode {
 	Luminosity,
 }
 
-impl std::fmt::Display for BlendMode {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for BlendMode {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			BlendMode::Normal => write!(f, "Normal"),
 
@@ -368,8 +373,7 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Color => backdrop.blend_color(source_color),
 		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
 	}
-	.lerp(backdrop, actual_opacity)
-	.unwrap();
+	.lerp(backdrop, actual_opacity);
 }
 
 #[derive(Debug, Clone, Copy)]

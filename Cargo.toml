@@ -44,5 +44,8 @@ opt-level = 3
 [profile.dev.package.graphite-wasm-svelte]
 opt-level = 3
 
+[profile.dev.package.autoquant]
+opt-level = 3
+
 #[profile.dev]
 #opt-level = 3

@@ -133,8 +133,8 @@ impl Gradient {
 				((time - self.positions[index].0) / self.positions.get(index + 1).map(|end| end.0 - self.positions[index].0).unwrap_or_default()) as f32,
 			),
 			// Use the start or the end colour if applicable
-			(Some(v), _) | (_, Some(v)) => Some(v),
-			_ => Some(Color::WHITE),
+			(Some(v), _) | (_, Some(v)) => v,
+			_ => Color::WHITE,
 		};
 
 		// Compute the correct index to keep the positions in order
@@ -146,7 +146,7 @@ impl Gradient {
 		let new_color = get_color(index - 1, new_position);
 
 		// Insert the new stop
-		self.positions.insert(index, (new_position, new_color));
+		self.positions.insert(index, (new_position, Some(new_color)));
 
 		Some(index)
 	}
