@@ -117,8 +117,7 @@
 import { defineComponent, type PropType } from "vue";
 
 import { debouncer } from "@/components/widgets/debounce";
-import type { Widget } from "@/wasm-communication/messages";
-import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
+import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow, type Widget } from "@/wasm-communication/messages";
 
 import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
 import BreadcrumbTrailButtons from "@/components/widgets/buttons/BreadcrumbTrailButtons.vue";

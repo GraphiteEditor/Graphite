@@ -30,8 +30,8 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 	let cargo_toml = create_cargo_toml(matadata)?;
 	std::fs::write(cargo_file, cargo_toml)?;
 
-	let toolchain_file = compile_dir.join("rust-toolchain");
-	let toolchain = include_str!("templates/rust-toolchain");
+	let toolchain_file = compile_dir.join("rust-toolchain.toml");
+	let toolchain = include_str!("templates/rust-toolchain.toml");
 	std::fs::write(toolchain_file, toolchain)?;
 
 	// create src dir
@@ -69,7 +69,7 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 
 		nodes.push(Node {
 			id,
-			fqn: fqn.to_string(),
+			fqn: fqn.to_string().split("<").next().unwrap().to_owned(),
 			args: node.construction_args.new_function_args(),
 		});
 	}

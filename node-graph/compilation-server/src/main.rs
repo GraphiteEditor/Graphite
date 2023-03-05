@@ -23,14 +23,14 @@ async fn main() {
 	let app = Router::new()
 		.route("/", get(|| async { "Hello from compilation server!" }))
 		.route("/compile", get(|| async { "Supported targets: spirv" }))
-		.route("/compile/spriv", post(post_compile_spriv))
+		.route("/compile/spirv", post(post_compile_spirv))
 		.with_state(shared_state);
 
 	// run it with hyper on localhost:3000
 	axum::Server::bind(&"0.0.0.0:3000".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
 }
 
-async fn post_compile_spriv(State(state): State<Arc<AppState>>, Json(compile_request): Json<CompileRequest>) -> Result<Vec<u8>, StatusCode> {
+async fn post_compile_spirv(State(state): State<Arc<AppState>>, Json(compile_request): Json<CompileRequest>) -> Result<Vec<u8>, StatusCode> {
 	let path = std::env::var("CARGO_MANIFEST_DIR").unwrap() + "/../gpu-compiler/Cargo.toml";
 	compile_request.compile(state.compile_dir.path().to_str().expect("non utf8 tempdir path"), &path).map_err(|e| {
 		eprintln!("compilation failed: {}", e);
