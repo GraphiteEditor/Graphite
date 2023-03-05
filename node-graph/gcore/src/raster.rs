@@ -183,7 +183,7 @@ impl<'a> ImageWindowIterator<'a> {
 	}
 }
 
-#[cfg(not(target_arch = "spriv"))]
+#[cfg(not(target_arch = "spirv"))]
 impl<'a> Iterator for ImageWindowIterator<'a> {
 	type Item = (Color, (i32, i32));
 	#[inline]
@@ -198,9 +198,9 @@ impl<'a> Iterator for ImageWindowIterator<'a> {
 		if self.y > max_y {
 			return None;
 		}
-		#[cfg(feature = "gpu")]
+		#[cfg(target_arch = "spirv")]
 		let value = None;
-		#[cfg(not(feature = "gpu"))]
+		#[cfg(not(target_arch = "spirv"))]
 		let value = Some((self.image.data[(self.x + self.y * self.image.width) as usize], (self.x as i32 - start_x, self.y as i32 - start_y)));
 
 		self.x += 1;

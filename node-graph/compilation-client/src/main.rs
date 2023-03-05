@@ -27,7 +27,7 @@ fn main() {
 	};
 
 	let compile_request = CompileRequest::new(network, "u32".to_owned(), "u32".to_owned());
-	let response = client.post("http://localhost:3000/compile/spriv").json(&compile_request).send().unwrap();
+	let response = client.post("http://localhost:3000/compile/spirv").json(&compile_request).send().unwrap();
 	println!("response: {:?}", response);
 }
 
