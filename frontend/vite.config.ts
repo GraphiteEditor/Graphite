@@ -19,7 +19,7 @@ export default defineConfig({
 		},
 	},
 	optimizeDeps: {
-		exclude: ["graphite-wasm"],
+		disabled: true
 	},
 	build: {
 		rollupOptions: {
