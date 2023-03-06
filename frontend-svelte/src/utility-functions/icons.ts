@@ -197,6 +197,7 @@ const SOLID_16PX = {
 
 // 16px Two-Tone
 import MouseHintDrag from "@/../assets/icon-16px-two-tone/mouse-hint-drag.svg";
+import MouseHintLmbDouble from "@/../assets/icon-16px-two-tone/mouse-hint-lmb-double.svg";
 import MouseHintLmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-lmb-drag.svg";
 import MouseHintLmb from "@/../assets/icon-16px-two-tone/mouse-hint-lmb.svg";
 import MouseHintMmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-mmb-drag.svg";
@@ -210,6 +211,7 @@ import MouseHintScrollUp from "@/../assets/icon-16px-two-tone/mouse-hint-scroll-
 const TWO_TONE_16PX = {
 	MouseHintDrag: { svg: MouseHintDrag, size: 16 },
 	MouseHintLmb: { svg: MouseHintLmb, size: 16 },
+	MouseHintLmbDouble: { svg: MouseHintLmbDouble, size: 16 },
 	MouseHintLmbDrag: { svg: MouseHintLmbDrag, size: 16 },
 	MouseHintMmb: { svg: MouseHintMmb, size: 16 },
 	MouseHintMmbDrag: { svg: MouseHintMmbDrag, size: 16 },

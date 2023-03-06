@@ -20,7 +20,8 @@ use bytemuck::{Pod, Zeroable};
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "gpu", derive(Pod, Zeroable))]
-#[derive(Debug, Clone, Copy, PartialEq, Default, DynAny, specta::Type)]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -30,7 +31,7 @@ pub struct Color {
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Color {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.red.to_bits().hash(state);
 		self.green.to_bits().hash(state);
 		self.blue.to_bits().hash(state);
@@ -119,7 +120,6 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
-	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
 		let temp1 = if lightness < 0.5 {
 			lightness * (saturation + 1.)
@@ -127,12 +127,16 @@ impl Color {
 			lightness + saturation - lightness * saturation
 		};
 		let temp2 = 2. * lightness - temp1;
+		#[cfg(not(target_arch = "spirv"))]
+		let rem = |x: f32| x.rem_euclid(1.);
+		#[cfg(target_arch = "spirv")]
+		let rem = |x: f32| x.rem_euclid(&1.);
 
-		let mut red = (hue + 1. / 3.).rem_euclid(1.);
-		let mut green = hue.rem_euclid(1.);
-		let mut blue = (hue - 1. / 3.).rem_euclid(1.);
+		let mut red = rem(hue + 1. / 3.);
+		let mut green = rem(hue);
+		let mut blue = rem(hue - 1. / 3.);
 
-		for channel in [&mut red, &mut green, &mut blue] {
+		fn map_channel(channel: &mut f32, temp2: f32, temp1: f32) {
 			*channel = if *channel * 6. < 1. {
 				temp2 + (temp1 - temp2) * 6. * *channel
 			} else if *channel * 2. < 1. {
@@ -144,6 +148,9 @@ impl Color {
 			}
 			.clamp(0., 1.);
 		}
+		map_channel(&mut red, temp2, temp1);
+		map_channel(&mut green, temp2, temp1);
+		map_channel(&mut blue, temp2, temp1);
 
 		Color { red, green, blue, alpha }
 	}
@@ -427,6 +434,7 @@ impl Color {
 	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
 	/// assert!("7C67FA61" == color.rgba_hex())
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn rgba_hex(&self) -> String {
 		format!(
 			"{:02X?}{:02X?}{:02X?}{:02X?}",
@@ -443,6 +451,7 @@ impl Color {
 	/// let color = Color::from_rgba8(0x7C, 0x67, 0xFA, 0x61);
 	/// assert!("7C67FA" == color.rgb_hex())
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn rgb_hex(&self) -> String {
 		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8,)
 	}
@@ -536,9 +545,9 @@ impl Color {
 	/// Linearly interpolates between two colors based on t.
 	///
 	/// T must be between 0 and 1.
-	pub fn lerp(self, other: Color, t: f32) -> Option<Self> {
+	pub fn lerp(self, other: Color, t: f32) -> Self {
 		assert!((0. ..=1.).contains(&t));
-		Color::from_rgbaf32(
+		Color::from_rgbaf32_unchecked(
 			self.red + ((other.red - self.red) * t),
 			self.green + ((other.green - self.green) * t),
 			self.blue + ((other.blue - self.blue) * t),
@@ -600,6 +609,7 @@ impl Color {
 			blue: f(self.blue, other.blue),
 			alpha: self.alpha,
 		};
+		#[cfg(feature = "log")]
 		if *self == Color::RED {
 			debug!("{} {} {} {}", color.red, color.green, color.blue, color.alpha);
 		}

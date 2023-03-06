@@ -9,8 +9,9 @@
 		"build": "vue-cli-service build || (npm run print-building-help && exit 1)",
 		"lint": "vue-cli-service lint || (npm run print-linting-help && exit 1)",
 		"lint-no-fix": "vue-cli-service lint --no-fix || (npm run print-linting-help && exit 1)",
-		"tauri:build": "vue-cli-service tauri:build",
-		"tauri:serve": "vue-cli-service tauri:serve",
+		"tauri:build": "npm run tauri:build-wasm && vue-cli-service tauri:build",
+		"tauri:build-wasm": "wasm-pack build wasm --release -- --features tauri",
+		"tauri:serve": "echo 'Make sure you build the wasm binary for tauri using `npm run tauri:build-wasm`' && npm run serve",
 		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
 		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
 	},

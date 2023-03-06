@@ -511,19 +511,18 @@ export default defineComponent({
 			return [pathString, dataType];
 		},
 		scroll(e: WheelEvent) {
-			const scrollX = e.deltaX;
-			const scrollY = e.deltaY;
-			const zoomWithScroll = this.nodeGraph.state.zoomWithScroll;
+			const [scrollX, scrollY] = [e.deltaX, e.deltaY];
 
-			let zoom;
-			let horizontalPan;
-			if (zoomWithScroll) {
-				zoom = !(e.ctrlKey || e.shiftKey);
-				horizontalPan = e.ctrlKey;
-			} else {
-				zoom = e.ctrlKey;
-				horizontalPan = !(e.ctrlKey || e.shiftKey);
-			}
+			// If zoom with scroll is enabled: horizontal pan with Ctrl, vertical pan with Shift
+			const zoomWithScroll = this.nodeGraph.state.zoomWithScroll;
+			const zoom = zoomWithScroll ? !e.ctrlKey && !e.shiftKey : e.ctrlKey;
+			const horizontalPan = zoomWithScroll ? e.ctrlKey : !e.ctrlKey && e.shiftKey;
+
+			// Prevent the web page from being zoomed
+			if (e.ctrlKey) e.preventDefault();
+
+			// Always pan horizontally in response to a horizontal scroll wheel movement
+			this.transform.x -= scrollX / this.transform.scale;
 
 			// Zoom
 			if (zoom) {
@@ -548,14 +547,13 @@ export default defineComponent({
 				this.transform.x -= (deltaX / this.transform.scale) * zoomFactor;
 				this.transform.y -= (deltaY / this.transform.scale) * zoomFactor;
 
-				// Prevent actually zooming into the page when pinch-zooming on laptop trackpads
-				e.preventDefault();
+				return;
 			}
+
 			// Pan
-			else if (horizontalPan) {
+			if (horizontalPan) {
 				this.transform.x -= scrollY / this.transform.scale;
 			} else {
-				this.transform.x -= scrollX / this.transform.scale;
 				this.transform.y -= scrollY / this.transform.scale;
 			}
 		},
@@ -565,13 +563,19 @@ export default defineComponent({
 				document.removeEventListener("keydown", this.keydown);
 			}
 		},
-		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the browser window) works
+		// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the whole browser window) works
 		pointerDown(e: PointerEvent) {
-			// Exit the add node popup by clicking elsewhere in the graph
-			if (this.nodeListLocation && !(e.target as HTMLElement).closest("[data-node-list]")) this.nodeListLocation = undefined;
+			const [lmb, rmb] = [e.button === 0, e.button === 2];
 
-			// Handle the add node popup on right click
-			if (e.button === 2) {
+			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
+			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+			const nodeId = node?.getAttribute("data-node") || undefined;
+			const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
+			const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
+			if (!containerBounds) return;
+
+			// Create the add node popup on right click, then exit
+			if (rmb) {
 				const graphDiv: HTMLDivElement | undefined = (this.$refs.graph as typeof LayoutCol | undefined)?.$el;
 				const graph = graphDiv?.getBoundingClientRect() || new DOMRect();
 				this.nodeListLocation = {
@@ -583,22 +587,19 @@ export default defineComponent({
 				return;
 			}
 
-			const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
-			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-			const nodeId = node?.getAttribute("data-node") || undefined;
-			const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
-			const containerBounds = this.$refs.nodesContainer as HTMLDivElement | undefined;
-			if (!containerBounds) return;
-
 			// If the user is clicking on the add nodes list, exit here
-			if (nodeList) return;
+			if (lmb && nodeList) return;
 
-			if (e.altKey && nodeId) {
+			// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
+			if (lmb) this.nodeListLocation = undefined;
+
+			// Alt-click sets the clicked node as previewed
+			if (lmb && e.altKey && nodeId) {
 				this.editor.instance.togglePreview(BigInt(nodeId));
 			}
 
 			// Clicked on a port dot
-			if (port && node) {
+			if (lmb && port && node) {
 				const isOutput = Boolean(port.getAttribute("data-port") === "output");
 
 				if (isOutput) this.linkInProgressFromConnector = port;
@@ -625,7 +626,7 @@ export default defineComponent({
 			}
 
 			// Clicked on a node
-			if (nodeId) {
+			if (lmb && nodeId) {
 				let modifiedSelected = false;
 
 				const id = BigInt(nodeId);
@@ -652,11 +653,13 @@ export default defineComponent({
 			}
 
 			// Clicked on the graph background
-			this.panning = true;
-			if (this.selected.length !== 0) {
+			if (lmb && this.selected.length !== 0) {
 				this.selected = [];
-				this.editor.instance.selectNodes(new BigUint64Array(this.selected));
+				this.editor.instance.selectNodes(new BigUint64Array([]));
 			}
+
+			// LMB clicked on the graph background or MMB clicked anywhere
+			this.panning = true;
 		},
 		doubleClick(e: MouseEvent) {
 			const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;

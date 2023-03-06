@@ -19,7 +19,7 @@ quantization = ["autoquant"]
 
 [dependencies]
 autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = ["fitting"] }
-graphene-core = {path = "../gcore", features = ["async", "std" ], default-features = false}
+graphene-core = {path = "../gcore", features = ["async", "std", "serde" ], default-features = false}
 borrow_stack = {path = "../borrow_stack"}
 dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
 graph-craft = {path = "../graph-craft"}
@@ -38,12 +38,13 @@ image = "*"
 dyn-clone = "1.0"
 
 log = "0.4"
-bezier-rs = { path = "../../libraries/bezier-rs" }
+bezier-rs = { path = "../../libraries/bezier-rs" , features = ["serde"] }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
 glam = { version = "0.22", features = ["serde"] }
 node-macro = { path="../node-macro" }
+boxcar = "0.1.0"
 
 [dependencies.serde]
 version = "1.0"
