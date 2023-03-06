@@ -4,7 +4,7 @@ use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{Joint, SubpathTValue, TValue};
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.
@@ -383,7 +383,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						}
 						drop_common_point[j] = false;
 					}
-					_ => unimplemented!(),
+					Joint::Round => {
+						let round_subpath = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
+						if let Some(round_subpath) = round_subpath {
+							subpaths[i].manipulator_groups.extend(round_subpath.manipulator_groups);
+						}
+						drop_common_point[j] = false;
+					}
 				}
 			} else {
 				// Otherwise, default to the bevel join
@@ -420,7 +426,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						}
 						drop_common_point[0] = false;
 					}
-					_ => unimplemented!(),
+					Joint::Round => {
+						// TODO: Handle this
+						drop_common_point[0] = false;
+					}
 				}
 			}
 		}
@@ -446,6 +455,47 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Subpath::new(manipulator_groups, self.closed)
 	}
 
+	// TODO: Add comment and consider refactoring
+	pub(crate) fn combine_outline(&self, other: &Subpath<ManipulatorGroupId>, joint: Joint, start: DVec2, end: DVec2) -> Subpath<ManipulatorGroupId> {
+		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
+		result_manipulator_groups.extend_from_slice(self.manipulator_groups());
+		match joint {
+			Joint::Bevel => {
+				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+			}
+			Joint::Miter => {
+				let miter_manipulator_group = self.miter_line_join(other);
+				if let Some(miter_manipulator_group) = miter_manipulator_group {
+					result_manipulator_groups.push(miter_manipulator_group);
+				}
+				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+				let miter_manipulator_group = other.miter_line_join(self);
+				if let Some(miter_manipulator_group) = miter_manipulator_group {
+					result_manipulator_groups.push(miter_manipulator_group);
+				}
+			}
+			Joint::Round => {
+				let round_subpath = self.round_line_join(other, end);
+				if let Some(round_subpath) = round_subpath {
+					let last_index = result_manipulator_groups.len() - 1;
+					result_manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
+					result_manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
+					result_manipulator_groups.push(other.manipulator_groups[0].clone());
+					result_manipulator_groups[last_index + 2].in_handle = round_subpath.manipulator_groups[2].in_handle;
+				}
+				result_manipulator_groups.extend_from_slice(&other.manipulator_groups[1..]);
+				let round_subpath = other.round_line_join(self, start);
+				if let Some(round_subpath) = round_subpath {
+					let last_index = result_manipulator_groups.len() - 1;
+					result_manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
+					result_manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
+					result_manipulator_groups[0].in_handle = round_subpath.manipulator_groups[2].in_handle;
+				}
+			}
+		}
+		Subpath::new(result_manipulator_groups, true)
+	}
+
 	// TODO: Replace this return type with `Path`, once the `Path` data type has been created.
 	/// Outline returns a single closed subpath (if the original subpath was open) or two closed subpaths (if the original subpath was closed) that forms
 	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
@@ -453,26 +503,23 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `joint` - The joint type used to cap the endpoints of open bezier curves, and join successive subpath segments.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline(&self, distance: f64, joint: Joint) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
-		let mut pos_offset = self.offset(distance, joint);
-		let mut neg_offset = self.reverse().offset(distance, joint);
+		let pos_offset = self.offset(distance, joint);
+		let neg_offset = self.reverse().offset(distance, joint);
 
 		if self.closed {
 			return (pos_offset, Some(neg_offset));
 		}
 
-		match joint {
-			Joint::Bevel => {
-				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
-				pos_offset.closed = true;
-				(pos_offset, None)
-			}
-			Joint::Miter => {
-				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
-				pos_offset.closed = true;
-				(pos_offset, None)
-			}
-			_ => unimplemented!(),
-		}
+		// Handle join between the two offsets
+		let joint_to_use = match joint {
+			// Miter join would result in the same as bevel, so don't bother doing miter calculation
+			Joint::Miter => Joint::Bevel,
+			_ => joint,
+		};
+		(
+			pos_offset.combine_outline(&neg_offset, joint_to_use, self.manipulator_groups[0].anchor, self.manipulator_groups[self.len() - 1].anchor),
+			None,
+		)
 	}
 }
 

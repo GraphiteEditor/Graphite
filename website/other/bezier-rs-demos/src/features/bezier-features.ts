@@ -251,7 +251,7 @@ const bezierFeatures = {
 	},
 	outline: {
 		name: "Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance, options.joint),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -262,13 +262,21 @@ const bezierFeatures = {
 						step: 1,
 						default: 15,
 					},
+					{
+						variable: "joint",
+						min: 0,
+						max: 2,
+						step: 1,
+						default: 0,
+						unit: [": Bevel", ": Miter", ": Round"],
+					},
 				],
 			},
 		},
 	},
 	"graduated-outline": {
 		name: "Graduated Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance, options.joint),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -286,6 +294,14 @@ const bezierFeatures = {
 						step: 1,
 						default: 15,
 					},
+					{
+						variable: "joint",
+						min: 0,
+						max: 2,
+						step: 1,
+						default: 0,
+						unit: [": Bevel", ": Miter", ": Round"],
+					},
 				],
 			},
 		},
@@ -300,7 +316,8 @@ const bezierFeatures = {
 	},
 	"skewed-outline": {
 		name: "Skewed Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string =>
+			bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4, options.joint),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -331,6 +348,14 @@ const bezierFeatures = {
 						max: 30,
 						step: 1,
 						default: 5,
+					},
+					{
+						variable: "joint",
+						min: 0,
+						max: 2,
+						step: 1,
+						default: 0,
+						unit: [": Bevel", ": Miter", ": Round"],
 					},
 				],
 			},

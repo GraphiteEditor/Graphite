@@ -1,8 +1,8 @@
 use super::*;
 
 use crate::compare::compare_points;
-use crate::utils::{f64_compare, TValue};
-use crate::{AppendType, ManipulatorGroup, Subpath};
+use crate::utils::{f64_compare, Joint, TValue};
+use crate::{AppendType, Subpath};
 
 use glam::DMat2;
 use std::f64::consts::PI;
@@ -405,7 +405,7 @@ impl Bezier {
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
+	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.offset(distance);
 		let third_segment = self.reverse().offset(distance);
 
@@ -413,23 +413,25 @@ impl Bezier {
 			return Subpath::new(vec![], false);
 		}
 
-		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
-		result_manipulator_groups.extend_from_slice(first_segment.manipulator_groups());
-		// TODO: Handle other caps here
-		result_manipulator_groups.extend_from_slice(third_segment.manipulator_groups());
-		Subpath::new(result_manipulator_groups, true)
+		// Handle join between the two offsets
+		let joint_to_use = match joint {
+			// Miter join would result in the same as bevel, so don't bother doing miter calculation
+			Joint::Miter => Joint::Bevel,
+			_ => joint,
+		};
+		first_segment.combine_outline(&third_segment, joint_to_use, self.start(), self.end())
 	}
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
-	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<ManipulatorGroupId> {
-		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
+	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
+		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, joint)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
-	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Subpath<ManipulatorGroupId> {
+	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.graduated_offset(distance1, distance2);
 		let third_segment = self.reverse().graduated_offset(distance3, distance4);
 
@@ -437,11 +439,13 @@ impl Bezier {
 			return Subpath::new(vec![], false);
 		}
 
-		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
-		result_manipulator_groups.extend_from_slice(first_segment.manipulator_groups());
-		// TODO: Handle other caps here
-		result_manipulator_groups.extend_from_slice(third_segment.manipulator_groups());
-		Subpath::new(result_manipulator_groups, true)
+		// Handle join between the two offsets
+		let joint_to_use = match joint {
+			// Miter join would result in the same as bevel, so don't bother doing miter calculation
+			Joint::Miter => Joint::Bevel,
+			_ => joint,
+		};
+		first_segment.combine_outline(&third_segment, joint_to_use, self.start(), self.end())
 	}
 
 	/// Approximate a bezier curve with circular arcs.
@@ -597,7 +601,7 @@ impl Bezier {
 mod tests {
 	use super::*;
 	use crate::compare::{compare_arcs, compare_points, compare_vec_of_points};
-	use crate::utils::TValue;
+	use crate::utils::{Joint, TValue};
 	use crate::EmptyId;
 
 	#[test]
@@ -858,7 +862,7 @@ mod tests {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let line = Bezier::from_linear_dvec2(p1, p2);
-		let outline = line.outline::<EmptyId>(10.);
+		let outline = line.outline::<EmptyId>(10., Joint::Bevel);
 
 		assert_eq!(outline.len(), 4);
 

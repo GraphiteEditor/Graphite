@@ -1,6 +1,7 @@
 use crate::svg_drawing::*;
+use crate::utils::parse_joint;
 
-use bezier_rs::{Bezier, Joint, ManipulatorGroup, ProjectionOptions, Subpath, SubpathTValue};
+use bezier_rs::{Bezier, ManipulatorGroup, ProjectionOptions, Subpath, SubpathTValue};
 
 use glam::DVec2;
 use std::fmt::Write;
@@ -26,15 +27,6 @@ fn parse_t_variant(t_variant: &String, t: f64) -> SubpathTValue {
 		"GlobalParametric" => SubpathTValue::GlobalParametric(t),
 		"GlobalEuclidean" => SubpathTValue::GlobalEuclidean(t),
 		_ => panic!("Unexpected TValue string: '{}'", t_variant),
-	}
-}
-
-fn parse_joint(joint: i32) -> Joint {
-	match joint {
-		0 => Joint::Bevel,
-		1 => Joint::Miter,
-		2 => Joint::Round,
-		_ => panic!("Unexpected Joint string: '{}'", joint),
 	}
 }
 

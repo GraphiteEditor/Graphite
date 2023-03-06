@@ -3,7 +3,7 @@ use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{line_intersection, SubpathTValue};
 use crate::TValue;
 
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Calculate the point on the subpath based on the parametric `t`-value provided.
@@ -136,26 +136,58 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
 	}
 
+	/// Returns the manipulator point that is needed for a miter join if it is possible.
 	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let out_segment = other.get_segment(0).unwrap();
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
 		let out_tangent = out_segment.tangent(TValue::Parametric(0.));
 
-		let intersection = line_intersection(in_segment.end(), in_tangent, out_segment.start(), out_tangent);
+		let normalized_in_tangent = in_tangent.normalize();
+		let normalized_out_tangent = out_tangent.normalize();
 
-		// Draw the miter join if the intersection occurs in the correct direction with respect to the path
-		if (intersection - in_segment.end()).normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
-			&& (out_segment.start() - intersection).normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
-		{
-			return Some(ManipulatorGroup {
-				anchor: intersection,
-				in_handle: None,
-				out_handle: None,
-				id: ManipulatorGroupId::new(),
-			});
+		// The tangents must not be parallel for the miter join
+		if !normalized_in_tangent.abs_diff_eq(normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) && !normalized_in_tangent.abs_diff_eq(-normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) {
+			let intersection = line_intersection(in_segment.end(), in_tangent, out_segment.start(), out_tangent);
+
+			// Draw the miter join if the intersection occurs in the correct direction with respect to the path
+			if (intersection - in_segment.end()).normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
+				&& (out_segment.start() - intersection).normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			{
+				return Some(ManipulatorGroup {
+					anchor: intersection,
+					in_handle: None,
+					out_handle: None,
+					id: ManipulatorGroupId::new(),
+				});
+			}
 		}
+		// If we can't draw the miter join, default to a bevel join
 		None
+	}
+
+	/// Returns the subpath that creates a round join with the provided center.
+	pub(crate) fn round_line_join(&self, other: &Subpath<ManipulatorGroupId>, center: DVec2) -> Option<Subpath<ManipulatorGroupId>> {
+		let left = self.manipulator_groups[self.len() - 1].anchor;
+		let right = other.manipulator_groups[0].anchor;
+
+		let angle = (right - center).angle_between(left - center) / 2.;
+		let rotation_matrix = DMat2::from_angle(angle);
+		let bottom = center + rotation_matrix.mul_vec2(right - center);
+
+		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+		let handle_offset_factor = 4. / 3. * (angle / 4.).tan();
+
+		let manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![
+			ManipulatorGroup::new(left, None, Some(left + (center - left).perp() * handle_offset_factor)),
+			ManipulatorGroup::new(
+				bottom,
+				Some(bottom + (bottom - center).perp() * handle_offset_factor),
+				Some(bottom + (center - bottom).perp() * handle_offset_factor),
+			),
+			ManipulatorGroup::new(right, Some(right + (right - center).perp() * handle_offset_factor), None),
+		];
+		Some(Subpath::new(manipulator_groups, false))
 	}
 }
 
