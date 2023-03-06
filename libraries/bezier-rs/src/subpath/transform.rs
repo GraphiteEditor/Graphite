@@ -386,7 +386,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					Joint::Round => {
 						let round_subpath = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
 						if let Some(round_subpath) = round_subpath {
-							subpaths[i].manipulator_groups.extend(round_subpath.manipulator_groups);
+							let last_index = subpaths[i].manipulator_groups.len() - 1;
+							subpaths[i].manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
+							subpaths[i].manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
+							subpaths[j].manipulator_groups[0].in_handle = round_subpath.manipulator_groups[2].in_handle;
 						}
 						drop_common_point[j] = false;
 					}
@@ -427,7 +430,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						drop_common_point[0] = false;
 					}
 					Joint::Round => {
-						// TODO: Handle this
+						let last_subpath_index = subpaths.len() - 1;
+						let round_subpath = subpaths[last_subpath_index].round_line_join(&subpaths[0], self.manipulator_groups[0].anchor);
+						if let Some(round_subpath) = round_subpath {
+							let last_index = subpaths[last_subpath_index].manipulator_groups.len() - 1;
+							subpaths[last_subpath_index].manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
+							subpaths[last_subpath_index].manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
+							subpaths[0].manipulator_groups[0].in_handle = round_subpath.manipulator_groups[2].in_handle;
+						}
 						drop_common_point[0] = false;
 					}
 				}

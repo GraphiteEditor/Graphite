@@ -4,6 +4,7 @@ use crate::utils::{line_intersection, SubpathTValue};
 use crate::TValue;
 
 use glam::{DMat2, DVec2};
+use std::f64::consts::PI;
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Calculate the point on the subpath based on the parametric `t`-value provided.
@@ -171,21 +172,31 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 
-		let angle = (right - center).angle_between(left - center) / 2.;
+		let center_to_right = right - center;
+		let center_to_left = left - center;
+
+		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
+		let tangent_angle = (right - left).angle_between(in_segment.tangent(TValue::Parametric(1.)));
+
+		let angle = center_to_right.angle_between(center_to_left) / 2.;
+
 		let rotation_matrix = DMat2::from_angle(angle);
-		let bottom = center + rotation_matrix.mul_vec2(right - center);
+		let arc_point = center + rotation_matrix.mul_vec2(center_to_right);
+
+		let arc_direction_factor = if tangent_angle >= 0. { 1. } else { -1. };
+		let center_to_arc_point = arc_point - center;
 
 		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
 		let handle_offset_factor = 4. / 3. * (angle / 4.).tan();
 
 		let manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![
-			ManipulatorGroup::new(left, None, Some(left + (center - left).perp() * handle_offset_factor)),
+			ManipulatorGroup::new(left, None, Some(left - center_to_left.perp() * handle_offset_factor)),
 			ManipulatorGroup::new(
-				bottom,
-				Some(bottom + (bottom - center).perp() * handle_offset_factor),
-				Some(bottom + (center - bottom).perp() * handle_offset_factor),
+				arc_point,
+				Some(arc_point + center_to_arc_point.perp() * handle_offset_factor),
+				Some(arc_point - center_to_arc_point.perp() * handle_offset_factor),
 			),
-			ManipulatorGroup::new(right, Some(right + (right - center).perp() * handle_offset_factor), None),
+			ManipulatorGroup::new(right, Some(right + center_to_right.perp() * handle_offset_factor), None),
 		];
 		Some(Subpath::new(manipulator_groups, false))
 	}
@@ -202,6 +213,33 @@ mod tests {
 
 	fn normalize_t(n: i64, t: f64) -> f64 {
 		t * (n as f64) % 1.
+	}
+
+	#[test]
+	fn round_join() {
+		// TODO: Remove or write actual test
+		let s1 = DVec2::new(100., 50.);
+		let e1 = DVec2::new(100., 150.);
+		let s2 = DVec2::new(150., 150.);
+		let e2 = DVec2::new(150., 50.);
+
+		let center = DVec2::new(125., 100.);
+		let line1: Subpath<EmptyId> = Subpath::from_bezier(&Bezier::from_linear_dvec2(s1, e1));
+		let line2: Subpath<EmptyId> = Subpath::from_bezier(&Bezier::from_linear_dvec2(s2, e2));
+
+		println!("{}", -1 % 1);
+
+		let result = line1.round_line_join(&line2, center).unwrap();
+		let mut str = String::new();
+		result.to_svg(
+			&mut str,
+			"stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(),
+			String::new(),
+			String::new(),
+			"stroke=\"red\" stroke-width=\"1\" fill=\"none\"".to_string(),
+		);
+		println!("{:?}\n{:?}\n{:?}", line1, line2, result);
+		println!("{}", str);
 	}
 
 	#[test]
