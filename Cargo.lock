@@ -1564,6 +1564,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpu-executor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.13.1",
+ "bytemuck",
+ "dyn-any",
+ "futures",
+ "futures-intrusive",
+ "glam",
+ "graph-craft",
+ "graphene-core",
+ "log",
+ "num-traits",
+ "serde",
+ "spirv",
+]
+
+[[package]]
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
@@ -5324,6 +5343,7 @@ dependencies = [
  "futures",
  "futures-intrusive",
  "glam",
+ "gpu-executor",
  "graph-craft",
  "graphene-core",
  "log",
