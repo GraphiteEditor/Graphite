@@ -58,14 +58,14 @@ class SubpathDemo extends HTMLElement {
 		this.tVariant = (this.getAttribute("tvariant") || "Parametric") as TVariant;
 
 		this.callback = subpathFeatures[this.key].callback as SubpathCallback;
-		
+
 		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
 		this.sliderUnits = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.unit })));
 
 		this.render();
 		const figure = this.querySelector("figure") as HTMLElement;
 
-		import("@/../wasm/pkg").then(wasm => {
+		import("@/../wasm/pkg").then((wasm) => {
 			this.subpath = wasm.WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
 			this.drawDemo(figure);
 		});
