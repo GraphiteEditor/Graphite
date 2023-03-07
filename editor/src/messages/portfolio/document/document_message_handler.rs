@@ -1992,12 +1992,11 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_tool_options_widgets(&self, responses: &mut VecDeque<Message>) {
-		let selected_layers: Vec<&[u64]> = self.selected_layers().collect();
-		debug!("{:#?}", selected_layers);
-
 		let mut pivot_assist_disabled = true;
 		let mut alignment_buttons_disabled = true;
 		let mut boolean_buttons_disabled = true;
+
+		let selected_layers: Vec<&[u64]> = self.selected_layers().collect();
 
 		if !selected_layers.is_empty() {
 			pivot_assist_disabled = false;
