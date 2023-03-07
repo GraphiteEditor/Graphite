@@ -1,5 +1,5 @@
 use crate::svg_drawing::*;
-use crate::utils::parse_joint;
+use crate::utils::parse_cap;
 
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, ProjectionOptions, TValue};
 use glam::DVec2;
@@ -572,9 +572,9 @@ impl WasmBezier {
 		wrap_svg_tag(bezier_curves_svg)
 	}
 
-	pub fn outline(&self, distance: f64, joint: i32) -> String {
-		let joint = parse_joint(joint);
-		let outline_subpath = self.0.outline::<EmptyId>(distance, joint);
+	pub fn outline(&self, distance: f64, cap: i32) -> String {
+		let cap = parse_cap(cap);
+		let outline_subpath = self.0.outline::<EmptyId>(distance, cap);
 		if outline_subpath.is_empty() {
 			return String::new();
 		}
@@ -586,9 +586,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
-	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64, joint: i32) -> String {
-		let joint = parse_joint(joint);
-		let outline_subpath = self.0.graduated_outline::<EmptyId>(start_distance, end_distance, joint);
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64, cap: i32) -> String {
+		let cap = parse_cap(cap);
+		let outline_subpath = self.0.graduated_outline::<EmptyId>(start_distance, end_distance, cap);
 		if outline_subpath.is_empty() {
 			return String::new();
 		}
@@ -600,9 +600,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
-	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, joint: i32) -> String {
-		let joint = parse_joint(joint);
-		let outline_subpath = self.0.skewed_outline::<EmptyId>(distance1, distance2, distance3, distance4, joint);
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: i32) -> String {
+		let cap = parse_cap(cap);
+		let outline_subpath = self.0.skewed_outline::<EmptyId>(distance1, distance2, distance3, distance4, cap);
 		if outline_subpath.is_empty() {
 			return String::new();
 		}

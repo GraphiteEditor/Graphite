@@ -251,7 +251,7 @@ const bezierFeatures = {
 	},
 	outline: {
 		name: "Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance, options.joint),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance, options.cap),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -263,12 +263,12 @@ const bezierFeatures = {
 						default: 15,
 					},
 					{
-						variable: "joint",
+						variable: "cap",
 						min: 0,
 						max: 2,
 						step: 1,
 						default: 0,
-						unit: [": Bevel", ": Miter", ": Round"],
+						unit: [": Butt", ": Round", ": Square"],
 					},
 				],
 			},
@@ -276,7 +276,7 @@ const bezierFeatures = {
 	},
 	"graduated-outline": {
 		name: "Graduated Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance, options.joint),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance, options.cap),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -295,12 +295,12 @@ const bezierFeatures = {
 						default: 15,
 					},
 					{
-						variable: "joint",
+						variable: "cap",
 						min: 0,
 						max: 2,
 						step: 1,
 						default: 0,
-						unit: [": Bevel", ": Miter", ": Round"],
+						unit: [": Butt", ": Round", ": Square"],
 					},
 				],
 			},
@@ -317,7 +317,7 @@ const bezierFeatures = {
 	"skewed-outline": {
 		name: "Skewed Outline",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string =>
-			bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4, options.joint),
+			bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4, options.cap),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -350,12 +350,12 @@ const bezierFeatures = {
 						default: 5,
 					},
 					{
-						variable: "joint",
+						variable: "cap",
 						min: 0,
 						max: 2,
 						step: 1,
 						default: 0,
-						unit: [": Bevel", ": Miter", ": Round"],
+						unit: [": Butt", ": Round", ": Square"],
 					},
 				],
 			},

@@ -30,9 +30,16 @@ pub enum SubpathTValue {
 
 #[derive(Copy, Clone)]
 pub enum Joint {
-	Miter,
 	Bevel,
+	Miter,
 	Round,
+}
+
+#[derive(Copy, Clone)]
+pub enum Cap {
+	Butt,
+	Round,
+	Square,
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.

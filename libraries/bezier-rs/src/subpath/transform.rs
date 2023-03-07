@@ -2,9 +2,9 @@ use std::vec;
 
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{Joint, SubpathTValue, TValue};
+use crate::utils::{Cap, Joint, SubpathTValue, TValue};
 
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.
@@ -384,13 +384,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						drop_common_point[j] = false;
 					}
 					Joint::Round => {
-						let round_subpath = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
-						if let Some(round_subpath) = round_subpath {
-							let last_index = subpaths[i].manipulator_groups.len() - 1;
-							subpaths[i].manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
-							subpaths[i].manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
-							subpaths[j].manipulator_groups[0].in_handle = round_subpath.manipulator_groups[2].in_handle;
-						}
+						let (out_handle, round_point, in_handle) = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
+						let last_index = subpaths[i].manipulator_groups.len() - 1;
+						subpaths[i].manipulator_groups[last_index].out_handle = Some(out_handle);
+						subpaths[i].manipulator_groups.push(round_point.clone());
+						subpaths[j].manipulator_groups[0].in_handle = Some(in_handle);
 						drop_common_point[j] = false;
 					}
 				}
@@ -431,13 +429,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					}
 					Joint::Round => {
 						let last_subpath_index = subpaths.len() - 1;
-						let round_subpath = subpaths[last_subpath_index].round_line_join(&subpaths[0], self.manipulator_groups[0].anchor);
-						if let Some(round_subpath) = round_subpath {
-							let last_index = subpaths[last_subpath_index].manipulator_groups.len() - 1;
-							subpaths[last_subpath_index].manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
-							subpaths[last_subpath_index].manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
-							subpaths[0].manipulator_groups[0].in_handle = round_subpath.manipulator_groups[2].in_handle;
-						}
+						let (out_handle, round_point, in_handle) = subpaths[last_subpath_index].round_line_join(&subpaths[0], self.manipulator_groups[0].anchor);
+						let last_index = subpaths[last_subpath_index].manipulator_groups.len() - 1;
+						subpaths[last_subpath_index].manipulator_groups[last_index].out_handle = Some(out_handle);
+						subpaths[last_subpath_index].manipulator_groups.push(round_point);
+						subpaths[0].manipulator_groups[0].in_handle = Some(in_handle);
 						drop_common_point[0] = false;
 					}
 				}
@@ -466,41 +462,26 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	// TODO: Add comment and consider refactoring
-	pub(crate) fn combine_outline(&self, other: &Subpath<ManipulatorGroupId>, joint: Joint, start: DVec2, end: DVec2) -> Subpath<ManipulatorGroupId> {
+	pub(crate) fn combine_outline(&self, other: &Subpath<ManipulatorGroupId>, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
 		result_manipulator_groups.extend_from_slice(self.manipulator_groups());
-		match joint {
-			Joint::Bevel => {
-				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+		match cap {
+			Cap::Round => {
+				let last_index = result_manipulator_groups.len() - 1;
+				let (out_handle, round_point, in_handle) = self.round_cap(other);
+				result_manipulator_groups[last_index].out_handle = Some(out_handle);
+				result_manipulator_groups.push(round_point);
+				result_manipulator_groups.extend_from_slice(&other.manipulator_groups);
+				result_manipulator_groups[last_index + 2].in_handle = Some(in_handle);
+
+				let last_index = result_manipulator_groups.len() - 1;
+				let (out_handle, round_point, in_handle) = other.round_cap(self);
+				result_manipulator_groups[last_index].out_handle = Some(out_handle);
+				result_manipulator_groups.push(round_point);
+				result_manipulator_groups[0].in_handle = Some(in_handle);
 			}
-			Joint::Miter => {
-				let miter_manipulator_group = self.miter_line_join(other);
-				if let Some(miter_manipulator_group) = miter_manipulator_group {
-					result_manipulator_groups.push(miter_manipulator_group);
-				}
+			_ => {
 				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
-				let miter_manipulator_group = other.miter_line_join(self);
-				if let Some(miter_manipulator_group) = miter_manipulator_group {
-					result_manipulator_groups.push(miter_manipulator_group);
-				}
-			}
-			Joint::Round => {
-				let round_subpath = self.round_line_join(other, end);
-				if let Some(round_subpath) = round_subpath {
-					let last_index = result_manipulator_groups.len() - 1;
-					result_manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
-					result_manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
-					result_manipulator_groups.push(other.manipulator_groups[0].clone());
-					result_manipulator_groups[last_index + 2].in_handle = round_subpath.manipulator_groups[2].in_handle;
-				}
-				result_manipulator_groups.extend_from_slice(&other.manipulator_groups[1..]);
-				let round_subpath = other.round_line_join(self, start);
-				if let Some(round_subpath) = round_subpath {
-					let last_index = result_manipulator_groups.len() - 1;
-					result_manipulator_groups[last_index].out_handle = round_subpath.manipulator_groups[0].out_handle;
-					result_manipulator_groups.push(round_subpath.manipulator_groups[1].clone());
-					result_manipulator_groups[0].in_handle = round_subpath.manipulator_groups[2].in_handle;
-				}
 			}
 		}
 		Subpath::new(result_manipulator_groups, true)
@@ -512,7 +493,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `distance` - The outline's distance from the curve.
 	/// - `joint` - The joint type used to cap the endpoints of open bezier curves, and join successive subpath segments.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline(&self, distance: f64, joint: Joint) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+	pub fn outline(&self, distance: f64, joint: Joint, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
 		let pos_offset = self.offset(distance, joint);
 		let neg_offset = self.reverse().offset(distance, joint);
 
@@ -520,16 +501,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			return (pos_offset, Some(neg_offset));
 		}
 
-		// Handle join between the two offsets
-		let joint_to_use = match joint {
-			// Miter join would result in the same as bevel, so don't bother doing miter calculation
-			Joint::Miter => Joint::Bevel,
-			_ => joint,
-		};
-		(
-			pos_offset.combine_outline(&neg_offset, joint_to_use, self.manipulator_groups[0].anchor, self.manipulator_groups[self.len() - 1].anchor),
-			None,
-		)
+		(pos_offset.combine_outline(&neg_offset, cap), None)
 	}
 }
 

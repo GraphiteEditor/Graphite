@@ -1,5 +1,5 @@
 use crate::svg_drawing::*;
-use crate::utils::parse_joint;
+use crate::utils::{parse_cap, parse_joint};
 
 use bezier_rs::{Bezier, ManipulatorGroup, ProjectionOptions, Subpath, SubpathTValue};
 
@@ -388,9 +388,10 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{offset_svg}", self.to_default_svg()))
 	}
 
-	pub fn outline(&self, distance: f64, joint: i32) -> String {
+	pub fn outline(&self, distance: f64, joint: i32, cap: i32) -> String {
 		let joint = parse_joint(joint);
-		let (outline_piece1, outline_piece2) = self.0.outline(distance, joint);
+		let cap = parse_cap(cap);
+		let (outline_piece1, outline_piece2) = self.0.outline(distance, joint, cap);
 
 		let mut outline_piece1_svg = String::new();
 		outline_piece1.to_svg(&mut outline_piece1_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());

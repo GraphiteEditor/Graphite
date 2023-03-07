@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::compare::compare_points;
-use crate::utils::{f64_compare, Joint, TValue};
+use crate::utils::{f64_compare, Cap, TValue};
 use crate::{AppendType, Subpath};
 
 use glam::DMat2;
@@ -405,7 +405,7 @@ impl Bezier {
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
+	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.offset(distance);
 		let third_segment = self.reverse().offset(distance);
 
@@ -413,25 +413,19 @@ impl Bezier {
 			return Subpath::new(vec![], false);
 		}
 
-		// Handle join between the two offsets
-		let joint_to_use = match joint {
-			// Miter join would result in the same as bevel, so don't bother doing miter calculation
-			Joint::Miter => Joint::Bevel,
-			_ => joint,
-		};
-		first_segment.combine_outline(&third_segment, joint_to_use, self.start(), self.end())
+		first_segment.combine_outline(&third_segment, cap)
 	}
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
-	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
-		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, joint)
+	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, cap)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
-	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
+	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.graduated_offset(distance1, distance2);
 		let third_segment = self.reverse().graduated_offset(distance3, distance4);
 
@@ -439,13 +433,7 @@ impl Bezier {
 			return Subpath::new(vec![], false);
 		}
 
-		// Handle join between the two offsets
-		let joint_to_use = match joint {
-			// Miter join would result in the same as bevel, so don't bother doing miter calculation
-			Joint::Miter => Joint::Bevel,
-			_ => joint,
-		};
-		first_segment.combine_outline(&third_segment, joint_to_use, self.start(), self.end())
+		first_segment.combine_outline(&third_segment, cap)
 	}
 
 	/// Approximate a bezier curve with circular arcs.

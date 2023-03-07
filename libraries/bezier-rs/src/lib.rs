@@ -8,4 +8,4 @@ mod utils;
 
 pub use bezier::*;
 pub use subpath::*;
-pub use utils::{Joint, SubpathTValue, TValue};
+pub use utils::{Cap, Joint, SubpathTValue, TValue};

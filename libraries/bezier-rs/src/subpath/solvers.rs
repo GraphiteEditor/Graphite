@@ -1,6 +1,6 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{line_intersection, SubpathTValue};
+use crate::utils::{f64_compare, line_intersection, SubpathTValue};
 use crate::TValue;
 
 use glam::{DMat2, DVec2};
@@ -168,7 +168,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns the subpath that creates a round join with the provided center.
-	pub(crate) fn round_line_join(&self, other: &Subpath<ManipulatorGroupId>, center: DVec2) -> Option<Subpath<ManipulatorGroupId>> {
+	pub(crate) fn round_line_join(&self, other: &Subpath<ManipulatorGroupId>, center: DVec2) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 
@@ -176,29 +176,60 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let center_to_left = left - center;
 
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
-		let tangent_angle = (right - left).angle_between(in_segment.tangent(TValue::Parametric(1.)));
+		let tangent_angle = center_to_right.angle_between(in_segment.tangent(TValue::Parametric(1.)));
 
-		let angle = center_to_right.angle_between(center_to_left) / 2.;
+		let mut angle = center_to_right.angle_between(center_to_left) / 2.;
+
+		if f64_compare(angle.abs(), PI / 2., MAX_ABSOLUTE_DIFFERENCE) && tangent_angle * angle < 0. {
+			angle = -angle;
+		}
+		// if (0. < tangent_angle && tangent_angle < PI && -PI < angle && angle < 0.) || (0. < angle && angle < PI && -PI < tangent_angle && tangent_angle < 0.) {
+		// 	angle = -angle;
+		// 	println!("angle: {}, tangent_angle: {}", angle, tangent_angle);
+		// }
 
 		let rotation_matrix = DMat2::from_angle(angle);
 		let arc_point = center + rotation_matrix.mul_vec2(center_to_right);
 
-		let arc_direction_factor = if tangent_angle >= 0. { 1. } else { -1. };
 		let center_to_arc_point = arc_point - center;
 
 		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
 		let handle_offset_factor = 4. / 3. * (angle / 4.).tan();
 
-		let manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![
-			ManipulatorGroup::new(left, None, Some(left - center_to_left.perp() * handle_offset_factor)),
+		(
+			left - center_to_left.perp() * handle_offset_factor,
 			ManipulatorGroup::new(
 				arc_point,
 				Some(arc_point + center_to_arc_point.perp() * handle_offset_factor),
 				Some(arc_point - center_to_arc_point.perp() * handle_offset_factor),
 			),
-			ManipulatorGroup::new(right, Some(right + center_to_right.perp() * handle_offset_factor), None),
-		];
-		Some(Subpath::new(manipulator_groups, false))
+			right + center_to_right.perp() * handle_offset_factor,
+		)
+	}
+
+	pub(crate) fn round_cap(&self, other: &Subpath<ManipulatorGroupId>) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
+
+		let left = self.manipulator_groups[self.len() - 1].anchor;
+		let right = other.manipulator_groups[0].anchor;
+
+		let center = (right + left) / 2.;
+		let center_to_right = right - center;
+		let center_to_left = left - center;
+
+		let arc_point = center + center_to_right.perp();
+		let center_to_arc_point = arc_point - center;
+
+		(
+			left - center_to_left.perp() * HANDLE_OFFSET_FACTOR,
+			ManipulatorGroup::new(
+				arc_point,
+				Some(arc_point + center_to_arc_point.perp() * HANDLE_OFFSET_FACTOR),
+				Some(arc_point - center_to_arc_point.perp() * HANDLE_OFFSET_FACTOR),
+			),
+			right + center_to_right.perp() * HANDLE_OFFSET_FACTOR,
+		)
 	}
 }
 
@@ -218,18 +249,36 @@ mod tests {
 	#[test]
 	fn round_join() {
 		// TODO: Remove or write actual test
-		let s1 = DVec2::new(100., 50.);
-		let e1 = DVec2::new(100., 150.);
-		let s2 = DVec2::new(150., 150.);
-		let e2 = DVec2::new(150., 50.);
+		let s1 = DVec2::new(163., 61.);
+		let h1 = DVec2::new(140., 30.);
+		let e1 = DVec2::new(91., 177.);
 
-		let center = DVec2::new(125., 100.);
-		let line1: Subpath<EmptyId> = Subpath::from_bezier(&Bezier::from_linear_dvec2(s1, e1));
-		let line2: Subpath<EmptyId> = Subpath::from_bezier(&Bezier::from_linear_dvec2(s2, e2));
+		let bezier = Bezier::from_quadratic_dvec2(s1, h1, e1);
 
-		println!("{}", -1 % 1);
+		let pos_offset = bezier.offset::<EmptyId>(15.);
+		let neg_offset = bezier.reverse().offset::<EmptyId>(15.);
 
-		let result = line1.round_line_join(&line2, center).unwrap();
+		println!("test:{}", DVec2::new(0., 1.).angle_between(DVec2::new(1., 0.)));
+
+		let (out_handle, manip, in_handle) = pos_offset.round_line_join(&neg_offset, e1);
+		let result = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: pos_offset.evaluate(1.),
+					out_handle: Some(out_handle),
+					in_handle: None,
+					id: EmptyId,
+				},
+				manip.clone(),
+				ManipulatorGroup {
+					anchor: neg_offset.evaluate(0.),
+					out_handle: None,
+					in_handle: Some(in_handle),
+					id: EmptyId,
+				},
+			],
+			false,
+		);
 		let mut str = String::new();
 		result.to_svg(
 			&mut str,
@@ -238,7 +287,7 @@ mod tests {
 			String::new(),
 			"stroke=\"red\" stroke-width=\"1\" fill=\"none\"".to_string(),
 		);
-		println!("{:?}\n{:?}\n{:?}", line1, line2, result);
+		println!("{:?}", result);
 		println!("{}", str);
 	}
 
