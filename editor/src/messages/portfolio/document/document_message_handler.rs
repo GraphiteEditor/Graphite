@@ -235,7 +235,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(BroadcastEvent::SelectionChanged.into());
 
 				self.update_layer_tree_options_bar_widgets(responses, &render_data);
-				self.update_tool_options_widgets(responses, &additional_layers);
+				self.update_tool_options_widgets(responses);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -1991,7 +1991,10 @@ impl DocumentMessageHandler {
 		);
 	}
 
-	pub fn update_tool_options_widgets(&self, responses: &mut VecDeque<Message>, selected_layers: &Vec<Vec<u64>>) {
+	pub fn update_tool_options_widgets(&self, responses: &mut VecDeque<Message>) {
+		let selected_layers: Vec<&[u64]> = self.selected_layers().collect();
+		debug!("{:#?}", selected_layers);
+
 		let mut pivot_assist_disabled = true;
 		let mut alignment_buttons_disabled = true;
 		let mut boolean_buttons_disabled = true;
