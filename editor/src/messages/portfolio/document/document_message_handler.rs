@@ -878,7 +878,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into())
 				});
 
-				self.update_tool_options_widgets(responses, &replacement_selected_layers);
 				let additional_layers = replacement_selected_layers;
 				responses.push_front(AddSelectedLayers { additional_layers }.into());
 			}
@@ -1993,14 +1992,23 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_tool_options_widgets(&self, responses: &mut VecDeque<Message>, selected_layers: &Vec<Vec<u64>>) {
-		let mut alignment_buttons_disabled = false;
-		if selected_layers.len() < 2 {
-			alignment_buttons_disabled = true;
+		let mut pivot_assist_disabled = true;
+		let mut alignment_buttons_disabled = true;
+		let mut boolean_buttons_disabled = true;
+
+		if !selected_layers.is_empty() {
+			pivot_assist_disabled = false;
 		}
 
-		let mut pivot_assist_disabled = false;
-		if selected_layers.is_empty() {
-			pivot_assist_disabled = true;
+		if selected_layers.len() >= 2 {
+			alignment_buttons_disabled = false;
+
+			// Only query document for selected shape layers when we know there are at least 2 layers already selected
+			let shape_layers_selected: Vec<&[u64]> = self.selected_layers_with_type(LayerDataTypeDiscriminant::Shape).collect();
+			// We have to check that all layers are shape layers due to boolean operations being incompatible with other layers
+			if shape_layers_selected.len() >= 2 && shape_layers_selected.len() == selected_layers.len() {
+				boolean_buttons_disabled = false
+			}
 		}
 
 		let widgets = vec![
@@ -2126,6 +2134,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "BooleanUnion".into(),
 				tooltip: "Boolean Union".into(),
+				disabled: boolean_buttons_disabled,
 				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into()),
 				..IconButton::default()
 			})),
@@ -2133,6 +2142,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "BooleanSubtractFront".into(),
 				tooltip: "Boolean Subtract Front".into(),
+				disabled: boolean_buttons_disabled,
 				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into()),
 				..IconButton::default()
 			})),
@@ -2140,6 +2150,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "BooleanSubtractBack".into(),
 				tooltip: "Boolean Subtract Back".into(),
+				disabled: boolean_buttons_disabled,
 				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into()),
 				..IconButton::default()
 			})),
@@ -2147,6 +2158,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "BooleanIntersect".into(),
 				tooltip: "Boolean Intersect".into(),
+				disabled: boolean_buttons_disabled,
 				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into()),
 				..IconButton::default()
 			})),
@@ -2154,6 +2166,7 @@ impl DocumentMessageHandler {
 				size: 24,
 				icon: "BooleanDifference".into(),
 				tooltip: "Boolean Difference".into(),
+				disabled: boolean_buttons_disabled,
 				on_update: WidgetCallback::new(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into()),
 				..IconButton::default()
 			})),
