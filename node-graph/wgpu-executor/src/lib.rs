@@ -1,11 +1,14 @@
 mod context;
 mod executor;
 
+use std::pin::Pin;
+
 use anyhow::Result;
 pub use context::Context;
 pub use executor::GpuExecutor;
+use futures::Future;
 use gpu_executor::{Shader, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
-use wgpu::{util::DeviceExt, BindGroup, Buffer, BufferDescriptor, CommandBuffer, CommandEncoder, ComputePipeline, ShaderModule};
+use wgpu::{util::DeviceExt, Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
 
 struct NewExecutor {
 	context: Context,
@@ -14,11 +17,9 @@ struct NewExecutor {
 impl gpu_executor::GpuExecutor for NewExecutor {
 	type ShaderHandle = ShaderModule;
 	type BufferHandle = Buffer;
-	type ComputePipelineHandle = ComputePipeline;
-	type BindGroup = BindGroup;
 	type CommandBuffer = CommandBuffer;
 
-	fn load_shader(&mut self, shader: &Shader) -> Result<Self::ShaderHandle> {
+	fn load_shader(&mut self, shader: Shader) -> Result<Self::ShaderHandle> {
 		let shader = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
@@ -59,7 +60,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	}
 
 	fn create_output_buffer(&mut self, size: u64) -> Result<Self::BufferHandle> {
-		let mut usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
+		let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
 
 		let buffer = self.context.device.create_buffer(&BufferDescriptor {
 			label: None,
@@ -70,7 +71,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(buffer)
 	}
 
-	fn create_compute_pass(&mut self, layout: &gpu_executor::PipelineLayout<Self::ShaderHandle, Self::BufferHandle>, output: Buffer) -> Result<Encoder> {
+	fn create_compute_pass(&mut self, layout: &gpu_executor::PipelineLayout<Self::ShaderHandle, Self::BufferHandle>, output: Buffer) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
@@ -96,49 +97,65 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			layout: &bind_group_layout,
 			entries: entries.as_slice(),
 		});
-	}
 
-	fn execute_compute_pipeline(&mut self, pipeline: Self::CommandBuffer, bind_group: BindGroup, intstances: u32) -> Result<()> {
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 		{
 			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-			cpass.set_pipeline(&pipeline);
+			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
-			cpass.dispatch_workgroups(intstances, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
+			cpass.dispatch_workgroups(layout.instances, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
-		encoder.copy_buffer_to_buffer(&dest_buffer, 0, &staging_buffer, 0, size);
+		let size = output.size();
+		encoder.copy_buffer_to_buffer(&layout.output_buffer, 0, &output, 0, size);
 
 		// Submits command encoder for processing
 		Ok(encoder.finish())
 	}
 
-	fn read_output_buffer(&mut self, buffer: Self::BufferHandle) -> Result<Vec<u8>> {
-		let buffer_slice = buffer.slice(..);
-
-		// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
-		let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
-		buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+	fn execute_compute_pipeline(&mut self, encoder: Self::CommandBuffer) -> Result<()> {
+		self.context.queue.submit(Some(encoder));
 
 		// Poll the device in a blocking manner so that our future resolves.
 		// In an actual application, `device.poll(...)` should
 		// be called in an event loop or on another thread.
 		self.context.device.poll(wgpu::Maintain::Wait);
+		Ok(())
+	}
 
-		// Wait for the mapping to finish.
-		let buffer_slice = receiver.await.unwrap();
+	fn read_output_buffer(&mut self, buffer: Self::BufferHandle) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
+		Box::pin(async move {
+			let buffer_slice = buffer.slice(..);
 
-		// Get the data from the buffer slice.
-		let data = buffer_slice.get_mapped_range();
+			// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
+			let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+			buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
 
-		// Copy the data into a Vec.
-		let data = data.to_vec();
+			// Wait for the mapping to finish.
+			#[cfg(feature = "profiling")]
+			nvtx::range_push!("compute");
+			let result = receiver.receive().await;
+			#[cfg(feature = "profiling")]
+			nvtx::range_pop!();
 
-		// Unmap the buffer slice.
-		buffer_slice.unmap();
+			if let Some(Ok(())) = result {
+				// Gets contents of buffer
+				let data = buffer_slice.get_mapped_range();
+				// Since contents are got in bytes, this converts these bytes back to u32
+				let result = bytemuck::cast_slice(&data).to_vec();
 
-		Ok(data)
+				// With the current interface, we have to make sure all mapped views are
+				// dropped before we unmap the buffer.
+				drop(data);
+				buffer.unmap(); // Unmaps buffer from memory
+
+				// Returns data from buffer
+				Ok(result)
+			} else {
+				panic!("failed to run compute on gpu!")
+			}
+		})
 	}
 }

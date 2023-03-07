@@ -1,19 +1,21 @@
 use anyhow::Result;
+use futures::Future;
 use graphene_core::*;
 use std::borrow::Cow;
+use std::pin::Pin;
 
 pub trait GpuExecutor {
 	type ShaderHandle;
 	type BufferHandle;
 	type CommandBuffer;
 
-	fn load_shader(&mut self, shader: &Shader) -> Result<Self::ShaderHandle>;
+	fn load_shader(&mut self, shader: Shader) -> Result<Self::ShaderHandle>;
 	fn create_uniform_buffer<T: ToUniformBuffer>(&mut self, data: T) -> Result<Self::BufferHandle>;
 	fn create_storage_buffer<T: ToStorageBuffer>(&mut self, data: T, options: StorageBufferOptions) -> Result<Self::BufferHandle>;
 	fn create_output_buffer(&mut self, size: u64) -> Result<Self::BufferHandle>;
 	fn create_compute_pass(&mut self, layout: &PipelineLayout<Self::ShaderHandle, Self::BufferHandle>, output: Self::BufferHandle) -> Result<Self::CommandBuffer>;
-	fn execute_compute_pipeline(&mut self, encoder: Self::Encoder) -> Result<()>;
-	fn read_output_buffer(&mut self, buffer: Self::BufferHandle) -> Result<Vec<u8>>;
+	fn execute_compute_pipeline(&mut self, encoder: Self::CommandBuffer) -> Result<()>;
+	fn read_output_buffer(&mut self, buffer: Self::BufferHandle) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>;
 }
 
 pub struct Shader<'a> {
@@ -42,6 +44,7 @@ pub struct PipelineLayout<ShaderHandle, BufferHandle> {
 	pub entry_point: String,
 	pub uniform_buffers: Vec<BufferHandle>,
 	pub storage_buffers: Vec<BufferHandle>,
+	pub instances: u32,
 	pub output_buffer: BufferHandle,
 }
 

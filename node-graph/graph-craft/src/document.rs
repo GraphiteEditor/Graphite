@@ -254,12 +254,6 @@ impl NodeOutput {
 		Self { node_id, node_output_index }
 	}
 }
-fn test() {
-	let x = NodeNetwork::default();
-	for node in x.nodes.values() {
-		println!("{:?}", node);
-	}
-}
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
