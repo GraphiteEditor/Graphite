@@ -20,7 +20,7 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
@@ -32,7 +32,7 @@ impl DocumentNodeMetadata {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -156,7 +156,7 @@ impl DocumentNode {
 ///
 /// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
 /// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node {
@@ -212,11 +212,18 @@ impl NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	Unresolved(NodeIdentifier),
+	Extract,
+}
+
+impl Default for DocumentNodeImplementation {
+	fn default() -> Self {
+		Self::Unresolved(NodeIdentifier::new("graphene_cored::ops::IdNode"))
+	}
 }
 
 impl Default for DocumentNodeImplementation {
@@ -227,23 +234,21 @@ impl Default for DocumentNodeImplementation {
 
 impl DocumentNodeImplementation {
 	pub fn get_network(&self) -> Option<&NodeNetwork> {
-		if let DocumentNodeImplementation::Network(n) = self {
-			Some(n)
-		} else {
-			None
+		match self {
+			DocumentNodeImplementation::Network(n) => Some(n),
+			_ => None,
 		}
 	}
 
 	pub fn get_network_mut(&mut self) -> Option<&mut NodeNetwork> {
-		if let DocumentNodeImplementation::Network(n) = self {
-			Some(n)
-		} else {
-			None
+		match self {
+			DocumentNodeImplementation::Network(n) => Some(n),
+			_ => None,
 		}
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeOutput {
 	pub node_id: NodeId,
@@ -265,6 +270,36 @@ pub struct NodeNetwork {
 	pub disabled: Vec<NodeId>,
 	/// In the case where a new node is chosen as output - what was the original
 	pub previous_outputs: Option<Vec<NodeOutput>>,
+}
+
+impl std::hash::Hash for NodeNetwork {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.inputs.hash(state);
+		self.outputs.hash(state);
+		let mut nodes: Vec<_> = self.nodes.iter().collect();
+		nodes.sort_by_key(|(id, _)| *id);
+		for (id, node) in nodes {
+			id.hash(state);
+			node.hash(state);
+		}
+		self.disabled.hash(state);
+		self.previous_outputs.hash(state);
+	}
+}
+
+impl std::hash::Hash for NodeNetwork {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.inputs.hash(state);
+		self.outputs.hash(state);
+		let mut nodes: Vec<_> = self.nodes.iter().collect();
+		nodes.sort_by_key(|(id, _)| *id);
+		for (id, node) in nodes {
+			id.hash(state);
+			node.hash(state);
+		}
+		self.disabled.hash(state);
+		self.previous_outputs.hash(state);
+	}
 }
 
 /// Graph modification functions
@@ -701,10 +736,41 @@ impl NodeNetwork {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
 			}
-			DocumentNodeImplementation::Unresolved(_) => {}
+			DocumentNodeImplementation::Unresolved(_) => (),
+			DocumentNodeImplementation::Extract => {
+				panic!("Extract nodes should have been removed before flattening");
+			}
 		}
 		assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
 		self.nodes.insert(id, node);
+	}
+
+	pub fn resolve_extract_nodes(&mut self) {
+		let mut extraction_nodes = self
+			.nodes
+			.iter()
+			.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Extract))
+			.map(|(id, node)| (*id, node.clone()))
+			.collect::<Vec<_>>();
+		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
+
+		for (_, node) in &mut extraction_nodes {
+			match node.implementation {
+				DocumentNodeImplementation::Extract => {
+					assert_eq!(node.inputs.len(), 1);
+					let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
+                        panic!("Extract node has no input");
+                    };
+					assert_eq!(output_index, 0);
+					assert!(lambda);
+					let input_node = self.nodes.get_mut(&node_id).unwrap();
+					node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+					node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
+				}
+				_ => (),
+			}
+		}
+		self.nodes.extend(extraction_nodes);
 	}
 
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
@@ -796,6 +862,39 @@ mod test {
 			..Default::default()
 		};
 		assert_eq!(network, maped_add);
+	}
+
+	#[test]
+	fn extract_node() {
+		let id_node = DocumentNode {
+			name: "Id".into(),
+			inputs: vec![],
+			metadata: DocumentNodeMetadata::default(),
+			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+		};
+		let mut extraction_network = NodeNetwork {
+			inputs: vec![],
+			outputs: vec![NodeOutput::new(1, 0)],
+			nodes: [
+				id_node.clone(),
+				DocumentNode {
+					name: "Extract".into(),
+					inputs: vec![NodeInput::lambda(0, 0)],
+					metadata: DocumentNodeMetadata::default(),
+					implementation: DocumentNodeImplementation::Extract,
+				},
+			]
+			.into_iter()
+			.enumerate()
+			.map(|(id, node)| (id as NodeId, node))
+			.collect(),
+			..Default::default()
+		};
+		extraction_network.resolve_extract_nodes();
+		assert_eq!(extraction_network.nodes.len(), 2);
+		let inputs = extraction_network.nodes.get(&1).unwrap().inputs.clone();
+		assert_eq!(inputs.len(), 1);
+		assert!(matches!(&inputs[0], &NodeInput::Value{ tagged_value: TaggedValue::DocumentNode(ref network), ..} if network == &id_node));
 	}
 
 	#[test]

@@ -10,6 +10,8 @@ pub use std::sync::Arc;
 use crate::executor::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
+use super::DocumentNode;
+
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -52,6 +54,7 @@ pub enum TaggedValue {
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	VecDVec2(Vec<DVec2>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
+	DocumentNode(DocumentNode),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -119,10 +122,12 @@ impl Hash for TaggedValue {
 				}
 			}
 			Self::Segments(segments) => {
-				32.hash(state);
 				for segment in segments {
 					segment.hash(state)
 				}
+			}
+			Self::DocumentNode(document_node) => {
+				document_node.hash(state);
 			}
 		}
 	}
@@ -170,6 +175,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::VecDVec2(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
+			TaggedValue::DocumentNode(x) => Box::new(x),
 		}
 	}
 
@@ -215,6 +221,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
+			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 		}
 	}
 }
