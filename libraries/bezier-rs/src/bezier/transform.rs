@@ -365,8 +365,21 @@ impl Bezier {
 			scaled.smooth_open_subpath();
 		}
 
-		let subpath_self_intersections = scaled.self_intersections(None, None);
-		if !subpath_self_intersections.is_empty() && self.self_intersections(None).is_empty() {
+		let number_of_possible_intersections = self.degree() - 1;
+
+		for _ in 0..number_of_possible_intersections {
+			// TODO: In the cubic case, bad intersections are possible even if the cubic segment intersects itself.
+			// For now, we ignore this case as it is relatively rare.
+			if !self.self_intersections(None).is_empty() {
+				// Break early to avoid additional computation
+				break;
+			}
+			let subpath_self_intersections = scaled.self_intersections(None, None);
+			if subpath_self_intersections.is_empty() {
+				// Break early to avoid additional computation
+				break;
+			}
+
 			let [(first_intersect_index, first_intersect_t), (cross_intersect_index, cross_intersect_t)] = subpath_self_intersections[0];
 			let mut trim_start = scaled.trim(
 				SubpathTValue::GlobalParametric(0.),
@@ -386,7 +399,8 @@ impl Bezier {
 			let start_length = trim_start.len();
 			trim_start[start_length - 1].out_handle = trim_end[0].in_handle;
 			trim_start.append(&mut trim_end.manipulator_groups()[1..].to_vec());
-			return trim_start;
+
+			scaled = trim_start;
 		}
 
 		scaled

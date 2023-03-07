@@ -201,6 +201,15 @@ impl Bezier {
 
 		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points.into_iter()).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
 	}
+
+	/// Return 1, 2, or 3 if the [Bezier] is a linear, cubic or quadratic segment respectively.
+	pub fn degree(&self) -> usize {
+		match self.handles {
+			BezierHandles::Linear => 1,
+			BezierHandles::Quadratic { handle: _ } => 2,
+			BezierHandles::Cubic { handle_start: _, handle_end: _ } => 3,
+		}
+	}
 }
 
 #[cfg(test)]

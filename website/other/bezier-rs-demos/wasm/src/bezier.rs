@@ -549,25 +549,13 @@ impl WasmBezier {
 	}
 
 	pub fn offset(&self, distance: f64) -> String {
-		let original_curve_svg = self.get_bezier_path();
-		let bezier_curves_svg = self
-			.0
+		let bezier_svg = self.get_bezier_path();
+		let mut offset_svg = String::new();
+		self.0
 			.offset::<EmptyId>(distance)
-			.iter()
-			.enumerate()
-			.map(|(index, bezier_curve)| {
-				let mut curve_svg = String::new();
-				bezier_curve.to_svg(
-					&mut curve_svg,
-					CURVE_ATTRIBUTES.to_string().replace(BLACK, &format!("hsl({}, 100%, 50%)", (40 * index))),
-					String::new(),
-					String::new(),
-					String::new(),
-				);
-				curve_svg
-			})
-			.fold(original_curve_svg, |acc, item| format!("{acc}{item}"));
-		wrap_svg_tag(bezier_curves_svg)
+			.to_svg(&mut offset_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+
+		wrap_svg_tag(format!("{bezier_svg}{offset_svg}"))
 	}
 
 	pub fn outline(&self, distance: f64) -> String {
