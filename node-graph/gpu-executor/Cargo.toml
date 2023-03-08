@@ -12,6 +12,7 @@ default = []
 [dependencies]
 graphene-core = { path = "../gcore", features = ["async", "std", "alloc", "gpu"] }
 graph-craft = {path = "../graph-craft" }
+node-macro = { path = "../node-macro" }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
 num-traits = "0.2"
 log = "0.4"

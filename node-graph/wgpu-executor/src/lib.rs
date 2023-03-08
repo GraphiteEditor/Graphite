@@ -20,7 +20,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	type BufferHandle = Buffer;
 	type CommandBuffer = CommandBuffer;
 
-	fn load_shader(&mut self, shader: Shader) -> Result<Self::ShaderHandle> {
+	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
 		let shader = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
@@ -28,7 +28,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(shader)
 	}
 
-	fn create_uniform_buffer<T: ToUniformBuffer>(&mut self, data: T) -> Result<Self::BufferHandle> {
+	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<Self::BufferHandle> {
 		let bytes = data.to_bytes();
 		let buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
@@ -38,7 +38,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(buffer)
 	}
 
-	fn create_storage_buffer<T: ToStorageBuffer>(&mut self, data: T, options: StorageBufferOptions) -> Result<Self::BufferHandle> {
+	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<Self::BufferHandle> {
 		let bytes = data.to_bytes();
 		let mut usage = wgpu::BufferUsages::STORAGE;
 
@@ -60,7 +60,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(buffer)
 	}
 
-	fn create_output_buffer(&mut self, size: u64) -> Result<Self::BufferHandle> {
+	fn create_output_buffer(&self, size: u64) -> Result<Self::BufferHandle> {
 		let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
 
 		let buffer = self.context.device.create_buffer(&BufferDescriptor {
@@ -72,7 +72,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(buffer)
 	}
 
-	fn create_compute_pass(&mut self, layout: &gpu_executor::PipelineLayout<Self::ShaderHandle, Self::BufferHandle>, output: Buffer) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self::ShaderHandle, Self::BufferHandle>, output: Buffer) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
@@ -116,7 +116,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(encoder.finish())
 	}
 
-	fn execute_compute_pipeline(&mut self, encoder: Self::CommandBuffer) -> Result<()> {
+	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()> {
 		self.context.queue.submit(Some(encoder));
 
 		// Poll the device in a blocking manner so that our future resolves.
@@ -126,7 +126,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(())
 	}
 
-	fn read_output_buffer(&mut self, buffer: Self::BufferHandle) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
+	fn read_output_buffer(&self, buffer: Self::BufferHandle) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
 		Box::pin(async move {
 			let buffer_slice = buffer.slice(..);
 
