@@ -11,9 +11,8 @@ use crate::messages::tool::common_functionality::transformation_cage::axis_align
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::{LayerId, Operation};
 use document_legacy::intersection::Quad;
-use graphene_core::vector::manipulator_point::ManipulatorPoint;
+use document_legacy::{LayerId, Operation};
 use graphene_std::vector::consts::ManipulatorType;
 
 use glam::{DAffine2, DVec2};
@@ -298,7 +297,7 @@ impl Fsm for PathToolFsmState {
 						.sum::<DVec2>() / count as f64;
 
 					//drag start is in pixels // center is in relative pos
-					let vector_from_mouse_start = pivot - tool_data.grs_mouse_start;
+					let vector_from_mouse_start = pivot - tool_data.previous_mouse_position;
 					let vector_from_mouse_current = pivot - input.mouse.position;
 					let angle = vector_from_mouse_start.angle_between(vector_from_mouse_current);
 					// tool_data.grs_mouse_start = input.mouse.position;
@@ -309,8 +308,7 @@ impl Fsm for PathToolFsmState {
 					let layerspace_rotation = viewspace.inverse() * delta;
 					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
 					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
-					let point_count = 0;
-					for (point_count, point) in points.enumerate() {
+					for point in points {
 						let mut group_id = 0;
 						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
 							let points_in_group = man_group.1.selected_points();
@@ -464,12 +462,10 @@ impl Fsm for PathToolFsmState {
 					// TODO: need start pos of mouse to calculate angle
 					tool_data.grs_mouse_start = input.mouse.position;
 
-					let path = tool_data.shape_editor.selected_layers_ref();
-					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
-
 					PathToolFsmState::Rotating
 				}
 				(_, PathToolMessage::BeginScale) => {
+					tool_data.factor = 1.;
 					tool_data.previous_mouse_position = input.mouse.position;
 
 					let points: Vec<_> = tool_data.shape_editor.selected_points(&document.document_legacy).map(|point| point.position).collect();
@@ -555,11 +551,11 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
 				]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected (coming soon)"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 				HintGroup(vec![
-					HintInfo::keys([Key::KeyG], "Grab Selected (coming soon)"),
-					HintInfo::keys([Key::KeyR], "Rotate Selected (coming soon)"),
-					HintInfo::keys([Key::KeyS], "Scale Selected (coming soon)"),
+					HintInfo::keys([Key::KeyG], "Grab Selected"),
+					HintInfo::keys([Key::KeyR], "Rotate Selected"),
+					HintInfo::keys([Key::KeyS], "Scale Selected"),
 				]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
