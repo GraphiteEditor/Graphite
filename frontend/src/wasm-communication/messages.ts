@@ -53,6 +53,10 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
+export class UpdateZoomWithScroll extends JsMessage {
+	readonly zoomWithScroll!: boolean;
+}
+
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -492,7 +496,7 @@ const mouseCursorIconCSSNames = {
 	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
-export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
+export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
 	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
@@ -1165,7 +1169,7 @@ const widgetSubTypes = [
 	{ value: TextLabel, name: "TextLabel" },
 	{ value: PivotAssist, name: "PivotAssist" },
 ];
-export type WidgetPropsSet = InstanceType<typeof widgetSubTypes[number]["value"]>;
+export type WidgetPropsSet = InstanceType<(typeof widgetSubTypes)[number]["value"]>;
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
@@ -1422,6 +1426,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateZoomWithScroll,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,

@@ -1,15 +1,7 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
 
-use rand_chacha::rand_core::{RngCore, SeedableRng};
-use rand_chacha::ChaCha20Rng;
-use spin::Mutex;
-use std::cell::Cell;
-
-static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
-thread_local! {
-	pub static UUID_SEED: Cell<Option<u64>> = Cell::new(None);
-}
+pub use graphene_core::uuid::*;
 
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {
@@ -37,21 +29,6 @@ impl Default for Editor {
 	fn default() -> Self {
 		Self::new()
 	}
-}
-
-pub fn set_uuid_seed(random_seed: u64) {
-	UUID_SEED.with(|seed| seed.set(Some(random_seed)))
-}
-
-pub fn generate_uuid() -> u64 {
-	let mut lock = RNG.lock();
-	if lock.is_none() {
-		UUID_SEED.with(|seed| {
-			let random_seed = seed.get().expect("Random seed not set before editor was initialized");
-			*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
-		})
-	}
-	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
 }
 
 pub fn release_series() -> String {

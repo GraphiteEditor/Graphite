@@ -40,3 +40,42 @@ mod u64_string {
 		u64::from_str(&s).map_err(serde::de::Error::custom)
 	}
 }
+
+mod uuid_generation {
+	use core::cell::Cell;
+	use rand_chacha::rand_core::{RngCore, SeedableRng};
+	use rand_chacha::ChaCha20Rng;
+	use spin::Mutex;
+
+	static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
+	thread_local! {
+		pub static UUID_SEED: Cell<Option<u64>> = Cell::new(None);
+	}
+
+	pub fn set_uuid_seed(random_seed: u64) {
+		UUID_SEED.with(|seed| seed.set(Some(random_seed)))
+	}
+
+	pub fn generate_uuid() -> u64 {
+		let mut lock = RNG.lock();
+		if lock.is_none() {
+			UUID_SEED.with(|seed| {
+				let random_seed = seed.get().unwrap_or(42);
+				*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
+			})
+		}
+		lock.as_mut().map(ChaCha20Rng::next_u64).expect("uuid mutex poisoned")
+	}
+}
+
+pub use uuid_generation::*;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ManipulatorGroupId(u64);
+
+impl bezier_rs::Identifier for ManipulatorGroupId {
+	fn new() -> Self {
+		Self(generate_uuid())
+	}
+}

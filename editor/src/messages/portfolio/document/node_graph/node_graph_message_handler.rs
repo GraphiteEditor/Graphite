@@ -44,8 +44,9 @@ impl FrontendGraphDataType {
 			TaggedValue::Bool(_) => Self::Boolean,
 			TaggedValue::DVec2(_) => Self::Vector,
 			TaggedValue::Image(_) => Self::Raster,
+			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) => Self::Subpath,
+			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			_ => Self::General,
 		}
 	}
@@ -279,6 +280,8 @@ impl NodeGraphMessageHandler {
 				if let NodeInput::Node {
 					node_id: link_start,
 					output_index: link_start_index,
+					// TODO: add ui for lambdas
+					lambda: _,
 				} = *input
 				{
 					Some(FrontendNodeLink {

@@ -33,7 +33,7 @@ pub fn compile_spirv(network: &graph_craft::document::NodeNetwork, input_type: &
 	if !output.status.success() {
 		return Err(anyhow::anyhow!("cargo failed: {}", String::from_utf8_lossy(&output.stderr)));
 	}
-	Ok(output.stdout)
+	Ok(std::fs::read(compile_dir.unwrap().to_owned() + "/shader.spv")?)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

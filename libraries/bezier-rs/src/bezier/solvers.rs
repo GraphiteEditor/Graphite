@@ -52,15 +52,19 @@ impl Bezier {
 		}
 	}
 
-	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/tangent/solo" title="Tangent Demo"></iframe>
-	pub fn tangent(&self, t: TValue) -> DVec2 {
-		let t = self.t_value_to_parametric(t);
+	/// Returns the non-normalized vector representing the tangent at the point `t` along the curve.
+	pub(crate) fn non_normalized_tangent(&self, t: f64) -> DVec2 {
 		match self.handles {
 			BezierHandles::Linear => self.end - self.start,
 			_ => self.derivative().unwrap().evaluate(TValue::Parametric(t)),
 		}
-		.normalize()
+	}
+
+	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/tangent/solo" title="Tangent Demo"></iframe>
+	pub fn tangent(&self, t: TValue) -> DVec2 {
+		let t = self.t_value_to_parametric(t);
+		self.non_normalized_tangent(t).normalize()
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -198,7 +202,7 @@ impl Bezier {
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
 	/// - `self_original_t_interval` - Used to identify the `t` values of the original parent of `self` that the current iteration is representing.
 	/// - `other_original_t_interval` - Used to identify the `t` values of the original parent of `other` that the current iteration is representing.
-	fn intersections_between_subcurves(&self, self_original_t_interval: Range<f64>, other: &Bezier, other_original_t_interval: Range<f64>, error: f64) -> Vec<[f64; 2]> {
+	pub(crate) fn intersections_between_subcurves(&self, self_original_t_interval: Range<f64>, other: &Bezier, other_original_t_interval: Range<f64>, error: f64) -> Vec<[f64; 2]> {
 		let bounding_box1 = self.bounding_box();
 		let bounding_box2 = other.bounding_box();
 
@@ -241,8 +245,8 @@ impl Bezier {
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of filtered parametric `t` values that correspond to intersection points between the current bezier curve and the provided one
-	/// such that the difference between adjacent `t` values in sorted order is greater than some minimum seperation value. If the difference
-	/// between 2 adjacent `t` values is lesss than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+	/// such that the difference between adjacent `t` values in sorted order is greater than some minimum separation value. If the difference
+	/// between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
 	/// The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
@@ -255,7 +259,7 @@ impl Bezier {
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
 		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPERATION_VALUE) {
+			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPARATION_VALUE) {
 				accumulator.pop();
 			}
 			accumulator.push(*t);
@@ -390,12 +394,21 @@ impl Bezier {
 		.flat_map(|bezier| self.intersections(bezier, None, None))
 		.collect()
 	}
+
+	/// Returns a cubic bezier which joins this with the provided bezier curve.
+	/// The resulting path formed by the Bezier curves is continuous up to the first derivative.
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/join/solo" title="Join Demo"></iframe>
+	pub fn join(&self, other: &Bezier) -> Bezier {
+		let handle1 = self.non_normalized_tangent(1.) / 3. + self.end;
+		let handle2 = other.start - other.non_normalized_tangent(0.) / 3.;
+		Bezier::from_cubic_dvec2(self.end, handle1, handle2, other.start)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::compare::{compare_f64s, compare_points, compare_vec_of_points};
 	use super::*;
+	use crate::compare::{compare_f64s, compare_points, compare_vec_of_points};
 
 	#[test]
 	fn test_de_casteljau_points() {

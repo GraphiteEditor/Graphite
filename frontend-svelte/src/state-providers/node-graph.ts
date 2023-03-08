@@ -9,6 +9,7 @@ import {
 	UpdateNodeGraph,
 	UpdateNodeTypes,
 	UpdateNodeGraphBarLayout,
+	UpdateZoomWithScroll,
 	defaultWidgetLayout,
 	patchWidgetLayout,
 } from "@/wasm-communication/messages";
@@ -20,6 +21,7 @@ export function createNodeGraphState(editor: Editor) {
 		links: [] as FrontendNodeLink[],
 		nodeTypes: [] as FrontendNodeType[],
 		nodeGraphBarLayout: defaultWidgetLayout(),
+		zoomWithScroll: false as boolean,
 	});
 
 	// Set up message subscriptions on creation
@@ -39,6 +41,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
 		update((state) => {
 			patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateZoomWithScroll, (updateZoomWithScroll) => {
+		update((state) => {
+			state.zoomWithScroll = updateZoomWithScroll.zoomWithScroll;
 			return state;
 		});
 	});

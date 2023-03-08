@@ -205,10 +205,9 @@ impl Bezier {
 
 #[cfg(test)]
 mod tests {
-	use crate::utils::TValue;
-
-	use super::compare::compare_points;
 	use super::*;
+	use crate::compare::compare_points;
+	use crate::utils::TValue;
 
 	#[test]
 	fn test_quadratic_from_points() {

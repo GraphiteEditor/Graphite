@@ -239,10 +239,10 @@ const bezierFeatures = {
 				sliderOptions: [
 					{
 						variable: "distance",
-						min: -50,
-						max: 50,
+						min: -30,
+						max: 30,
 						step: 1,
-						default: 20,
+						default: 15,
 					},
 				],
 			},
@@ -257,9 +257,9 @@ const bezierFeatures = {
 					{
 						variable: "distance",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
-						default: 20,
+						default: 15,
 					},
 				],
 			},
@@ -274,16 +274,16 @@ const bezierFeatures = {
 					{
 						variable: "start_distance",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
-						default: 30,
+						default: 5,
 					},
 					{
 						variable: "end_distance",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
-						default: 30,
+						default: 15,
 					},
 				],
 			},
@@ -306,28 +306,28 @@ const bezierFeatures = {
 					{
 						variable: "distance1",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
 						default: 20,
 					},
 					{
 						variable: "distance2",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
 						default: 10,
 					},
 					{
 						variable: "distance3",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
 						default: 30,
 					},
 					{
 						variable: "distance4",
 						min: 0,
-						max: 50,
+						max: 30,
 						step: 1,
 						default: 5,
 					},
@@ -482,6 +482,56 @@ const bezierFeatures = {
 			},
 		},
 		chooseTVariant: true,
+	},
+	join: {
+		name: "Join",
+		callback: (bezier: WasmBezierInstance): string => {
+			const points = JSON.parse(bezier.get_points());
+			let examplePoints = [];
+			if (points.length === 2) {
+				examplePoints = [
+					[120, 155],
+					[40, 155],
+				];
+			} else if (points.length === 3) {
+				examplePoints = [
+					[40, 150],
+					[95, 195],
+					[155, 145],
+				];
+			} else {
+				examplePoints = [
+					[140, 150],
+					[85, 110],
+					[65, 180],
+					[30, 140],
+				];
+			}
+			return bezier.join(examplePoints);
+		},
+		demoOptions: {
+			Linear: {
+				customPoints: [
+					[45, 40],
+					[130, 90],
+				],
+			},
+			Quadratic: {
+				customPoints: [
+					[153, 40],
+					[40, 20],
+					[75, 85],
+				],
+			},
+			Cubic: {
+				customPoints: [
+					[20, 80],
+					[40, 20],
+					[90, 100],
+					[130, 55],
+				],
+			},
+		},
 	},
 };
 

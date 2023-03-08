@@ -17,6 +17,7 @@ pub struct GpuExecutor<'a, I: StaticTypeSized, O> {
 
 impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
 	pub fn new(context: Context, shader: Cow<'a, [u32]>, entry_point: String) -> anyhow::Result<Self> {
+		log::info!("Creating executor");
 		Ok(Self {
 			context,
 			entry_point,
@@ -28,6 +29,7 @@ impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
 
 impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> Executor for GpuExecutor<'a, I, O> {
 	fn execute<'i, 's: 'i>(&'s self, input: Any<'i>) -> Result<Any<'i>, Box<dyn std::error::Error>> {
+		log::info!("Executing shader");
 		let input = dyn_any::downcast::<Vec<I>>(input).expect("Wrong input type");
 		let context = &self.context;
 		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec(), *input, self.entry_point.clone());
@@ -40,6 +42,11 @@ impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Syn
 
 async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, shader: Vec<u32>, data: Vec<I>, entry_point: String) -> Option<Vec<O>> {
 	// Loads the shader from WGSL
+	dbg!(&shader);
+	//write shader to file
+	use std::io::Write;
+	let mut file = std::fs::File::create("/tmp/shader.spv").unwrap();
+	file.write_all(bytemuck::cast_slice(&shader)).unwrap();
 	let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 		label: None,
 		source: wgpu::ShaderSource::SpirV(shader.into()),
@@ -122,7 +129,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 		cpass.set_pipeline(&compute_pipeline);
 		cpass.set_bind_group(0, &bind_group, &[]);
 		cpass.insert_debug_marker("compute node network evaluation");
-		cpass.dispatch_workgroups(data.len() as u32, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
+		cpass.dispatch_workgroups(data.len().min(65535) as u32, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
 	}
 	// Sets adds copy operation to command encoder.
 	// Will copy data from storage buffer on GPU to staging buffer on CPU.

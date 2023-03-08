@@ -4,8 +4,12 @@ use crate::Node;
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::float::Float;
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
 pub enum LuminanceCalculation {
 	#[default]
 	SRGB,
@@ -27,14 +31,130 @@ impl LuminanceCalculation {
 	}
 }
 
-impl std::fmt::Display for LuminanceCalculation {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for LuminanceCalculation {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			LuminanceCalculation::SRGB => write!(f, "sRGB"),
 			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
 			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
 			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
 			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
+		}
+	}
+}
+
+impl BlendMode {
+	pub fn list() -> [BlendMode; 26] {
+		[
+			BlendMode::Normal,
+			BlendMode::Multiply,
+			BlendMode::Darken,
+			BlendMode::ColorBurn,
+			BlendMode::LinearBurn,
+			BlendMode::DarkerColor,
+			BlendMode::Screen,
+			BlendMode::Lighten,
+			BlendMode::ColorDodge,
+			BlendMode::LinearDodge,
+			BlendMode::LighterColor,
+			BlendMode::Overlay,
+			BlendMode::SoftLight,
+			BlendMode::HardLight,
+			BlendMode::VividLight,
+			BlendMode::LinearLight,
+			BlendMode::PinLight,
+			BlendMode::HardMix,
+			BlendMode::Difference,
+			BlendMode::Exclusion,
+			BlendMode::Subtract,
+			BlendMode::Divide,
+			BlendMode::Hue,
+			BlendMode::Saturation,
+			BlendMode::Color,
+			BlendMode::Luminosity,
+		]
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+pub enum BlendMode {
+	#[default]
+	// Basic group
+	Normal,
+	// Not supported by SVG, but we should someday support: Dissolve
+
+	// Darken group
+	Multiply,
+	Darken,
+	ColorBurn,
+	LinearBurn,
+	DarkerColor,
+
+	// Lighten group
+	Screen,
+	Lighten,
+	ColorDodge,
+	LinearDodge,
+	LighterColor,
+
+	// Contrast group
+	Overlay,
+	SoftLight,
+	HardLight,
+	VividLight,
+	LinearLight,
+	PinLight,
+	HardMix,
+
+	// Inversion group
+	Difference,
+	Exclusion,
+	Subtract,
+	Divide,
+
+	// Component group
+	Hue,
+	Saturation,
+	Color,
+	Luminosity,
+}
+
+impl core::fmt::Display for BlendMode {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			BlendMode::Normal => write!(f, "Normal"),
+
+			BlendMode::Multiply => write!(f, "Multiply"),
+			BlendMode::Darken => write!(f, "Darken"),
+			BlendMode::ColorBurn => write!(f, "Color Burn"),
+			BlendMode::LinearBurn => write!(f, "Linear Burn"),
+			BlendMode::DarkerColor => write!(f, "Darker Color"),
+
+			BlendMode::Screen => write!(f, "Screen"),
+			BlendMode::Lighten => write!(f, "Lighten"),
+			BlendMode::ColorDodge => write!(f, "Color Dodge"),
+			BlendMode::LinearDodge => write!(f, "Linear Dodge"),
+			BlendMode::LighterColor => write!(f, "Lighter Color"),
+
+			BlendMode::Overlay => write!(f, "Overlay"),
+			BlendMode::SoftLight => write!(f, "Soft Light"),
+			BlendMode::HardLight => write!(f, "Hard Light"),
+			BlendMode::VividLight => write!(f, "Vivid Light"),
+			BlendMode::LinearLight => write!(f, "Linear Light"),
+			BlendMode::PinLight => write!(f, "Pin Light"),
+			BlendMode::HardMix => write!(f, "Hard Mix"),
+
+			BlendMode::Difference => write!(f, "Difference"),
+			BlendMode::Exclusion => write!(f, "Exclusion"),
+			BlendMode::Subtract => write!(f, "Subtract"),
+			BlendMode::Divide => write!(f, "Divide"),
+
+			BlendMode::Hue => write!(f, "Hue"),
+			BlendMode::Saturation => write!(f, "Saturation"),
+			BlendMode::Color => write!(f, "Color"),
+			BlendMode::Luminosity => write!(f, "Luminosity"),
 		}
 	}
 }
@@ -209,6 +329,51 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 	} else {
 		Color::BLACK
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BlendNode<BlendMode, Opacity> {
+	blend_mode: BlendMode,
+	opacity: Opacity,
+}
+
+#[node_macro::node_fn(BlendNode)]
+fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+	let (source_color, backdrop) = input;
+	let actual_opacity = 1. - (opacity / 100.) as f32;
+	return match blend_mode {
+		BlendMode::Normal => backdrop.blend_rgb(source_color, Color::blend_normal),
+		BlendMode::Multiply => backdrop.blend_rgb(source_color, Color::blend_multiply),
+		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
+		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, Color::blend_color_burn),
+		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, Color::blend_linear_burn),
+		BlendMode::DarkerColor => backdrop.blend_darker_color(source_color),
+
+		BlendMode::Screen => backdrop.blend_rgb(source_color, Color::blend_screen),
+		BlendMode::Lighten => backdrop.blend_rgb(source_color, Color::blend_lighten),
+		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, Color::blend_color_dodge),
+		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, Color::blend_linear_dodge),
+		BlendMode::LighterColor => backdrop.blend_lighter_color(source_color),
+
+		BlendMode::Overlay => source_color.blend_rgb(backdrop, Color::blend_hardlight),
+		BlendMode::SoftLight => backdrop.blend_rgb(source_color, Color::blend_softlight),
+		BlendMode::HardLight => backdrop.blend_rgb(source_color, Color::blend_hardlight),
+		BlendMode::VividLight => backdrop.blend_rgb(source_color, Color::blend_vivid_light),
+		BlendMode::LinearLight => backdrop.blend_rgb(source_color, Color::blend_linear_light),
+		BlendMode::PinLight => backdrop.blend_rgb(source_color, Color::blend_pin_light),
+		BlendMode::HardMix => backdrop.blend_rgb(source_color, Color::blend_hard_mix),
+
+		BlendMode::Difference => backdrop.blend_rgb(source_color, Color::blend_exclusion),
+		BlendMode::Exclusion => backdrop.blend_rgb(source_color, Color::blend_exclusion),
+		BlendMode::Subtract => backdrop.blend_rgb(source_color, Color::blend_subtract),
+		BlendMode::Divide => backdrop.blend_rgb(source_color, Color::blend_divide),
+
+		BlendMode::Hue => backdrop.blend_hue(source_color),
+		BlendMode::Saturation => backdrop.blend_saturation(source_color),
+		BlendMode::Color => backdrop.blend_color(source_color),
+		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
+	}
+	.lerp(backdrop, actual_opacity);
 }
 
 #[derive(Debug, Clone, Copy)]
