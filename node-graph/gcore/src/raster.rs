@@ -425,6 +425,17 @@ mod image {
 				transform: DAffine2::ZERO,
 			}
 		}
+
+		pub fn get_mut(&mut self, x: usize, y: usize) -> &mut Color {
+			&mut self.image.data[y * (self.image.width as usize) + x]
+		}
+
+		pub fn sample(&self, u: f64, v: f64) -> Color {
+			let x = ((u * self.image.width as f64) as u32).clamp(0, self.image.width);
+			let y = ((v * self.image.height as f64) as u32).clamp(0, self.image.height);
+
+			self.image.data[(y * self.image.width + x) as usize]
+		}
 	}
 
 	impl Hash for ImageFrame {

@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
 use graphene_core::Node;
 
@@ -130,17 +130,80 @@ pub struct BlendImageNode<Second, MapFn> {
 	map_fn: MapFn,
 }
 
+struct AxisAlignedBbox {
+	start: DVec2,
+	end: DVec2,
+}
+
+struct Bbox {
+	top_left: DVec2,
+	top_right: DVec2,
+	bottom_left: DVec2,
+	bottom_right: DVec2,
+}
+
+impl Bbox {
+	fn axis_aligned_bbox(&self) -> AxisAlignedBbox {
+		let start_x = self.top_left.x.min(self.top_right.x).min(self.bottom_left.x).min(self.bottom_right.x);
+		let start_y = self.top_left.y.min(self.top_right.y).min(self.bottom_left.y).min(self.bottom_right.y);
+		let end_x = self.top_left.x.max(self.top_right.x).max(self.bottom_left.x).max(self.bottom_right.x);
+		let end_y = self.top_left.y.max(self.top_right.y).max(self.bottom_left.y).max(self.bottom_right.y);
+
+		AxisAlignedBbox {
+			start: DVec2::new(start_x, start_y),
+			end: DVec2::new(end_x, end_y),
+		}
+	}
+}
+
+fn compute_transformed_bounding_box(image_frame: &ImageFrame) -> Bbox {
+	let top_left = DVec2::new(0.0, 0.0);
+	let top_right = DVec2::new(image_frame.image.width as f64, 0.0);
+	let bottom_left = DVec2::new(0.0, image_frame.image.height as f64);
+	let bottom_right = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64);
+	let transform = |p| image_frame.transform.transform_point2(p);
+
+	Bbox {
+		top_left: transform(top_left),
+		top_right: transform(top_right),
+		bottom_left: transform(bottom_left),
+		bottom_right: transform(bottom_right),
+	}
+}
+
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
 fn blend_image<MapFn>(image: ImageFrame, second: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
-	let mut image = image;
-	for (pixel, sec_pixel) in &mut image.image.data.iter_mut().zip(second.image.data.iter()) {
-		*pixel = map_fn.eval((*pixel, *sec_pixel));
+	let (mut dst_image, src_image) = (image, second);
+	let (src_width, src_height) = (src_image.image.width, src_image.image.height);
+	let (dst_width, dst_height) = (dst_image.image.width, dst_image.image.height);
+	let aabb = compute_transformed_bounding_box(&src_image).axis_aligned_bbox();
+	let (start_x, end_x) = ((aabb.start.x as i64).max(0) as u32, (aabb.end.x as i64).min(dst_width as i64) as u32);
+	let (start_y, end_y) = ((aabb.start.y as i64).max(0) as u32, (aabb.end.y as i64).min(dst_height as i64) as u32);
+	let src_to_dst = src_image.transform.inverse() * dst_image.transform;
+
+	for y in start_y..end_y {
+		for x in start_x..end_x {
+			let point = DVec2::new(x as f64, y as f64);
+			let src_point = src_to_dst.transform_point2(point);
+
+			if !((0.0..src_width as f64).contains(&src_point.x) && (0.0..src_height as f64).contains(&src_point.y)) {
+				continue;
+			}
+
+			let u = src_point.x / (src_width as f64);
+			let v = src_point.y / (src_height as f64);
+			let dst_pixel = dst_image.get_mut(x as usize, y as usize);
+			let src_pixel = src_image.sample(u, v);
+
+			*dst_pixel = map_fn.eval((*dst_pixel, src_pixel));
+		}
 	}
-	image
+
+	dst_image
 }
 
 #[derive(Debug, Clone, Copy)]
