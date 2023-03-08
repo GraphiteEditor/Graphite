@@ -31,8 +31,8 @@
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement;
 	let id = `${Math.random()}`.substring(2);
 	let macKeyboardLayout = platformIsMac();
-	let inputValue = value;
 
+	$: inputValue = value;
 	$: dispatch("value", inputValue);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.

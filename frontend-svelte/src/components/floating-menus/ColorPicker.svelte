@@ -320,7 +320,10 @@
 						{/if}
 						<NumberInput
 							value={strength}
-							on:value={({ detail }) => setColorRGB(channel, detail)}
+							on:value={({ detail }) => {
+								strength = detail;
+								setColorRGB(channel, detail);
+							}}
 							min={0}
 							max={255}
 							minWidth={56}
@@ -341,7 +344,10 @@
 						{/if}
 						<NumberInput
 							value={strength}
-							on:value={({ detail }) => setColorHSV(channel, detail)}
+							on:value={({ detail }) => {
+								strength = detail;
+								setColorHSV(channel, detail);
+							}}
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
@@ -358,7 +364,10 @@
 			<NumberInput
 				label="Alpha"
 				value={!isNone ? alpha * 100 : undefined}
-				on:value={({ detail }) => setColorAlphaPercent(detail)}
+				on:value={({ detail }) => {
+					if (detail !== undefined) alpha = detail / 100;
+					setColorAlphaPercent(detail);
+				}}
 				min={0}
 				max={100}
 				rangeMin={0}
