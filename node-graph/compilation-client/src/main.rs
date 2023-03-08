@@ -25,8 +25,10 @@ fn main() {
 		.into_iter()
 		.collect(),
 	};
+	let compiler = graph_craft::executor::Compiler {};
+	let proto_network = compiler.compile_single(network, true).unwrap();
 
-	let compile_request = CompileRequest::new(network, "u32".to_owned(), "u32".to_owned());
+	let compile_request = CompileRequest::new(proto_network, vec![concrete!(u32)], concrete!(u32));
 	let response = client.post("http://localhost:3000/compile/spirv").json(&compile_request).send().unwrap();
 	println!("response: {:?}", response);
 }

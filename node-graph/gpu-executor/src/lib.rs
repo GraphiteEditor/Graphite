@@ -58,7 +58,7 @@ pub struct ShaderInputNode<T> {
 
 impl<'i, T: 'i> Node<'i, ()> for ShaderInputNode<T> {
 	type Output = &'i T;
-	fn eval<'s: 'i>(&'s self, _: ()) -> Self::Output {
+	fn eval(&'i self, _: ()) -> Self::Output {
 		&self.data
 	}
 }

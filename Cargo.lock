@@ -1639,6 +1639,7 @@ dependencies = [
  "dyn-clone",
  "glam",
  "gpu-compiler-bin-wrapper",
+ "gpu-executor",
  "graph-craft",
  "graphene-core",
  "image",

@@ -1,15 +1,27 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
-use graph_craft::document::*;
+use graph_craft::{proto::ProtoNetwork, Type};
 
-pub async fn compile<I, O>(network: NodeNetwork) -> Result<Vec<u8>, reqwest::Error> {
+pub async fn compile(network: ProtoNetwork, inputs: Vec<Type>, output: Type) -> Result<Shader, reqwest::Error> {
 	let client = reqwest::Client::new();
 
-	let compile_request = CompileRequest::new(network, std::any::type_name::<I>().to_owned(), std::any::type_name::<O>().to_owned());
+	let compile_request = CompileRequest::new(network, inputs.clone(), output.clone());
 	let response = client.post("http://localhost:3000/compile/spirv").json(&compile_request).send();
 	let response = response.await?;
-	response.bytes().await.map(|b| b.to_vec())
+	response.bytes().await.map(|b| Shader {
+		bytes: b.windows(4).map(|x| u32::from_le_bytes(x.try_into().unwrap())).collect(),
+		input_types: inputs,
+		output_type: output,
+	})
 }
 
-pub fn compile_sync<I: 'static, O: 'static>(network: NodeNetwork) -> Result<Vec<u8>, reqwest::Error> {
-	future_executor::block_on(compile::<I, O>(network))
+pub fn compile_sync(network: ProtoNetwork, inputs: Vec<Type>, output: Type) -> Result<Shader, reqwest::Error> {
+	future_executor::block_on(compile(network, inputs, output))
+}
+
+// TODO: should we add the entry point as a field?
+/// A compiled shader with type annotations.
+pub struct Shader {
+	pub bytes: Vec<u32>,
+	pub input_types: Vec<Type>,
+	pub output_type: Type,
 }

@@ -10,7 +10,8 @@ use futures::Future;
 use gpu_executor::{Shader, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
 use wgpu::{util::DeviceExt, Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
 
-struct NewExecutor {
+#[derive(Debug, Clone)]
+pub struct NewExecutor {
 	context: Context,
 }
 
@@ -157,5 +158,12 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 				panic!("failed to run compute on gpu!")
 			}
 		})
+	}
+}
+
+impl NewExecutor {
+	pub fn new() -> Option<Self> {
+		let context = Context::new_sync()?;
+		Some(Self { context })
 	}
 }

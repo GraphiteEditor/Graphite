@@ -1,4 +1,5 @@
 use graph_craft::document::*;
+use graph_craft::proto::*;
 use graphene_core::raster::*;
 use graphene_core::value::ValueNode;
 use graphene_core::*;
@@ -7,22 +8,42 @@ use bytemuck::Pod;
 use core::marker::PhantomData;
 use dyn_any::StaticTypeSized;
 
-pub struct MapGpuNode<O, Network> {
-	network: Network,
+pub struct GpuCompiler<TypingContext> {
+	typing_context: TypingContext,
+}
+
+// Move to graph-craft
+#[node_macro::node_fn(GpuCompiler)]
+fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext) -> compilation_client::Shader {
+	let compiler = graph_craft::executor::Compiler {};
+	let DocumentNodeImplementation::Network(network) = node.implementation;
+	let proto_network = compiler.compile_single(network, true).unwrap();
+	typing_context.update(&proto_network);
+	let input_types = proto_network.inputs.iter().map(|id| typing_context.get_type(*id).unwrap()).map(|node_io| node_io.output).collect();
+	let output_type = typing_context.get_type(proto_network.output).unwrap().output;
+
+	let bytes = compilation_client::compile_sync(proto_network, input_types, output_type).unwrap();
+	bytes
+}
+
+pub struct MapGpuNode<O, Shader> {
+	shader: Shader,
 	_o: PhantomData<O>,
 }
 
 #[node_macro::node_fn(MapGpuNode<_O>)]
-fn map_gpu<I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, _O: StaticTypeSized + Sync + Send + Pod>(input: I, network: &'any_input NodeNetwork) -> Vec<_O> {
+fn map_gpu<I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, _O: StaticTypeSized + Sync + Send + Pod>(input: I, shader: &'any_input compilation_client::Shader) -> Vec<_O> {
+	use gpu_executor::GpuExecutor;
 	use graph_craft::executor::Executor;
-	let bytes = compilation_client::compile_sync::<S, _O>(network.clone()).unwrap();
-	let words = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) };
-	use wgpu_executor::{Context, GpuExecutor};
-	let executor: GpuExecutor<S, _O> = GpuExecutor::new(Context::new_sync().unwrap(), words.into(), "gpu::eval".into()).unwrap();
+	use wgpu_executor::NewExecutor;
+	let executor = NewExecutor::new().unwrap();
+	/*let executor: GpuExecutor= GpuExecutor::new(Context::new_sync().unwrap(), shader.into(), "gpu::eval".into()).unwrap();
 	let data: Vec<_> = input.into_iter().collect();
 	let result = executor.execute(Box::new(data)).unwrap();
 	let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
 	*result
+	*/
+	todo!()
 }
 
 pub struct MapGpuSingleImageNode<N> {

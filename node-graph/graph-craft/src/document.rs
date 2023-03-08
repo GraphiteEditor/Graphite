@@ -1,3 +1,4 @@
+use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_core::{NodeIdentifier, Type};
 
@@ -226,12 +227,6 @@ impl Default for DocumentNodeImplementation {
 	}
 }
 
-impl Default for DocumentNodeImplementation {
-	fn default() -> Self {
-		Self::Unresolved(NodeIdentifier::new("graphene_cored::ops::IdNode"))
-	}
-}
-
 impl DocumentNodeImplementation {
 	pub fn get_network(&self) -> Option<&NodeNetwork> {
 		match self {
@@ -270,21 +265,6 @@ pub struct NodeNetwork {
 	pub disabled: Vec<NodeId>,
 	/// In the case where a new node is chosen as output - what was the original
 	pub previous_outputs: Option<Vec<NodeOutput>>,
-}
-
-impl std::hash::Hash for NodeNetwork {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.inputs.hash(state);
-		self.outputs.hash(state);
-		let mut nodes: Vec<_> = self.nodes.iter().collect();
-		nodes.sort_by_key(|(id, _)| *id);
-		for (id, node) in nodes {
-			id.hash(state);
-			node.hash(state);
-		}
-		self.disabled.hash(state);
-		self.previous_outputs.hash(state);
-	}
 }
 
 impl std::hash::Hash for NodeNetwork {
