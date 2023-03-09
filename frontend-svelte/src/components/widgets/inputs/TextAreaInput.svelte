@@ -13,9 +13,9 @@
 
 	let self: FieldInput;
 	let editing = false;
-	let inputValue = value;
+	let text = value;
 
-	$: dispatch("value", inputValue);
+	$: dispatch("value", text);
 
 	function onTextFocused() {
 		editing = true;
@@ -53,7 +53,8 @@
 		// TODO: Svelte: check if this should be based on `Boolean(label)` or `label !== ""`
 		"has-label": Boolean(label),
 	}}
-	on:value={({ detail }) => (inputValue = detail)}
+	value={text}
+	on:value={({ detail }) => (text = detail)}
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:cancelTextChange={onCancelTextChange}
@@ -62,7 +63,6 @@
 	{label}
 	{disabled}
 	{tooltip}
-	value={inputValue}
 	bind:this={self}
 />
 
