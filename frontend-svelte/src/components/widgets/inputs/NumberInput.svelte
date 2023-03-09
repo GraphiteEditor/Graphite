@@ -52,7 +52,7 @@
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
 	let self: FieldInput;
-	let text = displayText(value);
+	let text = displayText(value, displayDecimalPlaces, unit);
 	let editing = false;
 	// Stays in sync with a binding to the actual input range slider element.
 	let rangeSliderValue = value !== undefined ? value : 0;
@@ -84,10 +84,10 @@
 		if (typeof min === "number") sanitized = Math.max(sanitized, min);
 		if (typeof max === "number") sanitized = Math.min(sanitized, max);
 
-		text = displayText(sanitized);
+		text = displayText(sanitized, displayDecimalPlaces, unit);
 	}
 
-	function sliderInput() {
+	function onSliderInput() {
 		// Keep only 4 digits after the decimal point
 		const ROUNDING_EXPONENT = 4;
 		const ROUNDING_MAGNITUDE = 10 ** ROUNDING_EXPONENT;
@@ -113,10 +113,10 @@
 
 		// If we're in a dragging state, we want to use the new slider value
 		rangeSliderValueAsRendered = roundedValue;
-		updateValue(roundedValue);
+		updateValue(roundedValue, min, max, displayDecimalPlaces, unit);
 	}
 
-	function sliderPointerDown() {
+	function onSliderPointerDown() {
 		// We want to render the fake slider thumb at the old position, which is still the number held by `value`
 		rangeSliderValueAsRendered = value || 0;
 
@@ -124,7 +124,7 @@
 		// invocation will transition the state machine to `mousedown`. That's why we don't do it here.
 	}
 
-	function sliderPointerUp() {
+	function onSliderPointerUp() {
 		// User clicked but didn't drag, so we focus the text input element
 		if (rangeSliderClickDragState === "mousedown") {
 			const inputElement = self.element().querySelector("[data-input-element]") as HTMLInputElement | undefined;
@@ -160,7 +160,7 @@
 		const parsed = parseFloat(text);
 		const newValue = Number.isNaN(parsed) ? undefined : parsed;
 
-		updateValue(newValue);
+		updateValue(newValue, min, max, displayDecimalPlaces, unit);
 
 		editing = false;
 
@@ -168,7 +168,7 @@
 	}
 
 	function onCancelTextChange() {
-		updateValue(undefined);
+		updateValue(undefined, min, max, displayDecimalPlaces, unit);
 
 		editing = false;
 
@@ -181,11 +181,11 @@
 		const actions: Record<NumberInputIncrementBehavior, () => void> = {
 			Add: () => {
 				const directionAddend = direction === "Increase" ? step : -step;
-				updateValue(value !== undefined ? value + directionAddend : undefined);
+				updateValue(value !== undefined ? value + directionAddend : undefined, min, max, displayDecimalPlaces, unit);
 			},
 			Multiply: () => {
 				const directionMultiplier = direction === "Increase" ? step : 1 / step;
-				updateValue(value !== undefined ? value * directionMultiplier : undefined);
+				updateValue(value !== undefined ? value * directionMultiplier : undefined, min, max, displayDecimalPlaces, unit);
 			},
 			Callback: () => {
 				if (direction === "Increase") incrementCallbackIncrease?.();
@@ -197,20 +197,20 @@
 		action();
 	}
 
-	function updateValue(newValue: number | undefined) {
+	function updateValue(newValue: number | undefined, min: number | undefined, max: number | undefined, displayDecimalPlaces: number, unit: string) {
+		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
 		const nowValid = value !== undefined && isInteger ? Math.round(value) : value;
 		let cleaned = newValue !== undefined ? newValue : nowValid;
 
 		if (typeof min === "number" && !Number.isNaN(min) && cleaned !== undefined) cleaned = Math.max(cleaned, min);
 		if (typeof max === "number" && !Number.isNaN(max) && cleaned !== undefined) cleaned = Math.min(cleaned, max);
 
-		// Required as the call to update:value can, not change the value
-		text = displayText(value);
+		text = displayText(cleaned, displayDecimalPlaces, unit);
 
 		if (newValue !== undefined) dispatch("value", cleaned);
 	}
 
-	function displayText(value: number | undefined): string {
+	function displayText(value: number | undefined, displayDecimalPlaces: number, unit: string): string {
 		if (value === undefined) return "-";
 
 		// Find the amount of digits on the left side of the decimal
@@ -261,9 +261,9 @@
 			max={rangeMax}
 			step={sliderStepValue}
 			{disabled}
-			on:input={sliderInput}
-			on:pointerdown={sliderPointerDown}
-			on:pointerup={sliderPointerUp}
+			on:input={onSliderInput}
+			on:pointerdown={onSliderPointerDown}
+			on:pointerup={onSliderPointerUp}
 			tabindex="-1"
 		/>
 	{/if}

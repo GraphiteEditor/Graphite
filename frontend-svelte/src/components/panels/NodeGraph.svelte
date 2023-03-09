@@ -59,7 +59,7 @@
 		return sparse;
 	}
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string) {
+	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, FrontendNodeType[]][] {
 		const categories = new Map();
 		nodeTypes.forEach((node) => {
 			if (searchTerm.length > 0 && !node.name.toLowerCase().includes(searchTerm.toLowerCase()) && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
@@ -488,10 +488,10 @@
 		{#if nodeListLocation}
 			<LayoutCol class="node-list" data-node-list styles={{ "margin-left": `${nodeListX}px`, "margin-top": `${nodeListY}px` }}>
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				{#each nodeCategories as nodeCategory (nodeCategory[0])}
+				{#each nodeCategories as nodeCategory}
 					<LayoutCol>
 						<TextLabel>{nodeCategory[0]}</TextLabel>
-						{#each nodeCategory[1] as nodeType (String(nodeType))}
+						{#each nodeCategory[1] as nodeType}
 							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
 						{/each}
 					</LayoutCol>
