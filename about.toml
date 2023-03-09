@@ -11,6 +11,7 @@ accepted = [
 	"MPL-2.0",
 	"CC0-1.0",
 	"OpenSSL",
+	"BSL-1.0",
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
