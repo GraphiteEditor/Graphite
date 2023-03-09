@@ -124,12 +124,6 @@ where
 	image_frame
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendImageNode<Second, MapFn> {
-	second: Second,
-	map_fn: MapFn,
-}
-
 struct AxisAlignedBbox {
 	start: DVec2,
 	end: DVec2,
@@ -171,19 +165,24 @@ fn compute_transformed_bounding_box(image_frame: &ImageFrame) -> Bbox {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BlendImageNode<Destination, MapFn> {
+	destination: Destination,
+	map_fn: MapFn,
+}
+
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
-fn blend_image<MapFn>(image: ImageFrame, second: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
+fn blend_image<MapFn>(source: ImageFrame, mut destination: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
-	let (mut dst_image, src_image) = (image, second);
-	let (src_width, src_height) = (src_image.image.width, src_image.image.height);
-	let (dst_width, dst_height) = (dst_image.image.width, dst_image.image.height);
-	let aabb = compute_transformed_bounding_box(&src_image).axis_aligned_bbox();
+	let (src_width, src_height) = (source.image.width, source.image.height);
+	let (dst_width, dst_height) = (destination.image.width, destination.image.height);
+	let aabb = compute_transformed_bounding_box(&source).axis_aligned_bbox();
 	let (start_x, end_x) = ((aabb.start.x as i64).max(0) as u32, (aabb.end.x as i64).min(dst_width as i64) as u32);
 	let (start_y, end_y) = ((aabb.start.y as i64).max(0) as u32, (aabb.end.y as i64).min(dst_height as i64) as u32);
-	let src_to_dst = src_image.transform.inverse() * dst_image.transform;
+	let src_to_dst = source.transform.inverse() * destination.transform;
 
 	for y in start_y..end_y {
 		for x in start_x..end_x {
@@ -196,14 +195,14 @@ where
 
 			let u = src_point.x / (src_width as f64);
 			let v = src_point.y / (src_height as f64);
-			let dst_pixel = dst_image.get_mut(x as usize, y as usize);
-			let src_pixel = src_image.sample(u, v);
+			let dst_pixel = destination.get_mut(x as usize, y as usize);
+			let src_pixel = source.sample(u, v);
 
-			*dst_pixel = map_fn.eval((*dst_pixel, src_pixel));
+			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 		}
 	}
 
-	dst_image
+	destination
 }
 
 #[derive(Debug, Clone, Copy)]
