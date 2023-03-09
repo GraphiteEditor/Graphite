@@ -19,7 +19,7 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import { platformIsMac } from "@/utility-functions/platform";
+	import { platformIsMac, isEventSupported } from "@/utility-functions/platform";
 
 	import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
 
@@ -78,8 +78,24 @@
 					tooltip={tabLabel.tooltip || undefined}
 					on:click={(e) => {
 						e.stopPropagation();
-						if (e.button === 0) clickAction?.(tabIndex);
-						if (e.button === 1) closeAction?.(tabIndex);
+						clickAction?.(tabIndex);
+					}}
+					on:auxclick={(e) => {
+						// Middle mouse button click
+						if (e.button === 1) {
+							e.stopPropagation();
+							closeAction?.(tabIndex);
+						}
+					}}
+					on:mouseup={(e) => {
+						// Fallback for Safari:
+						// https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event#browser_compatibility
+						// The downside of using mouseup is that the mousedown didn't have to originate in the same element.
+						// A possible future improvement could save the target element during mousedown and check if it's the same here.
+						if (!isEventSupported("auxclick") && e.button === 1) {
+							e.stopPropagation();
+							closeAction?.(tabIndex);
+						}
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
