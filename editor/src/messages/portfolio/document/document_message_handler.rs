@@ -484,7 +484,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			LayerChanged { affected_layer_path } => {
-				debug!("layerchanged");
+				// zero scale crash
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
 					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
 				}
@@ -1541,33 +1541,45 @@ impl DocumentMessageHandler {
 
 	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
 	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>, render_data: &RenderData) -> Result<LayerPanelEntry, EditorError> {
-		debug!("layer panel entry fuc");
 		let data: LayerMetadata = *self
 			.layer_metadata
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
 		let layer = self.document_legacy.layer(&path)?;
-		// let data = match layer.data {
-		// 	LayerDataType::Shape(s) => s,
-		// 	LayerDataType::Folder(f) => f,
-		// 	LayerDataType::Text(t) => t,
-		// 	LayerDataType::NodeGraphFrame(n) => {
-		// 		let subpath = n.shape.clone();
-		// 		for manipulator_group in subpath.manipulator_groups_mut().iter_mut() {
-		// 			if !manipulator_group.position.is_finite(){
-		// 				isFinite = false;
-		// 			}
-		// 	},
-		// }
-		// //bounding_box(self.document_legacy.multiply_transforms(&path)?, render_data);
-		// if isFinite {
-		// 	let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
-		// 	Ok(entry)
-		// }
-		// else{
-		// 	let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
-		// 	Ok(entry)
-		// }
+		let tranform = self.document_legacy.multiply_transforms(&path)?;
+		match &layer.data {
+			LayerDataType::Shape(s) => {
+				let mut subpath = s.shape.clone();
+				for manipulator_group in subpath.manipulator_groups_mut().iter_mut() {
+					debug!("check point");
+					for point in manipulator_group.points_mut() {
+						//point.position = tranform.transform_point2(point.position);
+						if !tranform.transform_point2(point.position).is_finite() {
+							debug!("non finite point");
+							let name = layer.name.clone().unwrap_or_else(|| String::from(""));
+							let mut tooltip = name.clone();
+							if cfg!(debug_assertions) {
+								tooltip += "\nLayer Path: ";
+								tooltip += &path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" / ");
+								tooltip = tooltip.trim().to_string();
+							}
+							let old_layer = LayerPanelEntry {
+								name,
+								tooltip,
+								visible: layer.visible,
+								layer_type: (&layer.data).into(),
+								layer_metadata: data,
+								path,
+								thumbnail: String::new(),
+							};
+							return Ok(old_layer);
+						}
+					}
+				}
+			}
+			_ => (),
+		};
+		debug!("other");
 		let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
 		Ok(entry)
 	}
@@ -1887,7 +1899,6 @@ impl DocumentMessageHandler {
 
 		let mut blend_mode = None;
 		let mut blend_mode_is_mixed = false;
-		debug!("update_layer_tree_opt");
 
 		self.layer_metadata
 			.keys()

@@ -61,11 +61,9 @@ impl ManipulatorPoint {
 
 	/// Apply given transform to this point
 	pub fn transform(&mut self, delta: &DAffine2) {
-		if (self.position.is_finite()){
-			self.position = delta.transform_point2(self.position);
-		}
-		// self.position = delta.transform_point2(self.position);
-		// assert!(self.position.is_finite(), "tried to transform point to non finite position");
+		debug!("manipulator point func");
+		self.position = delta.transform_point2(self.position);
+		assert!(self.position.is_finite(), "tried to transform point to non finite position");
 	}
 
 	/// Move by a delta amount
