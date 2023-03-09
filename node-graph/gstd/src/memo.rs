@@ -1,6 +1,6 @@
-use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use xxhash_rust::xxh3::Xxh3;
 
 use graphene_core::Node;
 
@@ -14,7 +14,7 @@ pub struct CacheNode<T> {
 impl<'i, T: 'i + Hash> Node<'i, T> for CacheNode<T> {
 	type Output = &'i T;
 	fn eval<'s: 'i>(&'s self, input: T) -> Self::Output {
-		let mut hasher = DefaultHasher::new();
+		let mut hasher = Xxh3::new();
 		input.hash(&mut hasher);
 		let hash = hasher.finish();
 
@@ -51,7 +51,7 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 	fn eval<'s: 'i>(&'s self, input: Option<T>) -> Self::Output {
 		match input {
 			Some(input) => {
-				let mut hasher = DefaultHasher::new();
+				let mut hasher = Xxh3::new();
 				input.hash(&mut hasher);
 				let hash = hasher.finish();
 
