@@ -7,7 +7,8 @@ use anyhow::Result;
 pub use context::Context;
 pub use executor::GpuExecutor;
 use futures::Future;
-use gpu_executor::{Shader, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
+use gpu_executor::{Shader, ShaderIO, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
+use graph_craft::Type;
 use wgpu::{util::DeviceExt, Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
 
 #[derive(Debug, Clone)]
@@ -21,11 +22,11 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	type CommandBuffer = CommandBuffer;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
-		let shader = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
 		});
-		Ok(shader)
+		Ok((shader.io, shader_module))
 	}
 
 	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<Self::BufferHandle> {
@@ -35,7 +36,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			contents: bytes.as_ref(),
 			usage: wgpu::BufferUsages::UNIFORM,
 		});
-		Ok(buffer)
+		Ok(ShaderInput::UniformBuffer(buffer, Type::new::<T>()))
 	}
 
 	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<Self::BufferHandle> {
@@ -57,22 +58,26 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			contents: bytes.as_ref(),
 			usage,
 		});
+		Ok(ShaderInput::StorageBuffer(buffer, Type::new::<T>()))
+	}
+
+	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<Self::BufferHandle> {
+		let create_buffer = |usage| {
+			self.context.device.create_buffer(&BufferDescriptor {
+				label: None,
+				size,
+				usage,
+				mapped_at_creation: false,
+			})
+		};
+		let buffer = match cpu_readable {
+			true => ShaderInput::ReadBackBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ)),
+			false => ShaderInput::OutputBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC)),
+		};
 		Ok(buffer)
 	}
 
-	fn create_output_buffer(&self, size: u64) -> Result<Self::BufferHandle> {
-		let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
-
-		let buffer = self.context.device.create_buffer(&BufferDescriptor {
-			label: None,
-			size,
-			usage,
-			mapped_at_creation: false,
-		});
-		Ok(buffer)
-	}
-
-	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, output: Buffer) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<ShaderInput<Self::BufferHandle>>, instances: u32) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
@@ -82,12 +87,12 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
 
 		let entries = layout
-			.uniform_buffers
+            bind_group.buffers
 			.iter()
-			.chain(layout.storage_buffers.iter())
 			.chain(std::iter::once(&layout.output_buffer))
+            .flat_map(|input|input.buffer())
 			.enumerate()
-			.map(|(i, buffer)| wgpu::BindGroupEntry {
+			.map(|(i, (_, buffer))| wgpu::BindGroupEntry {
 				binding: i as u32,
 				resource: buffer.as_entire_binding(),
 			})
@@ -105,12 +110,15 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
-			cpass.dispatch_workgroups(layout.instances, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
+			cpass.dispatch_workgroups(instances, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
-		let size = output.size();
-		encoder.copy_buffer_to_buffer(&layout.output_buffer, 0, &output, 0, size);
+        if let Some(ShaderInput::ReadBackBuffer(output)) = read_back {
+            let size = output.size();
+            assert_eq!(size, layout.output_buffer.buffer().unwrap().size());
+            encoder.copy_buffer_to_buffer(&layout.output_buffer, 0, &output, 0, size);
+        }
 
 		// Submits command encoder for processing
 		Ok(encoder.finish())
