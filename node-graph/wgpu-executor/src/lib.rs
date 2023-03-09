@@ -72,7 +72,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(buffer)
 	}
 
-	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self::ShaderHandle, Self::BufferHandle>, output: Buffer) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, output: Buffer) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,

@@ -151,6 +151,19 @@ impl Type {
 			align: core::mem::align_of::<T>(),
 		})
 	}
+	pub fn size(&self) -> Option<usize> {
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(ty) => Some(ty.size),
+		}
+	}
+
+	pub fn align(&self) -> Option<usize> {
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(ty) => Some(ty.align),
+		}
+	}
 }
 
 impl core::fmt::Debug for Type {
