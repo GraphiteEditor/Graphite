@@ -430,9 +430,9 @@ mod image {
 			&mut self.image.data[y * (self.image.width as usize) + x]
 		}
 
-		pub fn sample(&self, u: f64, v: f64) -> Color {
-			let x = ((u * self.image.width as f64) as u32).clamp(0, self.image.width);
-			let y = ((v * self.image.height as f64) as u32).clamp(0, self.image.height);
+		pub fn sample(&self, x: f64, y: f64) -> Color {
+			let x = (x as u32).clamp(0, self.image.width);
+			let y = (y as u32).clamp(0, self.image.height);
 
 			self.image.data[(y * self.image.width + x) as usize]
 		}

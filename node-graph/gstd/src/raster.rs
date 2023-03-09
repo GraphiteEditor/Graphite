@@ -193,10 +193,8 @@ where
 				continue;
 			}
 
-			let u = src_point.x / (src_width as f64);
-			let v = src_point.y / (src_height as f64);
 			let dst_pixel = destination.get_mut(x as usize, y as usize);
-			let src_pixel = source.sample(u, v);
+			let src_pixel = source.sample(src_point.x, src_point.y);
 
 			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 		}
