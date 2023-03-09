@@ -222,20 +222,20 @@
 		setColor(presetColor);
 	}
 
-	function setNewHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
-		hue = hue;
-		saturation = saturation;
-		value = value;
-		alpha = alpha;
-		isNone = isNone;
+	function setNewHSVA(h: number, s: number, v: number, a: number, none: boolean) {
+		hue = h;
+		saturation = s;
+		value = v;
+		alpha = a;
+		isNone = none;
 	}
 
-	function setInitialHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
-		initialHue = hue;
-		initialSaturation = saturation;
-		initialValue = value;
-		initialAlpha = alpha;
-		initialIsNone = isNone;
+	function setInitialHSVA(h: number, s: number, v: number, a: number, none: boolean) {
+		initialHue = h;
+		initialSaturation = s;
+		initialValue = v;
+		initialAlpha = a;
+		initialIsNone = none;
 	}
 
 	async function activateEyedropperSample() {
