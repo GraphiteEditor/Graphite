@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 
-use glam::{DAffine2, DVec2};
+use glam::{BVec2, DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
 use graphene_core::Node;
 
@@ -124,11 +124,13 @@ where
 	image_frame
 }
 
+#[derive(Debug, Clone)]
 struct AxisAlignedBbox {
 	start: DVec2,
 	end: DVec2,
 }
 
+#[derive(Debug, Clone)]
 struct Bbox {
 	top_left: DVec2,
 	top_right: DVec2,
@@ -150,12 +152,12 @@ impl Bbox {
 	}
 }
 
-fn compute_transformed_bounding_box(image_frame: &ImageFrame) -> Bbox {
-	let top_left = DVec2::new(0.0, 0.0);
-	let top_right = DVec2::new(image_frame.image.width as f64, 0.0);
-	let bottom_left = DVec2::new(0.0, image_frame.image.height as f64);
-	let bottom_right = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64);
-	let transform = |p| image_frame.transform.transform_point2(p);
+fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
+	let top_left = DVec2::new(0., 1.);
+	let top_right = DVec2::new(1., 1.);
+	let bottom_left = DVec2::new(0., 0.);
+	let bottom_right = DVec2::new(1., 0.);
+	let transform = |p| transform.transform_point2(p);
 
 	Bbox {
 		top_left: transform(top_left),
@@ -177,24 +179,39 @@ fn blend_image<MapFn>(source: ImageFrame, mut destination: ImageFrame, map_fn: &
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
-	let (src_width, src_height) = (source.image.width, source.image.height);
-	let (dst_width, dst_height) = (destination.image.width, destination.image.height);
-	let aabb = compute_transformed_bounding_box(&source).axis_aligned_bbox();
-	let (start_x, end_x) = ((aabb.start.x as i64).max(0) as u32, (aabb.end.x as i64).min(dst_width as i64) as u32);
-	let (start_y, end_y) = ((aabb.start.y as i64).max(0) as u32, (aabb.end.y as i64).min(dst_height as i64) as u32);
-	let src_to_dst = source.transform.inverse() * destination.transform;
+	// Transforms a point from the source image to the destination image
+	let dest_to_src = source.transform * destination.transform.inverse();
 
-	for y in start_y..end_y {
-		for x in start_x..end_x {
-			let point = DVec2::new(x as f64, y as f64);
-			let src_point = src_to_dst.transform_point2(point);
+	let source_size = DVec2::new(source.image.width as f64, source.image.height as f64);
+	let destination_size = DVec2::new(destination.image.width as f64, destination.image.height as f64);
 
-			if !((0.0..src_width as f64).contains(&src_point.x) && (0.0..src_height as f64).contains(&src_point.y)) {
+	// Footprint of the source image (0,0) (1, 1) in the destination image space
+	let src_aabb = compute_transformed_bounding_box(destination.transform.inverse() * source.transform).axis_aligned_bbox();
+
+	// Clamp the source image to the destination image
+	let start = (src_aabb.start * destination_size).max(DVec2::ZERO).as_ivec2();
+	let end = (src_aabb.end * destination_size).min(destination_size).as_ivec2();
+
+	log::info!("start: {:?}, end: {:?}", start, end);
+	log::info!("src_aabb: {:?}", src_aabb);
+	log::info!("destination_size: {:?}", destination_size);
+	log::info!("src_to_dst: {:?}", dest_to_src);
+	log::info!("source.transform: {:?}", source.transform);
+	log::info!("destination.transform: {:?}", destination.transform);
+
+	for y in start.y..end.y {
+		for x in start.x..end.x {
+			let dest_uv = DVec2::new(x as f64, y as f64);
+			let src_uv = dest_to_src.transform_point2(dest_uv);
+			if !((src_uv.cmpge(DVec2::ZERO) & src_uv.cmple(source_size)) == BVec2::new(true, true)) {
+				//log::debug!("Skipping pixel at {:?}", dest_point);
 				continue;
 			}
 
+			let source_point = src_uv;
+
 			let dst_pixel = destination.get_mut(x as usize, y as usize);
-			let src_pixel = source.sample(src_point.x, src_point.y);
+			let src_pixel = source.sample(source_point.x, source_point.y);
 
 			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 		}
