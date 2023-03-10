@@ -66,13 +66,20 @@
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
 	$: newColor = isNone ? new Color("none") : new Color({ h: hue, s: saturation, v: value, a: alpha });
-	$: initialColor = initialIsNone ? new Color("none") : new Color({ h: initialHue, s: initialSaturation, v: initialValue, a: initialAlpha });
+	$: initialColor = updateInitialColor(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone, open);
 
 	$: watchOpen(open);
 	$: watchColor(color);
 
+	// Taking `_open` is necessary to make Svelte order the reactive processing queue so this works as required, see:
+	// https://stackoverflow.com/questions/63934543/svelte-reactivity-not-triggering-when-variable-changed-in-a-function
+	function updateInitialColor(h: number, s: number, v: number, a: number, initialIsNone: boolean, _open: boolean) {
+		if (initialIsNone) return new Color("none");
+		return new Color({ h, s, v, a });
+	}
+
 	function watchOpen(open: boolean) {
-		if (open) setInitialHSVA(hue, saturation, value, alpha, isNone);
+		if (!open) setInitialHSVA(hue, saturation, value, alpha, isNone);
 	}
 
 	function watchColor(color: Color) {
