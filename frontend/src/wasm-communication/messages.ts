@@ -496,7 +496,7 @@ const mouseCursorIconCSSNames = {
 	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
-export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
+export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
 	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
@@ -1169,7 +1169,7 @@ const widgetSubTypes = [
 	{ value: TextLabel, name: "TextLabel" },
 	{ value: PivotAssist, name: "PivotAssist" },
 ];
-export type WidgetPropsSet = InstanceType<(typeof widgetSubTypes)[number]["value"]>;
+export type WidgetPropsSet = InstanceType<typeof widgetSubTypes[number]["value"]>;
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
