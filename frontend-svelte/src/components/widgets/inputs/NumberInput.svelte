@@ -67,8 +67,11 @@
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: watchValue(value);
 
-	// Called only when `value` is changed from outside this component (with v-model)
+	// Called only when `value` is changed from outside this component
 	function watchValue(value: number | undefined) {
+		// Don't update if the slider is currently being dragged (we don't want the backend fighting with the user's drag)
+		if (rangeSliderClickDragState === "dragging") return;
+
 		// Draw a dash if the value is undefined
 		if (value === undefined) {
 			text = "-";
