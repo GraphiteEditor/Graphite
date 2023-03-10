@@ -12,6 +12,7 @@ use graphene_core::raster::color::Color;
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	tool_state: ToolFsmState,
+	transform_layer_handler: TransformLayerMessageHandler,
 }
 
 impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData)> for ToolMessageHandler {
@@ -27,6 +28,11 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 		#[remain::sorted]
 		match message {
 			// Messages
+			#[remain::unsorted]
+			ToolMessage::TransformLayer(message) => self
+				.transform_layer_handler
+				.process_message(message, responses, (document, input, &render_data, &self.tool_state.tool_data)),
+
 			#[remain::unsorted]
 			ToolMessage::ActivateToolSelect => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into()),
 			#[remain::unsorted]
@@ -115,8 +121,18 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
+
+				// Unsubscribe the transform layer to selection change events
+				let message = Box::new(TransformLayerMessage::SelectionChanged.into());
+				let on = BroadcastEvent::SelectionChanged;
+				responses.push_back(BroadcastMessage::UnsubscribeEvent { message, on }.into());
 			}
 			ToolMessage::InitTools => {
+				// Subscribe the transform layer to selection change events
+				let send = Box::new(TransformLayerMessage::SelectionChanged.into());
+				let on = BroadcastEvent::SelectionChanged;
+				responses.push_back(BroadcastMessage::SubscribeEvent { send, on }.into());
+
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
 				let active_tool = &tool_data.active_tool_type;
@@ -232,6 +248,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			SwapColors,
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
+		list.extend(self.transform_layer_handler.actions());
 
 		list
 	}
