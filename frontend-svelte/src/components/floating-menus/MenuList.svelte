@@ -33,7 +33,7 @@
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
 
-	// Called only when `open` is changed from outside this component (with v-model)
+	// Called only when `open` is changed from outside this component
 	$: watchOpen(open);
 	$: watchRemeasureWidth(entries, drawIcon);
 	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
@@ -58,7 +58,7 @@
 		// Call the action if available
 		if (menuListEntry.action) menuListEntry.action();
 
-		// Emit the clicked entry as the new active entry
+		// Notify the parent about the clicked entry as the new active entry
 		dispatch("activeEntry", menuListEntry);
 
 		// Close the containing menu

@@ -1,3 +1,57 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { Color } from "@/wasm-communication/messages";
+
+import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export default defineComponent({
+	emits: ["update:value", "update:open"],
+	props: {
+		value: { type: Color as PropType<Color>, required: true },
+		noTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Rename to allowTransparency, also implement allowNone
+		disabled: { type: Boolean as PropType<boolean>, default: false }, // TODO: Design and implement
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+
+		// Bound through `v-model`
+		// TODO: See if this should be made to follow the pattern of DropdownInput.vue so this could be removed
+		open: { type: Boolean as PropType<boolean>, required: true },
+	},
+	data() {
+		return {
+			isOpen: false,
+		};
+	},
+	watch: {
+		// Called only when `open` is changed from outside this component (with v-model)
+		open(newOpen: boolean) {
+			this.isOpen = newOpen;
+		},
+		isOpen(newIsOpen: boolean) {
+			this.$emit("update:open", newIsOpen);
+		},
+	},
+	methods: {
+		colorPickerUpdated(color: Color) {
+			this.$emit("update:value", color);
+		},
+	},
+	computed: {
+		chip() {
+			return undefined;
+		},
+	},
+	components: {
+		ColorPicker,
+		LayoutRow,
+		TextLabel,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="color-input" :class="{ 'sharp-right-corners': sharpRightCorners }" :title="tooltip">
 		<button
@@ -77,57 +131,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { Color } from "@/wasm-communication/messages";
-
-import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-export default defineComponent({
-	emits: ["update:value", "update:open"],
-	props: {
-		value: { type: Color as PropType<Color>, required: true },
-		noTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Rename to allowTransparency, also implement allowNone
-		disabled: { type: Boolean as PropType<boolean>, default: false }, // TODO: Design and implement
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-
-		// Bound through `v-model`
-		// TODO: See if this should be made to follow the pattern of DropdownInput.vue so this could be removed
-		open: { type: Boolean as PropType<boolean>, required: true },
-	},
-	data() {
-		return {
-			isOpen: false,
-		};
-	},
-	watch: {
-		// Called only when `open` is changed from outside this component (with v-model)
-		open(newOpen: boolean) {
-			this.isOpen = newOpen;
-		},
-		isOpen(newIsOpen: boolean) {
-			this.$emit("update:open", newIsOpen);
-		},
-	},
-	methods: {
-		colorPickerUpdated(color: Color) {
-			this.$emit("update:value", color);
-		},
-	},
-	computed: {
-		chip() {
-			return undefined;
-		},
-	},
-	components: {
-		ColorPicker,
-		LayoutRow,
-		TextLabel,
-	},
-});
-</script>

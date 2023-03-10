@@ -1,5 +1,3 @@
-// import { invoke } from "@tauri-apps/api";
-
 import type WasmBindgenPackage from "@/../wasm/pkg";
 import { panicProxy } from "@/utility-functions/panic-proxy";
 import { type JsMessageType } from "@/wasm-communication/messages";
@@ -40,17 +38,18 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
 }
 
-// TODO: Svelte: reenable this
-// // export async function dispatchTauri(message: string): Promise<string> {
-// export async function dispatchTauri(message: unknown): Promise<void> {
-// 	try {
-// 		const response = await invoke("handle_message", { message });
-// 		editorInstance?.tauriResponse(response);
-// 	} catch {
-// 		// eslint-disable-next-line no-console
-// 		console.error("Failed to dispatch Tauri message");
-// 	}
-// }
+const tauri = "__TAURI_METADATA__" in window && import("@tauri-apps/api");
+export async function dispatchTauri(message: unknown): Promise<void> {
+	if (!tauri) return;
+
+	try {
+		const response = await (await tauri).invoke("handle_message", { message });
+		editorInstance?.tauriResponse(response);
+	} catch {
+		// eslint-disable-next-line no-console
+		console.error("Failed to dispatch Tauri message");
+	}
+}
 
 // Should be called asynchronously before `createEditor()`
 export async function initWasm(): Promise<void> {

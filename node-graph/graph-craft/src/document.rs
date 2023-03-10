@@ -379,14 +379,7 @@ impl NodeNetwork {
 						}
 						NodeInput::Value { tagged_value, exposed } => {
 							// Skip formatting very large values for seconds in performance speedup
-							let name = if matches!(
-								tagged_value,
-								TaggedValue::Image(_) | TaggedValue::RcImage(_) | TaggedValue::Color(_) | TaggedValue::Subpath(_) | TaggedValue::RcSubpath(_)
-							) {
-								"Value".to_string()
-							} else {
-								format!("Value: {:?}", tagged_value)
-							};
+							let name = "Value".to_string();
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
 								name,
@@ -654,8 +647,6 @@ mod test {
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		let flat_network = flat_network();
 
-		println!("{:#?}", network);
-		println!("{:#?}", flat_network);
 		assert_eq!(flat_network, network);
 	}
 
@@ -746,7 +737,7 @@ mod test {
 				(
 					14,
 					DocumentNode {
-						name: "Value: U32(2)".into(),
+						name: "Value".into(),
 						inputs: vec![NodeInput::Value {
 							tagged_value: value::TaggedValue::U32(2),
 							exposed: false,

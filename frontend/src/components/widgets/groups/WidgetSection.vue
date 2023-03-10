@@ -1,3 +1,46 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
+
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import WidgetRow from "@/components/widgets/WidgetRow.vue";
+
+const WidgetSection = defineComponent({
+	name: "WidgetSection",
+	inject: ["editor"],
+	props: {
+		widgetData: { type: Object as PropType<WidgetSectionFromJsMessages>, required: true },
+		layoutTarget: { required: true },
+	},
+	data: () => ({
+		isWidgetRow,
+		isWidgetSection,
+		expanded: true,
+	}),
+	methods: {
+		updateLayout(widgetId: bigint, value: unknown) {
+			this.editor.instance.updateLayout(this.layoutTarget, widgetId, value);
+		},
+		layoutGroupType(layoutGroup: LayoutGroup): unknown {
+			if (isWidgetRow(layoutGroup)) return WidgetRow;
+			if (isWidgetSection(layoutGroup)) return WidgetSection;
+
+			throw new Error("Layout row type does not exist");
+		},
+	},
+	components: {
+		LayoutCol,
+		LayoutRow,
+		TextLabel,
+		WidgetRow,
+	},
+});
+export default WidgetSection;
+</script>
+
 <!-- TODO: Implement collapsable sections with properties system -->
 <template>
 	<LayoutCol class="widget-section">
@@ -120,46 +163,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@/wasm-communication/messages";
-
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import WidgetRow from "@/components/widgets/WidgetRow.vue";
-
-const WidgetSection = defineComponent({
-	name: "WidgetSection",
-	inject: ["editor"],
-	props: {
-		widgetData: { type: Object as PropType<WidgetSectionFromJsMessages>, required: true },
-		layoutTarget: { required: true },
-	},
-	data: () => ({
-		isWidgetRow,
-		isWidgetSection,
-		expanded: true,
-	}),
-	methods: {
-		updateLayout(widgetId: bigint, value: unknown) {
-			this.editor.instance.updateLayout(this.layoutTarget, widgetId, value);
-		},
-		layoutGroupType(layoutGroup: LayoutGroup): unknown {
-			if (isWidgetRow(layoutGroup)) return WidgetRow;
-			if (isWidgetSection(layoutGroup)) return WidgetSection;
-
-			throw new Error("Layout row type does not exist");
-		},
-	},
-	components: {
-		LayoutCol,
-		LayoutRow,
-		TextLabel,
-		WidgetRow,
-	},
-});
-export default WidgetSection;
-</script>

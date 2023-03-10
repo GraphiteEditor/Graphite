@@ -1,3 +1,39 @@
+<script lang="ts">
+import { defineComponent } from "vue";
+
+import { platformIsMac } from "@/utility-functions/platform";
+import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
+import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
+
+export default defineComponent({
+	inject: ["editor"],
+	data() {
+		return {
+			hintData: [] as HintData,
+		};
+	},
+	methods: {
+		inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
+			if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
+			return hint.keyGroups;
+		},
+	},
+	mounted() {
+		this.editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
+			this.hintData = updateInputHints.hintData;
+		});
+	},
+	components: {
+		LayoutRow,
+		Separator,
+		UserInputLabel,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="status-bar">
 		<LayoutRow class="hint-groups">
@@ -44,39 +80,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent } from "vue";
-
-import { platformIsMac } from "@/utility-functions/platform";
-import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@/wasm-communication/messages";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
-
-export default defineComponent({
-	inject: ["editor"],
-	data() {
-		return {
-			hintData: [] as HintData,
-		};
-	},
-	methods: {
-		inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
-			if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
-			return hint.keyGroups;
-		},
-	},
-	mounted() {
-		this.editor.subscriptions.subscribeJsMessage(UpdateInputHints, (updateInputHints) => {
-			this.hintData = updateInputHints.hintData;
-		});
-	},
-	components: {
-		LayoutRow,
-		Separator,
-		UserInputLabel,
-	},
-});
-</script>

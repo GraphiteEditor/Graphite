@@ -1,3 +1,61 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
+
+// Should be equal to the width and height of the canvas in the CSS above
+const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;
+// SHould be equal to the width and height of the `.pixel-outline` div in the CSS above, and should be evenly divisible into the number above
+const UPSCALE_FACTOR = 10;
+
+export const ZOOM_WINDOW_DIMENSIONS = ZOOM_WINDOW_DIMENSIONS_EXPANDED / UPSCALE_FACTOR;
+
+const temporaryCanvas = document.createElement("canvas");
+
+export default defineComponent({
+	props: {
+		imageData: { type: Object as PropType<ImageData> },
+		colorChoice: { type: String as PropType<string>, required: true },
+		primaryColor: { type: String as PropType<string>, required: true },
+		secondaryColor: { type: String as PropType<string>, required: true },
+	},
+	mounted() {
+		this.displayImageDataPreview(this.imageData);
+	},
+	watch: {
+		imageData(imageData: ImageData | undefined) {
+			this.displayImageDataPreview(imageData);
+		},
+	},
+	methods: {
+		displayImageDataPreview(imageData: ImageData | undefined) {
+			const canvas = this.$refs.zoomPreviewCanvas as HTMLCanvasElement | undefined;
+			if (!canvas) return;
+
+			canvas.width = ZOOM_WINDOW_DIMENSIONS;
+			canvas.height = ZOOM_WINDOW_DIMENSIONS;
+			const context = canvas.getContext("2d");
+
+			temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
+			temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
+			const temporaryContext = temporaryCanvas.getContext("2d");
+
+			if (!imageData || !context || !temporaryContext) return;
+
+			temporaryContext.putImageData(imageData, 0, 0, 0, 0, ZOOM_WINDOW_DIMENSIONS, ZOOM_WINDOW_DIMENSIONS);
+
+			context.fillStyle = "black";
+			context.fillRect(0, 0, ZOOM_WINDOW_DIMENSIONS, ZOOM_WINDOW_DIMENSIONS);
+
+			context.drawImage(temporaryCanvas, 0, 0);
+		},
+	},
+	components: {
+		FloatingMenu,
+	},
+});
+</script>
+
 <template>
 	<FloatingMenu
 		:open="true"
@@ -79,61 +137,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
-
-// Should be equal to the width and height of the canvas in the CSS above
-const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;
-// SHould be equal to the width and height of the `.pixel-outline` div in the CSS above, and should be evenly divisible into the number above
-const UPSCALE_FACTOR = 10;
-
-export const ZOOM_WINDOW_DIMENSIONS = ZOOM_WINDOW_DIMENSIONS_EXPANDED / UPSCALE_FACTOR;
-
-const temporaryCanvas = document.createElement("canvas");
-
-export default defineComponent({
-	props: {
-		imageData: { type: Object as PropType<ImageData> },
-		colorChoice: { type: String as PropType<string>, required: true },
-		primaryColor: { type: String as PropType<string>, required: true },
-		secondaryColor: { type: String as PropType<string>, required: true },
-	},
-	mounted() {
-		this.displayImageDataPreview(this.imageData);
-	},
-	watch: {
-		imageData(imageData: ImageData | undefined) {
-			this.displayImageDataPreview(imageData);
-		},
-	},
-	methods: {
-		displayImageDataPreview(imageData: ImageData | undefined) {
-			const canvas = this.$refs.zoomPreviewCanvas as HTMLCanvasElement | undefined;
-			if (!canvas) return;
-
-			canvas.width = ZOOM_WINDOW_DIMENSIONS;
-			canvas.height = ZOOM_WINDOW_DIMENSIONS;
-			const context = canvas.getContext("2d");
-
-			temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
-			temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
-			const temporaryContext = temporaryCanvas.getContext("2d");
-
-			if (!imageData || !context || !temporaryContext) return;
-
-			temporaryContext.putImageData(imageData, 0, 0, 0, 0, ZOOM_WINDOW_DIMENSIONS, ZOOM_WINDOW_DIMENSIONS);
-
-			context.fillStyle = "black";
-			context.fillRect(0, 0, ZOOM_WINDOW_DIMENSIONS, ZOOM_WINDOW_DIMENSIONS);
-
-			context.drawImage(temporaryCanvas, 0, 0);
-		},
-	},
-	components: {
-		FloatingMenu,
-	},
-});
-</script>

@@ -32,13 +32,13 @@
 	$: selectedIndex, watchSelectedIndex();
 	$: watchActiveEntry(activeEntry);
 
-	// Called only when `selectedIndex` is changed from outside this component (with v-model)
+	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex() {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
 
-	// Called when `activeEntry` is changed by the `v-model` on this component's MenuList component, or by the `selectedIndex()` watcher above (but we want to skip that case)
+	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `selectedIndex()` watcher above (but we want to skip that case)
 	function watchActiveEntry(activeEntry: MenuListEntry) {
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;

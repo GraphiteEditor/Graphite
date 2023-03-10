@@ -1,3 +1,15 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+export default defineComponent({
+	props: {
+		scrollableX: { type: Boolean as PropType<boolean>, default: false },
+		scrollableY: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+	},
+});
+</script>
+
 <template>
 	<div
 		class="layout-row"
@@ -21,15 +33,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-export default defineComponent({
-	props: {
-		scrollableX: { type: Boolean as PropType<boolean>, default: false },
-		scrollableY: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-});
-</script>

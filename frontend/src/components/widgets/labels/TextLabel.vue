@@ -1,3 +1,19 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+export default defineComponent({
+	props: {
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		bold: { type: Boolean as PropType<boolean>, default: false },
+		italic: { type: Boolean as PropType<boolean>, default: false },
+		tableAlign: { type: Boolean as PropType<boolean>, default: false },
+		minWidth: { type: Number as PropType<number>, default: 0 },
+		multiline: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+	},
+});
+</script>
+
 <template>
 	<span class="text-label" :class="{ disabled, bold, italic, multiline, 'table-align': tableAlign }" :style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }" :title="tooltip">
 		<slot></slot>
@@ -34,19 +50,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-export default defineComponent({
-	props: {
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		bold: { type: Boolean as PropType<boolean>, default: false },
-		italic: { type: Boolean as PropType<boolean>, default: false },
-		tableAlign: { type: Boolean as PropType<boolean>, default: false },
-		minWidth: { type: Number as PropType<number>, default: 0 },
-		multiline: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-});
-</script>

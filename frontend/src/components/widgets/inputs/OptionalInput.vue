@@ -1,3 +1,26 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type IconName } from "@/utility-functions/icons";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
+
+export default defineComponent({
+	emits: ["update:checked"],
+	props: {
+		checked: { type: Boolean as PropType<boolean>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		icon: { type: String as PropType<IconName>, default: "Checkmark" },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+	},
+	components: {
+		CheckboxInput,
+		LayoutRow,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="optional-input" :class="disabled">
 		<CheckboxInput :checked="checked" :disabled="disabled" @input="(e: Event) => $emit('update:checked', (e.target as HTMLInputElement).checked)" :icon="icon" :tooltip="tooltip" />
@@ -24,26 +47,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type IconName } from "@/utility-functions/icons";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
-
-export default defineComponent({
-	emits: ["update:checked"],
-	props: {
-		checked: { type: Boolean as PropType<boolean>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		icon: { type: String as PropType<IconName>, default: "Checkmark" },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	components: {
-		CheckboxInput,
-		LayoutRow,
-	},
-});
-</script>

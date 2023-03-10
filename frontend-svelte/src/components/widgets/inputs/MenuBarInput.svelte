@@ -94,8 +94,8 @@
 			</div>
 			{#if entry.children && entry.children.length > 0}
 				<MenuList
-					on:open={(e) => {
-						if (entry.ref) entry.ref.open = e.detail;
+					on:open={({ detail }) => {
+						if (entry.ref) entry.ref.open = detail;
 					}}
 					open={entry.ref?.open || false}
 					entries={entry.children || []}

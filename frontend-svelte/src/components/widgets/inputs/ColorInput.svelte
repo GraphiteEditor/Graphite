@@ -35,7 +35,16 @@
 			<TextLabel class="chip" bold={true}>{chip}</TextLabel>
 		{/if}
 	</button>
-	<ColorPicker {open} on:open={({ detail }) => (open = detail)} color={value} on:color={({ detail }) => dispatch("value", detail)} allowNone={true} />
+	<ColorPicker
+		{open}
+		on:open={({ detail }) => (open = detail)}
+		color={value}
+		on:color={({ detail }) => {
+			value = detail;
+			dispatch("value", detail);
+		}}
+		allowNone={true}
+	/>
 </LayoutRow>
 
 <style lang="scss" global>

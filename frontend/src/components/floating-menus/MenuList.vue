@@ -1,166 +1,3 @@
-<template>
-	<FloatingMenu
-		class="menu-list"
-		v-model:open="isOpen"
-		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
-		:type="'Dropdown'"
-		:windowEdgeMargin="0"
-		:escapeCloses="false"
-		v-bind="{ direction, scrollableY: scrollableY && virtualScrollingEntryHeight === 0, minWidth }"
-		ref="floatingMenu"
-	>
-		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
-		However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
-		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight !== 0" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
-			<LayoutRow v-if="virtualScrollingEntryHeight" class="scroll-spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
-			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
-				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
-				<LayoutRow
-					v-for="(entry, entryIndex) in virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section"
-					:key="entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0)"
-					class="row"
-					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
-					:style="{ height: virtualScrollingEntryHeight || '20px' }"
-					:title="tooltip"
-					@click="() => !entry.disabled && onEntryClick(entry)"
-					@pointerenter="() => !entry.disabled && onEntryPointerEnter(entry)"
-					@pointerleave="() => !entry.disabled && onEntryPointerLeave(entry)"
-				>
-					<IconLabel v-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
-					<div v-else-if="drawIcon" class="no-icon"></div>
-
-					<link v-if="entry.font" rel="stylesheet" :href="entry.font?.toString()" />
-
-					<TextLabel class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</TextLabel>
-
-					<UserInputLabel v-if="entry.shortcut?.keys.length" :keysWithLabelsGroups="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
-
-					<div class="submenu-arrow" v-if="entry.children?.length"></div>
-					<div class="no-submenu-arrow" v-else></div>
-
-					<MenuList
-						v-if="entry.children"
-						@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
-						:open="entry.ref?.open || false"
-						:direction="'TopRight'"
-						:entries="entry.children"
-						v-bind="{ minWidth, drawIcon, scrollableY }"
-						:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
-					/>
-				</LayoutRow>
-			</template>
-			<LayoutRow
-				v-if="virtualScrollingEntryHeight"
-				class="scroll-spacer"
-				:style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"
-			></LayoutRow>
-		</LayoutCol>
-	</FloatingMenu>
-</template>
-
-<style lang="scss">
-.menu-list {
-	.floating-menu-container .floating-menu-content {
-		padding: 4px 0;
-
-		.separator div {
-			background: var(--color-4-dimgray);
-		}
-
-		.scroll-spacer {
-			flex: 0 0 auto;
-		}
-
-		.row {
-			height: 20px;
-			align-items: center;
-			white-space: nowrap;
-			position: relative;
-			flex: 0 0 auto;
-
-			& > * {
-				flex: 0 0 auto;
-			}
-
-			.entry-icon svg {
-				fill: var(--color-e-nearwhite);
-			}
-
-			.no-icon {
-				width: 16px;
-			}
-
-			.entry-label {
-				flex: 1 1 100%;
-				margin-left: 8px;
-			}
-
-			.entry-icon,
-			.no-icon {
-				margin: 0 4px;
-
-				& + .entry-label {
-					margin-left: 0;
-				}
-			}
-
-			.user-input-label {
-				margin-left: 16px;
-			}
-
-			.submenu-arrow {
-				width: 0;
-				height: 0;
-				border-style: solid;
-				border-width: 3px 0 3px 6px;
-				border-color: transparent transparent transparent var(--color-e-nearwhite);
-			}
-
-			.no-submenu-arrow {
-				width: 6px;
-			}
-
-			.submenu-arrow,
-			.no-submenu-arrow {
-				margin-left: 6px;
-				margin-right: 4px;
-			}
-
-			&:hover,
-			&.open {
-				background: var(--color-6-lowergray);
-				color: var(--color-f-white);
-
-				.entry-icon svg {
-					fill: var(--color-f-white);
-				}
-			}
-
-			&.active {
-				background: var(--color-e-nearwhite);
-				color: var(--color-2-mildblack);
-
-				.entry-icon svg {
-					fill: var(--color-2-mildblack);
-				}
-			}
-
-			&.disabled {
-				color: var(--color-8-uppergray);
-
-				&:hover {
-					background: none;
-				}
-
-				svg {
-					fill: var(--color-8-uppergray);
-				}
-			}
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -357,3 +194,166 @@ const MenuList = defineComponent({
 });
 export default MenuList;
 </script>
+
+<template>
+	<FloatingMenu
+		class="menu-list"
+		v-model:open="isOpen"
+		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
+		:type="'Dropdown'"
+		:windowEdgeMargin="0"
+		:escapeCloses="false"
+		v-bind="{ direction, scrollableY: scrollableY && virtualScrollingEntryHeight === 0, minWidth }"
+		ref="floatingMenu"
+	>
+		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
+		However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
+		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight !== 0" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
+			<LayoutRow v-if="virtualScrollingEntryHeight" class="scroll-spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
+			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
+				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
+				<LayoutRow
+					v-for="(entry, entryIndex) in virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section"
+					:key="entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0)"
+					class="row"
+					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
+					:style="{ height: virtualScrollingEntryHeight || '20px' }"
+					:title="tooltip"
+					@click="() => !entry.disabled && onEntryClick(entry)"
+					@pointerenter="() => !entry.disabled && onEntryPointerEnter(entry)"
+					@pointerleave="() => !entry.disabled && onEntryPointerLeave(entry)"
+				>
+					<IconLabel v-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
+					<div v-else-if="drawIcon" class="no-icon"></div>
+
+					<link v-if="entry.font" rel="stylesheet" :href="entry.font?.toString()" />
+
+					<TextLabel class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</TextLabel>
+
+					<UserInputLabel v-if="entry.shortcut?.keys.length" :keysWithLabelsGroups="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
+
+					<div class="submenu-arrow" v-if="entry.children?.length"></div>
+					<div class="no-submenu-arrow" v-else></div>
+
+					<MenuList
+						v-if="entry.children"
+						@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
+						:open="entry.ref?.open || false"
+						:direction="'TopRight'"
+						:entries="entry.children"
+						v-bind="{ minWidth, drawIcon, scrollableY }"
+						:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
+					/>
+				</LayoutRow>
+			</template>
+			<LayoutRow
+				v-if="virtualScrollingEntryHeight"
+				class="scroll-spacer"
+				:style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"
+			></LayoutRow>
+		</LayoutCol>
+	</FloatingMenu>
+</template>
+
+<style lang="scss">
+.menu-list {
+	.floating-menu-container .floating-menu-content {
+		padding: 4px 0;
+
+		.separator div {
+			background: var(--color-4-dimgray);
+		}
+
+		.scroll-spacer {
+			flex: 0 0 auto;
+		}
+
+		.row {
+			height: 20px;
+			align-items: center;
+			white-space: nowrap;
+			position: relative;
+			flex: 0 0 auto;
+
+			& > * {
+				flex: 0 0 auto;
+			}
+
+			.entry-icon svg {
+				fill: var(--color-e-nearwhite);
+			}
+
+			.no-icon {
+				width: 16px;
+			}
+
+			.entry-label {
+				flex: 1 1 100%;
+				margin-left: 8px;
+			}
+
+			.entry-icon,
+			.no-icon {
+				margin: 0 4px;
+
+				& + .entry-label {
+					margin-left: 0;
+				}
+			}
+
+			.user-input-label {
+				margin-left: 16px;
+			}
+
+			.submenu-arrow {
+				width: 0;
+				height: 0;
+				border-style: solid;
+				border-width: 3px 0 3px 6px;
+				border-color: transparent transparent transparent var(--color-e-nearwhite);
+			}
+
+			.no-submenu-arrow {
+				width: 6px;
+			}
+
+			.submenu-arrow,
+			.no-submenu-arrow {
+				margin-left: 6px;
+				margin-right: 4px;
+			}
+
+			&:hover,
+			&.open {
+				background: var(--color-6-lowergray);
+				color: var(--color-f-white);
+
+				.entry-icon svg {
+					fill: var(--color-f-white);
+				}
+			}
+
+			&.active {
+				background: var(--color-e-nearwhite);
+				color: var(--color-2-mildblack);
+
+				.entry-icon svg {
+					fill: var(--color-2-mildblack);
+				}
+			}
+
+			&.disabled {
+				color: var(--color-8-uppergray);
+
+				&:hover {
+					background: none;
+				}
+
+				svg {
+					fill: var(--color-8-uppergray);
+				}
+			}
+		}
+	}
+}
+</style>

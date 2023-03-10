@@ -31,6 +31,7 @@ exclude = [
 
 [workspace.dependencies]
 specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183debc055b88c37910eb6f818eae", features = ["glam"] }
+xxhash-rust = { version = "0.8.4", features = ["xxh3"] }
 
 [profile.release.package.graphite-wasm]
 opt-level = 3
@@ -42,6 +43,15 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.graphite-wasm-svelte]
+opt-level = 3
+
+[profile.dev.package.autoquant]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.xxhash-rust]
 opt-level = 3
 
 #[profile.dev]

@@ -197,11 +197,13 @@ const SOLID_16PX = {
 
 // 16px Two-Tone
 import MouseHintDrag from "@/../assets/icon-16px-two-tone/mouse-hint-drag.svg";
+import MouseHintLmbDouble from "@/../assets/icon-16px-two-tone/mouse-hint-lmb-double.svg";
 import MouseHintLmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-lmb-drag.svg";
 import MouseHintLmb from "@/../assets/icon-16px-two-tone/mouse-hint-lmb.svg";
 import MouseHintMmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-mmb-drag.svg";
 import MouseHintMmb from "@/../assets/icon-16px-two-tone/mouse-hint-mmb.svg";
 import MouseHintNone from "@/../assets/icon-16px-two-tone/mouse-hint-none.svg";
+import MouseHintRmbDouble from "@/../assets/icon-16px-two-tone/mouse-hint-rmb-double.svg";
 import MouseHintRmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-rmb-drag.svg";
 import MouseHintRmb from "@/../assets/icon-16px-two-tone/mouse-hint-rmb.svg";
 import MouseHintScrollDown from "@/../assets/icon-16px-two-tone/mouse-hint-scroll-down.svg";
@@ -210,11 +212,13 @@ import MouseHintScrollUp from "@/../assets/icon-16px-two-tone/mouse-hint-scroll-
 const TWO_TONE_16PX = {
 	MouseHintDrag: { component: MouseHintDrag, size: 16 },
 	MouseHintLmb: { component: MouseHintLmb, size: 16 },
+	MouseHintLmbDouble: { component: MouseHintLmbDouble, size: 16 },
 	MouseHintLmbDrag: { component: MouseHintLmbDrag, size: 16 },
 	MouseHintMmb: { component: MouseHintMmb, size: 16 },
 	MouseHintMmbDrag: { component: MouseHintMmbDrag, size: 16 },
 	MouseHintNone: { component: MouseHintNone, size: 16 },
 	MouseHintRmb: { component: MouseHintRmb, size: 16 },
+	MouseHintRmbDouble: { component: MouseHintRmbDouble, size: 16 },
 	MouseHintRmbDrag: { component: MouseHintRmbDrag, size: 16 },
 	MouseHintScrollDown: { component: MouseHintScrollDown, size: 16 },
 	MouseHintScrollUp: { component: MouseHintScrollUp, size: 16 },

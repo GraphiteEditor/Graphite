@@ -1,3 +1,41 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type IconName } from "@/utility-functions/icons";
+
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+
+export default defineComponent({
+	props: {
+		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+
+		// Callbacks
+		action: { type: Function as PropType<() => void>, required: false },
+	},
+	data() {
+		return {
+			open: false,
+		};
+	},
+	methods: {
+		onClick() {
+			this.open = true;
+
+			this.action?.();
+		},
+	},
+	components: {
+		FloatingMenu,
+		IconButton,
+		LayoutRow,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="popover-button">
 		<IconButton :class="{ open }" :disabled="disabled" :action="() => onClick()" :icon="icon" :size="16" data-floating-menu-spawner :tooltip="tooltip" />
@@ -50,41 +88,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type IconName } from "@/utility-functions/icons";
-
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-
-export default defineComponent({
-	props: {
-		icon: { type: String as PropType<IconName>, default: "DropdownArrow" },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-
-		// Callbacks
-		action: { type: Function as PropType<() => void>, required: false },
-	},
-	data() {
-		return {
-			open: false,
-		};
-	},
-	methods: {
-		onClick() {
-			this.open = true;
-
-			this.action?.();
-		},
-	},
-	components: {
-		FloatingMenu,
-		IconButton,
-		LayoutRow,
-	},
-});
-</script>

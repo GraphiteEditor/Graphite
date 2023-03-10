@@ -4,7 +4,7 @@
 	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
 	// emits: ["update:value", "commitText"],
-	const dispatch = createEventDispatcher<{ value: string; commitText: string }>();
+	const dispatch = createEventDispatcher<{ commitText: string }>();
 
 	// Label
 	export let label: string | undefined = undefined;
@@ -21,14 +21,11 @@
 
 	let self: FieldInput;
 	let editing = false;
-	let text = value;
-
-	$: dispatch("value", text);
 
 	function onTextFocused() {
 		editing = true;
 
-		self.selectAllText(text);
+		self.selectAllText(value);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -61,8 +58,8 @@
 	class="text-input"
 	classes={{ centered }}
 	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined }}
-	value={text}
-	on:value={({ detail }) => (text = detail)}
+	{value}
+	on:value
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:cancelTextChange={onCancelTextChange}

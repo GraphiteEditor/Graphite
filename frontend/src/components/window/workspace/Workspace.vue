@@ -1,68 +1,3 @@
-<template>
-	<LayoutRow class="workspace" data-workspace>
-		<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['root'] }" data-subdivision-name="root">
-			<LayoutCol class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['content'] }" data-subdivision-name="content">
-				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['document'] }" data-subdivision-name="document">
-					<Panel
-						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
-						:tabCloseButtons="true"
-						:tabMinWidths="true"
-						:tabLabels="documentTabLabels"
-						:clickAction="(tabIndex: number) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
-						:closeAction="(tabIndex: number) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
-						:tabActiveIndex="portfolio.state.activeDocumentIndex"
-						ref="documentPanel"
-					/>
-				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
-				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible" :style="{ 'flex-grow': panelSizes['graph'] }" data-subdivision-name="graph">
-					<Panel :panelType="'NodeGraph'" :tabLabels="[{ name: 'Node Graph' }]" :tabActiveIndex="0" />
-				</LayoutRow>
-			</LayoutCol>
-			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
-			<LayoutCol class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['details'] }" data-subdivision-name="details">
-				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['properties'] }" data-subdivision-name="properties">
-					<Panel :panelType="'Properties'" :tabLabels="[{ name: 'Properties' }]" :tabActiveIndex="0" />
-				</LayoutRow>
-				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutRow>
-				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['layers'] }" data-subdivision-name="layers">
-					<Panel :panelType="'LayerTree'" :tabLabels="[{ name: 'Layer Tree' }]" :tabActiveIndex="0" />
-				</LayoutRow>
-			</LayoutCol>
-		</LayoutRow>
-		<DialogModal v-if="dialog.state.visible" />
-	</LayoutRow>
-</template>
-
-<style lang="scss">
-.workspace {
-	position: relative;
-	flex: 1 1 100%;
-
-	.workspace-grid-subdivision {
-		min-height: 28px;
-		flex: 1 1 0;
-
-		&.folded {
-			flex-grow: 0;
-			height: 0;
-		}
-	}
-
-	.workspace-grid-resize-gutter {
-		flex: 0 0 4px;
-
-		&.layout-row {
-			cursor: ns-resize;
-		}
-
-		&.layout-col {
-			cursor: ew-resize;
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent } from "vue";
 
@@ -176,3 +111,68 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<LayoutRow class="workspace" data-workspace>
+		<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['root'] }" data-subdivision-name="root">
+			<LayoutCol class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['content'] }" data-subdivision-name="content">
+				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['document'] }" data-subdivision-name="document">
+					<Panel
+						:panelType="portfolio.state.documents.length > 0 ? 'Document' : undefined"
+						:tabCloseButtons="true"
+						:tabMinWidths="true"
+						:tabLabels="documentTabLabels"
+						:clickAction="(tabIndex: number) => editor.instance.selectDocument(portfolio.state.documents[tabIndex].id)"
+						:closeAction="(tabIndex: number) => editor.instance.closeDocumentWithConfirmation(portfolio.state.documents[tabIndex].id)"
+						:tabActiveIndex="portfolio.state.activeDocumentIndex"
+						ref="documentPanel"
+					/>
+				</LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)" v-if="nodeGraphVisible"></LayoutRow>
+				<LayoutRow class="workspace-grid-subdivision" v-if="nodeGraphVisible" :style="{ 'flex-grow': panelSizes['graph'] }" data-subdivision-name="graph">
+					<Panel :panelType="'NodeGraph'" :tabLabels="[{ name: 'Node Graph' }]" :tabActiveIndex="0" />
+				</LayoutRow>
+			</LayoutCol>
+			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutCol>
+			<LayoutCol class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['details'] }" data-subdivision-name="details">
+				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['properties'] }" data-subdivision-name="properties">
+					<Panel :panelType="'Properties'" :tabLabels="[{ name: 'Properties' }]" :tabActiveIndex="0" />
+				</LayoutRow>
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical @pointerdown="(e: PointerEvent) => resizePanel(e)"></LayoutRow>
+				<LayoutRow class="workspace-grid-subdivision" :style="{ 'flex-grow': panelSizes['layers'] }" data-subdivision-name="layers">
+					<Panel :panelType="'LayerTree'" :tabLabels="[{ name: 'Layer Tree' }]" :tabActiveIndex="0" />
+				</LayoutRow>
+			</LayoutCol>
+		</LayoutRow>
+		<DialogModal v-if="dialog.state.visible" />
+	</LayoutRow>
+</template>
+
+<style lang="scss">
+.workspace {
+	position: relative;
+	flex: 1 1 100%;
+
+	.workspace-grid-subdivision {
+		min-height: 28px;
+		flex: 1 1 0;
+
+		&.folded {
+			flex-grow: 0;
+			height: 0;
+		}
+	}
+
+	.workspace-grid-resize-gutter {
+		flex: 0 0 4px;
+
+		&.layout-row {
+			cursor: ns-resize;
+		}
+
+		&.layout-col {
+			cursor: ew-resize;
+		}
+	}
+}
+</style>

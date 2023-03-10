@@ -45,6 +45,7 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 glam = { version = "0.22", features = ["serde"] }
 node-macro = { path="../node-macro" }
 boxcar = "0.1.0"
+xxhash-rust = {workspace = true}
 
 [dependencies.serde]
 version = "1.0"

@@ -1,3 +1,25 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
+
+export default defineComponent({
+	props: {
+		labels: { type: Array as PropType<string[]>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(index: number) => void>, required: true },
+	},
+	components: {
+		LayoutRow,
+		TextButton,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="breadcrumb-trail-buttons" :title="tooltip">
 		<TextButton
@@ -57,25 +79,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-
-export default defineComponent({
-	props: {
-		labels: { type: Array as PropType<string[]>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-
-		// Callbacks
-		action: { type: Function as PropType<(index: number) => void>, required: true },
-	},
-	components: {
-		LayoutRow,
-		TextButton,
-	},
-});
-</script>

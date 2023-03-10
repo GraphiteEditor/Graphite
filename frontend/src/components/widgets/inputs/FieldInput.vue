@@ -1,3 +1,64 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { platformIsMac } from "@/utility-functions/platform";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+export default defineComponent({
+	emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],
+	props: {
+		value: { type: String as PropType<string>, required: true },
+		label: { type: String as PropType<string>, required: false },
+		spellcheck: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		textarea: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+		placeholder: { type: String as PropType<string>, required: false },
+	},
+	data() {
+		return {
+			id: `${Math.random()}`.substring(2),
+			macKeyboardLayout: platformIsMac(),
+		};
+	},
+	methods: {
+		// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
+		selectAllText(currentText: string) {
+			const inputElement = this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined;
+			if (!inputElement) return;
+
+			// Setting the value directly is required to make `inputElement.select()` work
+			inputElement.value = currentText;
+
+			inputElement.select();
+		},
+		unFocus() {
+			(this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined)?.blur();
+		},
+		getInputElementValue(): string | undefined {
+			return (this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined)?.value;
+		},
+		setInputElementValue(value: string) {
+			const inputElement = this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined;
+			if (inputElement) inputElement.value = value;
+		},
+	},
+	computed: {
+		inputValue: {
+			get() {
+				return this.value;
+			},
+			set(value: string) {
+				this.$emit("update:value", value);
+			},
+		},
+	},
+	components: { LayoutRow },
+});
+</script>
+
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
 <template>
 	<LayoutRow class="field-input" :class="{ disabled, 'sharp-right-corners': sharpRightCorners }" :title="tooltip">
@@ -131,64 +192,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { platformIsMac } from "@/utility-functions/platform";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-export default defineComponent({
-	emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],
-	props: {
-		value: { type: String as PropType<string>, required: true },
-		label: { type: String as PropType<string>, required: false },
-		spellcheck: { type: Boolean as PropType<boolean>, default: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		textarea: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-		placeholder: { type: String as PropType<string>, required: false },
-	},
-	data() {
-		return {
-			id: `${Math.random()}`.substring(2),
-			macKeyboardLayout: platformIsMac(),
-		};
-	},
-	methods: {
-		// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
-		selectAllText(currentText: string) {
-			const inputElement = this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined;
-			if (!inputElement) return;
-
-			// Setting the value directly is required to make `inputElement.select()` work
-			inputElement.value = currentText;
-
-			inputElement.select();
-		},
-		unFocus() {
-			(this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined)?.blur();
-		},
-		getInputElementValue(): string | undefined {
-			return (this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined)?.value;
-		},
-		setInputElementValue(value: string) {
-			const inputElement = this.$refs.input as HTMLInputElement | HTMLTextAreaElement | undefined;
-			if (inputElement) inputElement.value = value;
-		},
-	},
-	computed: {
-		inputValue: {
-			get() {
-				return this.value;
-			},
-			set(value: string) {
-				this.$emit("update:value", value);
-			},
-		},
-	},
-	components: { LayoutRow },
-});
-</script>

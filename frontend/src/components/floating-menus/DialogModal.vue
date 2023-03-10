@@ -1,3 +1,37 @@
+<script lang="ts">
+import { defineComponent } from "vue";
+
+import FloatingMenu from "@/components/layout/FloatingMenu.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
+
+export default defineComponent({
+	inject: ["dialog"],
+	methods: {
+		dismiss() {
+			this.dialog.dismissDialog();
+		},
+	},
+	mounted() {
+		// Focus the first button in the popup
+		const dialogModal: HTMLDivElement | undefined = this.$el;
+		const emphasizedOrFirstButton = (dialogModal?.querySelector("[data-emphasized]") || dialogModal?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		emphasizedOrFirstButton?.focus();
+	},
+	components: {
+		FloatingMenu,
+		IconLabel,
+		LayoutCol,
+		LayoutRow,
+		TextButton,
+		WidgetLayout,
+	},
+});
+</script>
+
 <template>
 	<FloatingMenu :open="true" class="dialog-modal" :type="'Dialog'" :direction="'Center'" data-dialog-modal>
 		<LayoutRow>
@@ -65,37 +99,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent } from "vue";
-
-import FloatingMenu from "@/components/layout/FloatingMenu.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import WidgetLayout from "@/components/widgets/WidgetLayout.vue";
-
-export default defineComponent({
-	inject: ["dialog"],
-	methods: {
-		dismiss() {
-			this.dialog.dismissDialog();
-		},
-	},
-	mounted() {
-		// Focus the first button in the popup
-		const dialogModal: HTMLDivElement | undefined = this.$el;
-		const emphasizedOrFirstButton = (dialogModal?.querySelector("[data-emphasized]") || dialogModal?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
-		emphasizedOrFirstButton?.focus();
-	},
-	components: {
-		FloatingMenu,
-		IconLabel,
-		LayoutCol,
-		LayoutRow,
-		TextButton,
-		WidgetLayout,
-	},
-});
-</script>

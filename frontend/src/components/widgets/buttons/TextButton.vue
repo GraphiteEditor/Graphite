@@ -1,3 +1,31 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type IconName } from "@/utility-functions/icons";
+
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export default defineComponent({
+	props: {
+		label: { type: String as PropType<string>, required: true },
+		icon: { type: String as PropType<IconName | undefined>, required: false },
+		emphasized: { type: Boolean as PropType<boolean>, default: false },
+		minWidth: { type: Number as PropType<number>, default: 0 },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },
+	},
+	components: {
+		IconLabel,
+		TextLabel,
+	},
+});
+</script>
+
 <template>
 	<button
 		class="text-button"
@@ -69,31 +97,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type IconName } from "@/utility-functions/icons";
-
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-export default defineComponent({
-	props: {
-		label: { type: String as PropType<string>, required: true },
-		icon: { type: String as PropType<IconName | undefined>, required: false },
-		emphasized: { type: Boolean as PropType<boolean>, default: false },
-		minWidth: { type: Number as PropType<number>, default: 0 },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-
-		// Callbacks
-		action: { type: Function as PropType<(e: MouseEvent) => void>, required: true },
-	},
-	components: {
-		IconLabel,
-		TextLabel,
-	},
-});
-</script>

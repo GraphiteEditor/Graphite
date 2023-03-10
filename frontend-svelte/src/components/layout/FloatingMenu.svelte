@@ -62,7 +62,7 @@
 
 	$: watchOpenChange(open);
 
-	// Called only when `open` is changed from outside this component (with `v-model`)
+	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
@@ -102,9 +102,9 @@
 	}
 
 	// Gets the client bounds of the elements and apply relevant styles to them
-	// TODO: Use the Vue :style attribute more whilst not causing recursive updates
+	// TODO: Use DOM attribute bindings more whilst not causing recursive updates
 	afterUpdate(() => {
-		// Turning measuring on and off both causes the component to change, which causes the `updated()` Vue event to fire extraneous times (hurting performance and sometimes causing an infinite loop)
+		// Turning measuring on and off both causes the component to change, which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop)
 		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 
@@ -128,7 +128,7 @@
 
 		if (!inParentFloatingMenu) {
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
+			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			const tailOffset = type === "Popover" ? 10 : 0;
 			if (direction === "Bottom") floatingMenuContent.div().style.top = `${tailOffset + floatingMenuBounds.top}px`;
 			if (direction === "Top") floatingMenuContent.div().style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
@@ -136,7 +136,7 @@
 			if (direction === "Left") floatingMenuContent.div().style.right = `${tailOffset + floatingMenuBounds.right}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
+			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.top}px`;
 			if (tail && direction === "Top") tail.style.bottom = `${floatingMenuBounds.bottom}px`;
 			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.left}px`;
@@ -150,7 +150,7 @@
 		if (direction === "Top" || direction === "Bottom") {
 			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
 
-			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
+			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (floatingMenuContentBounds.left - windowEdgeMargin <= workspaceBounds.left) {
 				floatingMenuContent.div().style.left = `${windowEdgeMargin}px`;
 				if (workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
@@ -163,7 +163,7 @@
 		if (direction === "Left" || direction === "Right") {
 			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
-			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
+			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (floatingMenuContentBounds.top - windowEdgeMargin <= workspaceBounds.top) {
 				floatingMenuContent.div().style.top = `${windowEdgeMargin}px`;
 				if (workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
@@ -176,7 +176,7 @@
 
 		// Remove the rounded corner from the content where the tail perfectly meets the corner
 		if (type === "Popover" && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
-			// We use `.style` on a ref (instead of a `:style` Vue binding) because the binding causes the `updated()` hook to call the function we're in recursively forever
+			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
 					floatingMenuContent.div().style.borderTopLeftRadius = "0";
@@ -204,7 +204,7 @@
 	export async function measureAndEmitNaturalWidth(): Promise<void> {
 		if (!measuringOngoingGuard) return;
 
-		// Wait for the changed content which fired the `updated()` Vue event to be put into the DOM
+		// Wait for the changed content which fired the `afterUpdate()` Svelte event to be put into the DOM
 		await tick();
 
 		// Wait until all fonts have been loaded and rendered so measurements of content involving text are accurate
@@ -216,15 +216,15 @@
 		await tick();
 
 		// Measure the width of the floating menu content element, if it's currently visible
-		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy `v-if` condition
+		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy Svelte template if condition
 		const naturalWidth: number | undefined = floatingMenuContent?.div().clientWidth;
 
-		// Turn off measuring mode for the component, which triggers another call to the `updated()` Vue event, so we can turn off the protection after that has happened
+		// Turn off measuring mode for the component, which triggers another call to the `afterUpdate()` Svelte event, so we can turn off the protection after that has happened
 		measuringOngoing = false;
 		await tick();
 		measuringOngoingGuard = false;
 
-		// Emit the measured natural width to the parent
+		// Notify the parent about the measured natural width
 		if (naturalWidth !== undefined && naturalWidth >= 0) {
 			dispatch("naturalWidth", naturalWidth);
 		}

@@ -80,7 +80,7 @@
 	}
 </script>
 
-<!-- TODO: Refactor this component to use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
+<!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 <!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.svelte` as part of its refactor -->
 
 <div class={`widget-${direction}`}>
@@ -121,7 +121,7 @@
 		{#if numberInput}
 			<NumberInput
 				{...exclude(numberInput)}
-				on:value={({ detail }) => debouncer(() => updateLayout(index, detail))}
+				on:value={({ detail }) => debouncer((value) => updateLayout(index, value)).updateValue(detail)}
 				incrementCallbackIncrease={() => updateLayout(index, "Increment")}
 				incrementCallbackDecrease={() => updateLayout(index, "Decrement")}
 				sharpRightCorners={nextIsSuffix}

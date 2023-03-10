@@ -1,3 +1,48 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type IconName } from "@/utility-functions/icons";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+export default defineComponent({
+	emits: ["update:checked"],
+	props: {
+		checked: { type: Boolean as PropType<boolean>, default: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		icon: { type: String as PropType<IconName>, default: "Checkmark" },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+	},
+	data() {
+		return {
+			id: `${Math.random()}`.substring(2),
+		};
+	},
+	computed: {
+		displayIcon(): IconName {
+			if (!this.checked && this.icon === "Checkmark") return "Empty12px";
+
+			return this.icon;
+		},
+	},
+	methods: {
+		isChecked() {
+			return this.checked;
+		},
+		toggleCheckboxFromLabel(e: KeyboardEvent) {
+			const target = (e.target || undefined) as HTMLLabelElement | undefined;
+			const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
+			previousSibling?.click();
+		},
+	},
+	components: {
+		IconLabel,
+		LayoutRow,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="checkbox-input">
 		<input
@@ -80,48 +125,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type IconName } from "@/utility-functions/icons";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-
-export default defineComponent({
-	emits: ["update:checked"],
-	props: {
-		checked: { type: Boolean as PropType<boolean>, default: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		icon: { type: String as PropType<IconName>, default: "Checkmark" },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	data() {
-		return {
-			id: `${Math.random()}`.substring(2),
-		};
-	},
-	computed: {
-		displayIcon(): IconName {
-			if (!this.checked && this.icon === "Checkmark") return "Empty12px";
-
-			return this.icon;
-		},
-	},
-	methods: {
-		isChecked() {
-			return this.checked;
-		},
-		toggleCheckboxFromLabel(e: KeyboardEvent) {
-			const target = (e.target || undefined) as HTMLLabelElement | undefined;
-			const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
-			previousSibling?.click();
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-	},
-});
-</script>

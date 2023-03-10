@@ -31,6 +31,7 @@ futures = "0.3.25"
 
 [features]
 gpu = ["graphite-editor/gpu"]
+quantization = ["graphite-editor/quantization"]
 # by default Tauri runs in production mode
 # when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
 default = [ "custom-protocol" ]

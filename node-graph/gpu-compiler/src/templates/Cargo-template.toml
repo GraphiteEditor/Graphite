@@ -13,5 +13,5 @@ crate-type = ["dylib", "lib"]
 libm = { git = "https://github.com/rust-lang/libm", tag = "0.2.5" }
 
 [dependencies]
-spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu" , features= ["glam"]}
+spirv-std = { version = "0.5" , features= ["glam"]}
 graphene-core = {path = "{{gcore_path}}", default-features = false, features = ["gpu"]}

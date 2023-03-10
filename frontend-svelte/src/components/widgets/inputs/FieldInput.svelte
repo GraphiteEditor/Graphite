@@ -31,15 +31,13 @@
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement;
 	let id = `${Math.random()}`.substring(2);
 	let macKeyboardLayout = platformIsMac();
-	let inputValue = value;
 
+	$: inputValue = value;
 	$: dispatch("value", inputValue);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
-	// TODO: Svelte: Test if the above message is still true
 	export function selectAllText(currentText: string) {
-		// Setting the value directly is required to make `input.select()` work
-		// TODO: Svelte: Test if the above message is still true
+		// Setting the value directly is required to make the following `select()` call work
 		inputOrTextarea.value = currentText;
 		inputOrTextarea.select();
 	}

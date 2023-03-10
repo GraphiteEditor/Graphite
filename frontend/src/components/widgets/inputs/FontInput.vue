@@ -1,84 +1,3 @@
-<!-- TODO: Combine this widget into the DropdownInput widget -->
-
-<template>
-	<LayoutRow class="font-input">
-		<LayoutRow
-			class="dropdown-box"
-			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
-			:style="{ minWidth: `${minWidth}px` }"
-			:title="tooltip"
-			:tabindex="disabled ? -1 : 0"
-			@click="toggleOpen"
-			@keydown="keydown"
-			data-floating-menu-spawner
-		>
-			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
-			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</LayoutRow>
-		<MenuList
-			v-model:activeEntry="activeEntry"
-			v-model:open="open"
-			:entries="[entries]"
-			:minWidth="isStyle ? 0 : minWidth"
-			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
-			:scrollableY="true"
-			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
-			ref="menuList"
-		></MenuList>
-	</LayoutRow>
-</template>
-
-<style lang="scss">
-.font-input {
-	position: relative;
-
-	.dropdown-box {
-		align-items: center;
-		white-space: nowrap;
-		background: var(--color-1-nearblack);
-		height: 24px;
-		border-radius: 2px;
-
-		.dropdown-label {
-			margin: 0;
-			margin-left: 8px;
-			flex: 1 1 100%;
-		}
-
-		.dropdown-arrow {
-			margin: 6px 2px;
-			flex: 0 0 auto;
-		}
-
-		&:hover,
-		&.open {
-			background: var(--color-6-lowergray);
-
-			span {
-				color: var(--color-f-white);
-			}
-		}
-
-		&.open {
-			border-radius: 2px 2px 0 0;
-		}
-
-		&.disabled {
-			background: var(--color-2-mildblack);
-
-			span {
-				color: var(--color-8-uppergray);
-			}
-		}
-	}
-
-	.menu-list .floating-menu-container .floating-menu-content {
-		max-height: 400px;
-		padding: 4px 0;
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, nextTick, type PropType } from "vue";
 
@@ -187,3 +106,84 @@ export default defineComponent({
 	},
 });
 </script>
+
+<!-- TODO: Combine this widget into the DropdownInput widget -->
+
+<template>
+	<LayoutRow class="font-input">
+		<LayoutRow
+			class="dropdown-box"
+			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
+			:style="{ minWidth: `${minWidth}px` }"
+			:title="tooltip"
+			:tabindex="disabled ? -1 : 0"
+			@click="toggleOpen"
+			@keydown="keydown"
+			data-floating-menu-spawner
+		>
+			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
+			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
+		</LayoutRow>
+		<MenuList
+			v-model:activeEntry="activeEntry"
+			v-model:open="open"
+			:entries="[entries]"
+			:minWidth="isStyle ? 0 : minWidth"
+			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
+			:scrollableY="true"
+			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
+			ref="menuList"
+		></MenuList>
+	</LayoutRow>
+</template>
+
+<style lang="scss">
+.font-input {
+	position: relative;
+
+	.dropdown-box {
+		align-items: center;
+		white-space: nowrap;
+		background: var(--color-1-nearblack);
+		height: 24px;
+		border-radius: 2px;
+
+		.dropdown-label {
+			margin: 0;
+			margin-left: 8px;
+			flex: 1 1 100%;
+		}
+
+		.dropdown-arrow {
+			margin: 6px 2px;
+			flex: 0 0 auto;
+		}
+
+		&:hover,
+		&.open {
+			background: var(--color-6-lowergray);
+
+			span {
+				color: var(--color-f-white);
+			}
+		}
+
+		&.open {
+			border-radius: 2px 2px 0 0;
+		}
+
+		&.disabled {
+			background: var(--color-2-mildblack);
+
+			span {
+				color: var(--color-8-uppergray);
+			}
+		}
+	}
+
+	.menu-list .floating-menu-container .floating-menu-content {
+		max-height: 400px;
+		padding: 4px 0;
+	}
+}
+</style>

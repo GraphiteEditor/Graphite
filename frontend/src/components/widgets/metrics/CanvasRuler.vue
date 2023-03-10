@@ -1,47 +1,3 @@
-<template>
-	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="canvasRuler">
-		<svg :style="svgBounds">
-			<path :d="svgPath" />
-			<text v-for="(svgText, index) in svgTexts" :key="index" :transform="svgText.transform">{{ svgText.text }}</text>
-		</svg>
-	</div>
-</template>
-
-<style lang="scss">
-.canvas-ruler {
-	flex: 1 1 100%;
-	background: var(--color-4-dimgray);
-	overflow: hidden;
-	position: relative;
-
-	&.horizontal {
-		height: 16px;
-	}
-
-	&.vertical {
-		width: 16px;
-
-		svg text {
-			text-anchor: end;
-		}
-	}
-
-	svg {
-		position: absolute;
-
-		path {
-			stroke-width: 1px;
-			stroke: var(--color-7-middlegray);
-		}
-
-		text {
-			font-size: 12px;
-			fill: var(--color-8-uppergray);
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -146,3 +102,47 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<div class="canvas-ruler" :class="direction.toLowerCase()" ref="canvasRuler">
+		<svg :style="svgBounds">
+			<path :d="svgPath" />
+			<text v-for="(svgText, index) in svgTexts" :key="index" :transform="svgText.transform">{{ svgText.text }}</text>
+		</svg>
+	</div>
+</template>
+
+<style lang="scss">
+.canvas-ruler {
+	flex: 1 1 100%;
+	background: var(--color-4-dimgray);
+	overflow: hidden;
+	position: relative;
+
+	&.horizontal {
+		height: 16px;
+	}
+
+	&.vertical {
+		width: 16px;
+
+		svg text {
+			text-anchor: end;
+		}
+	}
+
+	svg {
+		position: absolute;
+
+		path {
+			stroke-width: 1px;
+			stroke: var(--color-7-middlegray);
+		}
+
+		text {
+			font-size: 12px;
+			fill: var(--color-8-uppergray);
+		}
+	}
+}
+</style>

@@ -383,8 +383,10 @@ pub enum MouseMotion {
 	ScrollUp,
 	ScrollDown,
 	Drag,
+	LmbDouble,
 	LmbDrag,
 	RmbDrag,
+	RmbDouble,
 	MmbDrag,
 }
 
