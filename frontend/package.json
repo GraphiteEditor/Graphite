@@ -3,6 +3,7 @@
 	"private": true,
 	"description": "Graphite's web app frontend. Planned to be replaced by a native GUI written in Rust in the future.",
 	"author": "Graphite Authors <contact@graphite.rs>",
+	"type": "module",
 	"scripts": {
 		"start": "npm run dev",
 		"dev": "wasm-pack build ./wasm --dev && concurrently -k --handle-input \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
@@ -11,6 +12,7 @@
 		"tauri:build": "npm run tauri:build-wasm && vite build || (npm run print-building-help && exit 1)",
 		"tauri:build-wasm": "wasm-pack build ./wasm --release -- --features tauri",
 		"build": "npm run build-wasm && vite build || (npm run print-building-help && exit 1)",
+		"watch:wasm": "cargo watch --postpone -C wasm -s \"wasm-pack build . --dev\"",
 		"build-wasm": "wasm-pack build ./wasm --release",
 		"preview": "vite preview",
 		"check": "svelte-check --tsconfig ./tsconfig.json",
@@ -26,7 +28,7 @@
 		"reflect-metadata": "^0.1.13"
 	},
 	"devDependencies": {
-		"@sveltejs/vite-plugin-svelte": "^2.0.2",
+		"@sveltejs/vite-plugin-svelte": "^2.0.3",
 		"@tsconfig/svelte": "^3.0.0",
 		"@typescript-eslint/eslint-plugin": "^5.48.0",
 		"@typescript-eslint/parser": "^5.48.0",
@@ -38,10 +40,10 @@
 		"prettier": "^2.8.2",
 		"rollup-plugin-license": "^3.0.1",
 		"sass": "^1.57.1",
-		"svelte": "^3.55.0",
+		"svelte": "^3.55.1",
 		"svelte-check": "^3.0.2",
 		"svelte-preprocess": "^5.0.0",
-		"tslib": "^2.4.1",
+		"tslib": "^2.5.0",
 		"typescript": "^4.9.4",
 		"vite": "^4.1.1",
 		"vite-plugin-top-level-await": "^1.2.2",
