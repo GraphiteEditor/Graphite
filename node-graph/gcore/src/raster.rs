@@ -330,6 +330,7 @@ mod image {
 	use core::hash::{Hash, Hasher};
 	use dyn_any::{DynAny, StaticType};
 	use glam::DAffine2;
+	use glam::DVec2;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -443,6 +444,21 @@ mod image {
 			self.image.hash(state);
 			self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
+	}
+	#[derive(Debug, Clone, Copy)]
+	pub struct TransformNode<Translation, Rotation, Scale, Shear> {
+		translate: Translation,
+		rotate: Rotation,
+		scale: Scale,
+		shear: Shear,
+	}
+
+	#[node_macro::node_fn(TransformNode)]
+	fn transform_vector_data(mut image_frame: ImageFrame, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> ImageFrame {
+		let (sin, cos) = rotate.sin_cos();
+
+		image_frame.transform = image_frame.transform * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
+		image_frame
 	}
 }
 
