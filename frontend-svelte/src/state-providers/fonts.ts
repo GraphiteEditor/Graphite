@@ -5,7 +5,7 @@ import { TriggerFontLoad } from "@/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {
-	// TODO: Svelte: refactor to remove the need for this empty store
+	// TODO: Do some code cleanup to remove the need for this empty store
 	const { subscribe } = writable({});
 
 	function createURL(font: string): URL {

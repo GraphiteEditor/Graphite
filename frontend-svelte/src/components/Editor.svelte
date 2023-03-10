@@ -287,13 +287,14 @@
 	}
 
 	// Checkbox needs to apply the focus outline to its sibling label
+	.optional-input input:focus-visible + label,
 	.checkbox-input input:focus-visible + label {
 		outline: 1px dashed var(--color-e-nearwhite);
 		outline-offset: -1px;
+	}
 
-		// Variant: dark outline over light colors
-		&.checked {
-			outline: 1px dashed var(--color-2-mildblack);
-		}
+	// Variant: dark outline over light colors (when the checkbox is checked)
+	:not(.optional-input) > .checkbox-input input:focus-visible + label.checked {
+		outline: 1px dashed var(--color-2-mildblack);
 	}
 </style>

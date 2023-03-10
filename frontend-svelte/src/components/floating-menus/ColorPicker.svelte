@@ -46,35 +46,42 @@
 	const hsvaOrNone = color.toHSVA();
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
+	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;
 	let value = hsva.v;
 	let alpha = hsva.a;
 	let isNone = hsvaOrNone === undefined;
+	// Initial color components
 	let initialHue = hsva.h;
 	let initialSaturation = hsva.s;
 	let initialValue = hsva.v;
 	let initialAlpha = hsva.a;
 	let initialIsNone = hsvaOrNone === undefined;
+	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
-	let colorSpaceChoices = COLOR_SPACE_CHOICES;
 	let strayCloses = true;
 
 	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
 	$: newColor = isNone ? new Color("none") : new Color({ h: hue, s: saturation, v: value, a: alpha });
-	$: initialColor = initialIsNone ? new Color("none") : new Color({ h: initialHue, s: initialSaturation, v: initialValue, a: initialAlpha });
+	$: initialColor = updateInitialColor(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone, open);
 
 	$: watchOpen(open);
 	$: watchColor(color);
 
-	// Called only when `open` is changed from outside this component (with v-model)
-	function watchOpen(open: boolean) {
-		if (open) setInitialHSVA(hue, saturation, value, alpha, isNone);
+	// Taking `_open` is necessary to make Svelte order the reactive processing queue so this works as required, see:
+	// https://stackoverflow.com/questions/63934543/svelte-reactivity-not-triggering-when-variable-changed-in-a-function
+	function updateInitialColor(h: number, s: number, v: number, a: number, initialIsNone: boolean, _open: boolean) {
+		if (initialIsNone) return new Color("none");
+		return new Color({ h, s, v, a });
 	}
 
-	// Called only when `color` is changed from outside this component (with v-model)
+	function watchOpen(open: boolean) {
+		if (!open) setInitialHSVA(hue, saturation, value, alpha, isNone);
+	}
+
 	function watchColor(color: Color) {
 		const hsva = color.toHSVA();
 
@@ -222,20 +229,20 @@
 		setColor(presetColor);
 	}
 
-	function setNewHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
-		hue = hue;
-		saturation = saturation;
-		value = value;
-		alpha = alpha;
-		isNone = isNone;
+	function setNewHSVA(h: number, s: number, v: number, a: number, none: boolean) {
+		hue = h;
+		saturation = s;
+		value = v;
+		alpha = a;
+		isNone = none;
 	}
 
-	function setInitialHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
-		initialHue = hue;
-		initialSaturation = saturation;
-		initialValue = value;
-		initialAlpha = alpha;
-		initialIsNone = isNone;
+	function setInitialHSVA(h: number, s: number, v: number, a: number, none: boolean) {
+		initialHue = h;
+		initialSaturation = s;
+		initialValue = v;
+		initialAlpha = a;
+		initialIsNone = none;
 	}
 
 	async function activateEyedropperSample() {
@@ -297,7 +304,7 @@
 					<TextLabel>Initial</TextLabel>
 				</LayoutCol>
 			</LayoutRow>
-			<DropdownInput entries={colorSpaceChoices} selectedIndex={0} disabled={true} tooltip="Color Space and HDR (coming soon)" />
+			<DropdownInput entries={COLOR_SPACE_CHOICES} selectedIndex={0} disabled={true} tooltip="Color Space and HDR (coming soon)" />
 			<LayoutRow>
 				<TextLabel tooltip="Color code in hexadecimal format">Hex</TextLabel>
 				<Separator />
@@ -333,7 +340,7 @@
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltip="Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."
+				<TextLabel tooltip={"Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."}
 					>HSV</TextLabel
 				>
 				<Separator />
