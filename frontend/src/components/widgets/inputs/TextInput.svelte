@@ -1,103 +1,87 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { createEventDispatcher } from "svelte";
 
-import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
+	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
-export default defineComponent({
-	emits: ["update:value", "commitText"],
-	props: {
-		// Label
-		label: { type: String as PropType<string>, required: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		placeholder: { type: String as PropType<string>, required: false },
+	// emits: ["update:value", "commitText"],
+	const dispatch = createEventDispatcher<{ commitText: string }>();
 
-		// Disabled
-		disabled: { type: Boolean as PropType<boolean>, default: false },
+	// Label
+	export let label: string | undefined = undefined;
+	export let tooltip: string | undefined = undefined;
+	export let placeholder: string | undefined = undefined;
+	// Disabled
+	export let disabled = false;
+	// Value
+	export let value: string;
+	// Styling
+	export let centered = false;
+	export let minWidth = 0;
+	export let sharpRightCorners = false;
 
-		// Value
-		value: { type: String as PropType<string>, required: true },
+	let self: FieldInput;
+	let editing = false;
 
-		// Styling
-		centered: { type: Boolean as PropType<boolean>, default: false },
-		minWidth: { type: Number as PropType<number>, default: 0 },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-	},
-	data() {
-		return {
-			editing: false,
-		};
-	},
-	computed: {
-		text: {
-			get() {
-				return this.value;
-			},
-			set(value: string) {
-				this.$emit("update:value", value);
-			},
-		},
-	},
-	methods: {
-		onTextFocused() {
-			this.editing = true;
+	function onTextFocused() {
+		editing = true;
 
-			(this.$refs.fieldInput as typeof FieldInput | undefined)?.selectAllText(this.text);
-		},
-		// Called only when `value` is changed from the <input> element via user input and committed, either with the
-		// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
-		onTextChanged() {
-			// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
-			if (!this.editing) return;
+		self.selectAllText(value);
+	}
 
-			this.onCancelTextChange();
+	// Called only when `value` is changed from the <input> element via user input and committed, either with the
+	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
+	function onTextChanged() {
+		// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
+		if (!editing) return;
 
-			// TODO: Find a less hacky way to do this
-			const inputElement = this.$refs.fieldInput as typeof FieldInput | undefined;
-			if (!inputElement) return;
-			this.$emit("commitText", inputElement.getInputElementValue());
+		onCancelTextChange();
 
-			// Required if value is not changed by the parent component upon update:value event
-			inputElement.setInputElementValue(this.value);
-		},
-		onCancelTextChange() {
-			this.editing = false;
+		// TODO: Find a less hacky way to do this
+		dispatch("commitText", self.getValue());
 
-			(this.$refs.fieldInput as typeof FieldInput | undefined)?.unFocus();
-		},
-	},
-	components: { FieldInput },
-});
+		// Required if value is not changed by the parent component upon update:value event
+		self.setInputElementValue(value);
+	}
+
+	function onCancelTextChange() {
+		editing = false;
+
+		self.unFocus();
+	}
+
+	export function focus() {
+		self.focus();
+	}
 </script>
 
-<template>
-	<FieldInput
-		class="text-input"
-		:class="{ centered }"
-		v-model:value="text"
-		:label="label"
-		:spellcheck="true"
-		:disabled="disabled"
-		:tooltip="tooltip"
-		:placeholder="placeholder"
-		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
-		:sharpRightCorners="sharpRightCorners"
-		@textFocused="() => onTextFocused()"
-		@textChanged="() => onTextChanged()"
-		@cancelTextChange="() => onCancelTextChange()"
-		ref="fieldInput"
-	></FieldInput>
-</template>
+<FieldInput
+	class="text-input"
+	classes={{ centered }}
+	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined }}
+	{value}
+	on:value
+	on:textFocused={onTextFocused}
+	on:textChanged={onTextChanged}
+	on:cancelTextChange={onCancelTextChange}
+	spellcheck={true}
+	{label}
+	{disabled}
+	{tooltip}
+	{placeholder}
+	{sharpRightCorners}
+	bind:this={self}
+/>
 
-<style lang="scss">
-.text-input {
-	input {
-		text-align: left;
-	}
+<style lang="scss" global>
+	.text-input {
+		input {
+			text-align: left;
+		}
 
-	&.centered {
-		input:not(:focus) {
-			text-align: center;
+		&.centered {
+			input:not(:focus) {
+				text-align: center;
+			}
 		}
 	}
-}
 </style>

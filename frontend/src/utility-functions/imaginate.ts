@@ -4,7 +4,8 @@
 import { blobToBase64 } from "@/utility-functions/files";
 import { type RequestResult, requestWithUploadDownloadProgress } from "@/utility-functions/network";
 import { type Editor } from "@/wasm-communication/editor";
-import { type ImaginateGenerationParameters, type XY } from "@/wasm-communication/messages";
+import type { XY } from "@/wasm-communication/messages";
+import { type ImaginateGenerationParameters } from "@/wasm-communication/messages";
 
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;

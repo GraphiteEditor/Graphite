@@ -1,174 +1,163 @@
 <script lang="ts">
-import { defineComponent, type PropType, toRaw } from "vue";
+	import { createEventDispatcher } from "svelte";
 
-import { type MenuListEntry } from "@/wasm-communication/messages";
+	import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import MenuList from "@/components/floating-menus/MenuList.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+	import MenuList from "@/components/floating-menus/MenuList.svelte";
+	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 
-const DASH_ENTRY = { label: "-" };
+	const DASH_ENTRY = { label: "-" };
 
-export default defineComponent({
-	emits: ["update:selectedIndex"],
-	props: {
-		entries: { type: Array as PropType<MenuListEntry[][]>, required: true },
-		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
-		drawIcon: { type: Boolean as PropType<boolean>, default: false },
-		interactive: { type: Boolean as PropType<boolean>, default: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-	},
-	data() {
-		return {
-			activeEntry: this.makeActiveEntry(this.selectedIndex),
-			activeEntrySkipWatcher: false,
-			open: false,
-			minWidth: 0,
-		};
-	},
-	watch: {
-		// Called only when `selectedIndex` is changed from outside this component (with v-model)
-		selectedIndex() {
-			this.activeEntrySkipWatcher = true;
-			this.activeEntry = this.makeActiveEntry();
-		},
-		// Called when `activeEntry` is changed by the `v-model` on this component's MenuList component, or by the `selectedIndex()` watcher above (but we want to skip that case)
-		activeEntry(newActiveEntry: MenuListEntry) {
-			if (this.activeEntrySkipWatcher) {
-				this.activeEntrySkipWatcher = false;
-				return;
-			}
+	// emits: ["update:selectedIndex"],
+	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
-			// `toRaw()` pulls it out of the Vue proxy
-			if (toRaw(newActiveEntry) === DASH_ENTRY) return;
+	let menuList: MenuList;
+	let self: LayoutRow;
 
-			this.$emit("update:selectedIndex", this.entries.flat().indexOf(newActiveEntry));
-		},
-	},
-	methods: {
-		makeActiveEntry(): MenuListEntry {
-			const entries = this.entries.flat();
+	export let entries: MenuListEntry[][];
+	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
+	export let drawIcon = false;
+	export let interactive = true;
+	export let disabled = false;
+	export let tooltip: string | undefined = undefined;
+	export let sharpRightCorners = false;
 
-			if (this.selectedIndex !== undefined && this.selectedIndex >= 0 && this.selectedIndex < entries.length) {
-				return entries[this.selectedIndex];
-			}
-			return DASH_ENTRY;
-		},
-		keydown(e: KeyboardEvent) {
-			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
-		},
-		unFocusDropdownBox(e: FocusEvent) {
-			const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
-			const self: HTMLDivElement | undefined = this.$el;
-			if (blurTarget !== self) this.open = false;
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-		MenuList,
-		TextLabel,
-	},
-});
+	let activeEntry = makeActiveEntry();
+	let activeEntrySkipWatcher = false;
+	let open = false;
+	let minWidth = 0;
+
+	$: selectedIndex, watchSelectedIndex();
+	$: watchActiveEntry(activeEntry);
+
+	// Called only when `selectedIndex` is changed from outside this component
+	function watchSelectedIndex() {
+		activeEntrySkipWatcher = true;
+		activeEntry = makeActiveEntry();
+	}
+
+	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `selectedIndex()` watcher above (but we want to skip that case)
+	function watchActiveEntry(activeEntry: MenuListEntry) {
+		if (activeEntrySkipWatcher) {
+			activeEntrySkipWatcher = false;
+		} else if (activeEntry !== DASH_ENTRY) {
+			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
+		}
+	}
+
+	function makeActiveEntry(): MenuListEntry {
+		const allEntries = entries.flat();
+
+		if (selectedIndex !== undefined && selectedIndex >= 0 && selectedIndex < allEntries.length) {
+			return allEntries[selectedIndex];
+		}
+		return DASH_ENTRY;
+	}
+
+	function unFocusDropdownBox(e: FocusEvent) {
+		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
+		if (blurTarget !== self.div()) open = false;
+	}
 </script>
 
-<template>
-	<LayoutRow class="dropdown-input" data-dropdown-input>
-		<LayoutRow
-			class="dropdown-box"
-			:class="{ disabled, open, 'sharp-right-corners': sharpRightCorners }"
-			:style="{ minWidth: `${minWidth}px` }"
-			:title="tooltip"
-			@click="() => !disabled && (open = true)"
-			@blur="(e: FocusEvent) => unFocusDropdownBox(e)"
-			@keydown="(e: KeyboardEvent) => keydown(e)"
-			:tabindex="disabled ? -1 : 0"
-			data-floating-menu-spawner
-		>
-			<IconLabel class="dropdown-icon" :icon="activeEntry.icon" v-if="activeEntry.icon" />
-			<TextLabel class="dropdown-label">{{ activeEntry.label }}</TextLabel>
-			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</LayoutRow>
-		<MenuList
-			v-model:activeEntry="activeEntry"
-			v-model:open="open"
-			@naturalWidth="(newNaturalWidth: number) => (minWidth = newNaturalWidth)"
-			:entries="entries"
-			:drawIcon="drawIcon"
-			:interactive="interactive"
-			:direction="'Bottom'"
-			:scrollableY="true"
-			ref="menuList"
-		/>
+<LayoutRow class="dropdown-input" bind:this={self} data-dropdown-input>
+	<LayoutRow
+		class="dropdown-box"
+		classes={{ disabled, open, "sharp-right-corners": sharpRightCorners }}
+		styles={{ minWidth: `${minWidth}px` }}
+		{tooltip}
+		on:click={() => !disabled && (open = true)}
+		on:blur={unFocusDropdownBox}
+		on:keydown={(e) => menuList.keydown(e, false)}
+		tabindex={disabled ? -1 : 0}
+		data-floating-menu-spawner
+	>
+		{#if activeEntry.icon}
+			<IconLabel class="dropdown-icon" icon={activeEntry.icon} />
+		{/if}
+		<TextLabel class="dropdown-label">{activeEntry.label}</TextLabel>
+		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
-</template>
+	<MenuList
+		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		{activeEntry}
+		on:activeEntry={({ detail }) => (activeEntry = detail)}
+		{open}
+		on:open={({ detail }) => (open = detail)}
+		{entries}
+		{drawIcon}
+		{interactive}
+		direction="Bottom"
+		scrollableY={true}
+		bind:this={menuList}
+	/>
+</LayoutRow>
 
-<style lang="scss">
-.dropdown-input {
-	position: relative;
+<style lang="scss" global>
+	.dropdown-input {
+		position: relative;
 
-	.dropdown-box {
-		align-items: center;
-		white-space: nowrap;
-		background: var(--color-1-nearblack);
-		height: 24px;
-		border-radius: 2px;
+		.dropdown-box {
+			align-items: center;
+			white-space: nowrap;
+			background: var(--color-1-nearblack);
+			height: 24px;
+			border-radius: 2px;
 
-		.dropdown-label {
-			margin: 0;
-			margin-left: 8px;
-			flex: 1 1 100%;
-		}
+			.dropdown-label {
+				margin: 0;
+				margin-left: 8px;
+				flex: 1 1 100%;
+			}
 
-		.dropdown-icon {
-			margin: 4px;
-			flex: 0 0 auto;
+			.dropdown-icon {
+				margin: 4px;
+				flex: 0 0 auto;
 
-			& + .dropdown-label {
-				margin-left: 0;
+				& + .dropdown-label {
+					margin-left: 0;
+				}
+			}
+
+			.dropdown-arrow {
+				margin: 6px 2px;
+				flex: 0 0 auto;
+			}
+
+			&:hover,
+			&.open {
+				background: var(--color-6-lowergray);
+
+				span {
+					color: var(--color-f-white);
+				}
+
+				svg {
+					fill: var(--color-f-white);
+				}
+			}
+
+			&.open {
+				border-radius: 2px 2px 0 0;
+			}
+
+			&.disabled {
+				background: var(--color-2-mildblack);
+
+				span {
+					color: var(--color-8-uppergray);
+				}
+
+				svg {
+					fill: var(--color-8-uppergray);
+				}
 			}
 		}
 
-		.dropdown-arrow {
-			margin: 6px 2px;
-			flex: 0 0 auto;
-		}
-
-		&:hover,
-		&.open {
-			background: var(--color-6-lowergray);
-
-			span {
-				color: var(--color-f-white);
-			}
-
-			svg {
-				fill: var(--color-f-white);
-			}
-		}
-
-		&.open {
-			border-radius: 2px 2px 0 0;
-		}
-
-		&.disabled {
-			background: var(--color-2-mildblack);
-
-			span {
-				color: var(--color-8-uppergray);
-			}
-
-			svg {
-				fill: var(--color-8-uppergray);
-			}
+		.menu-list .floating-menu-container .floating-menu-content {
+			max-height: 400px;
 		}
 	}
-
-	.menu-list .floating-menu-container .floating-menu-content {
-		max-height: 400px;
-	}
-}
 </style>

@@ -52,3 +52,19 @@ export function operatingSystem(detailed = false): string {
 export function platformIsMac(): boolean {
 	return operatingSystem() === "Mac";
 }
+
+export function isEventSupported(eventName: string) {
+	const onEventName = `on${eventName}`;
+
+	let tag = "div";
+	if (["select", "change"].includes(eventName)) tag = "select";
+	if (["submit", "reset"].includes(eventName)) tag = "form";
+	if (["error", "load", "abort"].includes(eventName)) tag = "img";
+	const element = document.createElement(tag);
+	
+	if (onEventName in element) return true;
+
+	// Check if "return;" gets converted into a function, meaning the event is supported
+	element.setAttribute(eventName, "return;");
+	return typeof (element as Record<string, any>)[onEventName] === "function";
+}

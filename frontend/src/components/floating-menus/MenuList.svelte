@@ -1,359 +1,351 @@
+<svelte:options accessors={true} />
+
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { createEventDispatcher } from "svelte";
 
-import { type MenuListEntry } from "@/wasm-communication/messages";
+	import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
+	import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "@/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type MenuListInstance = InstanceType<typeof MenuList>;
+	let self: FloatingMenu;
+	let scroller: LayoutCol;
 
-const MenuList = defineComponent({
-	emits: ["update:open", "update:activeEntry", "naturalWidth"],
-	props: {
-		entries: { type: Array as PropType<MenuListEntry[][]>, required: true },
-		activeEntry: { type: Object as PropType<MenuListEntry>, required: false },
-		open: { type: Boolean as PropType<boolean>, required: true },
-		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
-		minWidth: { type: Number as PropType<number>, default: 0 },
-		drawIcon: { type: Boolean as PropType<boolean>, default: false },
-		interactive: { type: Boolean as PropType<boolean>, default: false },
-		scrollableY: { type: Boolean as PropType<boolean>, default: false },
-		virtualScrollingEntryHeight: { type: Number as PropType<number>, default: 0 },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	data() {
-		return {
-			isOpen: this.open,
-			highlighted: this.activeEntry as MenuListEntry | undefined,
-			virtualScrollingEntriesStart: 0,
+	// emits: ["update:open", "update:activeEntry", "naturalWidth"],
+	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry }>();
+
+	export let entries: MenuListEntry[][];
+	export let activeEntry: MenuListEntry | undefined = undefined;
+	export let open: boolean;
+	export let direction: MenuDirection = "Bottom";
+	export let minWidth = 0;
+	export let drawIcon = false;
+	export let interactive = false;
+	export let scrollableY = false;
+	export let virtualScrollingEntryHeight = 0;
+	export let tooltip: string | undefined = undefined;
+
+	let highlighted = activeEntry as MenuListEntry | undefined;
+	let virtualScrollingEntriesStart = 0;
+
+	// Called only when `open` is changed from outside this component
+	$: watchOpen(open);
+	$: watchRemeasureWidth(entries, drawIcon);
+	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
+	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
+	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
+
+	function watchOpen(open: boolean) {
+		highlighted = activeEntry;
+		dispatch("open", open);
+	}
+
+	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
+		self?.measureAndEmitNaturalWidth();
+	}
+
+	function onScroll(e: Event) {
+		if (!virtualScrollingEntryHeight) return;
+		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+	}
+
+	function onEntryClick(menuListEntry: MenuListEntry): void {
+		// Call the action if available
+		if (menuListEntry.action) menuListEntry.action();
+
+		// Notify the parent about the clicked entry as the new active entry
+		dispatch("activeEntry", menuListEntry);
+
+		// Close the containing menu
+		if (menuListEntry.ref) menuListEntry.ref.open = false;
+		dispatch("open", false);
+		open = false;
+	}
+
+	function onEntryPointerEnter(menuListEntry: MenuListEntry): void {
+		if (!menuListEntry.children?.length) return;
+
+		if (menuListEntry.ref) menuListEntry.ref.open = true;
+		else dispatch("open", true);
+	}
+
+	function onEntryPointerLeave(menuListEntry: MenuListEntry): void {
+		if (!menuListEntry.children?.length) return;
+
+		if (menuListEntry.ref) menuListEntry.ref.open = false;
+		else dispatch("open", false);
+	}
+
+	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
+		if (!menuListEntry.children?.length) return false;
+
+		return menuListEntry.ref?.open || false;
+	}
+
+	/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
+	export function keydown(e: KeyboardEvent, submenu: boolean): boolean {
+		// Interactive menus should keep the active entry the same as the highlighted one
+		if (interactive) highlighted = activeEntry;
+
+		const menuOpen = open;
+		const flatEntries = entries.flat().filter((entry) => !entry.disabled);
+		const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.open);
+
+		const openSubmenu = (highlighted: MenuListEntry): void => {
+			if (highlighted.ref && highlighted.children?.length) {
+				highlighted.ref.open = true;
+
+				// Highlight first item
+				highlighted.ref.setHighlighted(highlighted.children[0][0]);
+			}
 		};
-	},
-	watch: {
-		// Called only when `open` is changed from outside this component (with v-model)
-		open(newOpen: boolean) {
-			this.isOpen = newOpen;
-			this.highlighted = this.activeEntry;
-		},
-		isOpen(newIsOpen: boolean) {
-			this.$emit("update:open", newIsOpen);
-		},
-		entries() {
-			(this.$refs.floatingMenu as typeof FloatingMenu | undefined)?.measureAndEmitNaturalWidth();
-		},
-		drawIcon() {
-			(this.$refs.floatingMenu as typeof FloatingMenu | undefined)?.measureAndEmitNaturalWidth();
-		},
-	},
-	methods: {
-		scrollViewTo(distanceDown: number): void {
-			const scroller: HTMLDivElement | undefined = (this.$refs.scroller as typeof LayoutCol | undefined)?.$el;
-			scroller?.scrollTo(0, distanceDown);
-		},
-		onEntryClick(menuListEntry: MenuListEntry): void {
-			// Call the action if available
-			if (menuListEntry.action) menuListEntry.action();
 
-			// Emit the clicked entry as the new active entry
-			this.$emit("update:activeEntry", menuListEntry);
+		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
+			// Allow opening menu with space or enter
+			open = true;
+			highlighted = activeEntry;
+		} else if (menuOpen && openChild >= 0) {
+			// Redirect the keyboard navigation to a submenu if one is open
+			const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
 
-			// Close the containing menu
-			if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
-			this.$emit("update:open", false);
-			this.isOpen = false; // TODO: This is a hack for MenuBarInput submenus, remove it when we get rid of using `ref`
-		},
-		onEntryPointerEnter(menuListEntry: MenuListEntry): void {
-			if (!menuListEntry.children?.length) return;
+			// Highlight the menu item in the parent list that corresponds with the open submenu
+			if (e.key !== "Escape" && highlighted) setHighlighted(flatEntries[openChild]);
 
-			if (menuListEntry.ref) menuListEntry.ref.isOpen = true;
-			else this.$emit("update:open", true);
-		},
-		onEntryPointerLeave(menuListEntry: MenuListEntry): void {
-			if (!menuListEntry.children?.length) return;
-
-			if (menuListEntry.ref) menuListEntry.ref.isOpen = false;
-			else this.$emit("update:open", false);
-		},
-		isEntryOpen(menuListEntry: MenuListEntry): boolean {
-			if (!menuListEntry.children?.length) return false;
-
-			return this.open;
-		},
-		/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
-		keydown(e: KeyboardEvent, submenu: boolean): boolean {
-			// Interactive menus should keep the active entry the same as the highlighted one
-			if (this.interactive) this.highlighted = this.activeEntry;
-
-			const menuOpen = this.isOpen;
-			const flatEntries = this.entries.flat().filter((entry) => !entry.disabled);
-			const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.isOpen);
-
-			const openSubmenu = (highlighted: MenuListEntry): void => {
-				if (highlighted.ref && highlighted.children?.length) {
-					highlighted.ref.isOpen = true;
-
-					// Highlight first item
-					highlighted.ref.setHighlighted(highlighted.children[0][0]);
-				}
-			};
-
-			if (!menuOpen && (e.key === " " || e.key === "Enter")) {
-				// Allow opening menu with space or enter
-				this.isOpen = true;
-				this.highlighted = this.activeEntry;
-			} else if (menuOpen && openChild >= 0) {
-				// Redirect the keyboard navigation to a submenu if one is open
-				const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
-
-				// Highlight the menu item in the parent list that corresponds with the open submenu
-				if (e.key !== "Escape" && this.highlighted) this.setHighlighted(flatEntries[openChild]);
-
-				// Handle the child closing the entire menu stack
-				if (shouldCloseStack) {
-					this.isOpen = false;
-					return true;
-				}
-			} else if ((menuOpen || this.interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-				// Navigate to the next and previous entries with arrow keys
-
-				let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
-				if (this.highlighted) {
-					const index = this.highlighted ? flatEntries.map((entry) => entry.label).indexOf(this.highlighted.label) : 0;
-					newIndex = index + (e.key === "ArrowUp" ? -1 : 1);
-
-					// Interactive dropdowns should lock at the end whereas other dropdowns should loop
-					if (this.interactive) newIndex = Math.min(flatEntries.length - 1, Math.max(0, newIndex));
-					else newIndex = (newIndex + flatEntries.length) % flatEntries.length;
-				}
-
-				const newEntry = flatEntries[newIndex];
-				this.setHighlighted(newEntry);
-			} else if (menuOpen && e.key === "Escape") {
-				// Close menu with escape key
-				this.isOpen = false;
-
-				// Reset active to before open
-				this.setHighlighted(this.activeEntry);
-			} else if (menuOpen && this.highlighted && e.key === "Enter") {
-				// Handle clicking on an option if enter is pressed
-				if (!this.highlighted.children?.length) this.onEntryClick(this.highlighted);
-				else openSubmenu(this.highlighted);
-
-				// Stop the event from triggering a press on a new dialog
-				e.preventDefault();
-
-				// Enter should close the entire menu stack
+			// Handle the child closing the entire menu stack
+			if (shouldCloseStack) {
+				open = false;
 				return true;
-			} else if (menuOpen && this.highlighted && e.key === "ArrowRight") {
-				// Right arrow opens a submenu
-				openSubmenu(this.highlighted);
-			} else if (menuOpen && e.key === "ArrowLeft") {
-				// Left arrow closes a submenu
-				if (submenu) this.isOpen = false;
+			}
+		} else if ((menuOpen || interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+			// Navigate to the next and previous entries with arrow keys
+
+			let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
+			if (highlighted) {
+				const index = highlighted ? flatEntries.map((entry) => entry.label).indexOf(highlighted.label) : 0;
+				newIndex = index + (e.key === "ArrowUp" ? -1 : 1);
+
+				// Interactive dropdowns should lock at the end whereas other dropdowns should loop
+				if (interactive) newIndex = Math.min(flatEntries.length - 1, Math.max(0, newIndex));
+				else newIndex = (newIndex + flatEntries.length) % flatEntries.length;
 			}
 
-			// By default, keep the menu stack open
-			return false;
-		},
-		setHighlighted(newHighlight: MenuListEntry | undefined) {
-			this.highlighted = newHighlight;
-			// Interactive menus should keep the active entry the same as the highlighted one
-			if (this.interactive && newHighlight?.value !== this.activeEntry?.value) this.$emit("update:activeEntry", newHighlight);
-		},
-		onScroll(e: Event) {
-			if (!this.virtualScrollingEntryHeight) return;
-			this.virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
-		},
-	},
-	computed: {
-		virtualScrollingTotalHeight() {
-			return this.entries[0].length * this.virtualScrollingEntryHeight;
-		},
-		virtualScrollingStartIndex() {
-			return Math.floor(this.virtualScrollingEntriesStart / this.virtualScrollingEntryHeight);
-		},
-		virtualScrollingEndIndex() {
-			return Math.min(this.entries[0].length, this.virtualScrollingStartIndex + 1 + 400 / this.virtualScrollingEntryHeight);
-		},
-	},
-	components: {
-		FloatingMenu,
-		IconLabel,
-		LayoutCol,
-		LayoutRow,
-		Separator,
-		TextLabel,
-		UserInputLabel,
-	},
-});
-export default MenuList;
+			const newEntry = flatEntries[newIndex];
+			setHighlighted(newEntry);
+		} else if (menuOpen && e.key === "Escape") {
+			// Close menu with escape key
+			open = false;
+
+			// Reset active to before open
+			setHighlighted(activeEntry);
+		} else if (menuOpen && highlighted && e.key === "Enter") {
+			// Handle clicking on an option if enter is pressed
+			if (!highlighted.children?.length) onEntryClick(highlighted);
+			else openSubmenu(highlighted);
+
+			// Stop the event from triggering a press on a new dialog
+			e.preventDefault();
+
+			// Enter should close the entire menu stack
+			return true;
+		} else if (menuOpen && highlighted && e.key === "ArrowRight") {
+			// Right arrow opens a submenu
+			openSubmenu(highlighted);
+		} else if (menuOpen && e.key === "ArrowLeft") {
+			// Left arrow closes a submenu
+			if (submenu) open = false;
+		}
+
+		// By default, keep the menu stack open
+		return false;
+	}
+
+	export function setHighlighted(newHighlight: MenuListEntry | undefined) {
+		highlighted = newHighlight;
+		// Interactive menus should keep the active entry the same as the highlighted one
+		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
+	}
+
+	export function scrollViewTo(distanceDown: number): void {
+		scroller.div().scrollTo(0, distanceDown);
+	}
 </script>
 
-<template>
-	<FloatingMenu
-		class="menu-list"
-		v-model:open="isOpen"
-		@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
-		:type="'Dropdown'"
-		:windowEdgeMargin="0"
-		:escapeCloses="false"
-		v-bind="{ direction, scrollableY: scrollableY && virtualScrollingEntryHeight === 0, minWidth }"
-		ref="floatingMenu"
+<FloatingMenu
+	class="menu-list"
+	{open}
+	on:open={({ detail }) => (open = detail)}
+	on:naturalWidth
+	type="Dropdown"
+	windowEdgeMargin={0}
+	escapeCloses={false}
+	{direction}
+	{minWidth}
+	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
+	bind:this={self}
+>
+	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
+	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
+	<LayoutCol
+		bind:this={scroller}
+		scrollableY={scrollableY && virtualScrollingEntryHeight !== 0}
+		on:scroll={onScroll}
+		styles={{ "min-width": virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }}
 	>
-		<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
-		However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
-		<LayoutCol ref="scroller" :scrollableY="scrollableY && virtualScrollingEntryHeight !== 0" @scroll="onScroll" :style="{ minWidth: virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }">
-			<LayoutRow v-if="virtualScrollingEntryHeight" class="scroll-spacer" :style="{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }"></LayoutRow>
-			<template v-for="(section, sectionIndex) in entries" :key="sectionIndex">
-				<Separator :type="'List'" :direction="'Vertical'" v-if="sectionIndex > 0" />
+		{#if virtualScrollingEntryHeight}
+			<LayoutRow class="scroll-spacer" styles={{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }} />
+		{/if}
+		{#each entries as section, sectionIndex (sectionIndex)}
+			{#if sectionIndex > 0}
+				<Separator type="List" direction="Vertical" />
+			{/if}
+			{#each virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section as entry, entryIndex (entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0))}
 				<LayoutRow
-					v-for="(entry, entryIndex) in virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section"
-					:key="entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0)"
 					class="row"
-					:class="{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: entry.disabled }"
-					:style="{ height: virtualScrollingEntryHeight || '20px' }"
-					:title="tooltip"
-					@click="() => !entry.disabled && onEntryClick(entry)"
-					@pointerenter="() => !entry.disabled && onEntryPointerEnter(entry)"
-					@pointerleave="() => !entry.disabled && onEntryPointerLeave(entry)"
+					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
+					styles={{ height: virtualScrollingEntryHeight || "20px" }}
+					{tooltip}
+					on:click={() => !entry.disabled && onEntryClick(entry)}
+					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
+					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
 				>
-					<IconLabel v-if="entry.icon && drawIcon" :icon="entry.icon" class="entry-icon" />
-					<div v-else-if="drawIcon" class="no-icon"></div>
+					{#if entry.icon && drawIcon}
+						<IconLabel icon={entry.icon} class="entry-icon" />
+					{:else if drawIcon}
+						<div class="no-icon" />
+					{/if}
 
-					<link v-if="entry.font" rel="stylesheet" :href="entry.font?.toString()" />
+					{#if entry.font}
+						<link rel="stylesheet" href={entry.font?.toString()} />
+					{/if}
 
-					<TextLabel class="entry-label" :style="{ fontFamily: `${!entry.font ? 'inherit' : entry.value}` }">{{ entry.label }}</TextLabel>
+					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
 
-					<UserInputLabel v-if="entry.shortcut?.keys.length" :keysWithLabelsGroups="[entry.shortcut.keys]" :requiresLock="entry.shortcutRequiresLock" />
+					{#if entry.shortcut?.keys.length}
+						<UserInputLabel keysWithLabelsGroups={[entry.shortcut.keys]} requiresLock={entry.shortcutRequiresLock} />
+					{/if}
 
-					<div class="submenu-arrow" v-if="entry.children?.length"></div>
-					<div class="no-submenu-arrow" v-else></div>
+					{#if entry.children?.length}
+						<div class="submenu-arrow" />
+					{:else}
+						<div class="no-submenu-arrow" />
+					{/if}
 
-					<MenuList
-						v-if="entry.children"
-						@naturalWidth="(newNaturalWidth: number) => $emit('naturalWidth', newNaturalWidth)"
-						:open="entry.ref?.open || false"
-						:direction="'TopRight'"
-						:entries="entry.children"
-						v-bind="{ minWidth, drawIcon, scrollableY }"
-						:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
-					/>
+					{#if entry.children}
+						<svelte:self on:naturalWidth open={entry.ref?.open || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
+					{/if}
 				</LayoutRow>
-			</template>
-			<LayoutRow
-				v-if="virtualScrollingEntryHeight"
-				class="scroll-spacer"
-				:style="{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }"
-			></LayoutRow>
-		</LayoutCol>
-	</FloatingMenu>
-</template>
+			{/each}
+		{/each}
+		{#if virtualScrollingEntryHeight}
+			<LayoutRow class="scroll-spacer" styles={{ height: `${virtualScrollingTotalHeight - virtualScrollingEndIndex * virtualScrollingEntryHeight}px` }} />
+		{/if}
+	</LayoutCol>
+</FloatingMenu>
 
-<style lang="scss">
-.menu-list {
-	.floating-menu-container .floating-menu-content {
-		padding: 4px 0;
+<style lang="scss" global>
+	.menu-list {
+		.floating-menu-container .floating-menu-content {
+			padding: 4px 0;
 
-		.separator div {
-			background: var(--color-4-dimgray);
-		}
+			.separator div {
+				background: var(--color-4-dimgray);
+			}
 
-		.scroll-spacer {
-			flex: 0 0 auto;
-		}
-
-		.row {
-			height: 20px;
-			align-items: center;
-			white-space: nowrap;
-			position: relative;
-			flex: 0 0 auto;
-
-			& > * {
+			.scroll-spacer {
 				flex: 0 0 auto;
 			}
 
-			.entry-icon svg {
-				fill: var(--color-e-nearwhite);
-			}
+			.row {
+				height: 20px;
+				align-items: center;
+				white-space: nowrap;
+				position: relative;
+				flex: 0 0 auto;
 
-			.no-icon {
-				width: 16px;
-			}
-
-			.entry-label {
-				flex: 1 1 100%;
-				margin-left: 8px;
-			}
-
-			.entry-icon,
-			.no-icon {
-				margin: 0 4px;
-
-				& + .entry-label {
-					margin-left: 0;
+				& > * {
+					flex: 0 0 auto;
 				}
-			}
-
-			.user-input-label {
-				margin-left: 16px;
-			}
-
-			.submenu-arrow {
-				width: 0;
-				height: 0;
-				border-style: solid;
-				border-width: 3px 0 3px 6px;
-				border-color: transparent transparent transparent var(--color-e-nearwhite);
-			}
-
-			.no-submenu-arrow {
-				width: 6px;
-			}
-
-			.submenu-arrow,
-			.no-submenu-arrow {
-				margin-left: 6px;
-				margin-right: 4px;
-			}
-
-			&:hover,
-			&.open {
-				background: var(--color-6-lowergray);
-				color: var(--color-f-white);
 
 				.entry-icon svg {
-					fill: var(--color-f-white);
-				}
-			}
-
-			&.active {
-				background: var(--color-e-nearwhite);
-				color: var(--color-2-mildblack);
-
-				.entry-icon svg {
-					fill: var(--color-2-mildblack);
-				}
-			}
-
-			&.disabled {
-				color: var(--color-8-uppergray);
-
-				&:hover {
-					background: none;
+					fill: var(--color-e-nearwhite);
 				}
 
-				svg {
-					fill: var(--color-8-uppergray);
+				.no-icon {
+					width: 16px;
+				}
+
+				.entry-label {
+					flex: 1 1 100%;
+					margin-left: 8px;
+				}
+
+				.entry-icon,
+				.no-icon {
+					margin: 0 4px;
+
+					& + .entry-label {
+						margin-left: 0;
+					}
+				}
+
+				.user-input-label {
+					margin-left: 16px;
+				}
+
+				.submenu-arrow {
+					width: 0;
+					height: 0;
+					border-style: solid;
+					border-width: 3px 0 3px 6px;
+					border-color: transparent transparent transparent var(--color-e-nearwhite);
+				}
+
+				.no-submenu-arrow {
+					width: 6px;
+				}
+
+				.submenu-arrow,
+				.no-submenu-arrow {
+					margin-left: 6px;
+					margin-right: 4px;
+				}
+
+				&:hover,
+				&.open {
+					background: var(--color-6-lowergray);
+					color: var(--color-f-white);
+
+					.entry-icon svg {
+						fill: var(--color-f-white);
+					}
+				}
+
+				&.active {
+					background: var(--color-e-nearwhite);
+					color: var(--color-2-mildblack);
+
+					.entry-icon svg {
+						fill: var(--color-2-mildblack);
+					}
+				}
+
+				&.disabled {
+					color: var(--color-8-uppergray);
+
+					&:hover {
+						background: none;
+					}
+
+					svg {
+						fill: var(--color-8-uppergray);
+					}
 				}
 			}
 		}
 	}
-}
 </style>
