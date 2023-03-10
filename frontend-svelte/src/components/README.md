@@ -1,6 +1,6 @@
 # Overview of `/frontend-svelte/src/components/`
 
-Each component represents a (usually reusable) part of the Graphite Editor GUI. These all get mounted within the Vue entry point, `App.svelte`, in the `/src` directory above this one.
+Each component represents a (usually reusable) part of the Graphite Editor GUI. These all get mounted in `Editor.svelte` (in the `/src` directory above this one).
 
 ## Floating Menus: `floating-menus/`
 
@@ -31,28 +31,30 @@ This section contains a growing list of quick reference information for helpful 
 The component declares this:
 
 ```ts
-export default defineComponent({
-	emits: ["update:theBidirectionalProperty"],
-	props: {
-		theBidirectionalProperty: {
-			type: Number as PropType<number>,
-			required: false,
-		},
-	},
-	watch: {
-		// Called only when `theBidirectionalProperty` is changed from outside this component (with v-model)
-		theBidirectionalProperty(newSelectedIndex: number | undefined) {},
-	},
-	methods: {
-		doSomething() {
-			this.$emit("update:theBidirectionalProperty", SOME_NEW_VALUE);
-		},
-	},
-});
+// The dispatcher that sends the changed value as a custom event to the parent
+const dispatch = createEventDispatcher<{ theBidirectionalProperty: number }>();
+
+// The prop
+export let theBidirectionalProperty: number;
+
+// Called only when `theBidirectionalProperty` is changed from outside this component via its props
+$: console.log(theBidirectionalProperty);
+
+// Example of a method that would update the value
+function doSomething() {
+	dispatch("theBidirectionalProperty", SOME_NEW_VALUE);
+},
 ```
 
 Users of the component do this for `theCorrespondingDataEntry` to be a two-way binding:
 
-```html
-<DropdownInput v-model:theBidirectionalProperty="theCorrespondingDataEntry" />
+```ts
+let theCorrespondingDataEntry = 42;
+```
+
+```svelte
+<DropdownInput
+	theBidirectionalProperty={theCorrespondingDataEntry}
+	on:theBidirectionalProperty={({ detail }) => { theCorrespondingDataEntry = detail; }}
+/>
 ```

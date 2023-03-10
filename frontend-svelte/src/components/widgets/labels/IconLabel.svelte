@@ -3,8 +3,6 @@
 
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 
-	// TODO: Svelte: fix icon imports
-
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
