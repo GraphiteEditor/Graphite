@@ -46,10 +46,7 @@
 
 <FieldInput
 	class="text-area-input"
-	classes={{
-		// TODO: Svelte: check if this should be based on `Boolean(label)` or `label !== ""`
-		"has-label": Boolean(label),
-	}}
+	classes={{ "has-label": Boolean(label) }}
 	{value}
 	on:value
 	on:textFocused={onTextFocused}

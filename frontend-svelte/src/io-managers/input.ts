@@ -40,7 +40,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent) => onPointerUp(e) },
 		{ target: window, eventName: "dblclick", action: (e: PointerEvent) => onDoubleClick(e) },
-		{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent) => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 		{ target: window, eventName: "focusout", action: () => (canvasFocused = false) },
@@ -172,6 +171,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 		}
+
+		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
+		if (e.button === 1) e.preventDefault();
 	}
 
 	function onPointerUp(e: PointerEvent): void {
@@ -193,12 +195,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	}
 
 	// Mouse events
-
-	function onMouseDown(e: MouseEvent): void {
-		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
-		// This has to be in `mousedown`, not `pointerdown`, to avoid blocking Vue's middle click detection on HTML elements
-		if (e.button === 1) e.preventDefault();
-	}
 
 	function onWheelScroll(e: WheelEvent): void {
 		const { target } = e;

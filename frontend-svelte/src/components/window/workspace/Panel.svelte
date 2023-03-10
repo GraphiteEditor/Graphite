@@ -61,7 +61,6 @@
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
 	}
 
-	// TODO: Svelte: test this
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
 		tabElements[newIndex].div().scrollIntoView();

@@ -244,8 +244,7 @@
 				y: Math.round(((e.clientY - graphBounds.y) / transform.scale - transform.y) / GRID_SIZE),
 			};
 
-			// Find actual relevant child and focus it
-			// TODO: Svelte: check if this works and if `setTimeout` can be removed
+			// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
 			setTimeout(() => nodeSearchInput.focus(), 0);
 
 			document.addEventListener("keydown", keydown);

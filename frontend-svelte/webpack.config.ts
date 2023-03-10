@@ -136,29 +136,6 @@ const config: webpack.Configuration = {
 		// new SvelteCheckPlugin(),
 	],
 	devtool: mode === 'development' ? 'source-map' : false,
-	// // https://cli.vuejs.org/guide/webpack.html
-	// chainWebpack: (config) => {
-	// 	// Change the loaders used by the Vue compilation process
-	// 	config.module
-	// 		// Replace Vue's existing base loader by first clearing it
-	// 		// https://cli.vuejs.org/guide/webpack.html#replacing-loaders-of-a-rule
-	// 		.rule("svg")
-	// 		.uses.clear()
-	// 		.end()
-	// 		// Required (since upgrading vue-cli to v5) to stop the default import behavior, as documented in:
-	// 		// https://webpack.js.org/configuration/module/#ruletype
-	// 		.type("javascript/auto")
-	// 		// Add vue-loader as a loader for Vue single-file components
-	// 		// https://www.npmjs.com/package/vue-loader
-	// 		.use("vue-loader")
-	// 		.loader("vue-loader")
-	// 		.end()
-	// 		// Add vue-svg-loader as a loader for importing .svg files into Vue single-file components
-	// 		// Located in ./vue-svg-loader.js
-	// 		.use("./vue-svg-loader")
-	// 		.loader("./vue-svg-loader")
-	// 		.end();
-	// },
 	experiments: {
 		asyncWebAssembly: true,
 	},
@@ -353,8 +330,6 @@ function htmlDecode(input: string): string {
 		gt: ">",
 		amp: "&",
 		apos: "'",
-		// TODO: Svelte: check if this can be removed
-		// eslint-disable-next-line quotes
 		quot: '"',
 	};
 
