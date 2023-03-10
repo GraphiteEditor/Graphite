@@ -78,6 +78,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.original_transforms.clear();
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -94,6 +95,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.original_transforms.clear();
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -111,6 +113,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.original_transforms.clear();
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();
