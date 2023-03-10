@@ -2,6 +2,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -9,7 +10,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::layers::style;
 use document_legacy::Operation;
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -113,19 +114,13 @@ impl Fsm for RectangleToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
-					responses.push_back(DocumentMessage::StartTransaction.into());
-					shape_data.path = Some(document.get_path_for_new_layer());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					responses.push_back(
-						Operation::AddRect {
-							path: shape_data.path.clone().unwrap(),
-							insert_index: -1,
-							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
-						}
-						.into(),
-					);
+					let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+
+					let layer_path = document.get_path_for_new_layer();
+					responses.push_back(DocumentMessage::StartTransaction.into());
+					shape_data.path = Some(layer_path.clone());
+					graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
 
 					Drawing
 				}

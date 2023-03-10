@@ -329,7 +329,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator,
-			input: graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>,
+			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
 			params: []
 		),
 	];

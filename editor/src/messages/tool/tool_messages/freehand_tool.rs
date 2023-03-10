@@ -3,14 +3,14 @@ use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -159,7 +159,7 @@ impl Fsm for FreehandToolFsmState {
 
 					tool_data.weight = tool_options.line_weight;
 
-					responses.push_back(add_polyline(tool_data, global_tool_data));
+					add_polyline(tool_data, global_tool_data, responses);
 
 					Drawing
 				}
@@ -170,15 +170,14 @@ impl Fsm for FreehandToolFsmState {
 						tool_data.points.push(pos);
 					}
 
-					responses.push_back(remove_preview(tool_data));
-					responses.push_back(add_polyline(tool_data, global_tool_data));
+					add_polyline(tool_data, global_tool_data, responses);
 
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
 						responses.push_back(remove_preview(tool_data));
-						responses.push_back(add_polyline(tool_data, global_tool_data));
+						add_polyline(tool_data, global_tool_data, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -214,15 +213,8 @@ fn remove_preview(data: &FreehandToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
-fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData) -> Message {
-	let points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
-
-	Operation::AddPolyline {
-		path: data.path.clone().unwrap(),
-		insert_index: -1,
-		transform: DAffine2::IDENTITY.to_cols_array(),
-		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
-	}
-	.into()
+fn add_polyline(data: &FreehandToolData, _tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	let layer_path = data.path.clone().unwrap();
+	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
+	graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
 }

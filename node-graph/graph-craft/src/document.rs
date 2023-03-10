@@ -377,7 +377,6 @@ impl NodeNetwork {
 							network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 						}
 						NodeInput::Value { tagged_value, exposed } => {
-							// Skip formatting very large values for seconds in performance speedup
 							let name = "Value".to_string();
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {

@@ -46,7 +46,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Image(_) => Self::Raster,
 			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) | TaggedValue::VectorData(_) => Self::Subpath,
+			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			_ => Self::General,
 		}
 	}

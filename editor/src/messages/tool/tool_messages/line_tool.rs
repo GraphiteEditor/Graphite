@@ -5,6 +5,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -151,21 +152,14 @@ impl Fsm for LineToolFsmState {
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 					tool_data.drag_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
+					let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
+
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					tool_data.path = Some(document.get_path_for_new_layer());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					let layer_path = document.get_path_for_new_layer();
+					tool_data.path = Some(layer_path.clone());
+					graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
 
 					tool_data.weight = tool_options.line_weight;
-
-					responses.push_back(
-						Operation::AddLine {
-							path: tool_data.path.clone().unwrap(),
-							insert_index: -1,
-							transform: DAffine2::ZERO.to_cols_array(),
-							style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
-						}
-						.into(),
-					);
 
 					Drawing
 				}

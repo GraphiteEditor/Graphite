@@ -27,7 +27,7 @@ pub enum TaggedValue {
 	RcImage(Option<Arc<graphene_core::raster::Image>>),
 	ImageFrame(graphene_core::raster::ImageFrame),
 	Color(graphene_core::raster::color::Color),
-	Subpath(bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>),
+	Subpaths(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
@@ -97,9 +97,9 @@ impl Hash for TaggedValue {
 				12.hash(state);
 				c.hash(state)
 			}
-			Self::Subpath(s) => {
+			Self::Subpaths(s) => {
 				13.hash(state);
-				s.hash(state)
+				s.iter().for_each(|subpath| subpath.hash(state));
 			}
 			Self::RcSubpath(s) => {
 				14.hash(state);
@@ -201,7 +201,7 @@ impl<'a> TaggedValue {
 			TaggedValue::RcImage(x) => Box::new(x),
 			TaggedValue::ImageFrame(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
-			TaggedValue::Subpath(x) => Box::new(x),
+			TaggedValue::Subpaths(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
 			TaggedValue::BlendMode(x) => Box::new(x),
 			TaggedValue::LuminanceCalculation(x) => Box::new(x),
@@ -238,7 +238,7 @@ impl<'a> TaggedValue {
 			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
 			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
-			TaggedValue::Subpath(_) => concrete!(bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>),
+			TaggedValue::Subpaths(_) => concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),

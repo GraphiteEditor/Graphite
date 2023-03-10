@@ -17,7 +17,7 @@ pub struct UnitSquareGenerator;
 
 #[node_macro::node_fn(UnitSquareGenerator)]
 fn unit_square(_input: ()) -> VectorData {
-	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE))
+	super::VectorData::from_subpaths(vec![Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE)])
 }
 
 // TODO: I removed the Arc requirement we shouuld think about when it makes sense to use its
@@ -26,8 +26,8 @@ fn unit_square(_input: ()) -> VectorData {
 pub struct PathGenerator;
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Subpath<ManipulatorGroupId>) -> super::VectorData {
-	super::VectorData::from_subpath(path_data)
+fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>) -> super::VectorData {
+	super::VectorData::from_subpaths(path_data)
 }
 
 use crate::raster::Image;

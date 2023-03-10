@@ -644,7 +644,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "Path Data",
 				data_type: FrontendGraphDataType::Subpath,
-				default: NodeInput::value(TaggedValue::Subpath(bezier_rs::Subpath::new(Vec::new(), false)), false),
+				default: NodeInput::value(TaggedValue::Subpaths(vec![]), false),
 			}],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
@@ -843,7 +843,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 	}
 }
 
-pub fn new_vector_network(subpath: bezier_rs::Subpath<uuid::ManipulatorGroupId>) -> NodeNetwork {
+pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
 	let input = resolve_document_node_type("Input").expect("Input node does not exist");
 	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
@@ -863,7 +863,7 @@ pub fn new_vector_network(subpath: bezier_rs::Subpath<uuid::ManipulatorGroupId>)
 		outputs: vec![NodeOutput::new(5, 0)],
 		nodes: [
 			input.to_document_node_default_inputs([], next_pos()),
-			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpath(subpath), false))], next_pos()),
+			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], next_pos()),
 			transform.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
 			fill.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
 			stroke.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),

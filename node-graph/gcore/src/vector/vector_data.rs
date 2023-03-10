@@ -26,10 +26,12 @@ impl VectorData {
 
 	/// Construct some new vector data from a single subpath with an identy transform and black fill.
 	pub fn from_subpath(subpath: bezier_rs::Subpath<ManipulatorGroupId>) -> Self {
-		super::VectorData {
-			subpaths: vec![subpath],
-			..Self::empty()
-		}
+		Self::from_subpaths(vec![subpath])
+	}
+
+	/// Construct some new vector data from subpaths with an identy transform and black fill.
+	pub fn from_subpaths(subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>) -> Self {
+		super::VectorData { subpaths, ..Self::empty() }
 	}
 
 	/// Compute the bounding boxes of the subpaths without any transform
