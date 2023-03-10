@@ -95,7 +95,7 @@ module.exports = {
 				"newlines-between": "always-and-inside-groups",
 				pathGroups: [
 					{
-						pattern: "**/*.vue",
+						pattern: "**/*.svelte",
 						group: "unknown",
 						position: "after",
 					},

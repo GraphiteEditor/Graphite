@@ -1,44 +1,37 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "@/wasm-communication/messages";
 
-import { isWidgetColumn, isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetLayout } from "@/wasm-communication/messages";
+	import WidgetSection from "@/components/widgets/groups/WidgetSection.svelte";
+	import WidgetRow from "@/components/widgets/WidgetRow.svelte";
 
-import WidgetSection from "@/components/widgets/groups/WidgetSection.vue";
-import WidgetRow from "@/components/widgets/WidgetRow.vue";
+	export let layout: WidgetLayout;
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
 
-export default defineComponent({
-	props: {
-		layout: { type: Object as PropType<WidgetLayout>, required: true },
-	},
-	methods: {
-		layoutGroupType(layoutRow: LayoutGroup): unknown {
-			if (isWidgetColumn(layoutRow)) return WidgetRow;
-			if (isWidgetRow(layoutRow)) return WidgetRow;
-			if (isWidgetSection(layoutRow)) return WidgetSection;
-
-			throw new Error("Layout row type does not exist");
-		},
-	},
-	components: {
-		WidgetRow,
-		WidgetSection,
-	},
-});
+	$: extraClasses = Object.entries(classes)
+		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
+		.join(" ");
 </script>
 
-<!-- TODO: Refactor this component (together with `WidgetRow.vue`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
+<!-- TODO: Refactor this component (together with `WidgetRow.svelte`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
+<div class={`widget-layout ${className} ${extraClasses}`.trim()}>
+	{#each layout.layout as layoutGroup, index (index)}
+		{#if isWidgetColumn(layoutGroup) || isWidgetRow(layoutGroup)}
+			<WidgetRow widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
+		{:else if isWidgetSection(layoutGroup)}
+			<WidgetSection widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
+		{:else}
+			<span style="color: #d6536e">Error: The widget row that belongs here has an invalid layout group type</span>
+		{/if}
+	{/each}
+</div>
 
-<template>
-	<div class="widget-layout">
-		<component :is="layoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layoutTarget" v-for="(layoutRow, index) in layout.layout" :key="index" />
-	</div>
-</template>
-
-<style lang="scss">
-.widget-layout {
-	height: 100%;
-	flex: 0 0 auto;
-	display: flex;
-	flex-direction: column;
-}
+<style lang="scss" global>
+	.widget-layout {
+		height: 100%;
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+	}
 </style>

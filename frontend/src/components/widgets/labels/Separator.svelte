@@ -1,86 +1,80 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { type SeparatorDirection, type SeparatorType } from "@/wasm-communication/messages";
 
-import { type SeparatorDirection, type SeparatorType } from "@/wasm-communication/messages";
-
-export default defineComponent({
-	props: {
-		direction: { type: String as PropType<SeparatorDirection>, default: "Horizontal" },
-		type: { type: String as PropType<SeparatorType>, default: "Unrelated" },
-	},
-});
+	export let direction: SeparatorDirection = "Horizontal";
+	export let type: SeparatorType = "Unrelated";
 </script>
 
-<template>
-	<div class="separator" :class="[direction.toLowerCase(), type.toLowerCase()]">
-		<div v-if="['Section', 'List'].includes(type)"></div>
-	</div>
-</template>
+<div class={`separator ${direction.toLowerCase()} ${type.toLowerCase()}`}>
+	{#if ["Section", "List"].includes(type)}
+		<div />
+	{/if}
+</div>
 
-<style lang="scss">
-.separator {
-	&.vertical {
-		flex: 0 0 auto;
+<style lang="scss" global>
+	.separator {
+		&.vertical {
+			flex: 0 0 auto;
 
-		&.related {
-			height: 4px;
-		}
-
-		&.unrelated {
-			height: 8px;
-		}
-
-		&.section,
-		&.list {
-			width: 100%;
-
-			div {
-				height: 1px;
-				width: calc(100% - 8px);
-				margin: 0 4px;
-				background: var(--color-7-middlegray);
+			&.related {
+				height: 4px;
 			}
-		}
 
-		&.section {
-			margin: 8px 0;
-		}
+			&.unrelated {
+				height: 8px;
+			}
 
-		&.list {
-			margin: 4px 0;
-		}
-	}
+			&.section,
+			&.list {
+				width: 100%;
 
-	&.horizontal {
-		flex: 0 0 auto;
+				div {
+					height: 1px;
+					width: calc(100% - 8px);
+					margin: 0 4px;
+					background: var(--color-7-middlegray);
+				}
+			}
 
-		&.related {
-			width: 4px;
-		}
+			&.section {
+				margin: 8px 0;
+			}
 
-		&.unrelated {
-			width: 8px;
-		}
-
-		&.section,
-		&.list {
-			height: 100%;
-
-			div {
-				height: calc(100% - 8px);
-				width: 1px;
+			&.list {
 				margin: 4px 0;
-				background: var(--color-7-middlegray);
 			}
 		}
 
-		&.section {
-			margin: 0 8px;
-		}
+		&.horizontal {
+			flex: 0 0 auto;
 
-		&.list {
-			margin: 0 4px;
+			&.related {
+				width: 4px;
+			}
+
+			&.unrelated {
+				width: 8px;
+			}
+
+			&.section,
+			&.list {
+				height: 100%;
+
+				div {
+					height: calc(100% - 8px);
+					width: 1px;
+					margin: 4px 0;
+					background: var(--color-7-middlegray);
+				}
+			}
+
+			&.section {
+				margin: 0 8px;
+			}
+
+			&.list {
+				margin: 0 4px;
+			}
 		}
 	}
-}
 </style>

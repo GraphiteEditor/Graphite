@@ -1,127 +1,109 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { createEventDispatcher } from "svelte";
 
-import { type IconName } from "@/utility-functions/icons";
+	import { type IconName } from "@/utility-functions/icons";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 
-export default defineComponent({
-	emits: ["update:checked"],
-	props: {
-		checked: { type: Boolean as PropType<boolean>, default: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		icon: { type: String as PropType<IconName>, default: "Checkmark" },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	data() {
-		return {
-			id: `${Math.random()}`.substring(2),
-		};
-	},
-	computed: {
-		displayIcon(): IconName {
-			if (!this.checked && this.icon === "Checkmark") return "Empty12px";
+	// emits: ["update:checked"],
+	const dispatch = createEventDispatcher<{ checked: boolean }>();
 
-			return this.icon;
-		},
-	},
-	methods: {
-		isChecked() {
-			return this.checked;
-		},
-		toggleCheckboxFromLabel(e: KeyboardEvent) {
-			const target = (e.target || undefined) as HTMLLabelElement | undefined;
-			const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
-			previousSibling?.click();
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-	},
-});
+	export let checked = false;
+	export let disabled = false;
+	export let icon: IconName = "Checkmark";
+	export let tooltip: string | undefined = undefined;
+
+	let inputElement: HTMLInputElement;
+	let id = `${Math.random()}`.substring(2);
+
+	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
+
+	export function isChecked() {
+		return checked;
+	}
+
+	export function input(): HTMLInputElement {
+		return inputElement;
+	}
+
+	function toggleCheckboxFromLabel(e: KeyboardEvent) {
+		const target = (e.target || undefined) as HTMLLabelElement | undefined;
+		const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
+		previousSibling?.click();
+	}
 </script>
 
-<template>
-	<LayoutRow class="checkbox-input">
-		<input
-			type="checkbox"
-			:id="`checkbox-input-${id}`"
-			:checked="checked"
-			@change="(e) => $emit('update:checked', (e.target as HTMLInputElement).checked)"
-			:disabled="disabled"
-			:tabindex="disabled ? -1 : 0"
-		/>
-		<label :class="{ disabled, checked }" :for="`checkbox-input-${id}`" @keydown.enter="(e) => toggleCheckboxFromLabel(e)" :title="tooltip">
-			<LayoutRow class="checkbox-box">
-				<IconLabel :icon="displayIcon" />
-			</LayoutRow>
-		</label>
-	</LayoutRow>
-</template>
+<LayoutRow class="checkbox-input">
+	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => dispatch("checked", inputElement.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
+	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
+		<LayoutRow class="checkbox-box">
+			<IconLabel icon={displayIcon} />
+		</LayoutRow>
+	</label>
+</LayoutRow>
 
-<style lang="scss">
-.checkbox-input {
-	flex: 0 0 auto;
-	align-items: center;
+<style lang="scss" global>
+	.checkbox-input {
+		flex: 0 0 auto;
+		align-items: center;
 
-	input {
-		// We can't use `display: none` because it must be visible to work as a tabbale input that accepts a space bar actuation
-		width: 0;
-		height: 0;
-		margin: 0;
-		opacity: 0;
-	}
+		input {
+			// We can't use `display: none` because it must be visible to work as a tabbale input that accepts a space bar actuation
+			width: 0;
+			height: 0;
+			margin: 0;
+			opacity: 0;
+		}
 
-	// Unchecked
-	label {
-		display: flex;
-		height: 16px;
-		// Provides rounded corners for the :focus outline
-		border-radius: 2px;
-
-		.checkbox-box {
-			flex: 0 0 auto;
-			background: var(--color-5-dullgray);
-			padding: 2px;
+		// Unchecked
+		label {
+			display: flex;
+			height: 16px;
+			// Provides rounded corners for the :focus outline
 			border-radius: 2px;
 
-			.icon-label {
-				fill: var(--color-8-uppergray);
+			.checkbox-box {
+				flex: 0 0 auto;
+				background: var(--color-5-dullgray);
+				padding: 2px;
+				border-radius: 2px;
+
+				.icon-label {
+					fill: var(--color-8-uppergray);
+				}
+			}
+
+			// Hovered
+			&:hover .checkbox-box {
+				background: var(--color-6-lowergray);
+			}
+
+			// Disabled
+			&.disabled .checkbox-box {
+				background: var(--color-4-dimgray);
 			}
 		}
 
-		// Hovered
-		&:hover .checkbox-box {
-			background: var(--color-6-lowergray);
-		}
+		// Checked
+		input:checked + label {
+			.checkbox-box {
+				background: var(--color-e-nearwhite);
 
-		// Disabled
-		&.disabled .checkbox-box {
-			background: var(--color-4-dimgray);
-		}
-	}
+				.icon-label {
+					fill: var(--color-2-mildblack);
+				}
+			}
 
-	// Checked
-	input:checked + label {
-		.checkbox-box {
-			background: var(--color-e-nearwhite);
+			// Hovered
+			&:hover .checkbox-box {
+				background: var(--color-f-white);
+			}
 
-			.icon-label {
-				fill: var(--color-2-mildblack);
+			// Hovered
+			&.disabled .checkbox-box {
+				background: var(--color-8-uppergray);
 			}
 		}
-
-		// Hovered
-		&:hover .checkbox-box {
-			background: var(--color-f-white);
-		}
-
-		// Hovered
-		&.disabled .checkbox-box {
-			background: var(--color-8-uppergray);
-		}
 	}
-}
 </style>

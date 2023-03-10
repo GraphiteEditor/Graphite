@@ -1,189 +1,185 @@
 <script lang="ts">
-import { defineComponent, nextTick, type PropType } from "vue";
+	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
-import { type MenuListEntry } from "@/wasm-communication/messages";
+	import { type MenuListEntry } from "@/wasm-communication/messages";
 
-import MenuList from "@/components/floating-menus/MenuList.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+	import MenuList from "@/components/floating-menus/MenuList.svelte";
+	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import { type FontsState } from "@/state-providers/fonts";
 
-export default defineComponent({
-	inject: ["fonts"],
-	emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
-	props: {
-		fontFamily: { type: String as PropType<string>, required: true },
-		fontStyle: { type: String as PropType<string>, required: true },
-		isStyle: { type: Boolean as PropType<boolean>, default: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-	},
-	data() {
-		return {
-			open: false,
-			entries: [] as MenuListEntry[],
-			activeEntry: undefined as MenuListEntry | undefined,
-			entriesStart: 0,
-			minWidth: this.isStyle ? 0 : 300,
-		};
-	},
-	async mounted() {
-		this.entries = await this.getEntries();
-		this.activeEntry = this.getActiveEntry(this.entries);
-	},
-	methods: {
-		async setOpen(): Promise<void> {
-			this.open = true;
+	const fonts = getContext<FontsState>("fonts");
 
-			// Scroll to the active entry (the scroller div does not yet exist so we must wait for Vue to render)
-			await nextTick();
+	// emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
+	const dispatch = createEventDispatcher<{
+		fontFamily: string;
+		fontStyle: string;
+		changeFont: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined };
+	}>();
 
-			if (this.activeEntry) {
-				const index = this.entries.indexOf(this.activeEntry);
-				(this.$refs.menuList as typeof MenuList | undefined)?.scrollViewTo(0, Math.max(0, index * 20 - 190));
-			}
-		},
-		toggleOpen(): void {
-			if (!this.disabled) {
-				this.open = !this.open;
+	let menuList: MenuList;
 
-				if (this.open) this.setOpen();
-			}
-		},
-		keydown(e: KeyboardEvent): void {
-			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
-		},
-		async selectFont(newName: string): Promise<void> {
-			let fontFamily;
-			let fontStyle;
+	export let fontFamily: string;
+	export let fontStyle: string;
+	export let isStyle = false;
+	export let disabled = false;
+	export let tooltip: string | undefined = undefined;
+	export let sharpRightCorners = false;
 
-			if (this.isStyle) {
-				this.$emit("update:fontStyle", newName);
+	let open = false;
+	let entries: MenuListEntry[] = [];
+	let activeEntry: MenuListEntry | undefined = undefined;
+	let minWidth = isStyle ? 0 : 300;
 
-				fontFamily = this.fontFamily;
-				fontStyle = newName;
-			} else {
-				this.$emit("update:fontFamily", newName);
+	$: fontFamily, fontStyle, watchFont();
 
-				fontFamily = newName;
-				fontStyle = "Normal (400)";
-			}
+	async function watchFont(): Promise<void> {
+		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop
+		const newEntries = await getEntries();
+		entries = newEntries;
+		activeEntry = getActiveEntry(newEntries);
+	}
 
-			const fontFileUrl = await this.fonts.getFontFileUrl(fontFamily, fontStyle);
-			this.$emit("changeFont", { fontFamily, fontStyle, fontFileUrl });
-		},
-		async getEntries(): Promise<MenuListEntry[]> {
-			const x = this.isStyle ? this.fonts.getFontStyles(this.fontFamily) : this.fonts.fontNames();
-			return (await x).map((entry: { name: string; url: URL | undefined }) => ({
-				label: entry.name,
-				value: entry.name,
-				font: entry.url,
-				action: () => this.selectFont(entry.name),
-			}));
-		},
-		getActiveEntry(entries: MenuListEntry[]): MenuListEntry {
-			const selectedChoice = this.isStyle ? this.fontStyle : this.fontFamily;
+	async function setOpen(): Promise<void> {
+		open = true;
 
-			return entries.find((entry) => entry.value === selectedChoice) as MenuListEntry;
-		},
-	},
-	watch: {
-		async fontFamily() {
-			this.entries = await this.getEntries();
-			this.activeEntry = this.getActiveEntry(this.entries);
-		},
-		async fontStyle() {
-			this.entries = await this.getEntries();
-			this.activeEntry = this.getActiveEntry(this.entries);
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-		MenuList,
-		TextLabel,
-	},
-});
+		// Scroll to the active entry (the scroller div does not yet exist so we must wait for the component to render)
+		await tick();
+
+		if (activeEntry) {
+			const index = entries.indexOf(activeEntry);
+			menuList.scrollViewTo(Math.max(0, index * 20 - 190));
+		}
+	}
+
+	function toggleOpen(): void {
+		if (!disabled) {
+			open = !open;
+
+			if (open) setOpen();
+		}
+	}
+
+	async function selectFont(newName: string): Promise<void> {
+		let family;
+		let style;
+
+		if (isStyle) {
+			dispatch("fontStyle", newName);
+
+			family = fontFamily;
+			style = newName;
+		} else {
+			dispatch("fontFamily", newName);
+
+			family = newName;
+			style = "Normal (400)";
+		}
+
+		const fontFileUrl = await fonts.getFontFileUrl(family, style);
+		dispatch("changeFont", { fontFamily: family, fontStyle: style, fontFileUrl });
+	}
+
+	async function getEntries(): Promise<MenuListEntry[]> {
+		const x = isStyle ? fonts.getFontStyles(fontFamily) : fonts.fontNames();
+		return (await x).map((entry: { name: string; url: URL | undefined }) => ({
+			label: entry.name,
+			value: entry.name,
+			font: entry.url,
+			action: () => selectFont(entry.name),
+		}));
+	}
+
+	function getActiveEntry(entries: MenuListEntry[]): MenuListEntry {
+		const selectedChoice = isStyle ? fontStyle : fontFamily;
+
+		return entries.find((entry) => entry.value === selectedChoice) as MenuListEntry;
+	}
+
+	onMount(async () => {
+		entries = await getEntries();
+
+		activeEntry = getActiveEntry(entries);
+	});
 </script>
 
 <!-- TODO: Combine this widget into the DropdownInput widget -->
-
-<template>
-	<LayoutRow class="font-input">
-		<LayoutRow
-			class="dropdown-box"
-			:class="{ disabled, 'sharp-right-corners': sharpRightCorners }"
-			:style="{ minWidth: `${minWidth}px` }"
-			:title="tooltip"
-			:tabindex="disabled ? -1 : 0"
-			@click="toggleOpen"
-			@keydown="keydown"
-			data-floating-menu-spawner
-		>
-			<TextLabel class="dropdown-label">{{ activeEntry?.value || "" }}</TextLabel>
-			<IconLabel class="dropdown-arrow" :icon="'DropdownArrow'" />
-		</LayoutRow>
-		<MenuList
-			v-model:activeEntry="activeEntry"
-			v-model:open="open"
-			:entries="[entries]"
-			:minWidth="isStyle ? 0 : minWidth"
-			:virtualScrollingEntryHeight="isStyle ? 0 : 20"
-			:scrollableY="true"
-			@naturalWidth="(newNaturalWidth: number) => (isStyle && (minWidth = newNaturalWidth))"
-			ref="menuList"
-		></MenuList>
+<LayoutRow class="font-input">
+	<LayoutRow
+		class="dropdown-box"
+		classes={{ disabled, "sharp-right-corners": sharpRightCorners }}
+		styles={{ minWidth: `${minWidth}px` }}
+		{tooltip}
+		tabindex={disabled ? -1 : 0}
+		on:click={toggleOpen}
+		on:keydown={(e) => menuList.keydown(e, false)}
+		data-floating-menu-spawner
+	>
+		<TextLabel class="dropdown-label">{activeEntry?.value || ""}</TextLabel>
+		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
-</template>
+	<MenuList
+		on:naturalWidth={({ detail }) => isStyle && (minWidth = detail)}
+		{activeEntry}
+		on:activeEntry={({ detail }) => (activeEntry = detail)}
+		{open}
+		on:open={({ detail }) => (open = detail)}
+		entries={[entries]}
+		minWidth={isStyle ? 0 : minWidth}
+		virtualScrollingEntryHeight={isStyle ? 0 : 20}
+		scrollableY={true}
+		bind:this={menuList}
+	/>
+</LayoutRow>
 
-<style lang="scss">
-.font-input {
-	position: relative;
+<style lang="scss" global>
+	.font-input {
+		position: relative;
 
-	.dropdown-box {
-		align-items: center;
-		white-space: nowrap;
-		background: var(--color-1-nearblack);
-		height: 24px;
-		border-radius: 2px;
+		.dropdown-box {
+			align-items: center;
+			white-space: nowrap;
+			background: var(--color-1-nearblack);
+			height: 24px;
+			border-radius: 2px;
 
-		.dropdown-label {
-			margin: 0;
-			margin-left: 8px;
-			flex: 1 1 100%;
-		}
+			.dropdown-label {
+				margin: 0;
+				margin-left: 8px;
+				flex: 1 1 100%;
+			}
 
-		.dropdown-arrow {
-			margin: 6px 2px;
-			flex: 0 0 auto;
-		}
+			.dropdown-arrow {
+				margin: 6px 2px;
+				flex: 0 0 auto;
+			}
 
-		&:hover,
-		&.open {
-			background: var(--color-6-lowergray);
+			&:hover,
+			&.open {
+				background: var(--color-6-lowergray);
 
-			span {
-				color: var(--color-f-white);
+				span {
+					color: var(--color-f-white);
+				}
+			}
+
+			&.open {
+				border-radius: 2px 2px 0 0;
+			}
+
+			&.disabled {
+				background: var(--color-2-mildblack);
+
+				span {
+					color: var(--color-8-uppergray);
+				}
 			}
 		}
 
-		&.open {
-			border-radius: 2px 2px 0 0;
-		}
-
-		&.disabled {
-			background: var(--color-2-mildblack);
-
-			span {
-				color: var(--color-8-uppergray);
-			}
+		.menu-list .floating-menu-container .floating-menu-content {
+			max-height: 400px;
+			padding: 4px 0;
 		}
 	}
-
-	.menu-list .floating-menu-container .floating-menu-content {
-		max-height: 400px;
-		padding: 4px 0;
-	}
-}
 </style>

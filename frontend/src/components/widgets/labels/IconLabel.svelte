@@ -1,56 +1,49 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@/utility-functions/icons";
 
-import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
+	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 
-import LayoutRow from "@/components/layout/LayoutRow.vue";
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	export let icon: IconName;
+	export let disabled = false;
+	export let tooltip: string | undefined = undefined;
 
-export default defineComponent({
-	props: {
-		icon: { type: String as PropType<IconName>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	computed: {
-		iconSizeClass(): string {
-			return `size-${ICONS[this.icon].size}`;
-		},
-	},
-	components: {
-		LayoutRow,
-		...ICON_COMPONENTS,
-	},
-});
+	$: iconSizeClass = ((icon: IconName) => {
+		return `size-${ICONS[icon].size}`;
+	})(icon);
+	$: extraClasses = Object.entries(classes)
+		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
+		.join(" ");
 </script>
 
-<template>
-	<LayoutRow :class="['icon-label', iconSizeClass, { disabled }]" :title="tooltip">
-		<component :is="icon" />
-	</LayoutRow>
-</template>
+<LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>
+	{@html ICON_SVG_STRINGS[icon]}
+</LayoutRow>
 
-<style lang="scss">
-.icon-label {
-	flex: 0 0 auto;
-	fill: var(--color-e-nearwhite);
+<style lang="scss" global>
+	.icon-label {
+		flex: 0 0 auto;
+		fill: var(--color-e-nearwhite);
 
-	&.disabled {
-		fill: var(--color-8-uppergray);
+		&.disabled {
+			fill: var(--color-8-uppergray);
+		}
+
+		&.size-12 {
+			width: 12px;
+			height: 12px;
+		}
+
+		&.size-16 {
+			width: 16px;
+			height: 16px;
+		}
+
+		&.size-24 {
+			width: 24px;
+			height: 24px;
+		}
 	}
-
-	&.size-12 {
-		width: 12px;
-		height: 12px;
-	}
-
-	&.size-16 {
-		width: 16px;
-		height: 16px;
-	}
-
-	&.size-24 {
-		width: 24px;
-		height: 24px;
-	}
-}
 </style>
