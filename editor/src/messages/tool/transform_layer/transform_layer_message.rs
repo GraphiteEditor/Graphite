@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
-#[impl_message(Message, DocumentMessage, TransformLayer)]
+#[impl_message(Message, ToolMessage, TransformLayer)]
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub enum TransformLayerMessage {
 	// Messages
@@ -16,6 +16,7 @@ pub enum TransformLayerMessage {
 	ConstrainX,
 	ConstrainY,
 	PointerMove { slow_key: Key, snap_key: Key },
+	SelectionChanged,
 	TypeBackspace,
 	TypeDecimalPoint,
 	TypeDigit { digit: u8 },

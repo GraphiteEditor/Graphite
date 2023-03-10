@@ -67,8 +67,6 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
 	pub artboard_message_handler: ArtboardMessageHandler,
-	#[serde(skip)]
-	transform_layer_handler: TransformLayerMessageHandler,
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
 	#[serde(skip)]
 	node_graph_handler: NodeGraphMessageHandler,
@@ -98,7 +96,6 @@ impl Default for DocumentMessageHandler {
 			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			artboard_message_handler: ArtboardMessageHandler::default(),
-			transform_layer_handler: TransformLayerMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			node_graph_handler: Default::default(),
 		}
@@ -192,11 +189,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			#[remain::unsorted]
 			Overlays(message) => {
 				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, persistent_data, ipp));
-			}
-			#[remain::unsorted]
-			TransformLayer(message) => {
-				self.transform_layer_handler
-					.process_message(message, responses, (&mut self.layer_metadata, &mut self.document_legacy, ipp, &render_data));
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
@@ -1014,7 +1006,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			common.extend(select);
 		}
 		common.extend(self.navigation_handler.actions());
-		common.extend(self.transform_layer_handler.actions());
 		common.extend(self.node_graph_handler.actions());
 		common
 	}
