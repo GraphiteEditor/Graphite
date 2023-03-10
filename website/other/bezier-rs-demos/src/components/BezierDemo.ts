@@ -51,7 +51,7 @@ class BezierDemo extends HTMLElement implements Demo {
 		}
 	}
 
-	connectedCallback(): void {
+	async connectedCallback(): Promise<void> {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
 		this.key = this.getAttribute("key") as BezierFeatureKey;
@@ -63,13 +63,14 @@ class BezierDemo extends HTMLElement implements Demo {
 		const curveType = getCurveType(this.points.length);
 
 		this.manipulatorKeys = MANIPULATOR_KEYS_FROM_BEZIER_TYPE[curveType];
-		this.bezier = WasmBezier[getConstructorKey(curveType)](this.points);
 		this.activeIndex = undefined as number | undefined;
 		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
 		this.sliderUnits = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.unit })));
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
+		const wasm = await import("@/../wasm/pkg");
+		this.bezier = wasm.WasmBezier[getConstructorKey(curveType)](this.points);
 		this.drawDemo(figure);
 	}
 

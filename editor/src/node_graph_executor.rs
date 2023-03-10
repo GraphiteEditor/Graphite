@@ -27,13 +27,13 @@ impl NodeGraphExecutor {
 		scoped_network.duplicate_outputs(&mut generate_uuid);
 		scoped_network.remove_dead_nodes();
 
-		debug!("Execute document network:\n{scoped_network:#?}");
+		//debug!("Execute document network:\n{scoped_network:#?}");
 
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
 		let proto_network = c.compile_single(scoped_network, true)?;
-		debug!("Execute proto network:\n{proto_network}");
+		//debug!("Execute proto network:\n{proto_network}");
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
 			error!("Failed to update executor:\n{}", e);

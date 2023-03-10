@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use xxhash_rust::xxh3::Xxh3;
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -135,7 +136,8 @@ impl ProtoNodeInput {
 impl ProtoNode {
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
-		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		let mut hasher = Xxh3::new();
+
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		match self.input {
@@ -593,12 +595,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				15907139529964845467,
-				1552706903207877482,
-				15211082859148708110,
-				3361684226823984981,
-				16609475913638361514,
-				5640155373642511298
+				7332206428857154453,
+				946497269036214321,
+				3038115864048241698,
+				1932610308557160863,
+				2105748431407297710,
+				8596220090685862327
 			]
 		);
 	}

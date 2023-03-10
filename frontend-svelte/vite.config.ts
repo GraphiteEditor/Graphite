@@ -12,7 +12,7 @@ import wasm from "vite-plugin-wasm";
 export default defineConfig({
 	plugins: [svelte({prebundleSvelteLibraries: false}), toplevelawait(), wasm()],
 	resolve: {
-		extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".vue"],
+		extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".svelte"],
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
 		},

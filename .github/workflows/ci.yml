@@ -51,7 +51,7 @@ jobs:
       run: |
         cd frontend
         # npm run lint
-        echo "Currently skipping linting, it should be reenabled after switching to Svelte."
+        echo "💥 Frontend linting is temporarily disabled until it can be set up again with Svelte 💥"
 
     - name: 🔬 Check Rust formatting
       run: |

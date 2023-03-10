@@ -1,4 +1,5 @@
 import { createStore, del, get, set, update } from "idb-keyval";
+import { get as getFromStore } from "svelte/store";
 
 import { type PortfolioState } from "@/state-providers/portfolio";
 import { type Editor } from "@/wasm-communication/editor";
@@ -10,7 +11,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	// DOCUMENTS
 
 	async function storeDocumentOrder(): Promise<void> {
-		const documentOrder = portfolio.state.documents.map((doc) => String(doc.id));
+		const documentOrder = getFromStore(portfolio).documents.map((doc) => String(doc.id));
 
 		await set("documents_tab_order", documentOrder, graphiteStore);
 	}

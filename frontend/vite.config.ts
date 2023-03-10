@@ -2,18 +2,17 @@
 
 import * as path from "path";
 
-import vue from "@vitejs/plugin-vue";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import license from "rollup-plugin-license";
 import { defineConfig } from "vite";
 import toplevelawait from "vite-plugin-top-level-await";
 import wasm from "vite-plugin-wasm";
-import svgLoader from "vite-svg-loader";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-	plugins: [vue(), toplevelawait(), wasm(), svgLoader()],
+	plugins: [svelte({prebundleSvelteLibraries: false}), toplevelawait(), wasm()],
 	resolve: {
-		extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".vue"],
+		extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".svelte"],
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
 		},
