@@ -1,3 +1,83 @@
+<script lang="ts">
+import { defineComponent, nextTick, type PropType } from "vue";
+
+import { platformIsMac } from "@/utility-functions/platform";
+
+import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
+
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import Document from "@/components/panels/Document.vue";
+import LayerTree from "@/components/panels/LayerTree.vue";
+import NodeGraph from "@/components/panels/NodeGraph.vue";
+import Properties from "@/components/panels/Properties.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
+
+const PANEL_COMPONENTS = {
+	Document,
+	IconButton,
+	LayerTree,
+	NodeGraph,
+	PopoverButton,
+	Properties,
+	TextButton,
+};
+type PanelTypes = keyof typeof PANEL_COMPONENTS;
+
+export default defineComponent({
+	inject: ["editor"],
+	props: {
+		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
+		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
+		tabLabels: { type: Array as PropType<{ name: string; tooltip?: string }[]>, required: true },
+		tabActiveIndex: { type: Number as PropType<number>, required: true },
+		panelType: { type: String as PropType<PanelTypes>, required: false },
+		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
+		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
+	},
+	methods: {
+		newDocument() {
+			this.editor.instance.newDocumentDialog();
+		},
+		openDocument() {
+			this.editor.instance.documentOpen();
+		},
+		platformModifiers(reservedKey: boolean): LayoutKeysGroup {
+			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
+
+			const ALT: Key = { key: "Alt", label: "Alt" };
+			const COMMAND: Key = { key: "Command", label: "Command" };
+			const CONTROL: Key = { key: "Control", label: "Ctrl" };
+
+			if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
+			return reservedKey ? [CONTROL, ALT] : [CONTROL];
+		},
+		async scrollTabIntoView(newIndex: number) {
+			await nextTick();
+
+			const panel: HTMLDivElement | undefined = this.$el;
+			if (!panel) return;
+
+			const newActiveTab = panel.querySelectorAll("[data-tab]")[newIndex] as HTMLDivElement | undefined;
+			newActiveTab?.scrollIntoView();
+		},
+	},
+	components: {
+		IconLabel,
+		LayoutCol,
+		LayoutRow,
+		TextLabel,
+		UserInputLabel,
+		...PANEL_COMPONENTS,
+	},
+});
+</script>
+
 <template>
 	<LayoutCol class="panel">
 		<LayoutRow class="tab-bar" :class="{ 'min-widths': tabMinWidths }">
@@ -207,83 +287,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, nextTick, type PropType } from "vue";
-
-import { platformIsMac } from "@/utility-functions/platform";
-
-import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
-
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import Document from "@/components/panels/Document.vue";
-import LayerTree from "@/components/panels/LayerTree.vue";
-import NodeGraph from "@/components/panels/NodeGraph.vue";
-import Properties from "@/components/panels/Properties.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-import UserInputLabel from "@/components/widgets/labels/UserInputLabel.vue";
-
-const PANEL_COMPONENTS = {
-	Document,
-	IconButton,
-	LayerTree,
-	NodeGraph,
-	PopoverButton,
-	Properties,
-	TextButton,
-};
-type PanelTypes = keyof typeof PANEL_COMPONENTS;
-
-export default defineComponent({
-	inject: ["editor"],
-	props: {
-		tabMinWidths: { type: Boolean as PropType<boolean>, default: false },
-		tabCloseButtons: { type: Boolean as PropType<boolean>, default: false },
-		tabLabels: { type: Array as PropType<{ name: string; tooltip?: string }[]>, required: true },
-		tabActiveIndex: { type: Number as PropType<number>, required: true },
-		panelType: { type: String as PropType<PanelTypes>, required: false },
-		clickAction: { type: Function as PropType<(index: number) => void>, required: false },
-		closeAction: { type: Function as PropType<(index: number) => void>, required: false },
-	},
-	methods: {
-		newDocument() {
-			this.editor.instance.newDocumentDialog();
-		},
-		openDocument() {
-			this.editor.instance.documentOpen();
-		},
-		platformModifiers(reservedKey: boolean): LayoutKeysGroup {
-			// TODO: Remove this by properly feeding these keys from a layout provided by the backend
-
-			const ALT: Key = { key: "Alt", label: "Alt" };
-			const COMMAND: Key = { key: "Command", label: "Command" };
-			const CONTROL: Key = { key: "Control", label: "Ctrl" };
-
-			if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
-			return reservedKey ? [CONTROL, ALT] : [CONTROL];
-		},
-		async scrollTabIntoView(newIndex: number) {
-			await nextTick();
-
-			const panel: HTMLDivElement | undefined = this.$el;
-			if (!panel) return;
-
-			const newActiveTab = panel.querySelectorAll("[data-tab]")[newIndex] as HTMLDivElement | undefined;
-			newActiveTab?.scrollIntoView();
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutCol,
-		LayoutRow,
-		TextLabel,
-		UserInputLabel,
-		...PANEL_COMPONENTS,
-	},
-});
-</script>

@@ -1,3 +1,80 @@
+<script lang="ts">
+import { defineComponent, type PropType, toRaw } from "vue";
+
+import { type MenuListEntry } from "@/wasm-communication/messages";
+
+import MenuList from "@/components/floating-menus/MenuList.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+const DASH_ENTRY = { label: "-" };
+
+export default defineComponent({
+	emits: ["update:selectedIndex"],
+	props: {
+		entries: { type: Array as PropType<MenuListEntry[][]>, required: true },
+		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
+		drawIcon: { type: Boolean as PropType<boolean>, default: false },
+		interactive: { type: Boolean as PropType<boolean>, default: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+	},
+	data() {
+		return {
+			activeEntry: this.makeActiveEntry(this.selectedIndex),
+			activeEntrySkipWatcher: false,
+			open: false,
+			minWidth: 0,
+		};
+	},
+	watch: {
+		// Called only when `selectedIndex` is changed from outside this component (with v-model)
+		selectedIndex() {
+			this.activeEntrySkipWatcher = true;
+			this.activeEntry = this.makeActiveEntry();
+		},
+		// Called when `activeEntry` is changed by the `v-model` on this component's MenuList component, or by the `selectedIndex()` watcher above (but we want to skip that case)
+		activeEntry(newActiveEntry: MenuListEntry) {
+			if (this.activeEntrySkipWatcher) {
+				this.activeEntrySkipWatcher = false;
+				return;
+			}
+
+			// `toRaw()` pulls it out of the Vue proxy
+			if (toRaw(newActiveEntry) === DASH_ENTRY) return;
+
+			this.$emit("update:selectedIndex", this.entries.flat().indexOf(newActiveEntry));
+		},
+	},
+	methods: {
+		makeActiveEntry(): MenuListEntry {
+			const entries = this.entries.flat();
+
+			if (this.selectedIndex !== undefined && this.selectedIndex >= 0 && this.selectedIndex < entries.length) {
+				return entries[this.selectedIndex];
+			}
+			return DASH_ENTRY;
+		},
+		keydown(e: KeyboardEvent) {
+			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
+		},
+		unFocusDropdownBox(e: FocusEvent) {
+			const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
+			const self: HTMLDivElement | undefined = this.$el;
+			if (blurTarget !== self) this.open = false;
+		},
+	},
+	components: {
+		IconLabel,
+		LayoutRow,
+		MenuList,
+		TextLabel,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="dropdown-input" data-dropdown-input>
 		<LayoutRow
@@ -95,80 +172,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType, toRaw } from "vue";
-
-import { type MenuListEntry } from "@/wasm-communication/messages";
-
-import MenuList from "@/components/floating-menus/MenuList.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-const DASH_ENTRY = { label: "-" };
-
-export default defineComponent({
-	emits: ["update:selectedIndex"],
-	props: {
-		entries: { type: Array as PropType<MenuListEntry[][]>, required: true },
-		selectedIndex: { type: Number as PropType<number>, required: false }, // When not provided, a dash is displayed
-		drawIcon: { type: Boolean as PropType<boolean>, default: false },
-		interactive: { type: Boolean as PropType<boolean>, default: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-	},
-	data() {
-		return {
-			activeEntry: this.makeActiveEntry(this.selectedIndex),
-			activeEntrySkipWatcher: false,
-			open: false,
-			minWidth: 0,
-		};
-	},
-	watch: {
-		// Called only when `selectedIndex` is changed from outside this component (with v-model)
-		selectedIndex() {
-			this.activeEntrySkipWatcher = true;
-			this.activeEntry = this.makeActiveEntry();
-		},
-		// Called when `activeEntry` is changed by the `v-model` on this component's MenuList component, or by the `selectedIndex()` watcher above (but we want to skip that case)
-		activeEntry(newActiveEntry: MenuListEntry) {
-			if (this.activeEntrySkipWatcher) {
-				this.activeEntrySkipWatcher = false;
-				return;
-			}
-
-			// `toRaw()` pulls it out of the Vue proxy
-			if (toRaw(newActiveEntry) === DASH_ENTRY) return;
-
-			this.$emit("update:selectedIndex", this.entries.flat().indexOf(newActiveEntry));
-		},
-	},
-	methods: {
-		makeActiveEntry(): MenuListEntry {
-			const entries = this.entries.flat();
-
-			if (this.selectedIndex !== undefined && this.selectedIndex >= 0 && this.selectedIndex < entries.length) {
-				return entries[this.selectedIndex];
-			}
-			return DASH_ENTRY;
-		},
-		keydown(e: KeyboardEvent) {
-			(this.$refs.menuList as typeof MenuList | undefined)?.keydown(e, false);
-		},
-		unFocusDropdownBox(e: FocusEvent) {
-			const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
-			const self: HTMLDivElement | undefined = this.$el;
-			if (blurTarget !== self) this.open = false;
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-		MenuList,
-		TextLabel,
-	},
-});
-</script>

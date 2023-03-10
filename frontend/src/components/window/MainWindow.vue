@@ -1,21 +1,3 @@
-<template>
-	<LayoutCol class="main-window">
-		<TitleBar :platform="platform" :maximized="maximized" />
-
-		<Workspace />
-
-		<StatusBar />
-	</LayoutCol>
-</template>
-
-<style lang="scss">
-.main-window {
-	height: 100%;
-	overflow: auto;
-	touch-action: none;
-}
-</style>
-
 <script lang="ts">
 import { defineComponent } from "vue";
 
@@ -41,3 +23,21 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<LayoutCol class="main-window">
+		<TitleBar :platform="platform" :maximized="maximized" />
+
+		<Workspace />
+
+		<StatusBar />
+	</LayoutCol>
+</template>
+
+<style lang="scss">
+.main-window {
+	height: 100%;
+	overflow: auto;
+	touch-action: none;
+}
+</style>

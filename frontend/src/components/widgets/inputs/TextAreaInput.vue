@@ -1,22 +1,3 @@
-<template>
-	<FieldInput
-		:textarea="true"
-		class="text-area-input"
-		:class="{ 'has-label': label }"
-		:label="label"
-		:spellcheck="true"
-		:disabled="disabled"
-		:tooltip="tooltip"
-		v-model:value="inputValue"
-		@textFocused="() => onTextFocused()"
-		@textChanged="() => onTextChanged()"
-		@cancelTextChange="() => onCancelTextChange()"
-		ref="fieldInput"
-	></FieldInput>
-</template>
-
-<style lang="scss"></style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -74,3 +55,22 @@ export default defineComponent({
 	components: { FieldInput },
 });
 </script>
+
+<template>
+	<FieldInput
+		:textarea="true"
+		class="text-area-input"
+		:class="{ 'has-label': label }"
+		:label="label"
+		:spellcheck="true"
+		:disabled="disabled"
+		:tooltip="tooltip"
+		v-model:value="inputValue"
+		@textFocused="() => onTextFocused()"
+		@textChanged="() => onTextChanged()"
+		@cancelTextChange="() => onCancelTextChange()"
+		ref="fieldInput"
+	></FieldInput>
+</template>
+
+<style lang="scss"></style>

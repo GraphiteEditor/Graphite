@@ -1,69 +1,3 @@
-<template>
-	<div class="menu-bar-input" data-menu-bar-input>
-		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
-			<div
-				@click="(e: MouseEvent) => clickEntry(entry, e)"
-				@blur="(e: FocusEvent) => unFocusEntry(entry, e)"
-				@keydown="(e: KeyboardEvent) => entry.ref?.keydown(e, false)"
-				class="entry"
-				:class="{ open: entry.ref?.isOpen }"
-				tabindex="0"
-				:data-floating-menu-spawner="entry.children && entry.children.length > 0 ? '' : 'no-hover-transfer'"
-			>
-				<IconLabel v-if="entry.icon" :icon="entry.icon" />
-				<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
-			</div>
-			<MenuList
-				v-if="entry.children && entry.children.length > 0"
-				:open="entry.ref?.open || false"
-				:entries="entry.children || []"
-				:direction="'Bottom'"
-				:minWidth="240"
-				:drawIcon="true"
-				:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
-			/>
-		</div>
-	</div>
-</template>
-
-<style lang="scss">
-.menu-bar-input {
-	display: flex;
-
-	.entry-container {
-		display: flex;
-		position: relative;
-
-		.entry {
-			display: flex;
-			align-items: center;
-			white-space: nowrap;
-			padding: 0 8px;
-			background: none;
-			border: 0;
-			margin: 0;
-
-			svg {
-				fill: var(--color-e-nearwhite);
-			}
-
-			&:hover,
-			&.open {
-				background: var(--color-6-lowergray);
-
-				svg {
-					fill: var(--color-f-white);
-				}
-
-				span {
-					color: var(--color-f-white);
-				}
-			}
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent } from "vue";
 
@@ -152,3 +86,69 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<div class="menu-bar-input" data-menu-bar-input>
+		<div class="entry-container" v-for="(entry, index) in entries" :key="index">
+			<div
+				@click="(e: MouseEvent) => clickEntry(entry, e)"
+				@blur="(e: FocusEvent) => unFocusEntry(entry, e)"
+				@keydown="(e: KeyboardEvent) => entry.ref?.keydown(e, false)"
+				class="entry"
+				:class="{ open: entry.ref?.isOpen }"
+				tabindex="0"
+				:data-floating-menu-spawner="entry.children && entry.children.length > 0 ? '' : 'no-hover-transfer'"
+			>
+				<IconLabel v-if="entry.icon" :icon="entry.icon" />
+				<TextLabel v-if="entry.label">{{ entry.label }}</TextLabel>
+			</div>
+			<MenuList
+				v-if="entry.children && entry.children.length > 0"
+				:open="entry.ref?.open || false"
+				:entries="entry.children || []"
+				:direction="'Bottom'"
+				:minWidth="240"
+				:drawIcon="true"
+				:ref="(ref: MenuListInstance): void => (ref && (entry.ref = ref), undefined)"
+			/>
+		</div>
+	</div>
+</template>
+
+<style lang="scss">
+.menu-bar-input {
+	display: flex;
+
+	.entry-container {
+		display: flex;
+		position: relative;
+
+		.entry {
+			display: flex;
+			align-items: center;
+			white-space: nowrap;
+			padding: 0 8px;
+			background: none;
+			border: 0;
+			margin: 0;
+
+			svg {
+				fill: var(--color-e-nearwhite);
+			}
+
+			&:hover,
+			&.open {
+				background: var(--color-6-lowergray);
+
+				svg {
+					fill: var(--color-f-white);
+				}
+
+				span {
+					color: var(--color-f-white);
+				}
+			}
+		}
+	}
+}
+</style>

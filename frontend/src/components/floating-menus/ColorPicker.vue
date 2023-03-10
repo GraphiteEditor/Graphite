@@ -1,3 +1,268 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { clamp } from "@/utility-functions/math";
+import type { HSV, RGB } from "@/wasm-communication/messages";
+import { Color } from "@/wasm-communication/messages";
+
+import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import TextInput from "@/components/widgets/inputs/TextInput.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
+
+const PURE_COLORS: Record<PresetColors, [number, number, number]> = {
+	none: [0, 0, 0],
+	black: [0, 0, 0],
+	white: [1, 1, 1],
+	red: [1, 0, 0],
+	yellow: [1, 1, 0],
+	green: [0, 1, 0],
+	cyan: [0, 1, 1],
+	blue: [0, 0, 1],
+	magenta: [1, 0, 1],
+};
+
+const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
+
+export default defineComponent({
+	inject: ["editor"],
+	emits: ["update:color", "update:open"],
+	props: {
+		color: { type: Object as PropType<Color>, required: true },
+		allowNone: { type: Boolean as PropType<boolean>, default: false },
+		allowTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Implement this
+		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
+		// TODO: See if this should be made to follow the pattern of DropdownInput.vue so this could be removed
+		open: { type: Boolean as PropType<boolean>, required: true },
+	},
+	data() {
+		const hsvaOrNone = this.color.toHSVA();
+		const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
+
+		return {
+			hue: hsva.h,
+			saturation: hsva.s,
+			value: hsva.v,
+			alpha: hsva.a,
+			isNone: hsvaOrNone === undefined,
+			initialHue: hsva.h,
+			initialSaturation: hsva.s,
+			initialValue: hsva.v,
+			initialAlpha: hsva.a,
+			initialIsNone: hsvaOrNone === undefined,
+			draggingPickerTrack: undefined as HTMLDivElement | undefined,
+			colorSpaceChoices: COLOR_SPACE_CHOICES,
+			strayCloses: true,
+		};
+	},
+	computed: {
+		opaqueHueColor(): Color {
+			return new Color({ h: this.hue, s: 1, v: 1, a: 1 });
+		},
+		newColor(): Color {
+			if (this.isNone) return new Color("none");
+			return new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
+		},
+		initialColor(): Color {
+			if (this.initialIsNone) return new Color("none");
+			return new Color({ h: this.initialHue, s: this.initialSaturation, v: this.initialValue, a: this.initialAlpha });
+		},
+		black(): Color {
+			return new Color(0, 0, 0, 1);
+		},
+	},
+	watch: {
+		// Called only when `open` is changed from outside this component (with v-model)
+		open(isOpen: boolean) {
+			if (isOpen) this.setInitialHSVA(this.hue, this.saturation, this.value, this.alpha, this.isNone);
+		},
+		// Called only when `color` is changed from outside this component (with v-model)
+		color(color: Color) {
+			const hsva = color.toHSVA();
+
+			if (hsva !== undefined) {
+				// Update the hue, but only if it is necessary so we don't:
+				// - ...jump the user's hue from 360° (top) to the equivalent 0° (bottom)
+				// - ...reset the hue to 0° if the color is fully desaturated, where all hues are equivalent
+				// - ...reset the hue to 0° if the color's value is black, where all hues are equivalent
+				if (!(hsva.h === 0 && this.hue === 1) && hsva.s > 0 && hsva.v > 0) this.hue = hsva.h;
+				// Update the saturation, but only if it is necessary so we don't:
+				// - ...reset the saturation to the left is the color's value is black along the bottom edge, where all saturations are equivalent
+				if (hsva.v !== 0) this.saturation = hsva.s;
+				// Update the value
+				this.value = hsva.v;
+				// Update the alpha
+				this.alpha = hsva.a;
+				// Update the status of this not being a color
+				this.isNone = false;
+			} else {
+				this.setNewHSVA(0, 0, 0, 1, true);
+			}
+		},
+	},
+	methods: {
+		onPointerDown(e: PointerEvent) {
+			const target = (e.target || undefined) as HTMLElement | undefined;
+			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
+
+			this.addEvents();
+
+			this.onPointerMove(e);
+		},
+		onPointerMove(e: PointerEvent) {
+			// Just in case the mouseup event is lost
+			if (e.buttons === 0) this.removeEvents();
+
+			if (this.draggingPickerTrack?.hasAttribute("data-saturation-value-picker")) {
+				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
+
+				this.saturation = clamp((e.clientX - rectangle.left) / rectangle.width, 0, 1);
+				this.value = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.strayCloses = false;
+			} else if (this.draggingPickerTrack?.hasAttribute("data-hue-picker")) {
+				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
+
+				this.hue = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.strayCloses = false;
+			} else if (this.draggingPickerTrack?.hasAttribute("data-alpha-picker")) {
+				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
+
+				this.alpha = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
+				this.strayCloses = false;
+			}
+
+			const color = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
+			this.setColor(color);
+		},
+		onPointerUp() {
+			this.removeEvents();
+		},
+		addEvents() {
+			document.addEventListener("pointermove", this.onPointerMove);
+			document.addEventListener("pointerup", this.onPointerUp);
+		},
+		removeEvents() {
+			this.draggingPickerTrack = undefined;
+			this.strayCloses = true;
+
+			document.removeEventListener("pointermove", this.onPointerMove);
+			document.removeEventListener("pointerup", this.onPointerUp);
+		},
+		emitOpenState(isOpen: boolean) {
+			this.$emit("update:open", isOpen);
+		},
+		setColor(color?: Color) {
+			const colorToEmit = color || new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
+			this.$emit("update:color", colorToEmit);
+		},
+		swapNewWithInitial() {
+			const initial = this.initialColor;
+
+			const tempHue = this.hue;
+			const tempSaturation = this.saturation;
+			const tempValue = this.value;
+			const tempAlpha = this.alpha;
+			const tempIsNone = this.isNone;
+
+			this.setNewHSVA(this.initialHue, this.initialSaturation, this.initialValue, this.initialAlpha, this.initialIsNone);
+			this.setInitialHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
+
+			this.setColor(initial);
+		},
+		setColorCode(colorCode: string) {
+			const color = Color.fromCSS(colorCode);
+			if (color) this.setColor(color);
+		},
+		setColorRGB(channel: keyof RGB, strength: number) {
+			if (channel === "r") this.setColor(new Color(strength / 255, this.newColor.green, this.newColor.blue, this.newColor.alpha));
+			else if (channel === "g") this.setColor(new Color(this.newColor.red, strength / 255, this.newColor.blue, this.newColor.alpha));
+			else if (channel === "b") this.setColor(new Color(this.newColor.red, this.newColor.green, strength / 255, this.newColor.alpha));
+		},
+		setColorHSV(channel: keyof HSV, strength: number) {
+			if (channel === "h") this.hue = strength / 360;
+			else if (channel === "s") this.saturation = strength / 100;
+			else if (channel === "v") this.value = strength / 100;
+
+			this.setColor();
+		},
+		setColorAlphaPercent(alpha: number) {
+			this.alpha = alpha / 100;
+			this.setColor();
+		},
+		setColorPresetSubtile(e: MouseEvent) {
+			const clickedTile = e.target as HTMLDivElement | undefined;
+			const tileColor = clickedTile?.getAttribute("data-pure-tile") || undefined;
+
+			if (tileColor) this.setColorPreset(tileColor as PresetColors);
+		},
+		setColorPreset(preset: PresetColors) {
+			if (preset === "none") {
+				this.setNewHSVA(0, 0, 0, 1, true);
+				this.setColor(new Color("none"));
+				return;
+			}
+
+			const presetColor = new Color(...PURE_COLORS[preset], 1);
+			const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
+
+			this.setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
+			this.setColor(presetColor);
+		},
+		setNewHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
+			this.hue = hue;
+			this.saturation = saturation;
+			this.value = value;
+			this.alpha = alpha;
+			this.isNone = isNone;
+		},
+		setInitialHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
+			this.initialHue = hue;
+			this.initialSaturation = saturation;
+			this.initialValue = value;
+			this.initialAlpha = alpha;
+			this.initialIsNone = isNone;
+		},
+		async activateEyedropperSample() {
+			// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			if (!(window as any).EyeDropper) {
+				this.editor.instance.eyedropperSampleForColorPicker();
+				return;
+			}
+
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const result = await new (window as any).EyeDropper().open();
+				this.setColorCode(result.sRGBHex);
+			} catch {
+				// Do nothing
+			}
+		},
+	},
+	unmounted() {
+		this.removeEvents();
+	},
+	components: {
+		DropdownInput,
+		FloatingMenu,
+		IconButton,
+		LayoutCol,
+		LayoutRow,
+		NumberInput,
+		Separator,
+		TextInput,
+		TextLabel,
+	},
+});
+</script>
+
 <template>
 	<FloatingMenu class="color-picker" :open="open" @update:open="(isOpen) => emitOpenState(isOpen)" :strayCloses="strayCloses" :direction="direction" :type="'Popover'">
 		<LayoutRow
@@ -354,268 +619,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { clamp } from "@/utility-functions/math";
-import type { HSV, RGB } from "@/wasm-communication/messages";
-import { Color } from "@/wasm-communication/messages";
-
-import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
-
-const PURE_COLORS: Record<PresetColors, [number, number, number]> = {
-	none: [0, 0, 0],
-	black: [0, 0, 0],
-	white: [1, 1, 1],
-	red: [1, 0, 0],
-	yellow: [1, 1, 0],
-	green: [0, 1, 0],
-	cyan: [0, 1, 1],
-	blue: [0, 0, 1],
-	magenta: [1, 0, 1],
-};
-
-const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
-
-export default defineComponent({
-	inject: ["editor"],
-	emits: ["update:color", "update:open"],
-	props: {
-		color: { type: Object as PropType<Color>, required: true },
-		allowNone: { type: Boolean as PropType<boolean>, default: false },
-		allowTransparency: { type: Boolean as PropType<boolean>, default: false }, // TODO: Implement this
-		direction: { type: String as PropType<MenuDirection>, default: "Bottom" },
-		// TODO: See if this should be made to follow the pattern of DropdownInput.vue so this could be removed
-		open: { type: Boolean as PropType<boolean>, required: true },
-	},
-	data() {
-		const hsvaOrNone = this.color.toHSVA();
-		const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
-
-		return {
-			hue: hsva.h,
-			saturation: hsva.s,
-			value: hsva.v,
-			alpha: hsva.a,
-			isNone: hsvaOrNone === undefined,
-			initialHue: hsva.h,
-			initialSaturation: hsva.s,
-			initialValue: hsva.v,
-			initialAlpha: hsva.a,
-			initialIsNone: hsvaOrNone === undefined,
-			draggingPickerTrack: undefined as HTMLDivElement | undefined,
-			colorSpaceChoices: COLOR_SPACE_CHOICES,
-			strayCloses: true,
-		};
-	},
-	computed: {
-		opaqueHueColor(): Color {
-			return new Color({ h: this.hue, s: 1, v: 1, a: 1 });
-		},
-		newColor(): Color {
-			if (this.isNone) return new Color("none");
-			return new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
-		},
-		initialColor(): Color {
-			if (this.initialIsNone) return new Color("none");
-			return new Color({ h: this.initialHue, s: this.initialSaturation, v: this.initialValue, a: this.initialAlpha });
-		},
-		black(): Color {
-			return new Color(0, 0, 0, 1);
-		},
-	},
-	watch: {
-		// Called only when `open` is changed from outside this component (with v-model)
-		open(isOpen: boolean) {
-			if (isOpen) this.setInitialHSVA(this.hue, this.saturation, this.value, this.alpha, this.isNone);
-		},
-		// Called only when `color` is changed from outside this component (with v-model)
-		color(color: Color) {
-			const hsva = color.toHSVA();
-
-			if (hsva !== undefined) {
-				// Update the hue, but only if it is necessary so we don't:
-				// - ...jump the user's hue from 360° (top) to the equivalent 0° (bottom)
-				// - ...reset the hue to 0° if the color is fully desaturated, where all hues are equivalent
-				// - ...reset the hue to 0° if the color's value is black, where all hues are equivalent
-				if (!(hsva.h === 0 && this.hue === 1) && hsva.s > 0 && hsva.v > 0) this.hue = hsva.h;
-				// Update the saturation, but only if it is necessary so we don't:
-				// - ...reset the saturation to the left is the color's value is black along the bottom edge, where all saturations are equivalent
-				if (hsva.v !== 0) this.saturation = hsva.s;
-				// Update the value
-				this.value = hsva.v;
-				// Update the alpha
-				this.alpha = hsva.a;
-				// Update the status of this not being a color
-				this.isNone = false;
-			} else {
-				this.setNewHSVA(0, 0, 0, 1, true);
-			}
-		},
-	},
-	methods: {
-		onPointerDown(e: PointerEvent) {
-			const target = (e.target || undefined) as HTMLElement | undefined;
-			this.draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
-
-			this.addEvents();
-
-			this.onPointerMove(e);
-		},
-		onPointerMove(e: PointerEvent) {
-			// Just in case the mouseup event is lost
-			if (e.buttons === 0) this.removeEvents();
-
-			if (this.draggingPickerTrack?.hasAttribute("data-saturation-value-picker")) {
-				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
-
-				this.saturation = clamp((e.clientX - rectangle.left) / rectangle.width, 0, 1);
-				this.value = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
-				this.strayCloses = false;
-			} else if (this.draggingPickerTrack?.hasAttribute("data-hue-picker")) {
-				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
-
-				this.hue = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
-				this.strayCloses = false;
-			} else if (this.draggingPickerTrack?.hasAttribute("data-alpha-picker")) {
-				const rectangle = this.draggingPickerTrack.getBoundingClientRect();
-
-				this.alpha = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
-				this.strayCloses = false;
-			}
-
-			const color = new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
-			this.setColor(color);
-		},
-		onPointerUp() {
-			this.removeEvents();
-		},
-		addEvents() {
-			document.addEventListener("pointermove", this.onPointerMove);
-			document.addEventListener("pointerup", this.onPointerUp);
-		},
-		removeEvents() {
-			this.draggingPickerTrack = undefined;
-			this.strayCloses = true;
-
-			document.removeEventListener("pointermove", this.onPointerMove);
-			document.removeEventListener("pointerup", this.onPointerUp);
-		},
-		emitOpenState(isOpen: boolean) {
-			this.$emit("update:open", isOpen);
-		},
-		setColor(color?: Color) {
-			const colorToEmit = color || new Color({ h: this.hue, s: this.saturation, v: this.value, a: this.alpha });
-			this.$emit("update:color", colorToEmit);
-		},
-		swapNewWithInitial() {
-			const initial = this.initialColor;
-
-			const tempHue = this.hue;
-			const tempSaturation = this.saturation;
-			const tempValue = this.value;
-			const tempAlpha = this.alpha;
-			const tempIsNone = this.isNone;
-
-			this.setNewHSVA(this.initialHue, this.initialSaturation, this.initialValue, this.initialAlpha, this.initialIsNone);
-			this.setInitialHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
-
-			this.setColor(initial);
-		},
-		setColorCode(colorCode: string) {
-			const color = Color.fromCSS(colorCode);
-			if (color) this.setColor(color);
-		},
-		setColorRGB(channel: keyof RGB, strength: number) {
-			if (channel === "r") this.setColor(new Color(strength / 255, this.newColor.green, this.newColor.blue, this.newColor.alpha));
-			else if (channel === "g") this.setColor(new Color(this.newColor.red, strength / 255, this.newColor.blue, this.newColor.alpha));
-			else if (channel === "b") this.setColor(new Color(this.newColor.red, this.newColor.green, strength / 255, this.newColor.alpha));
-		},
-		setColorHSV(channel: keyof HSV, strength: number) {
-			if (channel === "h") this.hue = strength / 360;
-			else if (channel === "s") this.saturation = strength / 100;
-			else if (channel === "v") this.value = strength / 100;
-
-			this.setColor();
-		},
-		setColorAlphaPercent(alpha: number) {
-			this.alpha = alpha / 100;
-			this.setColor();
-		},
-		setColorPresetSubtile(e: MouseEvent) {
-			const clickedTile = e.target as HTMLDivElement | undefined;
-			const tileColor = clickedTile?.getAttribute("data-pure-tile") || undefined;
-
-			if (tileColor) this.setColorPreset(tileColor as PresetColors);
-		},
-		setColorPreset(preset: PresetColors) {
-			if (preset === "none") {
-				this.setNewHSVA(0, 0, 0, 1, true);
-				this.setColor(new Color("none"));
-				return;
-			}
-
-			const presetColor = new Color(...PURE_COLORS[preset], 1);
-			const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
-
-			this.setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
-			this.setColor(presetColor);
-		},
-		setNewHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
-			this.hue = hue;
-			this.saturation = saturation;
-			this.value = value;
-			this.alpha = alpha;
-			this.isNone = isNone;
-		},
-		setInitialHSVA(hue: number, saturation: number, value: number, alpha: number, isNone: boolean) {
-			this.initialHue = hue;
-			this.initialSaturation = saturation;
-			this.initialValue = value;
-			this.initialAlpha = alpha;
-			this.initialIsNone = isNone;
-		},
-		async activateEyedropperSample() {
-			// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			if (!(window as any).EyeDropper) {
-				this.editor.instance.eyedropperSampleForColorPicker();
-				return;
-			}
-
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const result = await new (window as any).EyeDropper().open();
-				this.setColorCode(result.sRGBHex);
-			} catch {
-				// Do nothing
-			}
-		},
-	},
-	unmounted() {
-		this.removeEvents();
-	},
-	components: {
-		DropdownInput,
-		FloatingMenu,
-		IconButton,
-		LayoutCol,
-		LayoutRow,
-		NumberInput,
-		Separator,
-		TextInput,
-		TextLabel,
-	},
-});
-</script>

@@ -1,3 +1,16 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+export default defineComponent({
+	props: {
+		maximized: { type: Boolean as PropType<boolean>, default: false },
+	},
+	components: { LayoutRow },
+});
+</script>
+
 <template>
 	<LayoutRow class="window-buttons mac">
 		<div class="close" title="Close"></div>
@@ -37,16 +50,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-export default defineComponent({
-	props: {
-		maximized: { type: Boolean as PropType<boolean>, default: false },
-	},
-	components: { LayoutRow },
-});
-</script>

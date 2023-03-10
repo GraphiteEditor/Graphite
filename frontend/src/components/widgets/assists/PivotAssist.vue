@@ -1,3 +1,22 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type PivotPosition } from "@/wasm-communication/messages";
+
+export default defineComponent({
+	emits: ["update:position"],
+	props: {
+		position: { type: String as PropType<string>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+	},
+	methods: {
+		setPosition(newPosition: PivotPosition) {
+			this.$emit("update:position", newPosition);
+		},
+	},
+});
+</script>
+
 <template>
 	<div class="pivot-assist" :class="{ disabled }">
 		<button @click="setPosition('TopLeft')" class="row-1 col-1" :class="{ active: position === 'TopLeft' }" tabindex="-1" :disabled="disabled"><div></div></button>
@@ -101,21 +120,3 @@
 }
 </style>
 
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type PivotPosition } from "@/wasm-communication/messages";
-
-export default defineComponent({
-	emits: ["update:position"],
-	props: {
-		position: { type: String as PropType<string>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-	},
-	methods: {
-		setPosition(newPosition: PivotPosition) {
-			this.$emit("update:position", newPosition);
-		},
-	},
-});
-</script>

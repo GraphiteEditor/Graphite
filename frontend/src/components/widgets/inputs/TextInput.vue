@@ -1,36 +1,3 @@
-<template>
-	<FieldInput
-		class="text-input"
-		:class="{ centered }"
-		v-model:value="text"
-		:label="label"
-		:spellcheck="true"
-		:disabled="disabled"
-		:tooltip="tooltip"
-		:placeholder="placeholder"
-		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
-		:sharpRightCorners="sharpRightCorners"
-		@textFocused="() => onTextFocused()"
-		@textChanged="() => onTextChanged()"
-		@cancelTextChange="() => onCancelTextChange()"
-		ref="fieldInput"
-	></FieldInput>
-</template>
-
-<style lang="scss">
-.text-input {
-	input {
-		text-align: left;
-	}
-
-	&.centered {
-		input:not(:focus) {
-			text-align: center;
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -101,3 +68,36 @@ export default defineComponent({
 	components: { FieldInput },
 });
 </script>
+
+<template>
+	<FieldInput
+		class="text-input"
+		:class="{ centered }"
+		v-model:value="text"
+		:label="label"
+		:spellcheck="true"
+		:disabled="disabled"
+		:tooltip="tooltip"
+		:placeholder="placeholder"
+		:style="{ 'min-width': minWidth > 0 ? `${minWidth}px` : undefined }"
+		:sharpRightCorners="sharpRightCorners"
+		@textFocused="() => onTextFocused()"
+		@textChanged="() => onTextChanged()"
+		@cancelTextChange="() => onCancelTextChange()"
+		ref="fieldInput"
+	></FieldInput>
+</template>
+
+<style lang="scss">
+.text-input {
+	input {
+		text-align: left;
+	}
+
+	&.centered {
+		input:not(:focus) {
+			text-align: center;
+		}
+	}
+}
+</style>

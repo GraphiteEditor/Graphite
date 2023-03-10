@@ -1,3 +1,40 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
+import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.vue";
+import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.vue";
+import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.vue";
+import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
+
+export type Platform = "Windows" | "Mac" | "Linux" | "Web";
+
+export default defineComponent({
+	inject: ["portfolio"],
+	props: {
+		platform: { type: String as PropType<Platform>, required: true },
+		maximized: { type: Boolean as PropType<boolean>, required: true },
+	},
+	computed: {
+		windowTitle(): string {
+			const activeDocumentIndex = this.portfolio.state.activeDocumentIndex;
+			const activeDocumentDisplayName = this.portfolio.state.documents[activeDocumentIndex]?.displayName || "";
+
+			return `${activeDocumentDisplayName}${activeDocumentDisplayName && " - "}Graphite`;
+		},
+	},
+	components: {
+		LayoutRow,
+		MenuBarInput,
+		WindowButtonsMac,
+		WindowButtonsWeb,
+		WindowButtonsWindows,
+		WindowTitle,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="title-bar">
 		<LayoutRow class="header-part">
@@ -36,40 +73,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.vue";
-import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.vue";
-import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.vue";
-import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.vue";
-import WindowTitle from "@/components/window/title-bar/WindowTitle.vue";
-
-export type Platform = "Windows" | "Mac" | "Linux" | "Web";
-
-export default defineComponent({
-	inject: ["portfolio"],
-	props: {
-		platform: { type: String as PropType<Platform>, required: true },
-		maximized: { type: Boolean as PropType<boolean>, required: true },
-	},
-	computed: {
-		windowTitle(): string {
-			const activeDocumentIndex = this.portfolio.state.activeDocumentIndex;
-			const activeDocumentDisplayName = this.portfolio.state.documents[activeDocumentIndex]?.displayName || "";
-
-			return `${activeDocumentDisplayName}${activeDocumentDisplayName && " - "}Graphite`;
-		},
-	},
-	components: {
-		LayoutRow,
-		MenuBarInput,
-		WindowButtonsMac,
-		WindowButtonsWeb,
-		WindowButtonsWindows,
-		WindowTitle,
-	},
-});
-</script>

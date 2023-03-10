@@ -1,3 +1,20 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+export default defineComponent({
+	props: {
+		maximized: { type: Boolean as PropType<boolean>, default: false },
+	},
+	components: {
+		IconLabel,
+		LayoutRow,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="window-button windows minimize" title="Minimize">
 		<IconLabel :icon="'WindowButtonWinMinimize'" />
@@ -36,20 +53,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-
-export default defineComponent({
-	props: {
-		maximized: { type: Boolean as PropType<boolean>, default: false },
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-	},
-});
-</script>

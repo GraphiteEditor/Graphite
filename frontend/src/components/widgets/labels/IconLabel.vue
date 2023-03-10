@@ -1,3 +1,28 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+export default defineComponent({
+	props: {
+		icon: { type: String as PropType<IconName>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+	},
+	computed: {
+		iconSizeClass(): string {
+			return `size-${ICONS[this.icon].size}`;
+		},
+	},
+	components: {
+		LayoutRow,
+		...ICON_COMPONENTS,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow :class="['icon-label', iconSizeClass, { disabled }]" :title="tooltip">
 		<component :is="icon" />
@@ -29,28 +54,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type IconName, ICONS, ICON_COMPONENTS } from "@/utility-functions/icons";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-export default defineComponent({
-	props: {
-		icon: { type: String as PropType<IconName>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	computed: {
-		iconSizeClass(): string {
-			return `size-${ICONS[this.icon].size}`;
-		},
-	},
-	components: {
-		LayoutRow,
-		...ICON_COMPONENTS,
-	},
-});
-</script>
