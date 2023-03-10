@@ -20,7 +20,7 @@
 	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -47,7 +47,7 @@
 	const editor = getContext<Editor>("editor");
 
 	// Layer data
-	let layerCache: Map<string, LayerPanelEntry> = new Map(); // TODO: replace with BigUint64Array as index
+	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging

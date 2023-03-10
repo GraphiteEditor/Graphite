@@ -6,8 +6,8 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let tooltip: string | undefined = undefined;
-	export let scrollableX: boolean = false;
-	export let scrollableY: boolean = false;
+	export let scrollableX = false;
+	export let scrollableY = false;
 
 	let self: HTMLDivElement;
 

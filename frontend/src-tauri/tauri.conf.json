@@ -4,7 +4,7 @@
 		"beforeBuildCommand": "npm run build",
 		"beforeDevCommand": "npm start",
 		"distDir": "../public",
-		"devPath": "http://127.0.0.1:8080"
+		"devPath": "http://127.0.0.1:8080/"
 	},
 	"package": {
 		"productName": "Graphite",

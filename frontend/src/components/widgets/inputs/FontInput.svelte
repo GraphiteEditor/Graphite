@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
-	import { type MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@/wasm-communication/messages";
 
 	import MenuList from "@/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import { type FontsState } from "@/state-providers/fonts";
+	import type { FontsState } from "@/state-providers/fonts";
 
 	const fonts = getContext<FontsState>("fonts");
 

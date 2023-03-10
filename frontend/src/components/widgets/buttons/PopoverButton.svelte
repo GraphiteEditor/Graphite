@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName } from "@/utility-functions/icons";
+	import type { IconName } from "@/utility-functions/icons";
 
 	import FloatingMenu from "@/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
