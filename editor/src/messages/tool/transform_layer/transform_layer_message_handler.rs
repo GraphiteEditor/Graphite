@@ -1,16 +1,15 @@
 use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetadata;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+use crate::messages::tool::utility_types::{ToolData, ToolType};
 
-use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
-use document_legacy::LayerId;
 
 use glam::DVec2;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
 	transform_operation: TransformOperation,
 
@@ -23,16 +22,24 @@ pub struct TransformLayerMessageHandler {
 
 	original_transforms: OriginalTransforms,
 	pivot: DVec2,
+
+	shape_editor: ShapeEditor,
 }
 
-type TransformData<'a> = (&'a mut HashMap<Vec<LayerId>, LayerMetadata>, &'a mut Document, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>);
+type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>, &'a ToolData);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (layer_metadata, document, ipp, render_data): TransformData) {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data): TransformData) {
 		use TransformLayerMessage::*;
 
-		let selected_layers = layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
-		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, document);
+		// TODO: Transform individual points when using the path tool.
+		let _using_path_tool = tool_data.active_tool_type == ToolType::Path;
+
+		// You may also want the shape editor here? If not, then feel free to remove.
+		let _shape_editor = &self.shape_editor;
+
+		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
+		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, &document.document_legacy);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if operation != TransformOperation::None {
@@ -71,6 +78,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.original_transforms.clear();
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -87,6 +95,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.original_transforms.clear();
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -104,6 +113,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.original_transforms.clear();
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();
@@ -165,6 +175,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 					};
 				}
 				self.mouse_position = ipp.mouse.position;
+			}
+			SelectionChanged => {
+				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
+				self.shape_editor.set_selected_layers(layer_paths);
 			}
 			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
