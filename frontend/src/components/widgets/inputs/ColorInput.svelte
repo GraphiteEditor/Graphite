@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { Color } from "@/wasm-communication/messages";
+	import type { Color } from "@/wasm-communication/messages";
 
 	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";

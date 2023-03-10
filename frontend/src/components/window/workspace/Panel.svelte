@@ -28,7 +28,7 @@
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

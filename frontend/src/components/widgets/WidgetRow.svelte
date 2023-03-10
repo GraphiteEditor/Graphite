@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { debouncer } from "@/utility-functions/debounce";
-	import { narrowWidgetProps, Widget } from "@/wasm-communication/messages";
+	import type { Widget } from "@/wasm-communication/messages";
+	import { narrowWidgetProps } from "@/wasm-communication/messages";
 	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
 
 	import PivotAssist from "@/components/widgets/assists/PivotAssist.svelte";
@@ -24,7 +25,7 @@
 	import Separator from "@/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import { getContext } from "svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const SUFFIX_WIDGETS = ["PopoverButton"];
 

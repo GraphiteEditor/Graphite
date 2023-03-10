@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type IconName } from "@/utility-functions/icons";
+	import type { IconName } from "@/utility-functions/icons";
 
 	import LayoutRow from "@/components/layout/LayoutRow.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";

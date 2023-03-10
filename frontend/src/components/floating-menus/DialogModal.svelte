@@ -7,7 +7,7 @@
 	import TextButton from "@/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import { type DialogState } from "@/state-providers/dialog";
+	import type { DialogState } from "@/state-providers/dialog";
 
 	const dialog = getContext<DialogState>("dialog");
 

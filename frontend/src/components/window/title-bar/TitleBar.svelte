@@ -9,7 +9,7 @@
 	import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@/components/window/title-bar/WindowTitle.svelte";
-	import { type PortfolioState } from "@/state-providers/portfolio";
+	import type { PortfolioState } from "@/state-providers/portfolio";
 	import { getContext } from "svelte";
 
 	export let platform: Platform;

@@ -5,7 +5,7 @@
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import WidgetRow from "@/components/widgets/WidgetRow.svelte";
 	import { getContext } from "svelte";
-	import { type Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

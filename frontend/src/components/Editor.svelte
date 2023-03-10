@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
-	import { type createEditor } from "@/wasm-communication/editor";
+	import type { createEditor } from "@/wasm-communication/editor";
 	import { operatingSystem } from "@/utility-functions/platform";
 	import { createClipboardManager } from "@/io-managers/clipboard";
 	import { createDragManager } from "@/io-managers/drag";
