@@ -1,9 +1,11 @@
-import { nextTick, reactive, readonly } from "vue";
+import {tick} from "svelte";
+import {writable} from "svelte/store";
 
 import { type Editor } from "@/wasm-communication/editor";
 import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
+	TriggerRefreshBoundsOfViewports,
 	UpdateDocumentBarLayout,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
@@ -13,7 +15,7 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDocumentState(editor: Editor) {
-	const state = reactive({
+	const state = writable({
 		// Layouts
 		documentModeLayout: defaultWidgetLayout(),
 		toolOptionsLayout: defaultWidgetLayout(),
@@ -21,31 +23,66 @@ export function createDocumentState(editor: Editor) {
 		toolShelfLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
 	});
+	const { subscribe, update } = state;
 
 	// Update layouts
 	editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
-		await nextTick();
-		patchWidgetLayout(state.documentModeLayout, updateDocumentModeLayout);
+		await tick();
+		
+		update((state) => {
+			// `state.documentModeLayout` is mutated in the function
+			patchWidgetLayout(state.documentModeLayout, updateDocumentModeLayout);
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (updateToolOptionsLayout) => {
-		await nextTick();
-		patchWidgetLayout(state.toolOptionsLayout, updateToolOptionsLayout);
+		await tick();
+		
+		update((state) => {
+			// `state.documentModeLayout` is mutated in the function
+			patchWidgetLayout(state.toolOptionsLayout, updateToolOptionsLayout);
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (updateDocumentBarLayout) => {
-		await nextTick();
-		patchWidgetLayout(state.documentBarLayout, updateDocumentBarLayout);
+		await tick();
+		
+		update((state) => {
+			// `state.documentModeLayout` is mutated in the function
+			patchWidgetLayout(state.documentBarLayout, updateDocumentBarLayout);
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (updateToolShelfLayout) => {
-		await nextTick();
-		patchWidgetLayout(state.toolShelfLayout, updateToolShelfLayout);
+		await tick();
+		
+		update((state) => {
+			// `state.documentModeLayout` is mutated in the function
+			patchWidgetLayout(state.toolShelfLayout, updateToolShelfLayout);
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
-		await nextTick();
-		patchWidgetLayout(state.workingColorsLayout, updateWorkingColorsLayout);
+		await tick();
+		
+		update((state) => {
+			// `state.documentModeLayout` is mutated in the function
+			patchWidgetLayout(state.workingColorsLayout, updateWorkingColorsLayout);
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
+		// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
+		await tick();
+		// Wait to display the populated document panel
+		await tick();
+
+		// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
+		window.dispatchEvent(new CustomEvent("resize"));
 	});
 
 	return {
-		state: readonly(state) as typeof state,
+		subscribe,
 	};
 }
 export type DocumentState = ReturnType<typeof createDocumentState>;

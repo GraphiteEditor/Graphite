@@ -1,43 +1,29 @@
-<script lang="ts">
-import { defineComponent } from "vue";
-
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import StatusBar from "@/components/window/status-bar/StatusBar.vue";
-import TitleBar from "@/components/window/title-bar/TitleBar.vue";
-import Workspace from "@/components/window/workspace/Workspace.vue";
-
-export type ApplicationPlatform = "Windows" | "Mac" | "Linux" | "Web";
-
-export default defineComponent({
-	data() {
-		return {
-			platform: "Web" as ApplicationPlatform,
-			maximized: true,
-		};
-	},
-	components: {
-		LayoutCol,
-		StatusBar,
-		TitleBar,
-		Workspace,
-	},
-});
+<script lang="ts" context="module">
+	export type ApplicationPlatform = "Windows" | "Mac" | "Linux" | "Web";
 </script>
 
-<template>
-	<LayoutCol class="main-window">
-		<TitleBar :platform="platform" :maximized="maximized" />
+<script lang="ts">
+	import LayoutCol from "@/components/layout/LayoutCol.svelte";
+	import StatusBar from "@/components/window/status-bar/StatusBar.svelte";
+	import TitleBar from "@/components/window/title-bar/TitleBar.svelte";
+	import Workspace from "@/components/window/workspace/Workspace.svelte";
 
-		<Workspace />
+	let platform: ApplicationPlatform = "Web";
+	let maximized: true;
+</script>
 
-		<StatusBar />
-	</LayoutCol>
-</template>
+<LayoutCol class="main-window">
+	<TitleBar {platform} {maximized} />
 
-<style lang="scss">
-.main-window {
-	height: 100%;
-	overflow: auto;
-	touch-action: none;
-}
+	<Workspace />
+
+	<StatusBar />
+</LayoutCol>
+
+<style lang="scss" global>
+	.main-window {
+		height: 100%;
+		overflow: auto;
+		touch-action: none;
+	}
 </style>

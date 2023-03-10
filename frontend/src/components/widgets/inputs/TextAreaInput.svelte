@@ -1,76 +1,64 @@
 <script lang="ts">
-import { defineComponent, type PropType } from "vue";
+	import { createEventDispatcher } from "svelte";
 
-import FieldInput from "@/components/widgets/inputs/FieldInput.vue";
+	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
-export default defineComponent({
-	emits: ["update:value", "commitText"],
-	props: {
-		value: { type: String as PropType<string>, required: true },
-		label: { type: String as PropType<string>, required: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-	},
-	data() {
-		return {
-			editing: false,
-		};
-	},
-	computed: {
-		inputValue: {
-			get() {
-				return this.value;
-			},
-			set(value: string) {
-				this.$emit("update:value", value);
-			},
-		},
-	},
-	methods: {
-		onTextFocused() {
-			this.editing = true;
-		},
-		// Called only when `value` is changed from the <textarea> element via user input and committed, either
-		// via the `change` event or when the <input> element is unfocused (with the `blur` event binding)
-		onTextChanged() {
-			// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
-			if (!this.editing) return;
+	// emits: ["update:value", "commitText"],
+	const dispatch = createEventDispatcher<{ commitText: string }>();
 
-			this.onCancelTextChange();
+	export let value: string;
+	export let label: string | undefined = undefined;
+	export let tooltip: string | undefined = undefined;
+	export let disabled = false;
 
-			// TODO: Find a less hacky way to do this
-			const inputElement = this.$refs.fieldInput as typeof FieldInput | undefined;
-			if (!inputElement) return;
-			this.$emit("commitText", inputElement.getInputElementValue());
+	let self: FieldInput;
+	let editing = false;
 
-			// Required if value is not changed by the parent component upon update:value event
-			inputElement.setInputElementValue(this.value);
-		},
-		onCancelTextChange() {
-			this.editing = false;
+	function onTextFocused() {
+		editing = true;
+	}
 
-			(this.$refs.fieldInput as typeof FieldInput | undefined)?.unFocus();
-		},
-	},
-	components: { FieldInput },
-});
+	// Called only when `value` is changed from the <textarea> element via user input and committed, either
+	// via the `change` event or when the <input> element is unfocused (with the `blur` event binding)
+	function onTextChanged() {
+		// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
+		if (!editing) return;
+
+		onCancelTextChange();
+
+		// TODO: Find a less hacky way to do this
+		dispatch("commitText", self.getValue());
+
+		// Required if value is not changed by the parent component upon update:value event
+		self.setInputElementValue(value);
+	}
+
+	function onCancelTextChange() {
+		editing = false;
+
+		self.unFocus();
+	}
+
+	export function focus() {
+		self.focus();
+	}
 </script>
 
-<template>
-	<FieldInput
-		:textarea="true"
-		class="text-area-input"
-		:class="{ 'has-label': label }"
-		:label="label"
-		:spellcheck="true"
-		:disabled="disabled"
-		:tooltip="tooltip"
-		v-model:value="inputValue"
-		@textFocused="() => onTextFocused()"
-		@textChanged="() => onTextChanged()"
-		@cancelTextChange="() => onCancelTextChange()"
-		ref="fieldInput"
-	></FieldInput>
-</template>
+<FieldInput
+	class="text-area-input"
+	classes={{ "has-label": Boolean(label) }}
+	{value}
+	on:value
+	on:textFocused={onTextFocused}
+	on:textChanged={onTextChanged}
+	on:cancelTextChange={onCancelTextChange}
+	textarea={true}
+	spellcheck={true}
+	{label}
+	{disabled}
+	{tooltip}
+	bind:this={self}
+/>
 
-<style lang="scss"></style>
+<style lang="scss" global>
+</style>
