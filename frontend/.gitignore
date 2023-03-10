@@ -1,4 +1,3 @@
 node_modules/
-dist/**
-!dist/.git-keep-directory
-pkg/
+wasm/pkg/
+public/build/

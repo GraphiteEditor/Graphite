@@ -4,7 +4,7 @@
 		"rust-lang.rust-analyzer",
 		// Web
 		"dbaeumer.vscode-eslint",
-		"Vue.volar",
+		"svelte.svelte-vscode",
 		"vitaliymaz.vscode-svg-previewer",
 		// Code quality
 		"wayou.vscode-todo-highlight",
@@ -14,6 +14,6 @@
 		"waderyan.gitblame",
 		"qezhu.gitlink",
 		"wmaurer.change-case",
-		"shalimski.swapdiff",
+		"shalimski.swapdiff"
 	]
 }

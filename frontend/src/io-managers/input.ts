@@ -1,3 +1,5 @@
+import { get } from "svelte/store";
+
 import { type DialogState } from "@/state-providers/dialog";
 import { type FullscreenState } from "@/state-providers/fullscreen";
 import { type PortfolioState } from "@/state-providers/portfolio";
@@ -14,8 +16,8 @@ type EventListenerTarget = {
 	removeEventListener: typeof window.removeEventListener;
 };
 
-export function createInputManager(editor: Editor, container: HTMLElement, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
-	const app = window.document.querySelector("[data-app]") as HTMLElement | undefined;
+export function createInputManager(editor: Editor, dialog: DialogState, document: PortfolioState, fullscreen: FullscreenState): () => void {
+	const app = window.document.querySelector("[data-app-container]") as HTMLElement | undefined;
 	app?.focus();
 
 	let viewportPointerInteractionOngoing = false;
@@ -30,21 +32,20 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: (): void => onWindowResize(container) },
-		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent): Promise<void> => onBeforeUnload(e) },
-		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent): void => e.preventDefault() },
-		{ target: window.document, eventName: "fullscreenchange", action: (): void => fullscreen.fullscreenModeChanged() },
-		{ target: window, eventName: "keyup", action: (e: KeyboardEvent): Promise<void> => onKeyUp(e) },
-		{ target: window, eventName: "keydown", action: (e: KeyboardEvent): Promise<void> => onKeyDown(e) },
-		{ target: window, eventName: "pointermove", action: (e: PointerEvent): void => onPointerMove(e) },
-		{ target: window, eventName: "pointerdown", action: (e: PointerEvent): void => onPointerDown(e) },
-		{ target: window, eventName: "pointerup", action: (e: PointerEvent): void => onPointerUp(e) },
-		{ target: window, eventName: "dblclick", action: (e: PointerEvent): void => onDoubleClick(e) },
-		{ target: window, eventName: "mousedown", action: (e: MouseEvent): void => onMouseDown(e) },
-		{ target: window, eventName: "wheel", action: (e: WheelEvent): void => onWheelScroll(e), options: { passive: false } },
-		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent): void => onModifyInputField(e) },
-		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent): void => onPaste(e) },
-		{ target: app as EventListenerTarget, eventName: "blur", action: (): void => blurApp() },
+		{ target: window, eventName: "resize", action: () => onWindowResize(window.document.body) },
+		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
+		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
+		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
+		{ target: window, eventName: "pointermove", action: (e: PointerEvent) => onPointerMove(e) },
+		{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => onPointerDown(e) },
+		{ target: window, eventName: "pointerup", action: (e: PointerEvent) => onPointerUp(e) },
+		{ target: window, eventName: "dblclick", action: (e: PointerEvent) => onDoubleClick(e) },
+		{ target: window, eventName: "wheel", action: (e: WheelEvent) => onWheelScroll(e), options: { passive: false } },
+		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
+		{ target: window, eventName: "focusout", action: () => (canvasFocused = false) },
+		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => e.preventDefault() },
+		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
+		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => onPaste(e) },
 	];
 
 	// Event bindings
@@ -62,7 +63,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 
 	async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): Promise<boolean> {
 		// Don't redirect when a modal is covering the workspace
-		if (dialog.dialogIsVisible()) return false;
+		if (get(dialog).visible) return false;
 
 		const key = await getLocalizedScanCode(e);
 
@@ -110,7 +111,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			return;
 		}
 
-		if (dialog.dialogIsVisible() && key === "Escape") {
+		if (get(dialog).visible && key === "Escape") {
 			dialog.dismissDialog();
 		}
 	}
@@ -155,7 +156,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
 		const inTextInput = target === textInput;
 
-		if (dialog.dialogIsVisible() && !inDialog) {
+		if (get(dialog).visible && !inDialog) {
 			dialog.dismissDialog();
 			e.preventDefault();
 			e.stopPropagation();
@@ -170,6 +171,9 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 		}
+
+		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
+		if (e.button === 1) e.preventDefault();
 	}
 
 	function onPointerUp(e: PointerEvent): void {
@@ -191,12 +195,6 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	}
 
 	// Mouse events
-
-	function onMouseDown(e: MouseEvent): void {
-		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
-		// This has to be in `mousedown`, not `pointerdown`, to avoid blocking Vue's middle click detection on HTML elements
-		if (e.button === 1) e.preventDefault();
-	}
 
 	function onWheelScroll(e: WheelEvent): void {
 		const { target } = e;
@@ -237,7 +235,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	}
 
 	async function onBeforeUnload(e: BeforeUnloadEvent): Promise<void> {
-		const activeDocument = document.state.documents[document.state.activeDocumentIndex];
+		const activeDocument = get(document).documents[get(document).activeDocumentIndex];
 		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
@@ -246,7 +244,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 		// Skip the message during development, since it's annoying when testing
 		if (await editor.instance.inDevelopmentMode()) return;
 
-		const allDocumentsSaved = document.state.documents.reduce((acc, doc) => acc && doc.isSaved, true);
+		const allDocumentsSaved = get(document).documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
@@ -353,7 +351,7 @@ export function createInputManager(editor: Editor, container: HTMLElement, dialo
 	// Bind the event listeners
 	bindListeners();
 	// Resize on creation
-	onWindowResize(container);
+	onWindowResize(window.document.body);
 
 	// Return the destructor
 	return unbindListeners;

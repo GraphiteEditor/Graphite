@@ -1,5 +1,3 @@
-import { invoke } from "@tauri-apps/api";
-
 import type WasmBindgenPackage from "@/../wasm/pkg";
 import { panicProxy } from "@/utility-functions/panic-proxy";
 import { type JsMessageType } from "@/wasm-communication/messages";
@@ -40,10 +38,12 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
 }
 
-// export async function dispatchTauri(message: string): Promise<string> {
+const tauri = "__TAURI_METADATA__" in window && import("@tauri-apps/api");
 export async function dispatchTauri(message: unknown): Promise<void> {
+	if (!tauri) return;
+
 	try {
-		const response = await invoke("handle_message", { message });
+		const response = await (await tauri).invoke("handle_message", { message });
 		editorInstance?.tauriResponse(response);
 	} catch {
 		// eslint-disable-next-line no-console
@@ -64,11 +64,12 @@ export async function initWasm(): Promise<void> {
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	const randomSeed = BigInt(randomSeedFloat);
 	wasmImport?.setRandomSeed(randomSeed);
-	try {
-		await invoke("set_random_seed", { seed: randomSeedFloat });
-	} catch {
-		// Ignore errors
-	}
+	// TODO: Tauri: reenable this
+	// try {
+	// 	await invoke("set_random_seed", { seed: randomSeedFloat });
+	// } catch {
+	// 	// Ignore errors
+	// }
 }
 
 // Should be called after running `initWasm()` and its promise resolving
