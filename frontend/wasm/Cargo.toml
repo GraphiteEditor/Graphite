@@ -1,5 +1,5 @@
 [package]
-name = "graphite-wasm-svelte"
+name = "graphite-wasm"
 publish = false
 version = "0.0.0"
 rust-version = "1.66.0"

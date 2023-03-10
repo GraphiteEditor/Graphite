@@ -23,7 +23,7 @@ npm --version
 cd frontend
 npm ci
 
-# Install the cargo-about Rust dependency that's used during the Webpack build process (in `vue.config.js`)
+# Install the cargo-about Rust dependency that's used during the Webpack build process (in `webpack.config.js`)
 echo 📦 Install cargo-about
 cargo install cargo-about
 
@@ -31,3 +31,4 @@ cargo install cargo-about
 echo 👷 Build Graphite web client
 export NODE_ENV=production
 npm run build
+mv public dist

@@ -41,7 +41,9 @@ const config: webpack.Configuration = {
 							// Dev mode must be enabled for HMR to work!
 							dev: mode === "development"
 						},
-						emitCss: mode === "production",
+						// TODO: Reenable in prod, see: https://github.com/sveltejs/rollup-plugin-svelte#extracting-css
+						// emitCss: mode === "production",
+						emitCss: false,
 						hotReload: mode === "development",
 						hotOptions: {
 							// List of options and defaults: https://www.npmjs.com/package/svelte-loader-hot#usage
