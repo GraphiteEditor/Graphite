@@ -1,3 +1,104 @@
+<script lang="ts">
+import { defineComponent } from "vue";
+
+import { createClipboardManager } from "@/io-managers/clipboard";
+import { createDragManager } from "@/io-managers/drag";
+import { createHyperlinkManager } from "@/io-managers/hyperlinks";
+import { createInputManager } from "@/io-managers/input";
+import { createLocalizationManager } from "@/io-managers/localization";
+import { createPanicManager } from "@/io-managers/panic";
+import { createPersistenceManager } from "@/io-managers/persistence";
+import { createDialogState, type DialogState } from "@/state-providers/dialog";
+import { createDocumentState, type DocumentState } from "@/state-providers/document";
+import { createFontsState, type FontsState } from "@/state-providers/fonts";
+import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
+import { createNodeGraphState, type NodeGraphState } from "@/state-providers/node-graph";
+import { createPanelsState, type PanelsState } from "@/state-providers/panels";
+import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
+import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
+import { operatingSystem } from "@/utility-functions/platform";
+import { createEditor, type Editor } from "@/wasm-communication/editor";
+
+import MainWindow from "@/components/window/MainWindow.vue";
+
+const managerDestructors: {
+	createClipboardManager?: () => void;
+	createDragManager?: () => void;
+	createHyperlinkManager?: () => void;
+	createInputManager?: () => void;
+	createLocalizationManager?: () => void;
+	createPanicManager?: () => void;
+	createPersistenceManager?: () => void;
+} = {};
+
+// Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
+declare module "@vue/runtime-core" {
+	// Systems `provide`d by the root App to be `inject`ed into descendant components and used for reactive bindings
+	// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+	interface ComponentCustomProperties {
+		// Graphite WASM editor instance
+		editor: Editor;
+
+		// State provider systems
+		dialog: DialogState;
+		fonts: FontsState;
+		fullscreen: FullscreenState;
+		panels: PanelsState;
+		portfolio: PortfolioState;
+		workspace: WorkspaceState;
+		nodeGraph: NodeGraphState;
+		document: DocumentState;
+	}
+}
+
+export default defineComponent({
+	provide() {
+		return { ...this.$data };
+	},
+	data() {
+		const editor = createEditor();
+		return {
+			// Graphite WASM editor instance
+			editor,
+
+			// State provider systems
+			dialog: createDialogState(editor),
+			fonts: createFontsState(editor),
+			fullscreen: createFullscreenState(editor),
+			panels: createPanelsState(editor),
+			portfolio: createPortfolioState(editor),
+			workspace: createWorkspaceState(editor),
+			nodeGraph: createNodeGraphState(editor),
+			document: createDocumentState(editor),
+		};
+	},
+	mounted() {
+		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
+		Object.assign(managerDestructors, {
+			createClipboardManager: createClipboardManager(this.editor),
+			createDragManager: createDragManager(),
+			createHyperlinkManager: createHyperlinkManager(this.editor),
+			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
+			createLocalizationManager: createLocalizationManager(this.editor),
+			createPanicManager: createPanicManager(this.editor, this.dialog),
+			createPersistenceManager: createPersistenceManager(this.editor, this.portfolio),
+		});
+
+		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
+		const platform = operatingSystem();
+		this.editor.instance.initAfterFrontendReady(platform);
+	},
+	beforeUnmount() {
+		// Call the destructor for each manager
+		Object.values(managerDestructors).forEach((destructor) => destructor?.());
+
+		// Destroy the WASM editor instance
+		this.editor.instance.free();
+	},
+	components: { MainWindow },
+});
+</script>
+
 <template>
 	<MainWindow />
 </template>
@@ -232,104 +333,3 @@ img {
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent } from "vue";
-
-import { createClipboardManager } from "@/io-managers/clipboard";
-import { createDragManager } from "@/io-managers/drag";
-import { createHyperlinkManager } from "@/io-managers/hyperlinks";
-import { createInputManager } from "@/io-managers/input";
-import { createLocalizationManager } from "@/io-managers/localization";
-import { createPanicManager } from "@/io-managers/panic";
-import { createPersistenceManager } from "@/io-managers/persistence";
-import { createDialogState, type DialogState } from "@/state-providers/dialog";
-import { createDocumentState, type DocumentState } from "@/state-providers/document";
-import { createFontsState, type FontsState } from "@/state-providers/fonts";
-import { createFullscreenState, type FullscreenState } from "@/state-providers/fullscreen";
-import { createNodeGraphState, type NodeGraphState } from "@/state-providers/node-graph";
-import { createPanelsState, type PanelsState } from "@/state-providers/panels";
-import { createPortfolioState, type PortfolioState } from "@/state-providers/portfolio";
-import { createWorkspaceState, type WorkspaceState } from "@/state-providers/workspace";
-import { operatingSystem } from "@/utility-functions/platform";
-import { createEditor, type Editor } from "@/wasm-communication/editor";
-
-import MainWindow from "@/components/window/MainWindow.vue";
-
-const managerDestructors: {
-	createClipboardManager?: () => void;
-	createDragManager?: () => void;
-	createHyperlinkManager?: () => void;
-	createInputManager?: () => void;
-	createLocalizationManager?: () => void;
-	createPanicManager?: () => void;
-	createPersistenceManager?: () => void;
-} = {};
-
-// Vue injects don't play well with TypeScript (all injects will show up as `any`) but we can define these types as a solution
-declare module "@vue/runtime-core" {
-	// Systems `provide`d by the root App to be `inject`ed into descendant components and used for reactive bindings
-	// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-	interface ComponentCustomProperties {
-		// Graphite WASM editor instance
-		editor: Editor;
-
-		// State provider systems
-		dialog: DialogState;
-		fonts: FontsState;
-		fullscreen: FullscreenState;
-		panels: PanelsState;
-		portfolio: PortfolioState;
-		workspace: WorkspaceState;
-		nodeGraph: NodeGraphState;
-		document: DocumentState;
-	}
-}
-
-export default defineComponent({
-	provide() {
-		return { ...this.$data };
-	},
-	data() {
-		const editor = createEditor();
-		return {
-			// Graphite WASM editor instance
-			editor,
-
-			// State provider systems
-			dialog: createDialogState(editor),
-			fonts: createFontsState(editor),
-			fullscreen: createFullscreenState(editor),
-			panels: createPanelsState(editor),
-			portfolio: createPortfolioState(editor),
-			workspace: createWorkspaceState(editor),
-			nodeGraph: createNodeGraphState(editor),
-			document: createDocumentState(editor),
-		};
-	},
-	mounted() {
-		// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
-		Object.assign(managerDestructors, {
-			createClipboardManager: createClipboardManager(this.editor),
-			createDragManager: createDragManager(),
-			createHyperlinkManager: createHyperlinkManager(this.editor),
-			createInputManager: createInputManager(this.editor, this.$el.parentElement, this.dialog, this.portfolio, this.fullscreen),
-			createLocalizationManager: createLocalizationManager(this.editor),
-			createPanicManager: createPanicManager(this.editor, this.dialog),
-			createPersistenceManager: createPersistenceManager(this.editor, this.portfolio),
-		});
-
-		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		const platform = operatingSystem();
-		this.editor.instance.initAfterFrontendReady(platform);
-	},
-	beforeUnmount() {
-		// Call the destructor for each manager
-		Object.values(managerDestructors).forEach((destructor) => destructor?.());
-
-		// Destroy the WASM editor instance
-		this.editor.instance.free();
-	},
-	components: { MainWindow },
-});
-</script>

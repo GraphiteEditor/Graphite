@@ -1,229 +1,3 @@
-<template>
-	<LayoutCol class="document">
-		<LayoutRow class="options-bar" :scrollableX="true">
-			<WidgetLayout :layout="document.state.documentModeLayout" />
-			<WidgetLayout :layout="document.state.toolOptionsLayout" />
-
-			<LayoutRow class="spacer"></LayoutRow>
-
-			<WidgetLayout :layout="document.state.documentBarLayout" />
-		</LayoutRow>
-		<LayoutRow class="shelf-and-viewport">
-			<LayoutCol class="shelf">
-				<LayoutCol class="tools" :scrollableY="true">
-					<WidgetLayout :layout="document.state.toolShelfLayout" />
-				</LayoutCol>
-
-				<LayoutCol class="spacer"></LayoutCol>
-
-				<LayoutCol class="working-colors">
-					<WidgetLayout :layout="document.state.workingColorsLayout" />
-				</LayoutCol>
-			</LayoutCol>
-			<LayoutCol class="viewport">
-				<LayoutRow class="bar-area">
-					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" class="top-ruler" ref="rulerHorizontal" />
-				</LayoutRow>
-				<LayoutRow class="canvas-area">
-					<LayoutCol class="bar-area">
-						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
-					</LayoutCol>
-					<LayoutCol class="canvas-area" :style="{ cursor: canvasCursor }">
-						<EyedropperPreview
-							v-if="cursorEyedropper"
-							:colorChoice="cursorEyedropperPreviewColorChoice"
-							:primaryColor="cursorEyedropperPreviewColorPrimary"
-							:secondaryColor="cursorEyedropperPreviewColorSecondary"
-							:imageData="cursorEyedropperPreviewImageData"
-							:style="{ left: cursorLeft + 'px', top: cursorTop + 'px' }"
-						/>
-						<div class="canvas" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)" @dragover="(e) => e.preventDefault()" @drop="(e) => pasteFile(e)" ref="canvasDiv" data-canvas>
-							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasWidthCSS, height: canvasHeightCSS }"></svg>
-							<svg
-								class="artwork"
-								xmlns="http://www.w3.org/2000/svg"
-								xmlns:xlink="http://www.w3.org/1999/xlink"
-								v-html="artworkSvg"
-								:style="{ width: canvasWidthCSS, height: canvasHeightCSS }"
-							></svg>
-							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasWidthCSS, height: canvasHeightCSS }"></svg>
-						</div>
-					</LayoutCol>
-					<LayoutCol class="bar-area">
-						<PersistentScrollbar
-							:direction="'Vertical'"
-							:handlePosition="scrollbarPos.y"
-							@update:handlePosition="(newValue: number) => translateCanvasY(newValue)"
-							v-model:handleLength="scrollbarSize.y"
-							@pressTrack="(delta: number) => pageY(delta)"
-							class="right-scrollbar"
-						/>
-					</LayoutCol>
-				</LayoutRow>
-				<LayoutRow class="bar-area">
-					<PersistentScrollbar
-						:direction="'Horizontal'"
-						:handlePosition="scrollbarPos.x"
-						@update:handlePosition="(newValue: number) => translateCanvasX(newValue)"
-						v-model:handleLength="scrollbarSize.x"
-						@pressTrack="(delta: number) => pageX(delta)"
-						class="bottom-scrollbar"
-					/>
-				</LayoutRow>
-			</LayoutCol>
-		</LayoutRow>
-	</LayoutCol>
-</template>
-
-<style lang="scss">
-.document {
-	height: 100%;
-
-	.options-bar {
-		height: 32px;
-		flex: 0 0 auto;
-		margin: 0 4px;
-
-		.spacer {
-			min-width: 40px;
-		}
-	}
-
-	.shelf-and-viewport {
-		.shelf {
-			flex: 0 0 auto;
-
-			.tools {
-				flex: 0 1 auto;
-
-				.icon-button[title^="Coming Soon"] {
-					opacity: 0.25;
-					transition: opacity 0.25s;
-
-					&:hover {
-						opacity: 1;
-					}
-				}
-
-				.icon-button:not(.active) {
-					.color-solid {
-						fill: var(--color-f-white);
-					}
-
-					.color-general {
-						fill: var(--color-data-general);
-					}
-
-					.color-vector {
-						fill: var(--color-data-vector);
-					}
-
-					.color-raster {
-						fill: var(--color-data-raster);
-					}
-				}
-			}
-
-			.spacer {
-				flex: 1 0 auto;
-				min-height: 8px;
-			}
-
-			.working-colors {
-				flex: 0 0 auto;
-
-				.widget-row {
-					min-height: 0;
-
-					.swatch-pair {
-						margin: 0;
-					}
-
-					.icon-button {
-						--widget-height: 0;
-					}
-				}
-			}
-		}
-
-		.viewport {
-			flex: 1 1 100%;
-
-			.canvas-area {
-				flex: 1 1 100%;
-				position: relative;
-			}
-
-			.bar-area {
-				flex: 0 0 auto;
-			}
-
-			.top-ruler {
-				padding-left: 16px;
-				margin-right: 16px;
-			}
-
-			.right-scrollbar {
-				margin-top: -16px;
-			}
-
-			.bottom-scrollbar {
-				margin-right: 16px;
-			}
-
-			.canvas {
-				background: var(--color-2-mildblack);
-				width: 100%;
-				height: 100%;
-				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
-				position: relative;
-				overflow: hidden;
-
-				svg {
-					position: absolute;
-					// Fallback values if JS hasn't set these to integers yet
-					width: 100%;
-					height: 100%;
-					// Allows dev tools to select the artwork without being blocked by the SVG containers
-					pointer-events: none;
-
-					// Prevent inheritance from reaching the child elements
-					> * {
-						pointer-events: auto;
-					}
-				}
-
-				foreignObject {
-					width: 10000px;
-					height: 10000px;
-					overflow: visible;
-
-					div {
-						cursor: text;
-						background: none;
-						border: none;
-						margin: 0;
-						padding: 0;
-						overflow: visible;
-						white-space: pre-wrap;
-						display: inline-block;
-						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
-						padding-left: 1px;
-						margin-left: -1px;
-
-						&:focus {
-							border: none;
-							outline: none; // Ok for contenteditable element
-							margin: -1px;
-						}
-					}
-				}
-			}
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
@@ -525,3 +299,229 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<LayoutCol class="document">
+		<LayoutRow class="options-bar" :scrollableX="true">
+			<WidgetLayout :layout="document.state.documentModeLayout" />
+			<WidgetLayout :layout="document.state.toolOptionsLayout" />
+
+			<LayoutRow class="spacer"></LayoutRow>
+
+			<WidgetLayout :layout="document.state.documentBarLayout" />
+		</LayoutRow>
+		<LayoutRow class="shelf-and-viewport">
+			<LayoutCol class="shelf">
+				<LayoutCol class="tools" :scrollableY="true">
+					<WidgetLayout :layout="document.state.toolShelfLayout" />
+				</LayoutCol>
+
+				<LayoutCol class="spacer"></LayoutCol>
+
+				<LayoutCol class="working-colors">
+					<WidgetLayout :layout="document.state.workingColorsLayout" />
+				</LayoutCol>
+			</LayoutCol>
+			<LayoutCol class="viewport">
+				<LayoutRow class="bar-area">
+					<CanvasRuler :origin="rulerOrigin.x" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Horizontal'" class="top-ruler" ref="rulerHorizontal" />
+				</LayoutRow>
+				<LayoutRow class="canvas-area">
+					<LayoutCol class="bar-area">
+						<CanvasRuler :origin="rulerOrigin.y" :majorMarkSpacing="rulerSpacing" :numberInterval="rulerInterval" :direction="'Vertical'" ref="rulerVertical" />
+					</LayoutCol>
+					<LayoutCol class="canvas-area" :style="{ cursor: canvasCursor }">
+						<EyedropperPreview
+							v-if="cursorEyedropper"
+							:colorChoice="cursorEyedropperPreviewColorChoice"
+							:primaryColor="cursorEyedropperPreviewColorPrimary"
+							:secondaryColor="cursorEyedropperPreviewColorSecondary"
+							:imageData="cursorEyedropperPreviewImageData"
+							:style="{ left: cursorLeft + 'px', top: cursorTop + 'px' }"
+						/>
+						<div class="canvas" @pointerdown="(e: PointerEvent) => canvasPointerDown(e)" @dragover="(e) => e.preventDefault()" @drop="(e) => pasteFile(e)" ref="canvasDiv" data-canvas>
+							<svg class="artboards" v-html="artboardSvg" :style="{ width: canvasWidthCSS, height: canvasHeightCSS }"></svg>
+							<svg
+								class="artwork"
+								xmlns="http://www.w3.org/2000/svg"
+								xmlns:xlink="http://www.w3.org/1999/xlink"
+								v-html="artworkSvg"
+								:style="{ width: canvasWidthCSS, height: canvasHeightCSS }"
+							></svg>
+							<svg class="overlays" v-html="overlaysSvg" :style="{ width: canvasWidthCSS, height: canvasHeightCSS }"></svg>
+						</div>
+					</LayoutCol>
+					<LayoutCol class="bar-area">
+						<PersistentScrollbar
+							:direction="'Vertical'"
+							:handlePosition="scrollbarPos.y"
+							@update:handlePosition="(newValue: number) => translateCanvasY(newValue)"
+							v-model:handleLength="scrollbarSize.y"
+							@pressTrack="(delta: number) => pageY(delta)"
+							class="right-scrollbar"
+						/>
+					</LayoutCol>
+				</LayoutRow>
+				<LayoutRow class="bar-area">
+					<PersistentScrollbar
+						:direction="'Horizontal'"
+						:handlePosition="scrollbarPos.x"
+						@update:handlePosition="(newValue: number) => translateCanvasX(newValue)"
+						v-model:handleLength="scrollbarSize.x"
+						@pressTrack="(delta: number) => pageX(delta)"
+						class="bottom-scrollbar"
+					/>
+				</LayoutRow>
+			</LayoutCol>
+		</LayoutRow>
+	</LayoutCol>
+</template>
+
+<style lang="scss">
+.document {
+	height: 100%;
+
+	.options-bar {
+		height: 32px;
+		flex: 0 0 auto;
+		margin: 0 4px;
+
+		.spacer {
+			min-width: 40px;
+		}
+	}
+
+	.shelf-and-viewport {
+		.shelf {
+			flex: 0 0 auto;
+
+			.tools {
+				flex: 0 1 auto;
+
+				.icon-button[title^="Coming Soon"] {
+					opacity: 0.25;
+					transition: opacity 0.25s;
+
+					&:hover {
+						opacity: 1;
+					}
+				}
+
+				.icon-button:not(.active) {
+					.color-solid {
+						fill: var(--color-f-white);
+					}
+
+					.color-general {
+						fill: var(--color-data-general);
+					}
+
+					.color-vector {
+						fill: var(--color-data-vector);
+					}
+
+					.color-raster {
+						fill: var(--color-data-raster);
+					}
+				}
+			}
+
+			.spacer {
+				flex: 1 0 auto;
+				min-height: 8px;
+			}
+
+			.working-colors {
+				flex: 0 0 auto;
+
+				.widget-row {
+					min-height: 0;
+
+					.swatch-pair {
+						margin: 0;
+					}
+
+					.icon-button {
+						--widget-height: 0;
+					}
+				}
+			}
+		}
+
+		.viewport {
+			flex: 1 1 100%;
+
+			.canvas-area {
+				flex: 1 1 100%;
+				position: relative;
+			}
+
+			.bar-area {
+				flex: 0 0 auto;
+			}
+
+			.top-ruler {
+				padding-left: 16px;
+				margin-right: 16px;
+			}
+
+			.right-scrollbar {
+				margin-top: -16px;
+			}
+
+			.bottom-scrollbar {
+				margin-right: 16px;
+			}
+
+			.canvas {
+				background: var(--color-2-mildblack);
+				width: 100%;
+				height: 100%;
+				// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
+				position: relative;
+				overflow: hidden;
+
+				svg {
+					position: absolute;
+					// Fallback values if JS hasn't set these to integers yet
+					width: 100%;
+					height: 100%;
+					// Allows dev tools to select the artwork without being blocked by the SVG containers
+					pointer-events: none;
+
+					// Prevent inheritance from reaching the child elements
+					> * {
+						pointer-events: auto;
+					}
+				}
+
+				foreignObject {
+					width: 10000px;
+					height: 10000px;
+					overflow: visible;
+
+					div {
+						cursor: text;
+						background: none;
+						border: none;
+						margin: 0;
+						padding: 0;
+						overflow: visible;
+						white-space: pre-wrap;
+						display: inline-block;
+						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+						padding-left: 1px;
+						margin-left: -1px;
+
+						&:focus {
+							border: none;
+							outline: none; // Ok for contenteditable element
+							margin: -1px;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+</style>

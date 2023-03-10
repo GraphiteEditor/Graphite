@@ -1,186 +1,3 @@
-<template>
-	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]">
-		<div class="tail" v-if="displayTail" ref="tail"></div>
-		<div class="floating-menu-container" v-if="displayContainer" ref="floatingMenuContainer">
-			<LayoutCol class="floating-menu-content" :style="{ minWidth: minWidthStyleValue }" :scrollableY="scrollableY" ref="floatingMenuContent" data-floating-menu-content>
-				<slot></slot>
-			</LayoutCol>
-		</div>
-	</div>
-</template>
-
-<style lang="scss">
-.floating-menu {
-	position: absolute;
-	width: 0;
-	height: 0;
-	display: flex;
-	// Floating menus begin at a z-index of 1000
-	z-index: 1000;
-	--floating-menu-content-offset: 0;
-	--floating-menu-content-border-radius: 4px;
-
-	&.bottom {
-		--floating-menu-content-border-radius: 0 0 4px 4px;
-	}
-
-	.tail {
-		width: 0;
-		height: 0;
-		border-style: solid;
-		// Put the tail above the floating menu's shadow
-		z-index: 10;
-		// Draw over the application without being clipped by the containing panel's `overflow: hidden`
-		position: fixed;
-	}
-
-	.floating-menu-container {
-		display: flex;
-
-		.floating-menu-content {
-			background: rgba(var(--color-2-mildblack-rgb), 0.95);
-			box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
-			border-radius: var(--floating-menu-content-border-radius);
-			color: var(--color-e-nearwhite);
-			font-size: inherit;
-			padding: 8px;
-			z-index: 0;
-			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
-			position: fixed;
-		}
-	}
-
-	&.dropdown {
-		&.top {
-			width: 100%;
-			left: 0;
-			top: 0;
-		}
-
-		&.bottom {
-			width: 100%;
-			left: 0;
-			bottom: 0;
-		}
-
-		&.left {
-			height: 100%;
-			top: 0;
-			left: 0;
-		}
-
-		&.right {
-			height: 100%;
-			top: 0;
-			right: 0;
-		}
-
-		&.topleft {
-			top: 0;
-			left: 0;
-			margin-top: -4px;
-		}
-
-		&.topright {
-			top: 0;
-			right: 0;
-			margin-top: -4px;
-		}
-
-		&.topleft {
-			bottom: 0;
-			left: 0;
-			margin-bottom: -4px;
-		}
-
-		&.topright {
-			bottom: 0;
-			right: 0;
-			margin-bottom: -4px;
-		}
-	}
-
-	&.top.dropdown .floating-menu-container,
-	&.bottom.dropdown .floating-menu-container {
-		justify-content: left;
-	}
-
-	&.popover {
-		--floating-menu-content-offset: 10px;
-		--floating-menu-content-border-radius: 4px;
-	}
-
-	&.cursor .floating-menu-container .floating-menu-content {
-		background: none;
-		box-shadow: none;
-		border-radius: 0;
-		padding: 0;
-	}
-
-	&.center {
-		justify-content: center;
-		align-items: center;
-
-		> .floating-menu-container > .floating-menu-content {
-			transform: translate(-50%, -50%);
-		}
-	}
-
-	&.top,
-	&.bottom {
-		flex-direction: column;
-	}
-
-	&.top .tail {
-		border-width: 8px 6px 0 6px;
-		border-color: rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent transparent;
-		margin-left: -6px;
-		margin-bottom: 2px;
-	}
-
-	&.bottom .tail {
-		border-width: 0 6px 8px 6px;
-		border-color: transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent;
-		margin-left: -6px;
-		margin-top: 2px;
-	}
-
-	&.left .tail {
-		border-width: 6px 0 6px 8px;
-		border-color: transparent transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95);
-		margin-top: -6px;
-		margin-right: 2px;
-	}
-
-	&.right .tail {
-		border-width: 6px 8px 6px 0;
-		border-color: transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent;
-		margin-top: -6px;
-		margin-left: 2px;
-	}
-
-	&.top .floating-menu-container {
-		justify-content: center;
-		margin-bottom: var(--floating-menu-content-offset);
-	}
-
-	&.bottom .floating-menu-container {
-		justify-content: center;
-		margin-top: var(--floating-menu-content-offset);
-	}
-
-	&.left .floating-menu-container {
-		align-items: center;
-		margin-right: var(--floating-menu-content-offset);
-	}
-
-	&.right .floating-menu-container {
-		align-items: center;
-		margin-left: var(--floating-menu-content-offset);
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, nextTick, type PropType } from "vue";
 
@@ -555,3 +372,186 @@ export default defineComponent({
 	components: { LayoutCol },
 });
 </script>
+
+<template>
+	<div class="floating-menu" :class="[direction.toLowerCase(), type.toLowerCase()]">
+		<div class="tail" v-if="displayTail" ref="tail"></div>
+		<div class="floating-menu-container" v-if="displayContainer" ref="floatingMenuContainer">
+			<LayoutCol class="floating-menu-content" :style="{ minWidth: minWidthStyleValue }" :scrollableY="scrollableY" ref="floatingMenuContent" data-floating-menu-content>
+				<slot></slot>
+			</LayoutCol>
+		</div>
+	</div>
+</template>
+
+<style lang="scss">
+.floating-menu {
+	position: absolute;
+	width: 0;
+	height: 0;
+	display: flex;
+	// Floating menus begin at a z-index of 1000
+	z-index: 1000;
+	--floating-menu-content-offset: 0;
+	--floating-menu-content-border-radius: 4px;
+
+	&.bottom {
+		--floating-menu-content-border-radius: 0 0 4px 4px;
+	}
+
+	.tail {
+		width: 0;
+		height: 0;
+		border-style: solid;
+		// Put the tail above the floating menu's shadow
+		z-index: 10;
+		// Draw over the application without being clipped by the containing panel's `overflow: hidden`
+		position: fixed;
+	}
+
+	.floating-menu-container {
+		display: flex;
+
+		.floating-menu-content {
+			background: rgba(var(--color-2-mildblack-rgb), 0.95);
+			box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
+			border-radius: var(--floating-menu-content-border-radius);
+			color: var(--color-e-nearwhite);
+			font-size: inherit;
+			padding: 8px;
+			z-index: 0;
+			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
+			position: fixed;
+		}
+	}
+
+	&.dropdown {
+		&.top {
+			width: 100%;
+			left: 0;
+			top: 0;
+		}
+
+		&.bottom {
+			width: 100%;
+			left: 0;
+			bottom: 0;
+		}
+
+		&.left {
+			height: 100%;
+			top: 0;
+			left: 0;
+		}
+
+		&.right {
+			height: 100%;
+			top: 0;
+			right: 0;
+		}
+
+		&.topleft {
+			top: 0;
+			left: 0;
+			margin-top: -4px;
+		}
+
+		&.topright {
+			top: 0;
+			right: 0;
+			margin-top: -4px;
+		}
+
+		&.topleft {
+			bottom: 0;
+			left: 0;
+			margin-bottom: -4px;
+		}
+
+		&.topright {
+			bottom: 0;
+			right: 0;
+			margin-bottom: -4px;
+		}
+	}
+
+	&.top.dropdown .floating-menu-container,
+	&.bottom.dropdown .floating-menu-container {
+		justify-content: left;
+	}
+
+	&.popover {
+		--floating-menu-content-offset: 10px;
+		--floating-menu-content-border-radius: 4px;
+	}
+
+	&.cursor .floating-menu-container .floating-menu-content {
+		background: none;
+		box-shadow: none;
+		border-radius: 0;
+		padding: 0;
+	}
+
+	&.center {
+		justify-content: center;
+		align-items: center;
+
+		> .floating-menu-container > .floating-menu-content {
+			transform: translate(-50%, -50%);
+		}
+	}
+
+	&.top,
+	&.bottom {
+		flex-direction: column;
+	}
+
+	&.top .tail {
+		border-width: 8px 6px 0 6px;
+		border-color: rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent transparent;
+		margin-left: -6px;
+		margin-bottom: 2px;
+	}
+
+	&.bottom .tail {
+		border-width: 0 6px 8px 6px;
+		border-color: transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent;
+		margin-left: -6px;
+		margin-top: 2px;
+	}
+
+	&.left .tail {
+		border-width: 6px 0 6px 8px;
+		border-color: transparent transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95);
+		margin-top: -6px;
+		margin-right: 2px;
+	}
+
+	&.right .tail {
+		border-width: 6px 8px 6px 0;
+		border-color: transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent;
+		margin-top: -6px;
+		margin-left: 2px;
+	}
+
+	&.top .floating-menu-container {
+		justify-content: center;
+		margin-bottom: var(--floating-menu-content-offset);
+	}
+
+	&.bottom .floating-menu-container {
+		justify-content: center;
+		margin-top: var(--floating-menu-content-offset);
+	}
+
+	&.left .floating-menu-container {
+		align-items: center;
+		margin-right: var(--floating-menu-content-offset);
+	}
+
+	&.right .floating-menu-container {
+		align-items: center;
+		margin-left: var(--floating-menu-content-offset);
+	}
+}
+</style>

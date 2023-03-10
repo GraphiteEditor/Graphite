@@ -1,3 +1,26 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type IconName, type IconSize } from "@/utility-functions/icons";
+
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+
+export default defineComponent({
+	props: {
+		icon: { type: String as PropType<IconName>, required: true },
+		size: { type: Number as PropType<IconSize>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		active: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
+	},
+	components: { IconLabel },
+});
+</script>
+
 <template>
 	<button
 		class="icon-button"
@@ -78,26 +101,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type IconName, type IconSize } from "@/utility-functions/icons";
-
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-
-export default defineComponent({
-	props: {
-		icon: { type: String as PropType<IconName>, required: true },
-		size: { type: Number as PropType<IconSize>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		active: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-
-		// Callbacks
-		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
-	},
-	components: { IconLabel },
-});
-</script>

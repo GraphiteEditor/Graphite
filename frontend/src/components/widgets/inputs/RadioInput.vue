@@ -1,3 +1,36 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type RadioEntries, type RadioEntryData } from "@/wasm-communication/messages";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export default defineComponent({
+	emits: ["update:selectedIndex"],
+	props: {
+		entries: { type: Array as PropType<RadioEntries>, required: true },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		selectedIndex: { type: Number as PropType<number>, required: true },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+	},
+	methods: {
+		handleEntryClick(radioEntryData: RadioEntryData) {
+			const index = this.entries.indexOf(radioEntryData);
+			this.$emit("update:selectedIndex", index);
+
+			radioEntryData.action?.();
+		},
+	},
+	components: {
+		IconLabel,
+		LayoutRow,
+		TextLabel,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow class="radio-input" :class="{ disabled }">
 		<button
@@ -88,36 +121,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type RadioEntries, type RadioEntryData } from "@/wasm-communication/messages";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-export default defineComponent({
-	emits: ["update:selectedIndex"],
-	props: {
-		entries: { type: Array as PropType<RadioEntries>, required: true },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		selectedIndex: { type: Number as PropType<number>, required: true },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-	},
-	methods: {
-		handleEntryClick(radioEntryData: RadioEntryData) {
-			const index = this.entries.indexOf(radioEntryData);
-			this.$emit("update:selectedIndex", index);
-
-			radioEntryData.action?.();
-		},
-	},
-	components: {
-		IconLabel,
-		LayoutRow,
-		TextLabel,
-	},
-});
-</script>

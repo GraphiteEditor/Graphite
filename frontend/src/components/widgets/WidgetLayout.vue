@@ -1,20 +1,3 @@
-<!-- TODO: Refactor this component (together with `WidgetRow.vue`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
-
-<template>
-	<div class="widget-layout">
-		<component :is="layoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layoutTarget" v-for="(layoutRow, index) in layout.layout" :key="index" />
-	</div>
-</template>
-
-<style lang="scss">
-.widget-layout {
-	height: 100%;
-	flex: 0 0 auto;
-	display: flex;
-	flex-direction: column;
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -42,3 +25,20 @@ export default defineComponent({
 	},
 });
 </script>
+
+<!-- TODO: Refactor this component (together with `WidgetRow.vue`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
+
+<template>
+	<div class="widget-layout">
+		<component :is="layoutGroupType(layoutRow)" :widgetData="layoutRow" :layoutTarget="layout.layoutTarget" v-for="(layoutRow, index) in layout.layout" :key="index" />
+	</div>
+</template>
+
+<style lang="scss">
+.widget-layout {
+	height: 100%;
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+}
+</style>

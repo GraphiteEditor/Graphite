@@ -1,338 +1,3 @@
-<template>
-	<LayoutCol class="node-graph">
-		<LayoutRow class="options-bar"><WidgetLayout :layout="nodeGraphBarLayout" /></LayoutRow>
-		<LayoutRow
-			class="graph"
-			ref="graph"
-			@wheel="(e: WheelEvent) => scroll(e)"
-			@pointerdown="(e: PointerEvent) => pointerDown(e)"
-			@pointermove="(e: PointerEvent) => pointerMove(e)"
-			@pointerup="(e: PointerEvent) => pointerUp(e)"
-			@dblclick="(e: MouseEvent) => doubleClick(e)"
-			:style="{
-				'--grid-spacing': `${gridSpacing}px`,
-				'--grid-offset-x': `${transform.x * transform.scale}px`,
-				'--grid-offset-y': `${transform.y * transform.scale}px`,
-				'--dot-radius': `${dotRadius}px`,
-			}"
-		>
-			<LayoutCol class="node-list" data-node-list v-if="nodeListLocation" :style="{ marginLeft: `${nodeListX}px`, marginTop: `${nodeListY}px` }">
-				<TextInput placeholder="Search Nodes..." :value="searchTerm" @update:value="(val) => (searchTerm = val)" v-focus />
-				<LayoutCol v-for="nodeCategory in nodeCategories" :key="nodeCategory[0]">
-					<TextLabel>{{ nodeCategory[0] }}</TextLabel>
-					<TextButton v-for="nodeType in nodeCategory[1]" v-bind:key="String(nodeType)" :label="nodeType.name" :action="() => createNode(nodeType.name)" />
-				</LayoutCol>
-				<TextLabel v-if="nodeCategories.length === 0">No search results :(</TextLabel>
-			</LayoutCol>
-			<div
-				class="nodes"
-				ref="nodesContainer"
-				:style="{
-					transform: `scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`,
-					transformOrigin: `0 0`,
-				}"
-			>
-				<div
-					v-for="node in nodes"
-					:key="String(node.id)"
-					class="node"
-					:class="{ selected: selected.includes(node.id), previewed: node.previewed, disabled: node.disabled }"
-					:style="{
-						'--offset-left': (node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0),
-						'--offset-top': (node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0),
-					}"
-					:data-node="node.id"
-				>
-					<div class="primary">
-						<div class="ports">
-							<div
-								v-if="node.primaryInput"
-								class="input port"
-								data-port="input"
-								:data-datatype="node.primaryInput"
-								:style="{ '--data-color': `var(--color-data-${node.primaryInput})`, '--data-color-dim': `var(--color-data-${node.primaryInput}-dim)` }"
-							>
-								<div></div>
-							</div>
-							<div
-								v-if="node.outputs.length > 0"
-								class="output port"
-								data-port="output"
-								:data-datatype="node.outputs[0].dataType"
-								:style="{ '--data-color': `var(--color-data-${node.outputs[0].dataType})`, '--data-color-dim': `var(--color-data-${node.outputs[0].dataType}-dim)` }"
-							>
-								<div></div>
-							</div>
-						</div>
-						<IconLabel :icon="nodeIcon(node.displayName)" />
-						<TextLabel>{{ node.displayName }}</TextLabel>
-					</div>
-					<div v-if="[...node.exposedInputs, ...node.outputs.slice(1)].length > 0" class="parameters">
-						<div v-for="(parameter, index) in [...node.exposedInputs, ...node.outputs.slice(1)]" :key="index" class="parameter">
-							<div class="ports">
-								<div
-									v-if="index < node.exposedInputs.length"
-									class="input port"
-									data-port="input"
-									:data-datatype="parameter.dataType"
-									:style="{
-										'--data-color': `var(--color-data-${parameter.dataType})`,
-										'--data-color-dim': `var(--color-data-${parameter.dataType}-dim)`,
-									}"
-								>
-									<div></div>
-								</div>
-								<div
-									v-else
-									class="output port"
-									data-port="output"
-									:data-datatype="parameter.dataType"
-									:style="{ '--data-color': `var(--color-data-${parameter.dataType})`, '--data-color-dim': `var(--color-data-${parameter.dataType}-dim)` }"
-								>
-									<div></div>
-								</div>
-							</div>
-							<TextLabel :class="index < node.exposedInputs.length ? 'name' : 'output'">{{ parameter.name }}</TextLabel>
-						</div>
-					</div>
-				</div>
-			</div>
-			<div
-				class="wires"
-				:style="{
-					transform: `scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`,
-					transformOrigin: `0 0`,
-				}"
-			>
-				<svg>
-					<path
-						v-for="([pathString, dataType], index) in linkPaths"
-						:key="index"
-						:d="pathString"
-						:style="{ '--data-color': `var(--color-data-${dataType})`, '--data-color-dim': `var(--color-data-${dataType}-dim)` }"
-					/>
-				</svg>
-			</div>
-		</LayoutRow>
-	</LayoutCol>
-</template>
-
-<style lang="scss">
-.node-graph {
-	height: 100%;
-	position: relative;
-
-	.node-list {
-		width: max-content;
-		position: fixed;
-		padding: 5px;
-		z-index: 3;
-		background-color: var(--color-3-darkgray);
-
-		.text-button + .text-button {
-			margin-left: 0;
-			margin-top: 4px;
-		}
-	}
-
-	.options-bar {
-		height: 32px;
-		margin: 0 4px;
-		flex: 0 0 auto;
-		align-items: center;
-
-		.widget-layout {
-			flex-direction: row;
-			flex-grow: 1;
-			justify-content: space-between;
-		}
-	}
-
-	.graph {
-		position: relative;
-		background: var(--color-2-mildblack);
-		width: calc(100% - 8px);
-		margin-left: 4px;
-		margin-bottom: 4px;
-		border-radius: 2px;
-		overflow: hidden;
-
-		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
-		&::before {
-			content: "";
-			position: absolute;
-			width: 100%;
-			height: 100%;
-			background-size: var(--grid-spacing) var(--grid-spacing);
-			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
-			image-rendering: pixelated;
-			mix-blend-mode: screen;
-		}
-	}
-
-	.nodes,
-	.wires {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-
-		&.wires {
-			width: 100%;
-			height: 100%;
-			pointer-events: none;
-
-			svg {
-				width: 100%;
-				height: 100%;
-				overflow: visible;
-
-				path {
-					fill: none;
-					// stroke: var(--color-data-raster-dim);
-					stroke: var(--data-color-dim);
-					stroke-width: 2px;
-				}
-			}
-		}
-
-		&.nodes {
-			.node {
-				position: absolute;
-				display: flex;
-				flex-direction: column;
-				min-width: 120px;
-				border-radius: 4px;
-				background: var(--color-4-dimgray);
-				left: calc((var(--offset-left) + 0.5) * 24px);
-				top: calc((var(--offset-top) - 0.5) * 24px);
-
-				&.selected {
-					border: 1px solid var(--color-e-nearwhite);
-					margin: -1px;
-				}
-
-				&.disabled {
-					background: var(--color-3-darkgray);
-					color: var(--color-a-softgray);
-
-					.icon-label {
-						fill: var(--color-a-softgray);
-					}
-				}
-
-				&.previewed {
-					outline: 3px solid var(--color-data-vector);
-				}
-
-				.primary {
-					display: flex;
-					align-items: center;
-					position: relative;
-					gap: 4px;
-					width: 100%;
-					height: 24px;
-					background: var(--color-5-dullgray);
-					border-radius: 4px;
-
-					.icon-label {
-						margin-left: 4px;
-					}
-
-					.text-label {
-						margin-right: 4px;
-					}
-				}
-
-				.parameters {
-					display: flex;
-					flex-direction: column;
-					width: 100%;
-					position: relative;
-
-					.parameter {
-						position: relative;
-						display: flex;
-						align-items: center;
-						height: 24px;
-						width: calc(100% - 24px * 2);
-						margin-left: 24px;
-						margin-right: 24px;
-
-						.text-label {
-							width: 100%;
-
-							&.output {
-								text-align: right;
-							}
-						}
-					}
-
-					// Squares to cover up the rounded corners of the primary area and make them have a straight edge
-					&::before,
-					&::after {
-						content: "";
-						position: absolute;
-						background: var(--color-5-dullgray);
-						width: 4px;
-						height: 4px;
-						top: -4px;
-					}
-
-					&::before {
-						left: 0;
-					}
-
-					&::after {
-						right: 0;
-					}
-				}
-
-				.ports {
-					position: absolute;
-					width: 100%;
-					height: 100%;
-
-					.port {
-						position: absolute;
-						margin: auto 0;
-						top: 0;
-						bottom: 0;
-						width: 12px;
-						height: 12px;
-						border-radius: 50%;
-						background: var(--data-color-dim);
-						// background: var(--color-data-raster-dim);
-
-						div {
-							background: var(--data-color);
-							// background: var(--color-data-raster);
-							width: 8px;
-							height: 8px;
-							border-radius: 50%;
-							position: absolute;
-							top: 0;
-							bottom: 0;
-							left: 0;
-							right: 0;
-							margin: auto;
-						}
-
-						&.input {
-							left: calc(-12px - 6px);
-						}
-
-						&.output {
-							right: calc(-12px - 6px);
-						}
-					}
-				}
-			}
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, nextTick } from "vue";
 
@@ -812,3 +477,338 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<LayoutCol class="node-graph">
+		<LayoutRow class="options-bar"><WidgetLayout :layout="nodeGraphBarLayout" /></LayoutRow>
+		<LayoutRow
+			class="graph"
+			ref="graph"
+			@wheel="(e: WheelEvent) => scroll(e)"
+			@pointerdown="(e: PointerEvent) => pointerDown(e)"
+			@pointermove="(e: PointerEvent) => pointerMove(e)"
+			@pointerup="(e: PointerEvent) => pointerUp(e)"
+			@dblclick="(e: MouseEvent) => doubleClick(e)"
+			:style="{
+				'--grid-spacing': `${gridSpacing}px`,
+				'--grid-offset-x': `${transform.x * transform.scale}px`,
+				'--grid-offset-y': `${transform.y * transform.scale}px`,
+				'--dot-radius': `${dotRadius}px`,
+			}"
+		>
+			<LayoutCol class="node-list" data-node-list v-if="nodeListLocation" :style="{ marginLeft: `${nodeListX}px`, marginTop: `${nodeListY}px` }">
+				<TextInput placeholder="Search Nodes..." :value="searchTerm" @update:value="(val) => (searchTerm = val)" v-focus />
+				<LayoutCol v-for="nodeCategory in nodeCategories" :key="nodeCategory[0]">
+					<TextLabel>{{ nodeCategory[0] }}</TextLabel>
+					<TextButton v-for="nodeType in nodeCategory[1]" v-bind:key="String(nodeType)" :label="nodeType.name" :action="() => createNode(nodeType.name)" />
+				</LayoutCol>
+				<TextLabel v-if="nodeCategories.length === 0">No search results :(</TextLabel>
+			</LayoutCol>
+			<div
+				class="nodes"
+				ref="nodesContainer"
+				:style="{
+					transform: `scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`,
+					transformOrigin: `0 0`,
+				}"
+			>
+				<div
+					v-for="node in nodes"
+					:key="String(node.id)"
+					class="node"
+					:class="{ selected: selected.includes(node.id), previewed: node.previewed, disabled: node.disabled }"
+					:style="{
+						'--offset-left': (node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0),
+						'--offset-top': (node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0),
+					}"
+					:data-node="node.id"
+				>
+					<div class="primary">
+						<div class="ports">
+							<div
+								v-if="node.primaryInput"
+								class="input port"
+								data-port="input"
+								:data-datatype="node.primaryInput"
+								:style="{ '--data-color': `var(--color-data-${node.primaryInput})`, '--data-color-dim': `var(--color-data-${node.primaryInput}-dim)` }"
+							>
+								<div></div>
+							</div>
+							<div
+								v-if="node.outputs.length > 0"
+								class="output port"
+								data-port="output"
+								:data-datatype="node.outputs[0].dataType"
+								:style="{ '--data-color': `var(--color-data-${node.outputs[0].dataType})`, '--data-color-dim': `var(--color-data-${node.outputs[0].dataType}-dim)` }"
+							>
+								<div></div>
+							</div>
+						</div>
+						<IconLabel :icon="nodeIcon(node.displayName)" />
+						<TextLabel>{{ node.displayName }}</TextLabel>
+					</div>
+					<div v-if="[...node.exposedInputs, ...node.outputs.slice(1)].length > 0" class="parameters">
+						<div v-for="(parameter, index) in [...node.exposedInputs, ...node.outputs.slice(1)]" :key="index" class="parameter">
+							<div class="ports">
+								<div
+									v-if="index < node.exposedInputs.length"
+									class="input port"
+									data-port="input"
+									:data-datatype="parameter.dataType"
+									:style="{
+										'--data-color': `var(--color-data-${parameter.dataType})`,
+										'--data-color-dim': `var(--color-data-${parameter.dataType}-dim)`,
+									}"
+								>
+									<div></div>
+								</div>
+								<div
+									v-else
+									class="output port"
+									data-port="output"
+									:data-datatype="parameter.dataType"
+									:style="{ '--data-color': `var(--color-data-${parameter.dataType})`, '--data-color-dim': `var(--color-data-${parameter.dataType}-dim)` }"
+								>
+									<div></div>
+								</div>
+							</div>
+							<TextLabel :class="index < node.exposedInputs.length ? 'name' : 'output'">{{ parameter.name }}</TextLabel>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div
+				class="wires"
+				:style="{
+					transform: `scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`,
+					transformOrigin: `0 0`,
+				}"
+			>
+				<svg>
+					<path
+						v-for="([pathString, dataType], index) in linkPaths"
+						:key="index"
+						:d="pathString"
+						:style="{ '--data-color': `var(--color-data-${dataType})`, '--data-color-dim': `var(--color-data-${dataType}-dim)` }"
+					/>
+				</svg>
+			</div>
+		</LayoutRow>
+	</LayoutCol>
+</template>
+
+<style lang="scss">
+.node-graph {
+	height: 100%;
+	position: relative;
+
+	.node-list {
+		width: max-content;
+		position: fixed;
+		padding: 5px;
+		z-index: 3;
+		background-color: var(--color-3-darkgray);
+
+		.text-button + .text-button {
+			margin-left: 0;
+			margin-top: 4px;
+		}
+	}
+
+	.options-bar {
+		height: 32px;
+		margin: 0 4px;
+		flex: 0 0 auto;
+		align-items: center;
+
+		.widget-layout {
+			flex-direction: row;
+			flex-grow: 1;
+			justify-content: space-between;
+		}
+	}
+
+	.graph {
+		position: relative;
+		background: var(--color-2-mildblack);
+		width: calc(100% - 8px);
+		margin-left: 4px;
+		margin-bottom: 4px;
+		border-radius: 2px;
+		overflow: hidden;
+
+		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
+		&::before {
+			content: "";
+			position: absolute;
+			width: 100%;
+			height: 100%;
+			background-size: var(--grid-spacing) var(--grid-spacing);
+			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
+			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			image-rendering: pixelated;
+			mix-blend-mode: screen;
+		}
+	}
+
+	.nodes,
+	.wires {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+
+		&.wires {
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+
+			svg {
+				width: 100%;
+				height: 100%;
+				overflow: visible;
+
+				path {
+					fill: none;
+					// stroke: var(--color-data-raster-dim);
+					stroke: var(--data-color-dim);
+					stroke-width: 2px;
+				}
+			}
+		}
+
+		&.nodes {
+			.node {
+				position: absolute;
+				display: flex;
+				flex-direction: column;
+				min-width: 120px;
+				border-radius: 4px;
+				background: var(--color-4-dimgray);
+				left: calc((var(--offset-left) + 0.5) * 24px);
+				top: calc((var(--offset-top) - 0.5) * 24px);
+
+				&.selected {
+					border: 1px solid var(--color-e-nearwhite);
+					margin: -1px;
+				}
+
+				&.disabled {
+					background: var(--color-3-darkgray);
+					color: var(--color-a-softgray);
+
+					.icon-label {
+						fill: var(--color-a-softgray);
+					}
+				}
+
+				&.previewed {
+					outline: 3px solid var(--color-data-vector);
+				}
+
+				.primary {
+					display: flex;
+					align-items: center;
+					position: relative;
+					gap: 4px;
+					width: 100%;
+					height: 24px;
+					background: var(--color-5-dullgray);
+					border-radius: 4px;
+
+					.icon-label {
+						margin-left: 4px;
+					}
+
+					.text-label {
+						margin-right: 4px;
+					}
+				}
+
+				.parameters {
+					display: flex;
+					flex-direction: column;
+					width: 100%;
+					position: relative;
+
+					.parameter {
+						position: relative;
+						display: flex;
+						align-items: center;
+						height: 24px;
+						width: calc(100% - 24px * 2);
+						margin-left: 24px;
+						margin-right: 24px;
+
+						.text-label {
+							width: 100%;
+
+							&.output {
+								text-align: right;
+							}
+						}
+					}
+
+					// Squares to cover up the rounded corners of the primary area and make them have a straight edge
+					&::before,
+					&::after {
+						content: "";
+						position: absolute;
+						background: var(--color-5-dullgray);
+						width: 4px;
+						height: 4px;
+						top: -4px;
+					}
+
+					&::before {
+						left: 0;
+					}
+
+					&::after {
+						right: 0;
+					}
+				}
+
+				.ports {
+					position: absolute;
+					width: 100%;
+					height: 100%;
+
+					.port {
+						position: absolute;
+						margin: auto 0;
+						top: 0;
+						bottom: 0;
+						width: 12px;
+						height: 12px;
+						border-radius: 50%;
+						background: var(--data-color-dim);
+						// background: var(--color-data-raster-dim);
+
+						div {
+							background: var(--data-color);
+							// background: var(--color-data-raster);
+							width: 8px;
+							height: 8px;
+							border-radius: 50%;
+							position: absolute;
+							top: 0;
+							bottom: 0;
+							left: 0;
+							right: 0;
+							margin: auto;
+						}
+
+						&.input {
+							left: calc(-12px - 6px);
+						}
+
+						&.output {
+							right: calc(-12px - 6px);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+</style>

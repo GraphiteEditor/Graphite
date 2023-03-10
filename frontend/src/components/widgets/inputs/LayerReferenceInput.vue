@@ -1,3 +1,73 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { currentDraggingElement } from "@/io-managers/drag";
+
+import type { LayerType, LayerTypeData } from "@/wasm-communication/messages";
+import { layerTypeData } from "@/wasm-communication/messages";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+export default defineComponent({
+	emits: ["update:value"],
+	props: {
+		value: { type: String as PropType<string | undefined>, required: false },
+		layerName: { type: String as PropType<string | undefined>, required: false },
+		layerType: { type: String as PropType<LayerType | undefined>, required: false },
+		disabled: { type: Boolean as PropType<boolean>, default: false },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
+	},
+	data() {
+		return {
+			hoveringDrop: false,
+		};
+	},
+	computed: {
+		droppable() {
+			return this.hoveringDrop && currentDraggingElement();
+		},
+	},
+	methods: {
+		dragOver(e: DragEvent): void {
+			this.hoveringDrop = true;
+
+			e.preventDefault();
+		},
+		dragLeave(): void {
+			this.hoveringDrop = false;
+		},
+		drop(e: DragEvent): void {
+			this.hoveringDrop = false;
+
+			const element = currentDraggingElement();
+			const layerPath = element?.getAttribute("data-layer") || undefined;
+
+			if (layerPath) {
+				e.preventDefault();
+
+				this.$emit("update:value", layerPath);
+			}
+		},
+		clearLayer(): void {
+			this.$emit("update:value", undefined);
+		},
+		layerTypeData(layerType: LayerType): LayerTypeData {
+			return layerTypeData(layerType) || { name: "Error", icon: "Info" };
+		},
+	},
+	components: {
+		IconButton,
+		IconLabel,
+		LayoutRow,
+		TextLabel,
+	},
+});
+</script>
+
 <template>
 	<LayoutRow
 		class="layer-reference-input"
@@ -89,73 +159,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { currentDraggingElement } from "@/io-managers/drag";
-
-import type { LayerType, LayerTypeData } from "@/wasm-communication/messages";
-import { layerTypeData } from "@/wasm-communication/messages";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-export default defineComponent({
-	emits: ["update:value"],
-	props: {
-		value: { type: String as PropType<string | undefined>, required: false },
-		layerName: { type: String as PropType<string | undefined>, required: false },
-		layerType: { type: String as PropType<LayerType | undefined>, required: false },
-		disabled: { type: Boolean as PropType<boolean>, default: false },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-		sharpRightCorners: { type: Boolean as PropType<boolean>, default: false },
-	},
-	data() {
-		return {
-			hoveringDrop: false,
-		};
-	},
-	computed: {
-		droppable() {
-			return this.hoveringDrop && currentDraggingElement();
-		},
-	},
-	methods: {
-		dragOver(e: DragEvent): void {
-			this.hoveringDrop = true;
-
-			e.preventDefault();
-		},
-		dragLeave(): void {
-			this.hoveringDrop = false;
-		},
-		drop(e: DragEvent): void {
-			this.hoveringDrop = false;
-
-			const element = currentDraggingElement();
-			const layerPath = element?.getAttribute("data-layer") || undefined;
-
-			if (layerPath) {
-				e.preventDefault();
-
-				this.$emit("update:value", layerPath);
-			}
-		},
-		clearLayer(): void {
-			this.$emit("update:value", undefined);
-		},
-		layerTypeData(layerType: LayerType): LayerTypeData {
-			return layerTypeData(layerType) || { name: "Error", icon: "Info" };
-		},
-	},
-	components: {
-		IconButton,
-		IconLabel,
-		LayoutRow,
-		TextLabel,
-	},
-});
-</script>

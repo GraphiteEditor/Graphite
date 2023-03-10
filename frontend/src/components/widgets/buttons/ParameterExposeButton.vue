@@ -1,3 +1,21 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+export default defineComponent({
+	props: {
+		exposed: { type: Boolean as PropType<boolean>, required: true },
+		dataType: { type: String as PropType<string>, required: true },
+		tooltip: { type: String as PropType<string | undefined>, required: false },
+
+		// Callbacks
+		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
+	},
+	components: { LayoutRow },
+});
+</script>
+
 <template>
 	<LayoutRow class="parameter-expose-button">
 		<button :class="{ exposed }" :style="{ '--data-type-color': `var(--color-data-${dataType})` }" @click="(e: MouseEvent) => action(e)" :title="tooltip" :tabindex="0"></button>
@@ -39,21 +57,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-export default defineComponent({
-	props: {
-		exposed: { type: Boolean as PropType<boolean>, required: true },
-		dataType: { type: String as PropType<string>, required: true },
-		tooltip: { type: String as PropType<string | undefined>, required: false },
-
-		// Callbacks
-		action: { type: Function as PropType<(e?: MouseEvent) => void>, required: true },
-	},
-	components: { LayoutRow },
-});
-</script>

@@ -1,3 +1,102 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { debouncer } from "@/components/widgets/debounce";
+import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow, type Widget } from "@/wasm-communication/messages";
+
+import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
+import BreadcrumbTrailButtons from "@/components/widgets/buttons/BreadcrumbTrailButtons.vue";
+import IconButton from "@/components/widgets/buttons/IconButton.vue";
+import ParameterExposeButton from "@/components/widgets/buttons/ParameterExposeButton.vue";
+import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
+import TextButton from "@/components/widgets/buttons/TextButton.vue";
+import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
+import ColorInput from "@/components/widgets/inputs/ColorInput.vue";
+import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
+import FontInput from "@/components/widgets/inputs/FontInput.vue";
+import LayerReferenceInput from "@/components/widgets/inputs/LayerReferenceInput.vue";
+import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
+import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
+import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
+import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
+import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.vue";
+import TextInput from "@/components/widgets/inputs/TextInput.vue";
+import IconLabel from "@/components/widgets/labels/IconLabel.vue";
+import Separator from "@/components/widgets/labels/Separator.vue";
+import TextLabel from "@/components/widgets/labels/TextLabel.vue";
+
+const SUFFIX_WIDGETS = ["PopoverButton"];
+
+export default defineComponent({
+	inject: ["editor"],
+	props: {
+		widgetData: { type: Object as PropType<WidgetColumn | WidgetRow>, required: true },
+		layoutTarget: { required: true },
+	},
+	data() {
+		return {
+			open: false,
+		};
+	},
+	computed: {
+		direction(): "column" | "row" | "ERROR" {
+			if (isWidgetColumn(this.widgetData)) return "column";
+			if (isWidgetRow(this.widgetData)) return "row";
+			return "ERROR";
+		},
+		widgets() {
+			let widgets: Widget[] = [];
+			if (isWidgetColumn(this.widgetData)) widgets = this.widgetData.columnWidgets;
+			if (isWidgetRow(this.widgetData)) widgets = this.widgetData.rowWidgets;
+			return widgets;
+		},
+		widgetsAndNextSiblingIsSuffix(): [Widget, boolean][] {
+			return this.widgets.map((widget, index): [Widget, boolean] => {
+				// A suffix widget is one that joins up with this widget at the end with only a 1px gap.
+				// It uses the CSS sibling selector to give its own left edge corners zero radius.
+				// But this JS is needed to set its preceding sibling widget's right edge corners to zero radius.
+				const nextSiblingIsSuffix = SUFFIX_WIDGETS.includes(this.widgets[index + 1]?.props.kind);
+
+				return [widget, nextSiblingIsSuffix];
+			});
+		},
+	},
+	methods: {
+		updateLayout(index: number, value: unknown) {
+			this.editor.instance.updateLayout(this.layoutTarget, this.widgets[index].widgetId, value);
+		},
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		withoutValue(props: Record<string, any>): Record<string, unknown> {
+			const { value: _, ...rest } = props;
+			return rest;
+		},
+		debouncer,
+	},
+	components: {
+		BreadcrumbTrailButtons,
+		CheckboxInput,
+		ColorInput,
+		DropdownInput,
+		FontInput,
+		IconButton,
+		IconLabel,
+		LayerReferenceInput,
+		NumberInput,
+		OptionalInput,
+		ParameterExposeButton,
+		PivotAssist,
+		PopoverButton,
+		RadioInput,
+		Separator,
+		SwatchPairInput,
+		TextAreaInput,
+		TextButton,
+		TextInput,
+		TextLabel,
+	},
+});
+</script>
+
 <!-- TODO: Refactor this component to use `<component :is="" v-bind="attributesObject"></component>` to avoid all the separate components with `v-if` -->
 <!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.vue` as part of its refactor -->
 
@@ -112,103 +211,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { debouncer } from "@/components/widgets/debounce";
-import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow, type Widget } from "@/wasm-communication/messages";
-
-import PivotAssist from "@/components/widgets/assists/PivotAssist.vue";
-import BreadcrumbTrailButtons from "@/components/widgets/buttons/BreadcrumbTrailButtons.vue";
-import IconButton from "@/components/widgets/buttons/IconButton.vue";
-import ParameterExposeButton from "@/components/widgets/buttons/ParameterExposeButton.vue";
-import PopoverButton from "@/components/widgets/buttons/PopoverButton.vue";
-import TextButton from "@/components/widgets/buttons/TextButton.vue";
-import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.vue";
-import ColorInput from "@/components/widgets/inputs/ColorInput.vue";
-import DropdownInput from "@/components/widgets/inputs/DropdownInput.vue";
-import FontInput from "@/components/widgets/inputs/FontInput.vue";
-import LayerReferenceInput from "@/components/widgets/inputs/LayerReferenceInput.vue";
-import NumberInput from "@/components/widgets/inputs/NumberInput.vue";
-import OptionalInput from "@/components/widgets/inputs/OptionalInput.vue";
-import RadioInput from "@/components/widgets/inputs/RadioInput.vue";
-import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.vue";
-import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.vue";
-import TextInput from "@/components/widgets/inputs/TextInput.vue";
-import IconLabel from "@/components/widgets/labels/IconLabel.vue";
-import Separator from "@/components/widgets/labels/Separator.vue";
-import TextLabel from "@/components/widgets/labels/TextLabel.vue";
-
-const SUFFIX_WIDGETS = ["PopoverButton"];
-
-export default defineComponent({
-	inject: ["editor"],
-	props: {
-		widgetData: { type: Object as PropType<WidgetColumn | WidgetRow>, required: true },
-		layoutTarget: { required: true },
-	},
-	data() {
-		return {
-			open: false,
-		};
-	},
-	computed: {
-		direction(): "column" | "row" | "ERROR" {
-			if (isWidgetColumn(this.widgetData)) return "column";
-			if (isWidgetRow(this.widgetData)) return "row";
-			return "ERROR";
-		},
-		widgets() {
-			let widgets: Widget[] = [];
-			if (isWidgetColumn(this.widgetData)) widgets = this.widgetData.columnWidgets;
-			if (isWidgetRow(this.widgetData)) widgets = this.widgetData.rowWidgets;
-			return widgets;
-		},
-		widgetsAndNextSiblingIsSuffix(): [Widget, boolean][] {
-			return this.widgets.map((widget, index): [Widget, boolean] => {
-				// A suffix widget is one that joins up with this widget at the end with only a 1px gap.
-				// It uses the CSS sibling selector to give its own left edge corners zero radius.
-				// But this JS is needed to set its preceding sibling widget's right edge corners to zero radius.
-				const nextSiblingIsSuffix = SUFFIX_WIDGETS.includes(this.widgets[index + 1]?.props.kind);
-
-				return [widget, nextSiblingIsSuffix];
-			});
-		},
-	},
-	methods: {
-		updateLayout(index: number, value: unknown) {
-			this.editor.instance.updateLayout(this.layoutTarget, this.widgets[index].widgetId, value);
-		},
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		withoutValue(props: Record<string, any>): Record<string, unknown> {
-			const { value: _, ...rest } = props;
-			return rest;
-		},
-		debouncer,
-	},
-	components: {
-		BreadcrumbTrailButtons,
-		CheckboxInput,
-		ColorInput,
-		DropdownInput,
-		FontInput,
-		IconButton,
-		IconLabel,
-		LayerReferenceInput,
-		NumberInput,
-		OptionalInput,
-		ParameterExposeButton,
-		PivotAssist,
-		PopoverButton,
-		RadioInput,
-		Separator,
-		SwatchPairInput,
-		TextAreaInput,
-		TextButton,
-		TextInput,
-		TextLabel,
-	},
-});
-</script>
-

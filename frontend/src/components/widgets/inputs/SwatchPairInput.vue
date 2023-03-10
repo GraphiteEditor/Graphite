@@ -1,3 +1,48 @@
+<script lang="ts">
+import { defineComponent, type PropType } from "vue";
+
+import { type Color } from "@/wasm-communication/messages";
+
+import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
+import LayoutCol from "@/components/layout/LayoutCol.vue";
+import LayoutRow from "@/components/layout/LayoutRow.vue";
+
+export default defineComponent({
+	inject: ["editor"],
+	props: {
+		primary: { type: Object as PropType<Color>, required: true },
+		secondary: { type: Object as PropType<Color>, required: true },
+	},
+	data() {
+		return {
+			primaryOpen: false,
+			secondaryOpen: false,
+		};
+	},
+	methods: {
+		clickPrimarySwatch() {
+			this.primaryOpen = true;
+			this.secondaryOpen = false;
+		},
+		clickSecondarySwatch() {
+			this.primaryOpen = false;
+			this.secondaryOpen = true;
+		},
+		primaryColorChanged(color: Color) {
+			this.editor.instance.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
+		},
+		secondaryColorChanged(color: Color) {
+			this.editor.instance.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
+		},
+	},
+	components: {
+		ColorPicker,
+		LayoutCol,
+		LayoutRow,
+	},
+});
+</script>
+
 <template>
 	<LayoutCol class="swatch-pair">
 		<LayoutRow class="primary swatch">
@@ -49,48 +94,3 @@
 	}
 }
 </style>
-
-<script lang="ts">
-import { defineComponent, type PropType } from "vue";
-
-import { type Color } from "@/wasm-communication/messages";
-
-import ColorPicker from "@/components/floating-menus/ColorPicker.vue";
-import LayoutCol from "@/components/layout/LayoutCol.vue";
-import LayoutRow from "@/components/layout/LayoutRow.vue";
-
-export default defineComponent({
-	inject: ["editor"],
-	props: {
-		primary: { type: Object as PropType<Color>, required: true },
-		secondary: { type: Object as PropType<Color>, required: true },
-	},
-	data() {
-		return {
-			primaryOpen: false,
-			secondaryOpen: false,
-		};
-	},
-	methods: {
-		clickPrimarySwatch() {
-			this.primaryOpen = true;
-			this.secondaryOpen = false;
-		},
-		clickSecondarySwatch() {
-			this.primaryOpen = false;
-			this.secondaryOpen = true;
-		},
-		primaryColorChanged(color: Color) {
-			this.editor.instance.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
-		},
-		secondaryColorChanged(color: Color) {
-			this.editor.instance.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
-		},
-	},
-	components: {
-		ColorPicker,
-		LayoutCol,
-		LayoutRow,
-	},
-});
-</script>

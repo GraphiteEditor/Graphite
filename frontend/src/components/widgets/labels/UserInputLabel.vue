@@ -1,127 +1,3 @@
-<template>
-	<IconLabel class="user-input-label keyboard-lock-notice" v-if="displayKeyboardLockNotice" :icon="'Info'" :title="keyboardLockInfoMessage" />
-	<LayoutRow class="user-input-label" v-else>
-		<template v-for="(keysWithLabels, i) in keysWithLabelsGroups" :key="i">
-			<Separator :type="'Related'" v-if="i > 0"></Separator>
-			<template v-for="(keyInfo, j) in keyTextOrIconList(keysWithLabels)" :key="j">
-				<div class="input-key" :class="keyInfo.width">
-					<IconLabel v-if="keyInfo.icon" :icon="keyInfo.icon" />
-					<TextLabel v-else-if="keyInfo.label !== undefined">{{ keyInfo.label }}</TextLabel>
-				</div>
-			</template>
-		</template>
-		<div class="input-mouse" v-if="mouseMotion">
-			<IconLabel :icon="mouseHintIcon(mouseMotion)" />
-		</div>
-		<div class="hint-text" v-if="hasSlotContent">
-			<slot></slot>
-		</div>
-	</LayoutRow>
-</template>
-
-<style lang="scss">
-.user-input-label {
-	flex: 0 0 auto;
-	height: 100%;
-	align-items: center;
-	white-space: nowrap;
-
-	.input-key,
-	.input-mouse {
-		& + .input-key,
-		& + .input-mouse {
-			margin-left: 2px;
-		}
-	}
-
-	.input-key {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		font-family: "Inconsolata", monospace;
-		font-weight: 400;
-		text-align: center;
-		height: 16px;
-		box-sizing: border-box;
-		border: 1px solid;
-		border-radius: 4px;
-		border-color: var(--color-5-dullgray);
-		color: var(--color-e-nearwhite);
-
-		.text-label {
-			// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height,
-			// so moving it up 1 pixel by using 15px makes them agree.
-			line-height: 15px;
-		}
-
-		&.width-1 {
-			width: 16px;
-		}
-
-		&.width-2 {
-			width: 24px;
-		}
-
-		&.width-3 {
-			width: 32px;
-		}
-
-		&.width-4 {
-			width: 40px;
-		}
-
-		&.width-5 {
-			width: 48px;
-		}
-
-		.icon-label {
-			margin: 1px;
-		}
-	}
-
-	.input-mouse {
-		.bright {
-			fill: var(--color-e-nearwhite);
-		}
-
-		.dim {
-			fill: var(--color-8-uppergray);
-		}
-	}
-
-	.hint-text {
-		margin-left: 4px;
-	}
-
-	.floating-menu-content .row > & {
-		.input-key {
-			border-color: var(--color-3-darkgray);
-			color: var(--color-8-uppergray);
-		}
-
-		.input-key .icon-label svg,
-		&.keyboard-lock-notice.keyboard-lock-notice svg,
-		.input-mouse .bright {
-			fill: var(--color-8-uppergray);
-		}
-
-		.input-mouse .dim {
-			fill: var(--color-3-darkgray);
-		}
-	}
-
-	.floating-menu-content .row:hover > & {
-		.input-key {
-			border-color: var(--color-7-middlegray);
-		}
-
-		.input-mouse .dim {
-			fill: var(--color-7-middlegray);
-		}
-	}
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -247,3 +123,127 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<IconLabel class="user-input-label keyboard-lock-notice" v-if="displayKeyboardLockNotice" :icon="'Info'" :title="keyboardLockInfoMessage" />
+	<LayoutRow class="user-input-label" v-else>
+		<template v-for="(keysWithLabels, i) in keysWithLabelsGroups" :key="i">
+			<Separator :type="'Related'" v-if="i > 0"></Separator>
+			<template v-for="(keyInfo, j) in keyTextOrIconList(keysWithLabels)" :key="j">
+				<div class="input-key" :class="keyInfo.width">
+					<IconLabel v-if="keyInfo.icon" :icon="keyInfo.icon" />
+					<TextLabel v-else-if="keyInfo.label !== undefined">{{ keyInfo.label }}</TextLabel>
+				</div>
+			</template>
+		</template>
+		<div class="input-mouse" v-if="mouseMotion">
+			<IconLabel :icon="mouseHintIcon(mouseMotion)" />
+		</div>
+		<div class="hint-text" v-if="hasSlotContent">
+			<slot></slot>
+		</div>
+	</LayoutRow>
+</template>
+
+<style lang="scss">
+.user-input-label {
+	flex: 0 0 auto;
+	height: 100%;
+	align-items: center;
+	white-space: nowrap;
+
+	.input-key,
+	.input-mouse {
+		& + .input-key,
+		& + .input-mouse {
+			margin-left: 2px;
+		}
+	}
+
+	.input-key {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		font-family: "Inconsolata", monospace;
+		font-weight: 400;
+		text-align: center;
+		height: 16px;
+		box-sizing: border-box;
+		border: 1px solid;
+		border-radius: 4px;
+		border-color: var(--color-5-dullgray);
+		color: var(--color-e-nearwhite);
+
+		.text-label {
+			// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height,
+			// so moving it up 1 pixel by using 15px makes them agree.
+			line-height: 15px;
+		}
+
+		&.width-1 {
+			width: 16px;
+		}
+
+		&.width-2 {
+			width: 24px;
+		}
+
+		&.width-3 {
+			width: 32px;
+		}
+
+		&.width-4 {
+			width: 40px;
+		}
+
+		&.width-5 {
+			width: 48px;
+		}
+
+		.icon-label {
+			margin: 1px;
+		}
+	}
+
+	.input-mouse {
+		.bright {
+			fill: var(--color-e-nearwhite);
+		}
+
+		.dim {
+			fill: var(--color-8-uppergray);
+		}
+	}
+
+	.hint-text {
+		margin-left: 4px;
+	}
+
+	.floating-menu-content .row > & {
+		.input-key {
+			border-color: var(--color-3-darkgray);
+			color: var(--color-8-uppergray);
+		}
+
+		.input-key .icon-label svg,
+		&.keyboard-lock-notice.keyboard-lock-notice svg,
+		.input-mouse .bright {
+			fill: var(--color-8-uppergray);
+		}
+
+		.input-mouse .dim {
+			fill: var(--color-3-darkgray);
+		}
+	}
+
+	.floating-menu-content .row:hover > & {
+		.input-key {
+			border-color: var(--color-7-middlegray);
+		}
+
+		.input-mouse .dim {
+			fill: var(--color-7-middlegray);
+		}
+	}
+}
+</style>

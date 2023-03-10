@@ -1,18 +1,3 @@
-<template>
-	<LayoutRow class="window-title">
-		<TextLabel>{{ text }}</TextLabel>
-	</LayoutRow>
-</template>
-
-<style lang="scss">
-.window-title {
-	flex: 0 0 auto;
-	align-items: center;
-	white-space: nowrap;
-	padding: 0 8px;
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, type PropType } from "vue";
 
@@ -29,3 +14,18 @@ export default defineComponent({
 	},
 });
 </script>
+
+<template>
+	<LayoutRow class="window-title">
+		<TextLabel>{{ text }}</TextLabel>
+	</LayoutRow>
+</template>
+
+<style lang="scss">
+.window-title {
+	flex: 0 0 auto;
+	align-items: center;
+	white-space: nowrap;
+	padding: 0 8px;
+}
+</style>
