@@ -4,7 +4,7 @@
 	import FieldInput from "@/components/widgets/inputs/FieldInput.svelte";
 
 	// emits: ["update:value", "commitText"],
-	const dispatch = createEventDispatcher<{ value: string; commitText: string }>();
+	const dispatch = createEventDispatcher<{ commitText: string }>();
 
 	export let value: string;
 	export let label: string | undefined = undefined;
@@ -13,9 +13,6 @@
 
 	let self: FieldInput;
 	let editing = false;
-	let text = value;
-
-	$: dispatch("value", text);
 
 	function onTextFocused() {
 		editing = true;
@@ -53,8 +50,8 @@
 		// TODO: Svelte: check if this should be based on `Boolean(label)` or `label !== ""`
 		"has-label": Boolean(label),
 	}}
-	value={text}
-	on:value={({ detail }) => (text = detail)}
+	{value}
+	on:value
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:cancelTextChange={onCancelTextChange}
