@@ -50,7 +50,7 @@ We provide default configurations for VS Code users. When you open the project, 
 
 Visit our [**task board**](https://github.com/GraphiteEditor/Graphite/projects/1) board and look through the current sprint's column. You are also welcome to work on tasks prioritized for upcoming sprints. Find any issues with the green "Available" tag.
 
-Pay attention to the tags which provide some useful information like which ones are a [**Good First Issue**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AAvailable+label%3A%22Good+First+Issue%22+) and whether they involve [**only Rust**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3ARust+label%3AAvailable+-label%3AWeb+), [**only Web**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AWeb+label%3AAvailable+-label%3ARust+) (HTML/CSS/TypeScript/Vue.js), or [**both**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AAvailable+label%3ARust+label%3AWeb+). Feel free to pick whatever task interests you, then comment on the issue that you would like to start. After commenting, you can dig in right away, then we will assign the issue to your GitHub user to keep the status of things organized.
+Pay attention to the tags which provide some useful information like which ones are a [**Good First Issue**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AAvailable+label%3A%22Good+First+Issue%22+) and whether they involve [**only Rust**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3ARust+label%3AAvailable+-label%3AWeb+), [**only Web**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AWeb+label%3AAvailable+-label%3ARust+) (HTML/CSS/TypeScript/Svelte), or [**both**](https://github.com/GraphiteEditor/Graphite/issues?q=is%3Aissue+is%3Aopen+label%3AAvailable+label%3ARust+label%3AWeb+). Feel free to pick whatever task interests you, then comment on the issue that you would like to start. After commenting, you can dig in right away, then we will assign the issue to your GitHub user to keep the status of things organized.
 
 ## Mentorship.
 
@@ -62,7 +62,7 @@ Look for `README.md` files within select folders of the codebase and read the co
 
 ## Codebase overview.
 
-The Graphite Editor is built as a web app powered by Vue.js in the frontend and Rust in the backend which is compiled to WebAssembly (wasm) and run in the browser.
+The Graphite Editor is built as a web app powered by Svelte in the frontend and Rust in the backend which is compiled to WebAssembly (wasm) and run in the browser.
 
 The Editor's frontend web code lives in `/frontend/src` and the backend Rust code lives in `/editor`. The web-based frontend is intended to be semi-temporary and eventually replaceable with a pure-Rust GUI frontend. Therefore, all backend code should be unaware of JavaScript or web concepts and all Editor application logic should be written in Rust not JS.
 

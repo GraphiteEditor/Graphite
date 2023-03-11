@@ -6,7 +6,7 @@
 		"editor.defaultFormatter": "rust-lang.rust-analyzer"
 	},
 	// Web: save on format
-	"[typescript][javascript][vue]": {
+	"[typescript][javascript]": {
 		"editor.codeActionsOnSave": {
 			"source.fixAll.eslint": true
 		},
@@ -34,9 +34,6 @@
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],
 	"eslint.validate": ["javascript", "typescript"],
-	// Vue config
-	"volar.completion.preferredAttrNameCase": "camel",
-	"volar.completion.preferredTagNameCase": "pascal",
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
