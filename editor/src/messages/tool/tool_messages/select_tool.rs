@@ -22,7 +22,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::layers::layer_info::{Layer, LayerDataType};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
@@ -396,73 +396,9 @@ impl Fsm for SelectToolFsmState {
 					// Check the last (top most) intersection layer.
 					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
-							// Shallowest manipulation
-							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
-								// Double-clicking any layer within an already selected folder should select that layer
-								// Add the first layer path not already included from the intersected to our new layer path
-								let selected_layers: Vec<_> = document.selected_layers().collect();
-								let incoming_parent = *intersect_layer_path.first().unwrap();
-								let previous_parents: Vec<_> = (0..selected_layers.len()).map(|i| &selected_layers.get(i).unwrap()[..1]).collect();
-								let mut incoming_parent_selected = false;
-								if previous_parents.contains(&&[incoming_parent].as_slice()) {
-									incoming_parent_selected = true;
-								}
-								if incoming_parent_selected {
-									let mut intersected_layer_ancestors: Vec<Vec<u64>> = vec![];
-									// Permutations of intersected layer
-									for i in 1..intersect_layer_path.clone().len() + 1 {
-										intersected_layer_ancestors.push(intersect_layer_path.clone()[..i].to_vec());
-									}
-									intersected_layer_ancestors.reverse();
-									let mut new_layer_path: Vec<u64> = vec![];
-									// Set the base layer path to the deepest layer that is currently selected
-									for permutation in intersected_layer_ancestors {
-										for layer in selected_layers.iter() {
-											if permutation == *layer {
-												new_layer_path.append(permutation.clone().as_mut());
-											}
-										}
-									}
-									// Append the sub layer to the base to create the deeper layer path
-									for path in intersect_layer_path {
-										if !new_layer_path.contains(path) {
-											new_layer_path.push(*path);
-											break;
-										}
-									}
-
-									if !selected_layers.contains(&new_layer_path.as_slice()) {
-										tool_data.layers_dragging.clear();
-										tool_data.layers_dragging.push(new_layer_path.clone());
-										responses.push_back(
-											DocumentMessage::SetSelectedLayers {
-												replacement_selected_layers: vec![new_layer_path],
-											}
-											.into(),
-										);
-									} else {
-										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
-									}
-								}
-							}
-							// Deepest manipulation
-							else {
-								match intersect.data {
-									LayerDataType::Text(_) => {
-										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-										responses.push_back(TextToolMessage::Interact.into());
-									}
-									LayerDataType::Shape(_) => {
-										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
-									}
-									LayerDataType::NodeGraphFrame(_) => {
-										let replacement_selected_layers = vec![intersect_layer_path.clone()];
-										let layer_path = intersect_layer_path.clone();
-										responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
-										responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
-									}
-									_ => {}
-								}
+							match tool_data.selected_type {
+								LayerSelectionBehavior::Shallowest => process_shallowest_manipulation(document, intersect_layer_path, tool_data, responses),
+								LayerSelectionBehavior::Deepest => process_deepest_manipulation(intersect, intersect_layer_path, responses),
 							}
 						}
 					}
@@ -1144,6 +1080,74 @@ impl Fsm for SelectToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+	}
+}
+
+fn process_shallowest_manipulation(document: &DocumentMessageHandler, intersect_layer_path: &Vec<u64>, tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
+	// Double-clicking any layer within an already selected folder should select that layer
+	// Add the first layer path not already included from the intersected to our new layer path
+	let selected_layers: Vec<_> = document.selected_layers().collect();
+	let incoming_parent = *intersect_layer_path.first().unwrap();
+	let previous_parents: Vec<_> = (0..selected_layers.len()).map(|i| &selected_layers.get(i).unwrap()[..1]).collect();
+	let mut incoming_parent_selected = false;
+	if previous_parents.contains(&&[incoming_parent].as_slice()) {
+		incoming_parent_selected = true;
+	}
+	if incoming_parent_selected {
+		let mut intersected_layer_ancestors: Vec<Vec<u64>> = vec![];
+		// Permutations of intersected layer
+		for i in 1..intersect_layer_path.clone().len() + 1 {
+			intersected_layer_ancestors.push(intersect_layer_path.clone()[..i].to_vec());
+		}
+		intersected_layer_ancestors.reverse();
+		let mut new_layer_path: Vec<u64> = vec![];
+		// Set the base layer path to the deepest layer that is currently selected
+		for permutation in intersected_layer_ancestors {
+			for layer in selected_layers.iter() {
+				if permutation == *layer {
+					new_layer_path.append(permutation.clone().as_mut());
+				}
+			}
+		}
+		// Append the sub layer to the base to create the deeper layer path
+		for path in intersect_layer_path {
+			if !new_layer_path.contains(path) {
+				new_layer_path.push(*path);
+				break;
+			}
+		}
+
+		if !selected_layers.contains(&new_layer_path.as_slice()) {
+			tool_data.layers_dragging.clear();
+			tool_data.layers_dragging.push(new_layer_path.clone());
+			responses.push_back(
+				DocumentMessage::SetSelectedLayers {
+					replacement_selected_layers: vec![new_layer_path],
+				}
+				.into(),
+			);
+		} else {
+			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+		}
+	}
+}
+
+fn process_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec<u64>, responses: &mut VecDeque<Message>) {
+	match intersect.data {
+		LayerDataType::Text(_) => {
+			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+			responses.push_back(TextToolMessage::Interact.into());
+		}
+		LayerDataType::Shape(_) => {
+			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+		}
+		LayerDataType::NodeGraphFrame(_) => {
+			let replacement_selected_layers = vec![intersect_layer_path.clone()];
+			let layer_path = intersect_layer_path.clone();
+			responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+			responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
+		}
+		_ => {}
 	}
 }
 
