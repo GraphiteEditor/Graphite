@@ -14,7 +14,8 @@
 	export let icon: IconName = "Checkmark";
 	export let tooltip: string | undefined = undefined;
 
-	let inputElement: HTMLInputElement;
+	let inputElement: HTMLInputElement | undefined;
+
 	let id = `${Math.random()}`.substring(2);
 
 	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
@@ -23,7 +24,7 @@
 		return checked;
 	}
 
-	export function input(): HTMLInputElement {
+	export function input(): HTMLInputElement | undefined {
 		return inputElement;
 	}
 
@@ -35,7 +36,7 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => dispatch("checked", inputElement.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
+	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => dispatch("checked", inputElement?.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
 	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />

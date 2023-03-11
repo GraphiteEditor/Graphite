@@ -51,7 +51,7 @@
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
-	let self: FieldInput;
+	let self: FieldInput | undefined;
 	let text = displayText(value, displayDecimalPlaces, unit);
 	let editing = false;
 	// Stays in sync with a binding to the actual input range slider element.
@@ -130,7 +130,7 @@
 	function onSliderPointerUp() {
 		// User clicked but didn't drag, so we focus the text input element
 		if (rangeSliderClickDragState === "mousedown") {
-			const inputElement = self.element().querySelector("[data-input-element]") as HTMLInputElement | undefined;
+			const inputElement = self?.element()?.querySelector("[data-input-element]") as HTMLInputElement | undefined;
 			if (!inputElement) return;
 
 			// Set the slider position back to the original position to undo the user moving it
@@ -151,7 +151,7 @@
 
 		editing = true;
 
-		self.selectAllText(text);
+		self?.selectAllText(text);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -167,7 +167,7 @@
 
 		editing = false;
 
-		self.unFocus();
+		self?.unFocus();
 	}
 
 	function onCancelTextChange() {
@@ -175,7 +175,7 @@
 
 		editing = false;
 
-		self.unFocus();
+		self?.unFocus();
 	}
 
 	function onIncrement(direction: "Decrease" | "Increase") {

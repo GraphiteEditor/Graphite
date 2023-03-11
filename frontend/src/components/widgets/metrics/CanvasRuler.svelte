@@ -15,7 +15,7 @@
 	export let mediumDivisions = 5;
 	export let minorDivisions = 2;
 
-	let canvasRuler: HTMLDivElement;
+	let canvasRuler: HTMLDivElement | undefined;
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
 
@@ -76,6 +76,8 @@
 	}
 
 	export function resize() {
+		if (!canvasRuler) return;
+
 		const isVertical = direction === "Vertical";
 
 		const newLength = isVertical ? canvasRuler.clientHeight : canvasRuler.clientWidth;

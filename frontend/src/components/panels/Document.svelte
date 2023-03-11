@@ -28,9 +28,9 @@
 	import type { Editor } from "@/wasm-communication/editor";
 	import type { DocumentState } from "@/state-providers/document";
 
-	let rulerHorizontal: CanvasRuler;
-	let rulerVertical: CanvasRuler;
-	let canvasContainer: HTMLDivElement;
+	let rulerHorizontal: CanvasRuler | undefined;
+	let rulerVertical: CanvasRuler | undefined;
+	let canvasContainer: HTMLDivElement | undefined;
 
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
@@ -125,8 +125,8 @@
 		await tick();
 
 		if (textInput) {
-			const foreignObject = canvasContainer.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement;
-			if (foreignObject.children.length > 0) return;
+			const foreignObject = canvasContainer?.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement | undefined;
+			if (!foreignObject || foreignObject.children.length > 0) return;
 
 			const addedInput = foreignObject.appendChild(textInput);
 			window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: addedInput }));
@@ -282,6 +282,8 @@
 
 	// Resize elements to render the new viewport size
 	export function viewportResize() {
+		if (!canvasContainer) return;
+		
 		// Resize the canvas
 		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasContainer).width));
 		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasContainer).height));
