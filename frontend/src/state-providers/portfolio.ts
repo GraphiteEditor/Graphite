@@ -2,10 +2,10 @@
 
 import {writable} from "svelte/store";
 
-import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
-import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@graphite/utility-functions/imaginate";
-import { extractPixelData, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-import { type Editor } from "@graphite/wasm-communication/editor";
+import { downloadFileText, downloadFileBlob, upload } from "~/src/utility-functions/files";
+import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "~/src/utility-functions/imaginate";
+import { extractPixelData, rasterizeSVG, rasterizeSVGCanvas } from "~/src/utility-functions/rasterization";
+import { type Editor } from "~/src/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
 	TriggerFileDownload,
@@ -20,7 +20,7 @@ import {
 	UpdateOpenDocumentsList,
 	UpdateImageData,
 	TriggerRevokeBlobUrl,
-} from "@graphite/wasm-communication/messages";
+} from "~/src/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import TextButton from "~/src/components/widgets/buttons/TextButton.svelte";
 
 	export let labels: string[];
 	export let disabled = false;

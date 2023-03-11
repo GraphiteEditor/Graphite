@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { onDestroy, createEventDispatcher, getContext } from "svelte";
 
-	import { clamp } from "@graphite/utility-functions/math";
-	import { type HSV, type RGB } from "@graphite/wasm-communication/messages";
-	import { Color } from "@graphite/wasm-communication/messages";
+	import { clamp } from "~/src/utility-functions/math";
+	import { type HSV, type RGB } from "~/src/wasm-communication/messages";
+	import { Color } from "~/src/wasm-communication/messages";
 
-	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
-	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import FloatingMenu, { type MenuDirection } from "~/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconButton from "~/src/components/widgets/buttons/IconButton.svelte";
+	import DropdownInput from "~/src/components/widgets/inputs/DropdownInput.svelte";
+	import NumberInput from "~/src/components/widgets/inputs/NumberInput.svelte";
+	import TextInput from "~/src/components/widgets/inputs/TextInput.svelte";
+	import Separator from "~/src/components/widgets/labels/Separator.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
+	import type { Editor } from "~/src/wasm-communication/editor";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 

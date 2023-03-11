@@ -1,0 +1,7 @@
+{
+	"extends": "@parcel/config-default",
+	"transformers": {
+		"inline-svg:*.svg": ["...", "@parcel/transformer-inline-string"],
+		"*.svelte": ["parcel-transformer-svelte3-plus"]
+	}
+}

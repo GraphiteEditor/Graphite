@@ -1,6 +1,6 @@
 <script lang="ts">
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
 
 	export let text: string;
 </script>

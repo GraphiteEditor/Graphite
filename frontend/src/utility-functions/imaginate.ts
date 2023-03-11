@@ -1,11 +1,11 @@
 /* eslint-disable camelcase */
 
-// import { escapeJSON } from "@graphite/utility-functions/escape";
-import { blobToBase64 } from "@graphite/utility-functions/files";
-import { type RequestResult, requestWithUploadDownloadProgress } from "@graphite/utility-functions/network";
-import { type Editor } from "@graphite/wasm-communication/editor";
-import type { XY } from "@graphite/wasm-communication/messages";
-import { type ImaginateGenerationParameters } from "@graphite/wasm-communication/messages";
+// import { escapeJSON } from "~/src/utility-functions/escape";
+import { blobToBase64 } from "~/src/utility-functions/files";
+import { type RequestResult, requestWithUploadDownloadProgress } from "~/src/utility-functions/network";
+import { type Editor } from "~/src/wasm-communication/editor";
+import type { XY } from "~/src/wasm-communication/messages";
+import { type ImaginateGenerationParameters } from "~/src/wasm-communication/messages";
 
 const MAX_POLLING_RETRIES = 4;
 const SERVER_STATUS_CHECK_TIMEOUT = 5000;

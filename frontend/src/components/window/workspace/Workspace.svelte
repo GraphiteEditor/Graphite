@@ -1,14 +1,14 @@
 <script lang="ts">
-	import DialogModal from "@graphite/components/floating-menus/DialogModal.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Panel from "@graphite/components/window/workspace/Panel.svelte";
+	import DialogModal from "~/src/components/floating-menus/DialogModal.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import Panel from "~/src/components/window/workspace/Panel.svelte";
 	import { getContext } from "svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { WorkspaceState } from "@graphite/state-providers/workspace";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
-	import type { DialogState } from "@graphite/state-providers/dialog";
-	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
+	import type { Editor } from "~/src/wasm-communication/editor";
+	import type { WorkspaceState } from "~/src/state-providers/workspace";
+	import type { PortfolioState } from "~/src/state-providers/portfolio";
+	import type { DialogState } from "~/src/state-providers/dialog";
+	import type { FrontendDocumentDetails } from "~/src/wasm-communication/messages";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {

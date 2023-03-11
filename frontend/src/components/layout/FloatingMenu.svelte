@@ -6,7 +6,7 @@
 <script lang="ts">
 	import { afterUpdate, createEventDispatcher, tick } from "svelte";
 
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
 
 	const POINTER_STRAY_DISTANCE = 100;
 

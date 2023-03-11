@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { IconName } from "@graphite/utility-functions/icons";
+	import type { IconName } from "~/src/utility-functions/icons";
 
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
 
 	// emits: ["update:checked"],
 	const dispatch = createEventDispatcher<{ checked: boolean }>();

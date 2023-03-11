@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import { beginDraggingElement } from "@graphite/io-managers/drag";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { beginDraggingElement } from "~/src/io-managers/drag";
+	import { platformIsMac } from "~/src/utility-functions/platform";
 	import {
 		type LayerType,
 		type LayerTypeData,
@@ -13,14 +13,14 @@
 		UpdateDocumentLayerTreeStructureJs,
 		UpdateLayerTreeOptionsLayout,
 		layerTypeData,
-	} from "@graphite/wasm-communication/messages";
+	} from "~/src/wasm-communication/messages";
 
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconButton from "~/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "~/src/components/widgets/WidgetLayout.svelte";
+	import type { Editor } from "~/src/wasm-communication/editor";
 
 	type LayerListingInfo = {
 		folderIndex: number;

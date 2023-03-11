@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 
-	import { initWasm, createEditor } from "@graphite/wasm-communication/editor";
+	import { initWasm, createEditor } from "./wasm-communication/editor";
 
-	import Editor from "@graphite/components/Editor.svelte";
+	import Editor from "./components/Editor.svelte";
 
 	let editor: ReturnType<typeof createEditor> | undefined = undefined;
 

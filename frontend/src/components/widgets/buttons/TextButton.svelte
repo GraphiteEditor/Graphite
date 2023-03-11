@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { IconName } from "@graphite/utility-functions/icons";
+	import type { IconName } from "~/src/utility-functions/icons";
 
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
 
 	export let label: string;
 	export let icon: IconName | undefined = undefined;

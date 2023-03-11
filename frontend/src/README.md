@@ -1,4 +1,4 @@
-# Overview of `/frontend/src/`
+# Overview of `/frontend~/src/`
 
 ## Svelte components: `components/`
 

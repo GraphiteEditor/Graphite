@@ -1,24 +1,24 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
-	import type { createEditor } from "@graphite/wasm-communication/editor";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { createClipboardManager } from "@graphite/io-managers/clipboard";
-	import { createDragManager } from "@graphite/io-managers/drag";
-	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
-	import { createInputManager } from "@graphite/io-managers/input";
-	import { createLocalizationManager } from "@graphite/io-managers/localization";
-	import { createPanicManager } from "@graphite/io-managers/panic";
-	import { createPersistenceManager } from "@graphite/io-managers/persistence";
-	import { createDialogState } from "@graphite/state-providers/dialog";
-	import { createDocumentState } from "@graphite/state-providers/document";
-	import { createFontsState } from "@graphite/state-providers/fonts";
-	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
-	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
-	import { createPortfolioState } from "@graphite/state-providers/portfolio";
-	import { createWorkspaceState } from "@graphite/state-providers/workspace";
+	import type { createEditor } from "../wasm-communication/editor";
+	import { operatingSystem } from "../utility-functions/platform";
+	import { createClipboardManager } from "../io-managers/clipboard";
+	import { createDragManager } from "../io-managers/drag";
+	import { createHyperlinkManager } from "../io-managers/hyperlinks";
+	import { createInputManager } from "../io-managers/input";
+	import { createLocalizationManager } from "../io-managers/localization";
+	import { createPanicManager } from "../io-managers/panic";
+	import { createPersistenceManager } from "../io-managers/persistence";
+	import { createDialogState } from "../state-providers/dialog";
+	import { createDocumentState } from "../state-providers/document";
+	import { createFontsState } from "../state-providers/fonts";
+	import { createFullscreenState } from "../state-providers/fullscreen";
+	import { createNodeGraphState } from "../state-providers/node-graph";
+	import { createPortfolioState } from "../state-providers/portfolio";
+	import { createWorkspaceState } from "../state-providers/workspace";
 
-	import MainWindow from "@graphite/components/window/MainWindow.svelte";
+	import MainWindow from "../components/window/MainWindow.svelte";
 
 	// Graphite WASM editor instance
 	export let editor: ReturnType<typeof createEditor>;

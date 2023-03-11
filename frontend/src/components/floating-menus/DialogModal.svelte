@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import type { DialogState } from "@graphite/state-providers/dialog";
+	import FloatingMenu from "~/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import TextButton from "~/src/components/widgets/buttons/TextButton.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "~/src/components/widgets/WidgetLayout.svelte";
+	import type { DialogState } from "~/src/state-providers/dialog";
 
 	const dialog = getContext<DialogState>("dialog");
 

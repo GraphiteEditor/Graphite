@@ -10,7 +10,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
+	import FloatingMenu from "~/src/components/layout/FloatingMenu.svelte";
 
 	const temporaryCanvas = document.createElement("canvas");
 	temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;

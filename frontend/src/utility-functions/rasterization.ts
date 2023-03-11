@@ -1,4 +1,4 @@
-import { replaceBlobURLsWithBase64 } from "@graphite/utility-functions/files";
+import { replaceBlobURLsWithBase64 } from "~/src/utility-functions/files";
 
 // Rasterize the string of an SVG document at a given width and height and return the canvas it was drawn onto during the rasterization process
 export async function rasterizeSVGCanvas(svg: string, width: number, height: number, backgroundColor?: string): Promise<HTMLCanvasElement> {

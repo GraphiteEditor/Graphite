@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import { platformIsMac } from "@graphite/utility-functions/platform";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/wasm-communication/messages";
+	import { platformIsMac } from "~/src/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "~/src/wasm-communication/messages";
 
-	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import MenuList from "~/src/components/floating-menus/MenuList.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
+	import type { Editor } from "~/src/wasm-communication/editor";
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
 	const accelKey = platformIsMac() ? "Command" : "Control";

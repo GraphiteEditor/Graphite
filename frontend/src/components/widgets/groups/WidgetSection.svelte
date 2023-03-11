@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
+	import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "~/src/wasm-communication/messages";
 
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetRow from "@graphite/components/widgets/WidgetRow.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetRow from "~/src/components/widgets/WidgetRow.svelte";
 	import { getContext } from "svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { Editor } from "~/src/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

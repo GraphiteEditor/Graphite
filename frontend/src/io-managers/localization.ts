@@ -1,5 +1,5 @@
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/wasm-communication/messages";
+import { type Editor } from "~/src/wasm-communication/editor";
+import { TriggerAboutGraphiteLocalizedCommitDate } from "~/src/wasm-communication/messages";
 
 export function createLocalizationManager(editor: Editor): void {
 	function localizeTimestamp(utc: string): string {

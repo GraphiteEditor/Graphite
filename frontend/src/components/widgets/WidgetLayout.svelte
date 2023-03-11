@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "@graphite/wasm-communication/messages";
+	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "~/src/wasm-communication/messages";
 
-	import WidgetSection from "@graphite/components/widgets/groups/WidgetSection.svelte";
-	import WidgetRow from "@graphite/components/widgets/WidgetRow.svelte";
+	import WidgetSection from "~/src/components/widgets/groups/WidgetSection.svelte";
+	import WidgetRow from "~/src/components/widgets/WidgetRow.svelte";
 
 	export let layout: WidgetLayout;
 	let className = "";

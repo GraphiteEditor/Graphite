@@ -1,7 +1,7 @@
 import {tick} from "svelte";
 import {writable} from "svelte/store";
 
-import { type Editor } from "@graphite/wasm-communication/editor";
+import { type Editor } from "~/src/wasm-communication/editor";
 import {
 	type FrontendNode,
 	type FrontendNodeLink,
@@ -12,7 +12,7 @@ import {
 	UpdateZoomWithScroll,
 	defaultWidgetLayout,
 	patchWidgetLayout,
-} from "@graphite/wasm-communication/messages";
+} from "~/src/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {

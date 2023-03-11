@@ -1,14 +1,14 @@
 import { get } from "svelte/store";
 
-import { type DialogState } from "@graphite/state-providers/dialog";
-import { type FullscreenState } from "@graphite/state-providers/fullscreen";
-import { type PortfolioState } from "@graphite/state-providers/portfolio";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { platformIsMac } from "@graphite/utility-functions/platform";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
-import { stripIndents } from "@graphite/utility-functions/strip-indents";
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerPaste } from "@graphite/wasm-communication/messages";
+import { type DialogState } from "~/src/state-providers/dialog";
+import { type FullscreenState } from "~/src/state-providers/fullscreen";
+import { type PortfolioState } from "~/src/state-providers/portfolio";
+import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "~/src/utility-functions/keyboard-entry";
+import { platformIsMac } from "~/src/utility-functions/platform";
+import { extractPixelData } from "~/src/utility-functions/rasterization";
+import { stripIndents } from "~/src/utility-functions/strip-indents";
+import { type Editor } from "~/src/wasm-communication/editor";
+import { TriggerPaste } from "~/src/wasm-communication/messages";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 type EventListenerTarget = {
