@@ -143,7 +143,7 @@ impl PropertyHolder for SelectTool {
 			widgets: vec![
 				DropdownInput::new(layer_selection_behavior_entries)
 					.selected_index(Some((self.tool_data.selected_type == LayerSelectionBehavior::Shallowest) as u32))
-					.tooltip("When selecing a layer in a folder, shallow select will select the parent folder whereas deep select will select the layer. Double clicking in shallow select mode will select the child layer.")
+					.tooltip("When selecting a layer in a folder, shallow select will select the parent folder whereas deep select will select the layer. Double clicking in shallow select mode will select the child layer.")
 					.widget_holder(),
 				WidgetHolder::related_separator(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
@@ -409,17 +409,17 @@ impl Fsm for SelectToolFsmState {
 								}
 								if incoming_parent_selected {
 									let mut intersected_layer_ancestors: Vec<Vec<u64>> = vec![];
-									// Permuations of intersected layer
+									// Permutations of intersected layer
 									for i in 1..intersect_layer_path.clone().len() + 1 {
 										intersected_layer_ancestors.push(intersect_layer_path.clone()[..i].to_vec());
 									}
 									intersected_layer_ancestors.reverse();
 									let mut new_layer_path: Vec<u64> = vec![];
 									// Set the base layer path to the deepest layer that is currently selected
-									for perm in intersected_layer_ancestors {
+									for permutation in intersected_layer_ancestors {
 										for layer in selected_layers.iter() {
-											if perm == *layer {
-												new_layer_path.append(&mut perm.clone());
+											if permutation == *layer {
+												new_layer_path.append(permutation.clone().as_mut());
 											}
 										}
 									}
@@ -581,15 +581,15 @@ impl Fsm for SelectToolFsmState {
 											// Add incoming layer
 											tool_data.layers_dragging.clear();
 											responses.push_back(DocumentMessage::DeselectAllLayers.into());
-											layers_without_incoming_parent.append(&mut selected.clone());
+											layers_without_incoming_parent.append(selected.clone().as_mut());
 											selected = layers_without_incoming_parent;
 										}
 
-										tool_data.layers_dragging.append(&mut selected.clone());
+										tool_data.layers_dragging.append(selected.clone().as_mut());
 										responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
 									} else {
 										tool_data.layers_dragging.clear();
-										tool_data.layers_dragging.append(&mut selected.clone());
+										tool_data.layers_dragging.append(selected.clone().as_mut());
 										responses.push_back(
 											DocumentMessage::SetSelectedLayers {
 												replacement_selected_layers: selected.clone(),
@@ -687,7 +687,7 @@ impl Fsm for SelectToolFsmState {
 												}
 												if input.keyboard.get(add_to_selection as usize) {
 													if !already_selected {
-														tool_data.layers_dragging.append(&mut vec![direct_child.clone()]);
+														tool_data.layers_dragging.push(direct_child.clone());
 														responses.push_back(
 															DocumentMessage::AddSelectedLayers {
 																additional_layers: vec![direct_child.clone()],
@@ -698,7 +698,7 @@ impl Fsm for SelectToolFsmState {
 														tool_data.layer_selected_on_start = None;
 													}
 												} else {
-													tool_data.layers_dragging.append(&mut vec![direct_child.clone()]);
+													tool_data.layers_dragging.push(direct_child.clone());
 													responses.push_back(
 														DocumentMessage::SetSelectedLayers {
 															replacement_selected_layers: vec![direct_child.clone()],
@@ -727,12 +727,12 @@ impl Fsm for SelectToolFsmState {
 													.into(),
 												);
 											}
-											tool_data.layers_dragging.append(&mut vec![vec![*parent_folder_id]]);
+											tool_data.layers_dragging.push(vec![*parent_folder_id]);
 										}
 									} else {
 										// Check if new layer is already selected
 										let parent_folder_id = selected.first().unwrap().first().unwrap();
-										tool_data.layers_dragging.append(&mut vec![vec![*parent_folder_id]]);
+										tool_data.layers_dragging.push(vec![*parent_folder_id]);
 										responses.push_back(
 											DocumentMessage::AddSelectedLayers {
 												additional_layers: vec![vec![*parent_folder_id]],
@@ -745,7 +745,7 @@ impl Fsm for SelectToolFsmState {
 							// Deepest Manipulation
 							else {
 								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
-								tool_data.layers_dragging.append(&mut selected);
+								tool_data.layers_dragging.append(selected.as_mut());
 								tool_data
 									.snap_manager
 									.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
@@ -753,7 +753,7 @@ impl Fsm for SelectToolFsmState {
 							Dragging
 						} else {
 							// If group manipulation is toggled and you select nothing deselect
-							// Neccesary since for group, we need to know the current selected layers to determine next
+							// Necessary since for group, we need to know the current selected layers to determine next
 							if tool_data.selected_type == LayerSelectionBehavior::Shallowest {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 								tool_data.layers_dragging.clear();
@@ -914,7 +914,7 @@ impl Fsm for SelectToolFsmState {
 						let replacement_selected_layers: Vec<Vec<u64>> = document.selected_layers().filter(|&layer| !folders.contains(&layer)).map(|path| path.to_vec()).collect();
 
 						tool_data.layers_dragging.clear();
-						tool_data.layers_dragging.append(&mut replacement_selected_layers.clone());
+						tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
 
 						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 					}
