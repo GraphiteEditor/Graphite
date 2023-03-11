@@ -32,9 +32,6 @@ pub enum DocumentMessage {
 	Overlays(OverlaysMessage),
 	#[remain::unsorted]
 	#[child]
-	TransformLayer(TransformLayerMessage),
-	#[remain::unsorted]
-	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
 	#[remain::unsorted]
 	#[child]

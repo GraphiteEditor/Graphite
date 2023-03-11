@@ -1,4 +1,4 @@
-import { reactive, readonly } from "vue";
+import {writable} from "svelte/store";
 
 import { type IconName } from "@/utility-functions/icons";
 import { type Editor } from "@/wasm-communication/editor";
@@ -6,7 +6,7 @@ import { type TextButtonWidget, type WidgetLayout, defaultWidgetLayout, DisplayD
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: Editor) {
-	const state = reactive({
+	const { subscribe, update } = writable({
 		visible: false,
 		icon: "" as IconName,
 		widgets: defaultWidgetLayout(),
@@ -15,37 +15,45 @@ export function createDialogState(editor: Editor) {
 	});
 
 	function dismissDialog(): void {
-		state.visible = false;
-	}
-
-	function dialogIsVisible(): boolean {
-		return state.visible;
+		update((state) => {
+			state.visible = false;
+			return state;
+		});
 	}
 
 	// Creates a panic dialog from JS.
 	// Normal dialogs are created in the Rust backend, but for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
 	function createPanicDialog(icon: IconName, widgets: WidgetLayout, jsCallbackBasedButtons: TextButtonWidget[]): void {
-		state.visible = true;
-		state.icon = icon;
-		state.widgets = widgets;
-		state.jsCallbackBasedButtons = jsCallbackBasedButtons;
+		update((state) => {
+			state.visible = true;
+			state.icon = icon;
+			state.widgets = widgets;
+			state.jsCallbackBasedButtons = jsCallbackBasedButtons;
+			return state;
+		});
 	}
 
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeJsMessage(DisplayDialog, (displayDialog) => {
-		state.visible = true;
-		state.icon = displayDialog.icon;
+		update((state) => {
+			state.visible = true;
+			state.icon = displayDialog.icon;
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDialogDetails, (updateDialogDetails) => {
-		patchWidgetLayout(state.widgets, updateDialogDetails);
-		state.jsCallbackBasedButtons = undefined;
+		update((state) => {
+			patchWidgetLayout(state.widgets, updateDialogDetails);
+
+			state.jsCallbackBasedButtons = undefined;
+			return state;
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
 
 	return {
-		state: readonly(state) as typeof state,
+		subscribe,
 		dismissDialog,
-		dialogIsVisible,
 		createPanicDialog,
 	};
 }
