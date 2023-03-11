@@ -829,11 +829,7 @@ impl Fsm for SelectToolFsmState {
 					// Deepest
 					LayerSelectionBehavior::Deepest => HintData(vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-						HintGroup(vec![
-							HintInfo::keys([Key::KeyG], "Grab Selected"),
-							HintInfo::keys([Key::KeyR], "Rotate Selected"),
-							HintInfo::keys([Key::KeyS], "Scale Selected"),
-						]),
+						HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 						HintGroup(vec![
 							HintInfo::mouse(MouseMotion::Lmb, "Select Object"),
 							HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),

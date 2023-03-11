@@ -338,11 +338,7 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected (coming soon)"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-				HintGroup(vec![
-					HintInfo::keys([Key::KeyG], "Grab Selected (coming soon)"),
-					HintInfo::keys([Key::KeyR], "Rotate Selected (coming soon)"),
-					HintInfo::keys([Key::KeyS], "Scale Selected (coming soon)"),
-				]),
+				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected (coming soon)")]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
