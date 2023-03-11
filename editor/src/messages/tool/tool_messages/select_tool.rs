@@ -925,7 +925,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::keys([Key::Control], "Opp. Corner").prepend_plus(),
 					]),
 					HintGroup(vec![
-						HintInfo::keys([Key::Alt], "Move Duplicate"),
+						HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
 						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
 					]),
 				]);

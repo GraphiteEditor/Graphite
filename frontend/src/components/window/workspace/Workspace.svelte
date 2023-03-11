@@ -22,7 +22,7 @@
 	};
 
 	let panelSizes = PANEL_SIZES;
-	let documentPanel: Panel;
+	let documentPanel: Panel | undefined;
 
 	$: activeDocumentIndex = $portfolio.activeDocumentIndex;
 	$: nodeGraphVisible = $workspace.nodeGraphVisible;

@@ -1,5 +1,5 @@
 <script lang="ts" context="module">
-	// Should be equal to the width and height of the canvas in the CSS
+	// Should be equal to the width and height of the zoom preview canvas in the CSS
 	const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;
 	// Should be equal to the width and height of the `.pixel-outline` div in the CSS, and should be evenly divisible into the number above
 	const UPSCALE_FACTOR = 10;
@@ -13,8 +13,10 @@
 	import FloatingMenu from "@/components/layout/FloatingMenu.svelte";
 
 	const temporaryCanvas = document.createElement("canvas");
+	temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
+	temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
 
-	let zoomPreviewCanvas: HTMLCanvasElement;
+	let zoomPreviewCanvas: HTMLCanvasElement | undefined;
 
 	export let imageData: ImageData | undefined = undefined;
 	export let colorChoice: string;
@@ -23,19 +25,12 @@
 	export let x: number;
 	export let y: number;
 
-	$: watchImageData(imageData);
-
-	function watchImageData(imageData: ImageData | undefined) {
-		displayImageDataPreview(imageData);
-	}
+	$: displayImageDataPreview(imageData);
 
 	function displayImageDataPreview(imageData: ImageData | undefined) {
-		zoomPreviewCanvas.width = ZOOM_WINDOW_DIMENSIONS;
-		zoomPreviewCanvas.height = ZOOM_WINDOW_DIMENSIONS;
+		if (!zoomPreviewCanvas) return;
 		const context = zoomPreviewCanvas.getContext("2d");
 
-		temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
-		temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
 		const temporaryContext = temporaryCanvas.getContext("2d");
 
 		if (!imageData || !context || !temporaryContext) return;
@@ -61,7 +56,7 @@
 >
 	<div class="ring">
 		<div class="canvas-container">
-			<canvas bind:this={zoomPreviewCanvas} />
+			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas} />
 			<div class="pixel-outline" />
 		</div>
 	</div>

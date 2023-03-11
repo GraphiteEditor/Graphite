@@ -40,7 +40,7 @@
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
-	let tabElements: LayoutRow[] = [];
+	let tabElements: (LayoutRow | undefined)[] = [];
 
 	function newDocument() {
 		editor.instance.newDocumentDialog();
@@ -63,7 +63,7 @@
 
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
-		tabElements[newIndex].div().scrollIntoView();
+		tabElements[newIndex]?.div()?.scrollIntoView();
 	}
 </script>
 

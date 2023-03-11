@@ -11,7 +11,7 @@
 
 	const dialog = getContext<DialogState>("dialog");
 
-	let self: FloatingMenu;
+	let self: FloatingMenu | undefined;
 
 	export function dismiss() {
 		dialog.dismissDialog();
@@ -19,7 +19,7 @@
 
 	onMount(() => {
 		// Focus the first button in the popup
-		const emphasizedOrFirstButton = (self.div().querySelector("[data-emphasized]") || self.div().querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		const emphasizedOrFirstButton = (self?.div()?.querySelector("[data-emphasized]") || self?.div()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
 	});
 </script>

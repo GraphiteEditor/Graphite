@@ -13,8 +13,8 @@
 	// emits: ["update:selectedIndex"],
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
-	let menuList: MenuList;
-	let self: LayoutRow;
+	let menuList: MenuList | undefined;
+	let self: LayoutRow | undefined;
 
 	export let entries: MenuListEntry[][];
 	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
@@ -57,8 +57,8 @@
 	}
 
 	function unFocusDropdownBox(e: FocusEvent) {
-		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]");
-		if (blurTarget !== self.div()) open = false;
+		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]") || undefined;
+		if (blurTarget !== self?.div()) open = false;
 	}
 </script>
 
@@ -70,7 +70,7 @@
 		{tooltip}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
-		on:keydown={(e) => menuList.keydown(e, false)}
+		on:keydown={(e) => menuList?.keydown(e, false)}
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner
 	>

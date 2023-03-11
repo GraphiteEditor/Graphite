@@ -29,7 +29,7 @@
 		entry: LayerPanelEntry;
 	};
 
-	let list: LayoutCol;
+	let list: LayoutCol | undefined;
 
 	const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
 	const LAYER_INDENT = 16;
@@ -105,7 +105,7 @@
 
 		await tick();
 
-		const textInput = (list?.div().querySelector("[data-text-input]:not([disabled])") || undefined) as HTMLInputElement | undefined;
+		const textInput = (list?.div()?.querySelector("[data-text-input]:not([disabled])") || undefined) as HTMLInputElement | undefined;
 		textInput?.select();
 	}
 
@@ -153,8 +153,8 @@
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
-		const treeChildren = tree.div().children;
-		const treeOffset = tree.div().getBoundingClientRect().top;
+		const treeChildren = tree.div()?.children;
+		const treeOffset = tree.div()?.getBoundingClientRect().top;
 
 		// Closest distance to the middle of the row along the Y axis
 		let closest = Infinity;
@@ -171,45 +171,47 @@
 		let markerHeight = 0;
 		let previousHeight = undefined as undefined | number;
 
-		Array.from(treeChildren).forEach((treeChild, index) => {
-			const layerComponents = treeChild.getElementsByClassName("layer");
-			if (layerComponents.length !== 1) return;
-			const child = layerComponents[0];
+		if (treeChildren !== undefined && treeOffset !== undefined) {
+			Array.from(treeChildren).forEach((treeChild, index) => {
+				const layerComponents = treeChild.getElementsByClassName("layer");
+				if (layerComponents.length !== 1) return;
+				const child = layerComponents[0];
 
-			const indexAttribute = child.getAttribute("data-index");
-			if (!indexAttribute) return;
-			const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+				const indexAttribute = child.getAttribute("data-index");
+				if (!indexAttribute) return;
+				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
 
-			const rect = child.getBoundingClientRect();
-			const position = rect.top + rect.height / 2;
-			const distance = position - clientY;
+				const rect = child.getBoundingClientRect();
+				const position = rect.top + rect.height / 2;
+				const distance = position - clientY;
 
-			// Inserting above current row
-			if (distance > 0 && distance < closest) {
-				insertFolder = layer.path.slice(0, layer.path.length - 1);
-				insertIndex = folderIndex;
-				highlightFolder = false;
-				closest = distance;
-				markerHeight = previousHeight || treeOffset + INSERT_MARK_OFFSET;
-			}
-			// Inserting below current row
-			else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-				insertFolder = layer.layerType === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
-				insertIndex = layer.layerType === "Folder" ? 0 : folderIndex + 1;
-				highlightFolder = layer.layerType === "Folder";
-				closest = -distance;
-				markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
-			}
-			// Inserting with no nesting at the end of the panel
-			else if (closest === Infinity) {
-				if (layer.path.length === 1) insertIndex = folderIndex + 1;
+				// Inserting above current row
+				if (distance > 0 && distance < closest) {
+					insertFolder = layer.path.slice(0, layer.path.length - 1);
+					insertIndex = folderIndex;
+					highlightFolder = false;
+					closest = distance;
+					markerHeight = previousHeight || treeOffset + INSERT_MARK_OFFSET;
+				}
+				// Inserting below current row
+				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
+					insertFolder = layer.layerType === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
+					insertIndex = layer.layerType === "Folder" ? 0 : folderIndex + 1;
+					highlightFolder = layer.layerType === "Folder";
+					closest = -distance;
+					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
+				}
+				// Inserting with no nesting at the end of the panel
+				else if (closest === Infinity) {
+					if (layer.path.length === 1) insertIndex = folderIndex + 1;
 
-				markerHeight = rect.bottom - INSERT_MARK_OFFSET;
-			}
-			previousHeight = rect.bottom;
-		});
+					markerHeight = rect.bottom - INSERT_MARK_OFFSET;
+				}
+				previousHeight = rect.bottom;
+			});
+		}
 
-		markerHeight -= treeOffset;
+		markerHeight -= (treeOffset || 0);
 
 		return {
 			select,

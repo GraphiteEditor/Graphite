@@ -22,9 +22,10 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	let graph: LayoutRow;
-	let nodesContainer: HTMLDivElement;
-	let nodeSearchInput: TextInput;
+	let graph: LayoutRow | undefined;
+	let nodesContainer: HTMLDivElement | undefined;
+	let nodeSearchInput: TextInput | undefined;
+
 	let transform = { scale: 1, x: 0, y: 0 };
 	let panning = false;
 	let selected: bigint[] = [];
@@ -75,7 +76,7 @@
 	}
 
 	function createLinkPathInProgress(linkInProgressFromConnector?: HTMLDivElement, linkInProgressToConnector?: HTMLDivElement | DOMRect): [string, string] | undefined {
-		if (linkInProgressFromConnector && linkInProgressToConnector) {
+		if (linkInProgressFromConnector && linkInProgressToConnector && nodesContainer) {
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, false, false);
 		}
 		return undefined;
@@ -107,9 +108,12 @@
 	async function refreshLinks(): Promise<void> {
 		await tick();
 
+		if (!nodesContainer) return;
+		const theNodesContainer = nodesContainer;
+
 		const links = $nodeGraph.links;
 		nodeLinkPaths = links.flatMap((link, index) => {
-			const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, nodesContainer);
+			const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, theNodesContainer);
 			if (!nodePrimaryInput || !nodePrimaryOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
 
@@ -129,6 +133,8 @@
 	}
 
 	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+		if (!nodesContainer) return [];
+
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
@@ -193,7 +199,9 @@
 			let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 			if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
-			const { x, y, width, height } = graph.div().getBoundingClientRect();
+			const bounds = graph?.div()?.getBoundingClientRect();
+			if (!bounds) return;
+			const { x, y, width, height } = bounds;
 
 			transform.scale *= zoomFactor;
 
@@ -238,14 +246,15 @@
 
 		// Create the add node popup on right click, then exit
 		if (rmb) {
-			const graphBounds = graph.div().getBoundingClientRect();
+			const graphBounds = graph?.div()?.getBoundingClientRect();
+			if (!graphBounds) return;
 			nodeListLocation = {
 				x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
 				y: Math.round(((e.clientY - graphBounds.y) / transform.scale - transform.y) / GRID_SIZE),
 			};
 
 			// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
-			setTimeout(() => nodeSearchInput.focus(), 0);
+			setTimeout(() => nodeSearchInput?.focus(), 0);
 
 			document.addEventListener("keydown", keydown);
 			return;
@@ -277,9 +286,9 @@
 					const inputIndexInt = BigInt(inputIndex);
 					const links = $nodeGraph.links;
 					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-					const nodeOutputConnectors = nodesContainer.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+					const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
 					linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
-					const nodeInputConnectors = nodesContainer.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
+					const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
 					linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
 					disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
 					refreshLinks();
@@ -400,24 +409,26 @@
 			// Check if this node should be inserted between two other nodes
 			if (selected.length === 1) {
 				const selectedNodeId = selected[0];
-				const selectedNode = nodesContainer.querySelector(`[data-node="${String(selectedNodeId)}"]`);
+				const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
 
 				// Check that neither the input or output of the selected node are already connected.
 				const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
-				const input = selectedNode?.querySelector(`[data-port="input"]`);
-				const output = selectedNode?.querySelector(`[data-port="output"]`);
+				const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
+				const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
 
 				// TODO: Make sure inputs are correctly typed
-				if (selectedNode && notConnected && input && output) {
+				if (selectedNode && notConnected && input && output && nodesContainer) {
+					const theNodesContainer = nodesContainer;
+
 					// Find the link that the node has been dragged on top of
 					const link = $nodeGraph.links.find((link): boolean => {
-						const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, nodesContainer);
+						const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, theNodesContainer);
 						if (!nodePrimaryInput || !nodePrimaryOutput) return false;
 
 						const wireCurveLocations = buildWirePathLocations(nodePrimaryOutput.getBoundingClientRect(), nodePrimaryInput.getBoundingClientRect(), false, false);
 
 						const selectedNodeBounds = selectedNode.getBoundingClientRect();
-						const containerBoundsBounds = nodesContainer.getBoundingClientRect();
+						const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
 						return editor.instance.rectangleIntersects(
 							new Float64Array(wireCurveLocations.map((loc) => loc.x)),
@@ -428,6 +439,7 @@
 							selectedNodeBounds.right - containerBoundsBounds.x
 						);
 					});
+
 					// If the node has been dragged on top of the link then connect it into the middle.
 					if (link) {
 						editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);

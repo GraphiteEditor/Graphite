@@ -539,6 +539,17 @@ impl HintInfo {
 		}
 	}
 
+	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+		let keys: Vec<_> = keys.into_iter().collect();
+		Self {
+			key_groups: vec![KeysGroup(keys).into()],
+			key_groups_mac: None,
+			mouse: Some(mouse_motion),
+			label: label.into(),
+			plus: false,
+		}
+	}
+
 	pub fn arrow_keys(label: impl Into<String>) -> Self {
 		HintInfo {
 			key_groups: vec![

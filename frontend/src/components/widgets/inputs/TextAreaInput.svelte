@@ -11,7 +11,7 @@
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
 
-	let self: FieldInput;
+	let self: FieldInput | undefined;
 	let editing = false;
 
 	function onTextFocused() {
@@ -27,20 +27,20 @@
 		onCancelTextChange();
 
 		// TODO: Find a less hacky way to do this
-		dispatch("commitText", self.getValue());
+		if (self) dispatch("commitText", self.getValue());
 
 		// Required if value is not changed by the parent component upon update:value event
-		self.setInputElementValue(value);
+		self?.setInputElementValue(value);
 	}
 
 	function onCancelTextChange() {
 		editing = false;
 
-		self.unFocus();
+		self?.unFocus();
 	}
 
 	export function focus() {
-		self.focus();
+		self?.focus();
 	}
 </script>
 
