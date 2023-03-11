@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerFontLoad } from "@graphite/wasm-communication/messages";
+import { type Editor } from "~/src/wasm-communication/editor";
+import { TriggerFontLoad } from "~/src/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
+	import type { FullscreenState } from "~/src/state-providers/fullscreen";
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 

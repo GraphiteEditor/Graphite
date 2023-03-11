@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { textInputCleanup } from "~/src/utility-functions/keyboard-entry";
+	import { extractPixelData, rasterizeSVGCanvas } from "~/src/utility-functions/rasterization";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -17,16 +17,16 @@
 		UpdateDocumentScrollbars,
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
-	} from "@graphite/wasm-communication/messages";
+	} from "~/src/wasm-communication/messages";
 
-	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import CanvasRuler from "@graphite/components/widgets/metrics/CanvasRuler.svelte";
-	import PersistentScrollbar from "@graphite/components/widgets/metrics/PersistentScrollbar.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { DocumentState } from "@graphite/state-providers/document";
+	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "~/src/components/floating-menus/EyedropperPreview.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import CanvasRuler from "~/src/components/widgets/metrics/CanvasRuler.svelte";
+	import PersistentScrollbar from "~/src/components/widgets/metrics/PersistentScrollbar.svelte";
+	import WidgetLayout from "~/src/components/widgets/WidgetLayout.svelte";
+	import type { Editor } from "~/src/wasm-communication/editor";
+	import type { DocumentState } from "~/src/state-providers/document";
 
 	let rulerHorizontal: CanvasRuler | undefined;
 	let rulerVertical: CanvasRuler | undefined;

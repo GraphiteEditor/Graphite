@@ -1,6 +1,6 @@
 <script lang="ts">
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
 
 	export let maximized = false;
 </script>

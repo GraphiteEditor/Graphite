@@ -13,8 +13,10 @@
 		"sourceMap": true,
 		"baseUrl": ".",
 		"types": ["node", "svelte", "svelte/store", "svelte/motion", "svelte/transition", "svelte/animate", "svelte/easing"],
+		"baseUrl": ".",
 		"paths": {
-			"@graphite/*": ["src/*"]
+			"~*": ["./*"],
+			"/*": ["./*"]
 		},
 		"lib": ["esnext", "dom", "dom.iterable", "scripthost"]
 	},

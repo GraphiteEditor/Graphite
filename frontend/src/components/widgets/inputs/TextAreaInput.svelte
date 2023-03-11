@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import FieldInput from "~/src/components/widgets/inputs/FieldInput.svelte";
 
 	// emits: ["update:value", "commitText"],
 	const dispatch = createEventDispatcher<{ commitText: string }>();

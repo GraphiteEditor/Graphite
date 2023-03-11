@@ -1,5 +1,5 @@
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerTextCopy } from "@graphite/wasm-communication/messages";
+import { type Editor } from "~/src/wasm-communication/editor";
+import { TriggerTextCopy } from "~/src/wasm-communication/messages";
 
 export function createClipboardManager(editor: Editor): void {
 	// Subscribe to process backend event

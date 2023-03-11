@@ -3,15 +3,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
+	import type { MenuListEntry } from "~/src/wasm-communication/messages";
 
-	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import FloatingMenu, { type MenuDirection } from "~/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "~/src/components/widgets/labels/Separator.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
+	import UserInputLabel from "~/src/components/widgets/labels/UserInputLabel.svelte";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;

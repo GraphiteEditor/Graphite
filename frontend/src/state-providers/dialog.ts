@@ -1,8 +1,8 @@
 import {writable} from "svelte/store";
 
-import { type IconName } from "@graphite/utility-functions/icons";
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { type TextButtonWidget, type WidgetLayout, defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, patchWidgetLayout } from "@graphite/wasm-communication/messages";
+import { type IconName } from "~/src/utility-functions/icons";
+import { type Editor } from "~/src/wasm-communication/editor";
+import { type TextButtonWidget, type WidgetLayout, defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogDetails, patchWidgetLayout } from "~/src/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: Editor) {

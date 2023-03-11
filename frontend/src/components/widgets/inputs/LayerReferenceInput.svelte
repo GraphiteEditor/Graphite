@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { currentDraggingElement } from "@graphite/io-managers/drag";
+	import { currentDraggingElement } from "~/src/io-managers/drag";
 
-	import type { LayerType, LayerTypeData } from "@graphite/wasm-communication/messages";
-	import { layerTypeData } from "@graphite/wasm-communication/messages";
+	import type { LayerType, LayerTypeData } from "~/src/wasm-communication/messages";
+	import { layerTypeData } from "~/src/wasm-communication/messages";
 
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import IconButton from "~/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "~/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: string | undefined }>();

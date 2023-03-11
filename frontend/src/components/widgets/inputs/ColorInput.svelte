@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { Color } from "@graphite/wasm-communication/messages";
+	import type { Color } from "~/src/wasm-communication/messages";
 
-	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import ColorPicker from "~/src/components/floating-menus/ColorPicker.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import TextLabel from "~/src/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: Color }>();
@@ -13,8 +13,8 @@
 	let open = false;
 
 	export let value: Color;
-	export let noTransparency = false; // TODO: Rename to allowTransparency, also implement allowNone
-	export let disabled = false; // TODO: Design and implement
+	// export let noTransparency = false; // TODO: Rename to allowTransparency, also implement allowNone
+	// export let disabled = false; // TODO: Design and implement
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
 

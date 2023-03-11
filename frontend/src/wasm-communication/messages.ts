@@ -2,10 +2,10 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
-import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
+import { type IconName, type IconSize } from "~/src/utility-functions/icons";
+import { type WasmEditorInstance, type WasmRawInstance } from "~/src/wasm-communication/editor";
 
-import type MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+import type MenuList from "~/src/components/floating-menus/MenuList.svelte";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -506,15 +506,15 @@ export class TriggerFileDownload extends JsMessage {
 	readonly name!: string;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadAutoSaveDocuments extends JsMessage { }
 
-export class TriggerLoadPreferences extends JsMessage {}
+export class TriggerLoadPreferences extends JsMessage { }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpenDocument extends JsMessage { }
 
-export class TriggerImport extends JsMessage {}
+export class TriggerImport extends JsMessage { }
 
-export class TriggerPaste extends JsMessage {}
+export class TriggerPaste extends JsMessage { }
 
 export class TriggerRasterDownload extends JsMessage {
 	readonly svg!: string;
@@ -618,7 +618,7 @@ export class TriggerNodeGraphFrameGenerate extends JsMessage {
 	readonly imaginateNode!: BigUint64Array | undefined;
 }
 
-export class TriggerRefreshBoundsOfViewports extends JsMessage {}
+export class TriggerRefreshBoundsOfViewports extends JsMessage { }
 
 export class TriggerRevokeBlobUrl extends JsMessage {
 	readonly url!: string;
@@ -628,7 +628,7 @@ export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
 }
 
-export class DocumentChanged extends JsMessage {}
+export class DocumentChanged extends JsMessage { }
 
 export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
 	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructureJs[]) {
@@ -645,7 +645,7 @@ export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuf
 	const pointerNum = Number(input.dataBuffer.pointer);
 	const lengthNum = Number(input.dataBuffer.length);
 
-	const wasmMemoryBuffer = wasm.wasmMemory().buffer;
+	const wasmMemoryBuffer = wasm.buffer;
 
 	// Decode the folder structure encoding
 	const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
@@ -713,7 +713,7 @@ export class UpdateImageData extends JsMessage {
 	readonly imageData!: ImaginateImageData[];
 }
 
-export class DisplayRemoveEditableTextbox extends JsMessage {}
+export class DisplayRemoveEditableTextbox extends JsMessage { }
 
 export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
@@ -772,7 +772,7 @@ export class ImaginateImageData {
 	readonly transform!: Float64Array ;
 }
 
-export class DisplayDialogDismiss extends JsMessage {}
+export class DisplayDialogDismiss extends JsMessage { }
 
 export class Font {
 	fontFamily!: string;
@@ -791,7 +791,7 @@ export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
-export class TriggerTextCommit extends JsMessage {}
+export class TriggerTextCommit extends JsMessage { }
 
 export class TriggerTextCopy extends JsMessage {
 	readonly copyText!: string;
@@ -801,7 +801,7 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-export class TriggerViewportResize extends JsMessage {}
+export class TriggerViewportResize extends JsMessage { }
 
 // WIDGET PROPS
 
@@ -1145,7 +1145,7 @@ export class PivotAssist extends WidgetProps {
 // WIDGET
 
 const widgetSubTypes = [
-	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons"},
+	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
 	{ value: ColorInput, name: "ColorInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
@@ -1327,25 +1327,25 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 }
 
 // WIDGET LAYOUTS
-export class UpdateDialogDetails extends WidgetDiffUpdate {}
+export class UpdateDialogDetails extends WidgetDiffUpdate { }
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
+export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
+export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
+export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
 
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
+export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
 
-export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate {}
+export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate { }
 
 export class UpdateMenuBarLayout extends JsMessage {
 	layoutTarget!: unknown;

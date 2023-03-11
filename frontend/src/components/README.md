@@ -1,4 +1,4 @@
-# Overview of `/frontend/src/components/`
+# Overview of `/frontend~/src/components/`
 
 Each component represents a (usually reusable) part of the Graphite Editor GUI. These all get mounted in `Editor.svelte` (in the `/src` directory above this one).
 

@@ -66,8 +66,8 @@ async fn main() {
 	tauri::Builder::default()
 		.invoke_handler(tauri::generate_handler![set_random_seed, handle_message])
 		.setup(|_app| {
-			//use tauri::Manager;
-			//_app.get_window("main").unwrap().open_devtools();
+			use tauri::Manager;
+			_app.get_window("main").unwrap().open_devtools();
 			Ok(())
 		})
 		.run(tauri::generate_context!())

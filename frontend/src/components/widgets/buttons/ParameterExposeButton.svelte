@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
 
 	export let exposed: boolean;
 	export let dataType: string;

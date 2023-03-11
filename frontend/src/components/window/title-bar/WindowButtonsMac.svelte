@@ -1,7 +1,7 @@
 <script lang="ts">
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
 
-	export let maximized = false;
+	// export let maximized = false;
 </script>
 
 <LayoutRow class="window-buttons-mac">

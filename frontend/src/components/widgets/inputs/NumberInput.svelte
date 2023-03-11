@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/wasm-communication/messages";
+	import { type NumberInputMode, type NumberInputIncrementBehavior } from "~/src/wasm-communication/messages";
 
-	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import FieldInput from "~/src/components/widgets/inputs/FieldInput.svelte";
 
 	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: number | undefined }>();

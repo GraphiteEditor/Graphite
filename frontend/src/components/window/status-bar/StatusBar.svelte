@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import { platformIsMac } from "@graphite/utility-functions/platform";
-	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/wasm-communication/messages";
+	import { platformIsMac } from "~/src/utility-functions/platform";
+	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "~/src/wasm-communication/messages";
 
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import LayoutRow from "~/src/components/layout/LayoutRow.svelte";
+	import Separator from "~/src/components/widgets/labels/Separator.svelte";
+	import UserInputLabel from "~/src/components/widgets/labels/UserInputLabel.svelte";
+	import type { Editor } from "~/src/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

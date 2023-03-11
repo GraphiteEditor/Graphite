@@ -3,10 +3,10 @@
 </script>
 
 <script lang="ts">
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import StatusBar from "@graphite/components/window/status-bar/StatusBar.svelte";
-	import TitleBar from "@graphite/components/window/title-bar/TitleBar.svelte";
-	import Workspace from "@graphite/components/window/workspace/Workspace.svelte";
+	import LayoutCol from "~/src/components/layout/LayoutCol.svelte";
+	import StatusBar from "~/src/components/window/status-bar/StatusBar.svelte";
+	import TitleBar from "~/src/components/window/title-bar/TitleBar.svelte";
+	import Workspace from "~/src/components/window/workspace/Workspace.svelte";
 
 	let platform: ApplicationPlatform = "Web";
 	let maximized: true;

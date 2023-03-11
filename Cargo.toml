@@ -42,9 +42,6 @@ opt-level = 1
 [profile.dev.package.graphene-std]
 opt-level = 1
 
-[profile.dev.package.graphite-wasm]
-opt-level = 1
-
 [profile.dev.package.autoquant]
 opt-level = 3
 
