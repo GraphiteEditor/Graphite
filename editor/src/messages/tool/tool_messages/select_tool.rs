@@ -949,6 +949,8 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
+// TODO: Majorly clean up these next five functions
+
 fn drag_shallowest_manipulation(
 	document: &DocumentMessageHandler,
 	selected: &mut Vec<Vec<u64>>,
