@@ -334,6 +334,91 @@ impl SelectToolData {
 			[self.drag_start, self.drag_current]
 		}
 	}
+
+	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
+	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		responses.push_back(DocumentMessage::DeselectAllLayers.into());
+
+		self.not_duplicated_layers = Some(self.layers_dragging.clone());
+
+		// Duplicate each previously selected layer and select the new ones.
+		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter_mut()) {
+			// Moves the original back to its starting position.
+			responses.push_front(
+				Operation::TransformLayerInViewport {
+					path: layer_path.clone(),
+					transform: DAffine2::from_translation(self.drag_start - self.drag_current).to_cols_array(),
+				}
+				.into(),
+			);
+
+			// Copy the layers.
+			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
+			let layer = match document.document_legacy.layer(layer_path) {
+				Ok(layer) => layer.clone(),
+				Err(e) => {
+					warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
+					continue;
+				}
+			};
+
+			let layer_metadata = *document.layer_metadata(layer_path);
+			*layer_path.last_mut().unwrap() = generate_uuid();
+
+			responses.push_back(
+				Operation::InsertLayer {
+					layer: Box::new(layer),
+					destination_path: layer_path.clone(),
+					insert_index: -1,
+				}
+				.into(),
+			);
+
+			responses.push_back(
+				DocumentMessage::UpdateLayerMetadata {
+					layer_path: layer_path.clone(),
+					layer_metadata,
+				}
+				.into(),
+			);
+		}
+	}
+
+	/// Removes the duplicated layers. Called when Alt is released and the layers have been duplicated.
+	fn stop_duplicates(&mut self, responses: &mut VecDeque<Message>) {
+		let originals = match self.not_duplicated_layers.take() {
+			Some(x) => x,
+			None => return,
+		};
+
+		responses.push_back(DocumentMessage::DeselectAllLayers.into());
+
+		// Delete the duplicated layers
+		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter()) {
+			responses.push_back(Operation::DeleteLayer { path: layer_path.clone() }.into());
+		}
+
+		// Move the original to under the mouse
+		for layer_path in Document::shallowest_unique_layers(originals.iter()) {
+			responses.push_front(
+				Operation::TransformLayerInViewport {
+					path: layer_path.clone(),
+					transform: DAffine2::from_translation(self.drag_current - self.drag_start).to_cols_array(),
+				}
+				.into(),
+			);
+		}
+
+		// Select the originals
+		responses.push_back(
+			DocumentMessage::SetSelectedLayers {
+				replacement_selected_layers: originals.clone(),
+			}
+			.into(),
+		);
+
+		self.layers_dragging = originals;
+	}
 }
 
 impl Fsm for SelectToolFsmState {
@@ -1145,91 +1230,4 @@ fn recursive_search(document: &DocumentMessageHandler, layer_path: &Vec<u64>, in
 		}
 	}
 	return false;
-}
-
-impl SelectToolData {
-	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
-	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		responses.push_back(DocumentMessage::DeselectAllLayers.into());
-
-		self.not_duplicated_layers = Some(self.layers_dragging.clone());
-
-		// Duplicate each previously selected layer and select the new ones.
-		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter_mut()) {
-			// Moves the original back to its starting position.
-			responses.push_front(
-				Operation::TransformLayerInViewport {
-					path: layer_path.clone(),
-					transform: DAffine2::from_translation(self.drag_start - self.drag_current).to_cols_array(),
-				}
-				.into(),
-			);
-
-			// Copy the layers.
-			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
-			let layer = match document.document_legacy.layer(layer_path) {
-				Ok(layer) => layer.clone(),
-				Err(e) => {
-					warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
-					continue;
-				}
-			};
-
-			let layer_metadata = *document.layer_metadata(layer_path);
-			*layer_path.last_mut().unwrap() = generate_uuid();
-
-			responses.push_back(
-				Operation::InsertLayer {
-					layer: Box::new(layer),
-					destination_path: layer_path.clone(),
-					insert_index: -1,
-				}
-				.into(),
-			);
-
-			responses.push_back(
-				DocumentMessage::UpdateLayerMetadata {
-					layer_path: layer_path.clone(),
-					layer_metadata,
-				}
-				.into(),
-			);
-		}
-	}
-
-	/// Removes the duplicated layers. Called when Alt is released and the layers have been duplicated.
-	fn stop_duplicates(&mut self, responses: &mut VecDeque<Message>) {
-		let originals = match self.not_duplicated_layers.take() {
-			Some(x) => x,
-			None => return,
-		};
-
-		responses.push_back(DocumentMessage::DeselectAllLayers.into());
-
-		// Delete the duplicated layers
-		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter()) {
-			responses.push_back(Operation::DeleteLayer { path: layer_path.clone() }.into());
-		}
-
-		// Move the original to under the mouse
-		for layer_path in Document::shallowest_unique_layers(originals.iter()) {
-			responses.push_front(
-				Operation::TransformLayerInViewport {
-					path: layer_path.clone(),
-					transform: DAffine2::from_translation(self.drag_current - self.drag_start).to_cols_array(),
-				}
-				.into(),
-			);
-		}
-
-		// Select the originals
-		responses.push_back(
-			DocumentMessage::SetSelectedLayers {
-				replacement_selected_layers: originals.clone(),
-			}
-			.into(),
-		);
-
-		self.layers_dragging = originals;
-	}
 }
