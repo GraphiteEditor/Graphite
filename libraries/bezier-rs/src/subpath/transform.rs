@@ -2,7 +2,7 @@ use std::vec;
 
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{Cap, Joint, SubpathTValue, TValue};
+use crate::utils::{Cap, Join, SubpathTValue, TValue};
 
 use glam::DAffine2;
 
@@ -278,6 +278,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Smooths a Subpath up to the first derivative, using a weighted averaged based on segment length.
 	/// The Subpath must be open, and contain no quadratic segments.
 	pub(crate) fn smooth_open_subpath(&mut self) {
+		if self.len() < 2 {
+			return;
+		}
 		for i in 1..self.len() - 1 {
 			let first_bezier = self.manipulator_groups[i - 1].to_bezier(&self.manipulator_groups[i]);
 			let second_bezier = self.manipulator_groups[i].to_bezier(&self.manipulator_groups[i + 1]);
@@ -326,9 +329,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
-	/// The intersections of segments of the subpath are joined using the method specified by the `joint` argument.
+	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
-	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
+	pub fn offset(&self, distance: f64, join: Join) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
 		// An offset at a distance 0 from the curve is simply the same curve
@@ -359,7 +362,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let angle = out_tangent.angle_between(in_tangent);
 
 			// The angle is concave. The Subpath overlap and must be clipped
-			let mut apply_joint = true;
+			let mut apply_join = true;
 			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
 				// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
 				// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
@@ -367,23 +370,23 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_simple_subpaths(subpath1, subpath2) {
 					subpaths[i] = clipped_subpath1;
 					subpaths[j] = clipped_subpath2;
-					apply_joint = false;
+					apply_join = false;
 				}
 			}
-			// The angle is convex. The Subpath must be joined using the specified Joint type
-			if apply_joint {
-				match joint {
-					Joint::Bevel => {
+			// The angle is convex. The Subpath must be joined using the specified join type
+			if apply_join {
+				match join {
+					Join::Bevel => {
 						drop_common_point[j] = false;
 					}
-					Joint::Miter => {
+					Join::Miter => {
 						let miter_manipulator_group = subpaths[i].miter_line_join(&subpaths[j]);
 						if let Some(miter_manipulator_group) = miter_manipulator_group {
 							subpaths[i].manipulator_groups.push(miter_manipulator_group);
 						}
 						drop_common_point[j] = false;
 					}
-					Joint::Round => {
+					Join::Round => {
 						let (out_handle, round_point, in_handle) = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
 						let last_index = subpaths[i].manipulator_groups.len() - 1;
 						subpaths[i].manipulator_groups[last_index].out_handle = Some(out_handle);
@@ -404,22 +407,22 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
 			let angle = out_tangent.angle_between(in_tangent);
 
-			let mut apply_joint = true;
+			let mut apply_join = true;
 			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
 				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_simple_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
 					// Merge the clipped subpaths
 					let last_index = subpaths.len() - 1;
 					subpaths[last_index] = clipped_subpath1;
 					subpaths[0] = clipped_subpath2;
-					apply_joint = false;
+					apply_join = false;
 				}
 			}
-			if apply_joint {
-				match joint {
-					Joint::Bevel => {
+			if apply_join {
+				match join {
+					Join::Bevel => {
 						drop_common_point[0] = false;
 					}
-					Joint::Miter => {
+					Join::Miter => {
 						let last_subpath_index = subpaths.len() - 1;
 						let miter_manipulator_group = subpaths[last_subpath_index].miter_line_join(&subpaths[0]);
 						if let Some(miter_manipulator_group) = miter_manipulator_group {
@@ -427,7 +430,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						}
 						drop_common_point[0] = false;
 					}
-					Joint::Round => {
+					Join::Round => {
 						let last_subpath_index = subpaths.len() - 1;
 						let (out_handle, round_point, in_handle) = subpaths[last_subpath_index].round_line_join(&subpaths[0], self.manipulator_groups[0].anchor);
 						let last_index = subpaths[last_subpath_index].manipulator_groups.len() - 1;
@@ -466,6 +469,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
 		result_manipulator_groups.extend_from_slice(self.manipulator_groups());
 		match cap {
+			Cap::Butt => {
+				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+			}
 			Cap::Round => {
 				let last_index = result_manipulator_groups.len() - 1;
 				let (out_handle, round_point, in_handle) = self.round_cap(other);
@@ -480,8 +486,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				result_manipulator_groups.push(round_point);
 				result_manipulator_groups[0].in_handle = Some(in_handle);
 			}
-			_ => {
+			Cap::Square => {
+				let square_points = self.square_cap(other);
+				result_manipulator_groups.extend_from_slice(&square_points);
 				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+				let square_points = other.square_cap(self);
+				result_manipulator_groups.extend_from_slice(&square_points);
 			}
 		}
 		Subpath::new(result_manipulator_groups, true)
@@ -491,11 +501,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Outline returns a single closed subpath (if the original subpath was open) or two closed subpaths (if the original subpath was closed) that forms
 	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
 	/// - `distance` - The outline's distance from the curve.
-	/// - `joint` - The joint type used to cap the endpoints of open bezier curves, and join successive subpath segments.
+	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline(&self, distance: f64, joint: Joint, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
-		let pos_offset = self.offset(distance, joint);
-		let neg_offset = self.reverse().offset(distance, joint);
+	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+		let pos_offset = self.offset(distance, join);
+		let neg_offset = self.reverse().offset(distance, join);
 
 		if self.closed {
 			return (pos_offset, Some(neg_offset));

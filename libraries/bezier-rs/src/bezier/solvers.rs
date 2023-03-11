@@ -64,7 +64,12 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/tangent/solo" title="Tangent Demo"></iframe>
 	pub fn tangent(&self, t: TValue) -> DVec2 {
 		let t = self.t_value_to_parametric(t);
-		self.non_normalized_tangent(t).normalize()
+		let tangent = self.non_normalized_tangent(t);
+		if tangent.length() > 0. {
+			tangent.normalize()
+		} else {
+			tangent
+		}
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -88,7 +93,7 @@ impl Bezier {
 
 		let numerator = d.x * dd.y - d.y * dd.x;
 		let denominator = (d.x.powf(2.) + d.y.powf(2.)).powf(1.5);
-		if denominator == 0. {
+		if denominator.abs() < MAX_ABSOLUTE_DIFFERENCE {
 			0.
 		} else {
 			numerator / denominator
@@ -369,9 +374,9 @@ impl Bezier {
 		}
 
 		// Create iterators that combine a subcurve with the `t` value pair that it was trimmed with
-		let combined_iterator1 = self1.into_iter().zip(self1_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
+		let combined_iterator1 = self1.into_iter().zip(self1_t_values.iter().map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
 		// Second one needs to be a list because Iterator does not implement copy
-		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
+		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.iter().map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
 
 		// For each curve, look for intersections with every curve that is at least 2 indices away
 		combined_iterator1

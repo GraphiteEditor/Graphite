@@ -231,6 +231,18 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			right + center_to_right.perp() * HANDLE_OFFSET_FACTOR,
 		)
 	}
+
+	pub(crate) fn square_cap(&self, other: &Subpath<ManipulatorGroupId>) -> [ManipulatorGroup<ManipulatorGroupId>; 2] {
+		let left = self.manipulator_groups[self.len() - 1].anchor;
+		let right = other.manipulator_groups[0].anchor;
+
+		let center = (right + left) / 2.;
+		let center_to_right = right - center;
+
+		let translation = center_to_right.perp();
+
+		[ManipulatorGroup::new_anchor(left + translation), ManipulatorGroup::new_anchor(right + translation)]
+	}
 }
 
 #[cfg(test)]
@@ -264,14 +276,14 @@ mod tests {
 		let result = Subpath::new(
 			vec![
 				ManipulatorGroup {
-					anchor: pos_offset.evaluate(1.),
+					anchor: pos_offset.evaluate(SubpathTValue::GlobalParametric(1.)),
 					out_handle: Some(out_handle),
 					in_handle: None,
 					id: EmptyId,
 				},
 				manip.clone(),
 				ManipulatorGroup {
-					anchor: neg_offset.evaluate(0.),
+					anchor: neg_offset.evaluate(SubpathTValue::GlobalParametric(0.)),
 					out_handle: None,
 					in_handle: Some(in_handle),
 					id: EmptyId,

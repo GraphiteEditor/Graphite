@@ -1,11 +1,11 @@
-use bezier_rs::{Cap, Joint};
+use bezier_rs::{Cap, Join};
 
-pub fn parse_joint(joint: i32) -> Joint {
-	match joint {
-		0 => Joint::Bevel,
-		1 => Joint::Miter,
-		2 => Joint::Round,
-		_ => panic!("Unexpected Joint value: '{}'", joint),
+pub fn parse_join(join: i32) -> Join {
+	match join {
+		0 => Join::Bevel,
+		1 => Join::Miter,
+		2 => Join::Round,
+		_ => panic!("Unexpected Join value: '{}'", join),
 	}
 }
 

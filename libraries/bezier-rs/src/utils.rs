@@ -29,7 +29,7 @@ pub enum SubpathTValue {
 }
 
 #[derive(Copy, Clone)]
-pub enum Joint {
+pub enum Join {
 	Bevel,
 	Miter,
 	Round,

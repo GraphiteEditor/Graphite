@@ -158,7 +158,7 @@ impl Bezier {
 		// Verify the angle formed by the endpoint normals is sufficiently small, ensuring the on-curve point for `t = 0.5` occurs roughly in the center of the polygon.
 		let normal_0 = self.normal(TValue::Parametric(0.));
 		let normal_1 = self.normal(TValue::Parametric(1.));
-		let endpoint_normal_angle = (normal_0.x * normal_1.x + normal_0.y * normal_1.y).acos();
+		let endpoint_normal_angle = (normal_0.x * normal_1.x + normal_0.y * normal_1.y).min(1.).acos();
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
@@ -176,10 +176,10 @@ impl Bezier {
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	pub(crate) fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<f64>) {
+	pub(crate) fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<[f64; 2]>) {
 		// A linear segment is scalable, so return itself
 		if let BezierHandles::Linear = self.handles {
-			return (vec![*self], vec![0., 1.]);
+			return (vec![*self], vec![[0., 1.]]);
 		}
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
@@ -192,7 +192,7 @@ impl Bezier {
 
 		// Split each subcurve such that each resulting segment is scalable.
 		let mut result_beziers: Vec<Bezier> = Vec::new();
-		let mut result_t_values: Vec<f64> = vec![extrema[0]];
+		let mut result_t_values: Vec<[f64; 2]> = vec![];
 
 		extrema.windows(2).for_each(|t_pair| {
 			let t_subcurve_start = t_pair[0];
@@ -201,7 +201,7 @@ impl Bezier {
 			// Perform no processing on the subcurve if it's already scalable.
 			if subcurve.is_scalable() {
 				result_beziers.push(subcurve);
-				result_t_values.push(t_subcurve_end);
+				result_t_values.push([t_subcurve_start, t_subcurve_end]);
 				return;
 			}
 
@@ -209,6 +209,7 @@ impl Bezier {
 			let mut segment: Bezier;
 			let mut t1 = 0.;
 			let mut t2 = step_size;
+			let mut is_prev_valid = false;
 			while t2 <= 1. + step_size {
 				segment = subcurve.trim(TValue::Parametric(t1), TValue::Parametric(f64::min(t2, 1.)));
 				if !segment.is_scalable() {
@@ -216,14 +217,21 @@ impl Bezier {
 
 					// If the previous step does not exist, the start of the subcurve is irreducible.
 					// Otherwise, add the valid segment from the previous step to the result.
-					if f64::abs(t1 - t2) >= step_size {
+					if is_prev_valid {
 						segment = subcurve.trim(TValue::Parametric(t1), TValue::Parametric(t2));
-						result_beziers.push(segment);
-						result_t_values.push(t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start));
+						if segment.is_scalable() {
+							result_beziers.push(segment);
+							result_t_values.push([t_subcurve_start + t1 * (t_subcurve_end - t_subcurve_start), t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start)]);
+						} else {
+							t2 = t1 + step_size;
+						}
 					} else {
-						return;
+						t2 = t1 + step_size;
 					}
 					t1 = t2;
+					is_prev_valid = false;
+				} else {
+					is_prev_valid = true;
 				}
 				t2 += step_size;
 			}
@@ -232,7 +240,7 @@ impl Bezier {
 				segment = subcurve.trim(TValue::Parametric(t1), TValue::Parametric(1.));
 				if segment.is_scalable() {
 					result_beziers.push(segment);
-					result_t_values.push(t_subcurve_end);
+					result_t_values.push([t_subcurve_start + t1 * (t_subcurve_end - t_subcurve_start), t_subcurve_end]);
 				}
 			}
 		});
@@ -589,7 +597,7 @@ impl Bezier {
 mod tests {
 	use super::*;
 	use crate::compare::{compare_arcs, compare_points, compare_vec_of_points};
-	use crate::utils::{Joint, TValue};
+	use crate::utils::{Cap, TValue};
 	use crate::EmptyId;
 
 	#[test]
@@ -760,7 +768,7 @@ mod tests {
 			.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(bezier2, MAX_ABSOLUTE_DIFFERENCE)));
 		assert!(reduced_curves
 			.iter()
-			.zip(helper_t_values.windows(2))
+			.zip(helper_t_values.iter())
 			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 
@@ -845,12 +853,70 @@ mod tests {
 		}
 	}
 
+	/*
+	Subpath { closed: false, manipulator_groups: [ManipulatorGroup { anchor: DVec2(66.71743644215402, 58.7517978288361), in_handle: None, out_handle: Some(DVec2(85.76739417779808, 55.1295582286271)) }, ManipulatorGroup { anchor: DVec2(95.39100346020761, 53.23529411764706), in_handle: Some(DVec2(95.37078484879083, 53.241946559250394)), out_handle: Some(DVec2(98.80457794824957, 52.11214057993674)) }, ManipulatorGroup { anchor: DVec2(82.53632686721097, 45.965127722288635), in_handle: Some(DVec2(83.31163513108629, 47.252232925393066)), out_handle: Some(DVec2(81.08946281562602, 43.5631589367744)) }, ManipulatorGroup { anchor: DVec2(80.3913043478261, 38.23534971644612), in_handle: Some(DVec2(80.62889818819768, 40.89454972115455)), out_handle: None }] }
+	Subpath { closed: false, manipulator_groups: [ManipulatorGroup { anchor: DVec2(29.268661097265387, 35.2507699252331), in_handle: None, out_handle: Some(DVec2(70.73545815536839, 27.576595038028945)) }, ManipulatorGroup { anchor: DVec2(92.0917215493776, 23.603011311070247), in_handle: Some(DVec2(91.67706090780973, 23.69632714594357)), out_handle: Some(DVec2(92.50638219094546, 23.509695476196924)) }, ManipulatorGroup { anchor: DVec2(80.39130434782608, 38.235349716446116), in_handle: Some(DVec2(79.81198607365604, 34.10692809178813)), out_handle: Some(DVec2(80.97062262199611, 42.363771341104105)) },
+	ManipulatorGroup { anchor: DVec2(87.81572935960371, 51.1817900801487), in_handle: Some(DVec2(82.51846558453153, 47.007213623741976)), out_handle: Some(DVec2(88.69626225397128, 51.87570528731968)) }, ManipulatorGroup { anchor: DVec2(95.39100346020761, 53.23529411764706), in_handle: Some(DVec2(97.862658087303, 53.104799826374474)), out_handle: Some(DVec2(95.35694765786216, 53.237092138997646)) }, ManipulatorGroup { anchor: DVec2(66.71743644215402, 58.7517978288361), in_handle: Some(DVec2(85.76739417779808, 55.1295582286271)), out_handle: None }] }
+	Subpath { closed: true, manipulator_groups: [ManipulatorGroup { anchor: DVec2(66.71743644215402, 58.7517978288361), in_handle: None, out_handle: Some(DVec2(85.76739417779808, 55.1295582286271)) }, ManipulatorGroup { anchor: DVec2(95.39100346020761, 53.23529411764706), in_handle: Some(DVec2(95.37078484879083, 53.241946559250394)), out_handle: Some(DVec2(98.80457794824957, 52.11214057993674)) }, ManipulatorGroup { anchor: DVec2(82.53632686721097, 45.965127722288635), in_handle: Some(DVec2(83.31163513108629, 47.252232925393066)), out_handle: Some(DVec2(81.08946281562602, 43.5631589367744)) }, ManipulatorGroup { anchor: DVec2(80.3913043478261, 38.23534971644612), in_handle: Some(DVec2(80.62889818819768, 40.89454972115455)), out_handle: None }, ManipulatorGroup { anchor: DVec2(34.73133890273461, 64.7492300747669), in_handle: None, out_handle: Some(DVec2(76.9410635837621, 56.927752788058)) }, ManipulatorGroup { anchor: DVec2(98.67820888540503, 52.87105163789005), in_handle: Some(DVec2(98.25610430958164, 52.96604166313013)), out_handle: Some(DVec2(99.10031346122841, 52.77606161264997)) }, ManipulatorGroup { anchor: DVec2(110.39130434782608, 38.235349716446116), in_handle: Some(DVec2(110.97062262199611, 42.363789132719795)), out_handle: Some(DVec2(109.81198607365604, 34.10691030017244)) }, ManipulatorGroup { anchor: DVec2(102.96684467379482, 25.288862382878094), in_handle: Some(DVec2(108.2641445692411, 29.463435338945008)), out_handle: Some(DVec2(102.08624313883237, 24.594898396416724)) }, ManipulatorGroup { anchor: DVec2(95.39100346020761, 23.235294117647058), in_handle: Some(DVec2(99.67175329171658, 23.349120314318053)), out_handle: Some(DVec2(95.32104715271026, 23.233433962130153)) }, ManipulatorGroup { anchor: DVec2(61.28256355784598, 29.248202171163904), in_handle: Some(DVec2(83.95809601828032, 25.18416726156898)), out_handle: None }] }
+
+		 */
+
+	#[test]
+	fn test_outline_ex() {
+		// TODO: Remove or write actual test
+		let p1 = DVec2::new(55., 24.);
+		let p2 = DVec2::new(149., 30.);
+		let p3 = DVec2::new(150., 30.);
+		let p4 = DVec2::new(160., 160.);
+
+		// let p1 = DVec2::new(64., 44.);
+		// let p2 = DVec2::new(140., 30.);
+		// let p3 = DVec2::new(32., 50.);
+		let line = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+
+		// let reduce = line.reduce(None);
+		// println!("{:?}", reduce);
+
+		let offset_pos = line.offset::<EmptyId>(15.);
+		let mut str1 = String::new();
+		offset_pos.to_svg(
+			&mut str1,
+			"stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(),
+			String::new(),
+			String::new(),
+			"r=\"3\" stroke=\"gray\" stroke-width=\"1.5\" fill=\"white\"".to_string(),
+		);
+		println!("{}", str1);
+
+		// let offset_neg = line.reverse().offset::<EmptyId>(15.);
+		// let mut str2 = String::new();
+		// offset_neg.to_svg(
+		// 	&mut str2,
+		// 	"stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(),
+		// 	String::new(),
+		// 	String::new(),
+		// 	"r=\"3\" stroke=\"gray\" stroke-width=\"1.5\" fill=\"white\"".to_string(),
+		// );
+		// println!("{}", str2);
+
+		// let outline = line.outline::<EmptyId>(15., Cap::Butt);
+		// let mut str3 = String::new();
+		// outline.to_svg(
+		// 	&mut str3,
+		// 	"stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(),
+		// 	String::new(),
+		// 	String::new(),
+		// 	"r=\"3\" stroke=\"gray\" stroke-width=\"1.5\" fill=\"white\"".to_string(),
+		// );
+		// println!("{}", str3);
+	}
+
 	#[test]
 	fn test_outline() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let line = Bezier::from_linear_dvec2(p1, p2);
-		let outline = line.outline::<EmptyId>(10., Joint::Bevel);
+		let outline = line.outline::<EmptyId>(10., Cap::Butt);
 
 		assert_eq!(outline.len(), 4);
 
