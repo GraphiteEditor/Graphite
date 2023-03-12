@@ -1260,7 +1260,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
 	}
 
-	if gradient || solid {
+	if gradient || solid || empty {
 		let new_fill_type = if gradient { FillType::Solid } else { FillType::Gradient };
 		let switch_button = TextButton::new(if gradient { "Use Solid Color" } else { "Use Gradient" })
 			.tooltip(if gradient {

@@ -40,7 +40,7 @@ fn set_vector_data_fill(
 	positions: Vec<(f64, Option<Color>)>,
 ) -> VectorData {
 	vector_data.style.set_fill(match fill_type {
-		FillType::None => Fill::None,
+		FillType::None => Fill::Solid(solid_color),
 		FillType::Solid => Fill::Solid(solid_color),
 		FillType::Gradient => Fill::Gradient(Gradient {
 			start,
