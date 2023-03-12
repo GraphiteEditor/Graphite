@@ -14,13 +14,19 @@ export function renderDemo(demo: Demo): void {
 	demo.append(header);
 	demo.append(figure);
 
+	const parentSliderContainer = document.createElement("div");
+	parentSliderContainer.className = "parent-slider-container";
+
 	demo.sliderOptions.forEach((sliderOption: SliderOption) => {
+		const sliderContainer = document.createElement("div");
+		sliderContainer.className = "slider-container";
+
 		const sliderLabel = document.createElement("div");
 		const sliderData = demo.sliderData[sliderOption.variable];
 		const sliderUnit = demo.getSliderUnit(sliderData, sliderOption.variable);
 		sliderLabel.className = "slider-label";
-		sliderLabel.innerText = `${sliderOption.variable} = ${sliderData}${sliderUnit}`;
-		demo.append(sliderLabel);
+		sliderLabel.innerText = `${sliderOption.variable}: ${sliderOption.variable !== "strategy" ? sliderData : ""}${sliderUnit}`;
+		sliderContainer.appendChild(sliderLabel);
 
 		const sliderInput = document.createElement("input");
 		sliderInput.className = "slider-input";
@@ -31,11 +37,17 @@ export function renderDemo(demo: Demo): void {
 		sliderInput.value = String(sliderOption.default);
 		sliderInput.addEventListener("input", (event: Event): void => {
 			demo.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
-			sliderLabel.innerText = `${sliderOption.variable} = ${demo.sliderData[sliderOption.variable]}${sliderUnit}`;
+			const data = sliderOption.variable !== "strategy" ? demo.sliderData[sliderOption.variable] : "";
+			const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
+			sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
 			demo.drawDemo(figure);
 		});
-		demo.append(sliderInput);
+		sliderContainer.appendChild(sliderInput);
+
+		parentSliderContainer.append(sliderContainer);
 	});
+
+	demo.append(parentSliderContainer);
 }
 
 export function renderDemoPane(demoPane: DemoPane): void {

@@ -1,6 +1,6 @@
 html,
 body {
-	font-family: Arial, sans-serif;
+	font-family: "Inter", sans-serif;
 	text-align: center;
 	background-color: white;
 }
@@ -74,7 +74,30 @@ body > h2 {
 	border: solid 1px black;
 }
 
+.parent-slider-container {
+	display: flex;
+	justify-content: center;
+	flex-direction: column;
+	align-items: center;
+}
+
 svg text {
 	pointer-events: none;
 	user-select: none;
+}
+
+/* Slider Styles */
+.slider-container {
+	/* width: fit-content; */
+	width: 200px;
+	padding-bottom: 5px;
+}
+
+.slider-label {
+	display: flex;
+	justify-content: left;
+}
+
+.slider-input {
+	width: 100%;
 }

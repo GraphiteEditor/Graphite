@@ -346,7 +346,7 @@ const bezierFeatures = {
 					max: 2,
 					step: 1,
 					default: 0,
-					unit: [": Automatic", ": FavorLargerArcs", ": FavorCorrectness"],
+					unit: ["Automatic", "FavorLargerArcs", "FavorCorrectness"],
 				},
 				{
 					variable: "error",
