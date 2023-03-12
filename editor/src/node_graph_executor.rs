@@ -92,7 +92,7 @@ impl NodeGraphExecutor {
 		use image::{ImageBuffer, Rgba};
 		use std::io::Cursor;
 
-		let (result_bytes, width, height) = image.as_flat_u8();
+		let (result_bytes, width, height) = image.into_flat_u8();
 
 		let mut output: ImageBuffer<Rgba<u8>, _> = image::ImageBuffer::from_raw(width, height, result_bytes).ok_or_else(|| "Invalid image size".to_string())?;
 		if let Some(size) = resize {

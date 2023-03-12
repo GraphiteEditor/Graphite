@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
 use graphene_core::Node;
 
@@ -103,12 +103,15 @@ fn downscale(image_frame: ImageFrame) -> ImageFrame {
 		data: Vec::with_capacity(target_width * target_height),
 	};
 
+	let scale_factor = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64) / DVec2::new(target_width as f64, target_height as f64);
 	for y in 0..target_height {
 		for x in 0..target_width {
-			let pixel = image_frame.sample((x as f64, y as f64).into());
+			let pixel = image_frame.sample(DVec2::new(x as f64, y as f64) * scale_factor);
 			image.data.push(pixel);
 		}
 	}
+	log::debug!("Downscaled image from {}x{} to {}x{}", image_frame.image.width, image_frame.image.height, image.width, image.height);
+	log::debug!("Image {:?}", image);
 
 	ImageFrame {
 		image,

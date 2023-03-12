@@ -361,7 +361,7 @@ mod image {
 		}
 
 		/// Flattens each channel cast to a u8
-		pub fn as_flat_u8(self) -> (Vec<u8>, u32, u32) {
+		pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 			let Image { width, height, data } = self;
 
 			let result_bytes = data.into_iter().flat_map(|color| color.to_rgba8()).collect();
