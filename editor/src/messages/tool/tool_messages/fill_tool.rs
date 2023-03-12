@@ -9,7 +9,6 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::intersection::Quad;
 use document_legacy::layers::style::Fill;
 
-
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 

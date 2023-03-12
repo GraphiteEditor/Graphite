@@ -5,7 +5,6 @@ use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 
-
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
