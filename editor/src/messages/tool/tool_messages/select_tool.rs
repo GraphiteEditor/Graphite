@@ -13,6 +13,7 @@ use crate::messages::portfolio::document::utility_types::transformation::Selecte
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -254,6 +255,7 @@ enum SelectToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
+	shape_editor: ShapeEditor,
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>,
@@ -415,7 +417,14 @@ impl Fsm for SelectToolFsmState {
 							let document = &document.document_legacy;
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, selected, responses, document);
+							let mut selected = Selected::new(
+								&mut bounds.original_transforms,
+								&mut bounds.center_of_transformation,
+								selected,
+								responses,
+								document,
+								Some(&tool_data.shape_editor),
+							);
 							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
 
@@ -425,7 +434,14 @@ impl Fsm for SelectToolFsmState {
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
+							let mut selected = Selected::new(
+								&mut bounds.original_transforms,
+								&mut bounds.center_of_transformation,
+								&selected,
+								responses,
+								&document.document_legacy,
+								Some(&tool_data.shape_editor),
+							);
 
 							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
@@ -519,9 +535,16 @@ impl Fsm for SelectToolFsmState {
 							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy);
+							let mut selected = Selected::new(
+								&mut bounds.original_transforms,
+								&mut pivot,
+								selected,
+								responses,
+								&document.document_legacy,
+								Some(&tool_data.shape_editor),
+							);
 
-							selected.update_transforms(delta);
+							selected.update_transforms(delta, false);
 						}
 					}
 					ResizingBounds
@@ -545,9 +568,16 @@ impl Fsm for SelectToolFsmState {
 						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&selected,
+							responses,
+							&document.document_legacy,
+							Some(&tool_data.shape_editor),
+						);
 
-						selected.update_transforms(delta);
+						selected.update_transforms(delta, false);
 					}
 
 					RotatingBounds
@@ -724,6 +754,7 @@ impl Fsm for SelectToolFsmState {
 							&selected,
 							responses,
 							&document.document_legacy,
+							Some(&tool_data.shape_editor),
 						);
 
 						selected.revert_operation();

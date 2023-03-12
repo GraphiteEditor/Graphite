@@ -1,5 +1,7 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::shape_editor::{self, ShapeEditor};
+use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
@@ -142,7 +144,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, tool: bool) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -150,12 +152,11 @@ impl TransformOperation {
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				TransformOperation::None => unreachable!(),
 			};
-
-			selected.update_transforms(transformation);
+			selected.update_transforms(transformation, tool);
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool) {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, tool: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.constraint.set_or_toggle(axis),
@@ -163,10 +164,10 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, tool);
 	}
 
-	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
+	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, tool: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -174,7 +175,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, tool);
 	}
 }
 
@@ -184,10 +185,18 @@ pub struct Selected<'a> {
 	pub document: &'a Document,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
+	pub shape_editor: Option<&'a ShapeEditor>,
 }
 
 impl<'a> Selected<'a> {
-	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
+	pub fn new(
+		original_transforms: &'a mut OriginalTransforms,
+		pivot: &'a mut DVec2,
+		selected: &'a [&'a Vec<LayerId>],
+		responses: &'a mut VecDeque<Message>,
+		document: &'a Document,
+		shape_editor: Option<&'a ShapeEditor>,
+	) -> Self {
 		for path in selected {
 			if !original_transforms.contains_key(*path) {
 				if let Ok(layer) = document.layer(path) {
@@ -203,6 +212,7 @@ impl<'a> Selected<'a> {
 			document,
 			original_transforms,
 			pivot,
+			shape_editor,
 		}
 	}
 
@@ -226,7 +236,7 @@ impl<'a> Selected<'a> {
 		(min + max) / 2.
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2) {
+	pub fn update_transforms(&mut self, delta: DAffine2, tool: bool) {
 		if !self.selected.is_empty() {
 			let pivot = DAffine2::from_translation(*self.pivot);
 			let transformation = pivot * delta * pivot.inverse();
@@ -239,19 +249,48 @@ impl<'a> Selected<'a> {
 				let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 				let new = to.inverse() * transformation * to * original_layer_transforms;
 
-				self.responses.push_back(
-					DocumentOperation::SetLayerTransform {
-						path: layer_path.to_vec(),
-						transform: new.to_cols_array(),
+				if tool {
+					let path = self.shape_editor.unwrap().selected_layers_ref();
+					let viewspace = self.document.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
+					let layerspace_rotation = viewspace.inverse() * transformation;
+					let points = self.shape_editor.unwrap().selected_points(&self.document);
+					let subpath = self.document.layer(&layer_path).ok().and_then(|layer| layer.as_subpath());
+					for point in points {
+						let mut group_id = 0;
+						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
+							let points_in_group = man_group.1.selected_points();
+							for p in points_in_group {
+								if p.position == point.position {
+									group_id = *man_group.0;
+								}
+							}
+						}
+						let viewspace_point = viewspace.transform_point2(point.position);
+						let new_pos = layerspace_rotation.transform_point2(viewspace_point);
+						let manip_type = point.manipulator_type;
+						let op = DocumentOperation::MoveManipulatorPoint {
+							layer_path: layer_path.to_vec(),
+							id: group_id, //manGroupID
+							manipulator_type: manip_type,
+							position: new_pos.into(),
+						}
+						.into();
+						self.responses.push_back(op);
 					}
-					.into(),
-				);
-			}
+				} else {
+					self.responses.push_back(
+						DocumentOperation::SetLayerTransform {
+							path: layer_path.to_vec(),
+							transform: new.to_cols_array(),
+						}
+						.into(),
+					);
+				}
 
-			self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+			}
 		}
 	}
-
 	pub fn revert_operation(&mut self) {
 		for path in self.selected {
 			if let Some(transform) = self.original_transforms.get(*path) {

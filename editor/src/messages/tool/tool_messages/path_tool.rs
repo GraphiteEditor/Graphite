@@ -283,11 +283,7 @@ impl Fsm for PathToolFsmState {
 				) => {
 					let path = tool_data.shape_editor.selected_layers_ref();
 					let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
-					// let to = document.generate_transform_relative_to_viewport(path[0]);
-
 					let points = tool_data.shape_editor.selected_points(&document.document_legacy);
-
-					//make sure that the pivot is in viewspace - fixed with the transofmr_point
 					let mut count: usize = 0;
 					let pivot = points
 						.map(|point| {
@@ -295,14 +291,15 @@ impl Fsm for PathToolFsmState {
 							viewspace.transform_point2(point.position)
 						})
 						.sum::<DVec2>() / count as f64;
-
+					debug!("Pivot {}", pivot);
+					//CALCULATING
 					//drag start is in pixels // center is in relative pos
 					let vector_from_mouse_start = pivot - tool_data.previous_mouse_position;
 					let vector_from_mouse_current = pivot - input.mouse.position;
 					let angle = vector_from_mouse_start.angle_between(vector_from_mouse_current);
-					// tool_data.grs_mouse_start = input.mouse.position;
 					let delta = DAffine2::from_translation(pivot) * DAffine2::from_angle(angle) * DAffine2::from_translation(-pivot);
 
+					//TRANSFORMING
 					//convert pivot position from viewport space (pixels) into layer space using one of the funcs -> DAffine2
 					//modify that matrix (viewspace) inverse to go back to layer then  multiplying it by rotation matrix based on angle -> DAffine2
 					let layerspace_rotation = viewspace.inverse() * delta;
@@ -318,10 +315,7 @@ impl Fsm for PathToolFsmState {
 								}
 							}
 						}
-						// self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
 						let viewport_point = viewspace.transform_point2(point.position);
-
-						// transform the new point from layer position to viewspace position
 						let new_pos = layerspace_rotation.transform_point2(viewport_point);
 						let manip_type = point.manipulator_type;
 						let op = Operation::MoveManipulatorPoint {
@@ -356,14 +350,9 @@ impl Fsm for PathToolFsmState {
 						let previous_frame_dist = (tool_data.previous_mouse_position - pivot).length();
 						let current_frame_dist = (input.mouse.position - pivot).length();
 						let start_transform_dist = (tool_data.grs_mouse_start - pivot).length();
-						debug!("previous_frame_dist {}", previous_frame_dist);
-						debug!("current_frame_dist {}", current_frame_dist);
-						debug!("start_transform_dist {}", start_transform_dist);
 						(current_frame_dist - previous_frame_dist) / start_transform_dist
 					};
 					tool_data.factor += change;
-
-					debug!("Change {}", change);
 					let pivot_matrix = DAffine2::from_translation(pivot);
 					let delta = pivot_matrix * DAffine2::from_scale(DVec2::splat(tool_data.factor)) * pivot_matrix.inverse();
 
@@ -373,11 +362,6 @@ impl Fsm for PathToolFsmState {
 					let subpath = document.document_legacy.layer(path[0]).ok().and_then(|layer| layer.as_subpath());
 
 					for (point, initial_point) in points.zip(tool_data.grs_initial_points.iter()) {
-						// let mut group_id= None ;
-						// for man_group in subpath.unwrap().manipulator_groups().iter() {
-						// 	group_id = man_group.selected_points().find(|p| p.position == point.position);
-						// }
-						debug!("Pos {:?}", point.position);
 						let group_id = subpath
 							.unwrap()
 							.manipulator_groups()
@@ -386,12 +370,7 @@ impl Fsm for PathToolFsmState {
 							.find_map(|(index, group)| group.points().any(|manip_point| manip_point == point).then_some(index));
 
 						let viewport_point = viewspace.transform_point2(*initial_point);
-						debug!("Group ID {:?}", group_id);
 						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-						info!("Old viewport {viewport_point} new point {new_pos_viewport}");
-						let new_pos = viewspace.inverse().transform_point2(new_pos_viewport);
-						debug!("New Pos {:?}", new_pos);
-
 						let op = Operation::MoveManipulatorPoint {
 							layer_path: path[0].to_vec(),
 							id: group_id.unwrap() as u64 + 1, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
@@ -460,6 +439,7 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, PathToolMessage::BeginRotate) => {
 					// TODO: need start pos of mouse to calculate angle
+					tool_data.previous_mouse_position = input.mouse.position;
 					tool_data.grs_mouse_start = input.mouse.position;
 
 					PathToolFsmState::Rotating

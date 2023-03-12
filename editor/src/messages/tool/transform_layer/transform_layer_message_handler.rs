@@ -39,7 +39,14 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		let _shape_editor = &self.shape_editor;
 
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
-		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, &document.document_legacy);
+		let mut selected = Selected::new(
+			&mut self.original_transforms,
+			&mut self.pivot,
+			&selected_layers,
+			responses,
+			&document.document_legacy,
+			Some(_shape_editor),
+		);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if operation != TransformOperation::None {
@@ -72,7 +79,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				if selected_layers.is_empty() {
 					return;
 				}
-
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
@@ -110,7 +116,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+				self.transform_operation.apply_transform_operation(&mut selected, self.snap, _using_path_tool);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				self.original_transforms.clear();
@@ -125,15 +131,15 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
-			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
+			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap, _using_path_tool),
+			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap, _using_path_tool),
 			PointerMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
 
 				let new_snap = ipp.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap, _using_path_tool);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -144,20 +150,34 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::Grabbing(translation) => {
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, _using_path_tool);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let selected_pivot = selected.mean_average_of_pivots(render_data);
-							let angle = {
-								let start_offset = self.mouse_position - selected_pivot;
-								let end_offset = ipp.mouse.position - selected_pivot;
+							// if ToolType is Path then calculate pivot differently
+							let mut selected_pivot = selected.mean_average_of_pivots(render_data);
 
-								start_offset.angle_between(end_offset)
-							};
-
+							if _using_path_tool {
+								let path = _shape_editor.selected_layers_ref();
+								let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
+								let points = _shape_editor.selected_points(&document.document_legacy);
+								let mut count: usize = 0;
+								selected_pivot = points
+									.map(|point| {
+										count += 1;
+										viewspace.transform_point2(point.position)
+									})
+									.sum::<DVec2>() / count as f64;
+								debug!("pivot {}", selected_pivot);
+								*selected.pivot = selected_pivot;
+							}
+							debug!("pivot {}", selected_pivot);
+							let start_offset = selected_pivot - self.mouse_position;
+							let end_offset = selected_pivot - ipp.mouse.position;
+							let angle = start_offset.angle_between(end_offset);
+							// let start_offset = selected_pivot - self.mouse_position;
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, _using_path_tool);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -169,8 +189,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							};
 
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
+							debug!("Change {}", change);
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, _using_path_tool);
 						}
 					};
 				}
@@ -180,10 +201,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 				self.shape_editor.set_selected_layers(layer_paths);
 			}
-			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
-			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
-			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap),
-			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap),
+			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap, _using_path_tool),
+			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap, _using_path_tool),
+			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap, _using_path_tool),
+			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap, _using_path_tool),
 		}
 	}
 

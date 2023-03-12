@@ -1,4 +1,4 @@
-use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT, NUDGE_INT, BIG_NUDGE_INT};
+use crate::consts::{BIG_NUDGE_AMOUNT, BIG_NUDGE_INT, NUDGE_AMOUNT, NUDGE_INT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::macros::*;
@@ -173,44 +173,39 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=LineToolMessage::Redraw { center: Alt, lock_angle: Control, snap_angle: Shift }),
 		//
 		// PathToolMessage
-		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::BeginGrab),
-		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::BeginRotate),
-		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::BeginScale),
+		entry!(KeyDown(KeyQ); action_dispatch=PathToolMessage::BeginGrab),
+		entry!(KeyDown(KeyW); action_dispatch=PathToolMessage::BeginRotate),
+		entry!(KeyDown(KeyE); action_dispatch=PathToolMessage::BeginScale),
 		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
-
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: 0}),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_INT, delta_y: 0}),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: -NUDGE_INT}),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowDown], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: NUDGE_INT}),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift, ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_INT, delta_y: -BIG_NUDGE_INT}),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift, ArrowDown], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_INT, delta_y: BIG_NUDGE_INT}),
-		
 		entry!(KeyDown(ArrowUp); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: 0, delta_y: -NUDGE_INT}),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: 0, delta_y: -BIG_NUDGE_INT}),
 		entry!(KeyDown(ArrowUp); modifiers=[ArrowLeft], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -NUDGE_INT, delta_y: -NUDGE_INT}),
 		entry!(KeyDown(ArrowUp); modifiers=[ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: -NUDGE_INT}),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_INT, delta_y: -BIG_NUDGE_INT}),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_INT, delta_y: -BIG_NUDGE_INT}),
-		
 		entry!(KeyDown(ArrowLeft); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -NUDGE_INT, delta_y: 0}),
 		entry!(KeyDown(ArrowLeft); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_INT, delta_y: 0}),
 		entry!(KeyDown(ArrowLeft); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -NUDGE_INT, delta_y: -NUDGE_INT}),
 		entry!(KeyDown(ArrowLeft); modifiers=[ArrowDown], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -NUDGE_INT, delta_y: NUDGE_INT}),
 		entry!(KeyDown(ArrowLeft); modifiers=[Shift, ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_INT, delta_y: -BIG_NUDGE_INT}),
 		entry!(KeyDown(ArrowLeft); modifiers=[Shift, ArrowDown], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_INT, delta_y: BIG_NUDGE_INT}),
-		
 		entry!(KeyDown(ArrowDown); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: 0, delta_y: NUDGE_INT}),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: 0, delta_y: BIG_NUDGE_INT}),
 		entry!(KeyDown(ArrowDown); modifiers=[ArrowLeft], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -NUDGE_INT, delta_y: NUDGE_INT}),
 		entry!(KeyDown(ArrowDown); modifiers=[ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_INT, delta_y: NUDGE_INT}),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowLeft], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_INT, delta_y: BIG_NUDGE_INT}),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_INT, delta_y: BIG_NUDGE_INT}),
-		
 		//
 		// PenToolMessage
 		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
