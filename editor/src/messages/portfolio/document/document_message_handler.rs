@@ -612,6 +612,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
 				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
 
+				// Scale the image to fit into a 512x512 box
+				let image_size = image_size / DVec2::splat((image_size.max_element() / 512.).max(1.));
+
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
 

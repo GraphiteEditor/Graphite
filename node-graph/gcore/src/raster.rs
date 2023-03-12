@@ -329,7 +329,7 @@ mod image {
 	use alloc::vec::Vec;
 	use core::hash::{Hash, Hasher};
 	use dyn_any::{DynAny, StaticType};
-	use glam::DAffine2;
+	use glam::{DAffine2, DVec2};
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -424,6 +424,13 @@ mod image {
 				image: Image::empty(),
 				transform: DAffine2::ZERO,
 			}
+		}
+
+		pub fn sample(&self, position: DVec2) -> Color {
+			let x = position.x.clamp(0., self.image.width as f64 - 1.) as usize;
+			let y = position.y.clamp(0., self.image.height as f64 - 1.) as usize;
+
+			self.image.data[x + y * self.image.width as usize]
 		}
 	}
 

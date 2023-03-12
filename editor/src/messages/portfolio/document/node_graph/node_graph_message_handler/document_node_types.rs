@@ -107,7 +107,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Image",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_std::raster::DownscaleNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),

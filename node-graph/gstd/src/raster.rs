@@ -90,6 +90,32 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 }
 */
 
+pub struct DownscaleNode;
+
+#[node_macro::node_fn(DownscaleNode)]
+fn downscale(image_frame: ImageFrame) -> ImageFrame {
+	let target_width = image_frame.transform.transform_vector2((1., 0.).into()).length() as usize;
+	let target_height = image_frame.transform.transform_vector2((0., 1.).into()).length() as usize;
+
+	let mut image = Image {
+		width: target_width as u32,
+		height: target_height as u32,
+		data: Vec::with_capacity(target_width * target_height),
+	};
+
+	for y in 0..target_height {
+		for x in 0..target_width {
+			let pixel = image_frame.sample((x as f64, y as f64).into());
+			image.data.push(pixel);
+		}
+	}
+
+	ImageFrame {
+		image,
+		transform: image_frame.transform,
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MapImageNode<MapFn> {
 	map_fn: MapFn,

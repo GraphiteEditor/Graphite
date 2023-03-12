@@ -135,6 +135,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
 		register_node!(graphene_core::ops::SomeNode, input: ImageFrame, params: []),
+		register_node!(graphene_std::raster::DownscaleNode, input: ImageFrame, params: []),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image, params: [String]),
 		vec![(
