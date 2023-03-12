@@ -300,7 +300,7 @@ impl Fsm for TextToolFsmState {
 					else if state == TextToolFsmState::Ready {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
+						let transform = DAffine2::from_translation(input.mouse.position);
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
 						let font_style = tool_options.font_style.clone();
@@ -320,9 +320,10 @@ impl Fsm for TextToolFsmState {
 							.into(),
 						);
 						responses.push_back(
-							Operation::SetLayerTransformInViewport {
-								path: tool_data.layer_path.clone(),
+							GraphOperationMessage::TransformSet {
+								layer: tool_data.layer_path.clone(),
 								transform,
+								transform_in: TransformIn::Viewport,
 							}
 							.into(),
 						);

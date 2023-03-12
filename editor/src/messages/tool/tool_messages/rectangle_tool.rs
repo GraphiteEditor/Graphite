@@ -7,10 +7,8 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
-use document_legacy::Operation;
-
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
+use graphene_core::vector::style::Fill;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -120,7 +118,11 @@ impl Fsm for RectangleToolFsmState {
 					let layer_path = document.get_path_for_new_layer();
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					shape_data.path = Some(layer_path.clone());
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
+					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+					responses.add(GraphOperationMessage::FillSet {
+						layer: layer_path,
+						fill: Fill::solid(global_tool_data.primary_color),
+					});
 
 					Drawing
 				}

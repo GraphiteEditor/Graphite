@@ -538,6 +538,38 @@ impl NodeNetwork {
 	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
+
+	/// A iterator of all nodes connected by primary inputs.
+	///
+	/// Used for the properties panel and tools.
+	pub fn primary_flow(&self) -> impl Iterator<Item = (&DocumentNode, u64)> {
+		struct FlowIter<'a> {
+			stack: Vec<NodeId>,
+			network: &'a NodeNetwork,
+		}
+		impl<'a> Iterator for FlowIter<'a> {
+			type Item = (&'a DocumentNode, NodeId);
+			fn next(&mut self) -> Option<Self::Item> {
+				loop {
+					let node_id = self.stack.pop()?;
+					if let Some(document_node) = self.network.nodes.get(&node_id) {
+						self.stack.extend(
+							document_node
+						.inputs
+						.iter()
+						.take(1) // Only show the primary input
+						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
+						);
+						return Some((document_node, node_id));
+					};
+				}
+			}
+		}
+		FlowIter {
+			stack: self.outputs.iter().map(|output| output.node_id).collect(),
+			network: &self,
+		}
+	}
 }
 
 #[cfg(test)]

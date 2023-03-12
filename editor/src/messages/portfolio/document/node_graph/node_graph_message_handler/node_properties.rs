@@ -1248,7 +1248,8 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	if fill_type.is_none() || solid {
+	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
+	if fill_type.is_none() || solid || empty {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
 	}

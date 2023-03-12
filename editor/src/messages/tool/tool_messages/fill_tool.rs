@@ -8,7 +8,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
 use document_legacy::layers::style::Fill;
-use document_legacy::Operation;
+
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -106,9 +106,9 @@ impl Fsm for FillToolFsmState {
 						};
 						let fill = Fill::Solid(color);
 
-						responses.push_back(DocumentMessage::StartTransaction.into());
-						responses.push_back(Operation::SetLayerFill { path: path.to_vec(), fill }.into());
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
+						responses.add(GraphOperationMessage::FillSet { layer: path.to_vec(), fill });
+						responses.add(DocumentMessage::CommitTransaction);
 					}
 
 					Ready

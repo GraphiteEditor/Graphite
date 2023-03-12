@@ -207,6 +207,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let selected_layers = &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()));
 				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, selected_layers));
 			}
+			#[remain::unsorted]
+			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
 
 			// Messages
 			AbortTransaction => {
@@ -252,13 +254,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							_ => lerp(&bbox),
 						};
 						let translation = (aggregated - center) * axis;
-						responses.push_back(
-							DocumentOperation::TransformLayerInViewport {
-								path: path.to_vec(),
-								transform: DAffine2::from_translation(translation).to_cols_array(),
-							}
-							.into(),
-						);
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: path.to_vec(),
+							transform: DAffine2::from_translation(translation),
+							transform_in: TransformIn::Viewport,
+						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
@@ -409,14 +409,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
-						responses.push_back(
-							DocumentOperation::TransformLayerInScope {
-								path: path.to_vec(),
-								transform: DAffine2::from_scale(scale).to_cols_array(),
-								scope: bbox_trans.to_cols_array(),
-							}
-							.into(),
-						);
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: path.to_vec(),
+							transform: DAffine2::from_scale(scale),
+							transform_in: TransformIn::Scope { scope: bbox_trans },
+						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
@@ -564,7 +561,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					// Nudge translation
 					let transform = if !ipp.keyboard.key(resize) {
-						Some(DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array())
+						Some(DAffine2::from_translation((delta_x, delta_y).into()))
 					}
 					// Nudge resize
 					else {
@@ -582,12 +579,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								let offset = DAffine2::from_translation(if opposite_corner { -existing_bottom_right } else { -existing_top_left });
 								let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
 
-								(offset.inverse() * scale * offset).to_cols_array()
+								offset.inverse() * scale * offset
 							})
 					};
 
 					if let Some(transform) = transform {
-						responses.push_back(DocumentOperation::TransformLayerInViewport { path, transform }.into());
+						let transform_in = TransformIn::Viewport;
+						responses.add(GraphOperationMessage::TransformChange { layer: path, transform, transform_in });
 					}
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -646,13 +644,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 
-				responses.push_back(
-					DocumentOperation::SetLayerTransform {
-						path,
-						transform: transform.to_cols_array(),
-					}
-					.into(),
-				);
+				responses.add(GraphOperationMessage::TransformSet {
+					layer: path,
+					transform: transform,
+					transform_in: TransformIn::Local,
+				});
 
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
 

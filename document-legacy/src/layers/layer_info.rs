@@ -507,6 +507,7 @@ impl Layer {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
 			LayerDataType::Text(t) => Ok(&t.path_style),
+			LayerDataType::NodeGraphFrame(t) => t.vector_data.as_ref().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
 			_ => Err(DocumentError::NotShape),
 		}
 	}

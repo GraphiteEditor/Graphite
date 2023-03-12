@@ -10,11 +10,10 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
 use document_legacy::LayerId;
-use document_legacy::Operation;
+use graphene_core::vector::style::Stroke;
 
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -157,7 +156,11 @@ impl Fsm for LineToolFsmState {
 					responses.push_back(DocumentMessage::StartTransaction.into());
 					let layer_path = document.get_path_for_new_layer();
 					tool_data.path = Some(layer_path.clone());
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
+					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+					responses.add(GraphOperationMessage::StrokeSet {
+						layer: layer_path.clone(),
+						stroke: Stroke::new(global_tool_data.primary_color, tool_options.line_weight),
+					});
 
 					tool_data.weight = tool_options.line_weight;
 
@@ -243,9 +246,10 @@ fn generate_transform(tool_data: &mut LineToolData, lock_angle: bool, snap_angle
 		line_length *= 2.;
 	}
 
-	Operation::SetLayerTransformInViewport {
-		path: tool_data.path.clone().unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start).to_cols_array(),
+	GraphOperationMessage::TransformSet {
+		layer: tool_data.path.clone().unwrap(),
+		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
+		transform_in: TransformIn::Viewport,
 	}
 	.into()
 }

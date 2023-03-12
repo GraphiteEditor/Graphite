@@ -20,7 +20,7 @@ impl VectorData {
 		Self {
 			subpaths: Vec::new(),
 			transform: DAffine2::IDENTITY,
-			style: PathStyle::new(Some(Stroke::new(Color::BLACK, 0.)), super::style::Fill::Solid(Color::BLACK)),
+			style: PathStyle::new(Some(Stroke::new(Color::BLACK, 0.)), super::style::Fill::None),
 		}
 	}
 

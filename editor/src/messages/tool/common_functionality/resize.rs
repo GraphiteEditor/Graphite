@@ -5,7 +5,6 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
-use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
@@ -54,9 +53,10 @@ impl Resize {
 			}
 
 			Some(
-				Operation::SetLayerTransformInViewport {
-					path: path.to_vec(),
-					transform: DAffine2::from_scale_angle_translation(size, 0., start).to_cols_array(),
+				GraphOperationMessage::TransformSet {
+					layer: path.to_vec(),
+					transform: DAffine2::from_scale_angle_translation(size, 0., start),
+					transform_in: TransformIn::Viewport,
 				}
 				.into(),
 			)

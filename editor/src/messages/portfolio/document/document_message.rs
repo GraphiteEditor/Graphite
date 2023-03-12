@@ -36,6 +36,9 @@ pub enum DocumentMessage {
 	#[remain::unsorted]
 	#[child]
 	NodeGraph(NodeGraphMessage),
+	#[remain::unsorted]
+	#[child]
+	GraphOperation(GraphOperationMessage),
 
 	// Messages
 	AbortTransaction,

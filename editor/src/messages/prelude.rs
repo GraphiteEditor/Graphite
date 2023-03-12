@@ -16,6 +16,7 @@ pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPre
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
 pub use crate::messages::portfolio::document::artboard::{ArtboardMessage, ArtboardMessageDiscriminant, ArtboardMessageHandler};
 pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageDiscriminant, NavigationMessageHandler};
+pub use crate::messages::portfolio::document::node_graph::{GraphOperationMessage, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
 pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, NodeGraphMessageDiscriminant, NodeGraphMessageHandler};
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageDiscriminant, OverlaysMessageHandler};
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
@@ -50,7 +51,22 @@ pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextT
 
 // Helper
 pub use crate::messages::globals::global_variables::*;
+pub use crate::messages::portfolio::document::node_graph::TransformIn;
 
 pub use graphite_proc_macros::*;
 
 pub use std::collections::{HashMap, HashSet, VecDeque};
+
+pub trait Responses {
+	fn add(&mut self, message: impl Into<Message>);
+	fn try_add(&mut self, message: Option<impl Into<Message>>) {
+		if let Some(message) = message {
+			self.add(message);
+		}
+	}
+}
+impl Responses for VecDeque<Message> {
+	fn add(&mut self, message: impl Into<Message>) {
+		self.push_back(message.into());
+	}
+}

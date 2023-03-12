@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
-use document_legacy::Operation as DocumentOperation;
+
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
@@ -239,13 +239,11 @@ impl<'a> Selected<'a> {
 				let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 				let new = to.inverse() * transformation * to * original_layer_transforms;
 
-				self.responses.push_back(
-					DocumentOperation::SetLayerTransform {
-						path: layer_path.to_vec(),
-						transform: new.to_cols_array(),
-					}
-					.into(),
-				);
+				self.responses.add(GraphOperationMessage::TransformSet {
+					layer: layer_path.to_vec(),
+					transform: new,
+					transform_in: TransformIn::Local,
+				});
 			}
 
 			self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -253,16 +251,14 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn revert_operation(&mut self) {
-		for path in self.selected {
-			if let Some(transform) = self.original_transforms.get(*path) {
+		for layer in self.selected {
+			if let Some(&transform) = self.original_transforms.get(*layer) {
 				// Push front to stop document switching before sending the transform
-				self.responses.push_front(
-					DocumentOperation::SetLayerTransform {
-						path: path.to_vec(),
-						transform: transform.to_cols_array(),
-					}
-					.into(),
-				);
+				self.responses.add(GraphOperationMessage::TransformSet {
+					layer: layer.to_vec(),
+					transform,
+					transform_in: TransformIn::Local,
+				});
 			}
 		}
 	}

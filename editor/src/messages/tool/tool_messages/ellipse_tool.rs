@@ -7,9 +7,8 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::Operation;
-
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
+use graphene_core::vector::style::Fill;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -100,7 +99,7 @@ impl Fsm for EllipseToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
+		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -118,7 +117,11 @@ impl Fsm for EllipseToolFsmState {
 					shape_data.path = Some(layer_path.clone());
 
 					let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
+					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+					responses.add(GraphOperationMessage::FillSet {
+						layer: layer_path,
+						fill: Fill::solid(global_tool_data.primary_color),
+					});
 
 					Drawing
 				}

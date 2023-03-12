@@ -98,6 +98,10 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _render_data: &RenderData) -> Option<[DVec2; 2]> {
+		if let Some(vector_data) = &self.vector_data {
+			return vector_data.bounding_box_with_transform(transform);
+		}
+
 		let mut path = self.bounds();
 
 		if transform.matrix2 == DMat2::ZERO {

@@ -9,6 +9,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use document_legacy::Operation;
+use graphene_core::vector::style::Stroke;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -213,8 +214,13 @@ fn remove_preview(data: &FreehandToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
-fn add_polyline(data: &FreehandToolData, _tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
 	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
-	graph_modification_utils::new_vector_layer(vec![subpath], layer_path, responses);
+	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+	responses.add(GraphOperationMessage::StrokeSet {
+		layer: layer_path,
+		stroke: Stroke::new(tool_data.primary_color, data.weight),
+	});
 }
