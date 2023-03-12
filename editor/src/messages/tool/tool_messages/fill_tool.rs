@@ -106,6 +106,9 @@ impl Fsm for FillToolFsmState {
 						let fill = Fill::Solid(color);
 
 						responses.add(DocumentMessage::StartTransaction);
+						responses.add(DocumentMessage::SetSelectedLayers {
+							replacement_selected_layers: vec![path.to_vec()],
+						});
 						responses.add(GraphOperationMessage::FillSet { layer: path.to_vec(), fill });
 						responses.add(DocumentMessage::CommitTransaction);
 					}
