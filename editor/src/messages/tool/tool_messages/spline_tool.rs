@@ -4,15 +4,15 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
-use document_legacy::LayerId;
-use document_legacy::Operation;
+use document_legacy::{LayerId, Operation};
+use graphene_core::vector::style::Stroke;
 
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -173,7 +173,7 @@ impl Fsm for SplineToolFsmState {
 
 					tool_data.weight = tool_options.line_weight;
 
-					responses.push_back(add_spline(tool_data, global_tool_data, true));
+					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
 				}
@@ -189,7 +189,7 @@ impl Fsm for SplineToolFsmState {
 					}
 
 					responses.push_back(remove_preview(tool_data));
-					responses.push_back(add_spline(tool_data, global_tool_data, true));
+					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
 				}
@@ -199,14 +199,14 @@ impl Fsm for SplineToolFsmState {
 					tool_data.next_point = pos;
 
 					responses.push_back(remove_preview(tool_data));
-					responses.push_back(add_spline(tool_data, global_tool_data, true));
+					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
 						responses.push_back(remove_preview(tool_data));
-						responses.push_back(add_spline(tool_data, global_tool_data, false));
+						add_spline(tool_data, global_tool_data, false, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -249,18 +249,18 @@ fn remove_preview(tool_data: &SplineToolData) -> Message {
 	.into()
 }
 
-fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, show_preview: bool) -> Message {
-	let mut points: Vec<(f64, f64)> = tool_data.points.iter().map(|p| (p.x, p.y)).collect();
+fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+	let mut points = tool_data.points.clone();
 	if show_preview {
-		points.push((tool_data.next_point.x, tool_data.next_point.y))
+		points.push(tool_data.next_point)
 	}
 
-	Operation::AddSpline {
-		path: tool_data.path.clone().unwrap(),
-		insert_index: -1,
-		transform: DAffine2::IDENTITY.to_cols_array(),
-		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(global_tool_data.primary_color, tool_data.weight)), style::Fill::None),
-	}
-	.into()
+	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
+
+	let layer_path = tool_data.path.clone().unwrap();
+	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+	responses.add(GraphOperationMessage::StrokeSet {
+		layer: layer_path.clone(),
+		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
+	});
 }
