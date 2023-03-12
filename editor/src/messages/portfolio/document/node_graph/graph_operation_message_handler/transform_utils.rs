@@ -90,19 +90,14 @@ fn derive_transform() {
 		let shear_x = (shear_x as f64) / 2.;
 		for angle in (0..=360).step_by(15) {
 			let angle = (angle as f64).to_radians();
-			for scale_x in 0..10 {
+			for scale_x in 1..10 {
 				let scale_x = (scale_x as f64) / 5.;
-				for scale_y in 0..10 {
-					if scale_x == 0. && scale_y == 0 {
-						continue;
-					}
-
+				for scale_y in 1..10 {
 					let scale_y = (scale_y as f64) / 5.;
 
 					let shear = DVec2::new(shear_x, 0.);
 					let scale = DVec2::new(scale_x, scale_y);
 					let translate = DVec2::new(5666., 644.);
-					let translate = DVec2::ZERO;
 
 					let origional_transform = DAffine2::from_cols(
 						DVec2::new(scale.x * angle.cos() - scale.y * angle.sin() * shear.y, scale.x * angle.sin() + scale.y * angle.cos() * shear.y),
@@ -116,10 +111,14 @@ fn derive_transform() {
 					assert!(
 						new_transform.abs_diff_eq(origional_transform, 1e-10),
 						"origional_transform {} new_transform {} / scale {} new_scale {} / angle {} new_angle {} / shear {} / new_shear {}",
-						origional_transform, new_transform
-						scale, new_scale,
-						angle, new_angle,
-						shear, new_shear
+						origional_transform,
+						new_transform,
+						scale,
+						new_scale,
+						angle,
+						new_angle,
+						shear,
+						new_shear,
 					);
 				}
 			}
