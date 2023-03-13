@@ -573,7 +573,23 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let translation = {
 		let index = 1;
 
-		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, true);
+		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, false);
+
+		let pivot_index = 5;
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::DVec2(pivot),
+			exposed: false,
+		} = document_node.inputs[pivot_index]
+		{
+			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(
+				PivotAssist::new(pivot.into())
+					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.widget_holder(),
+			);
+		} else {
+			add_blank_assist(&mut widgets);
+		}
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(vec2),
