@@ -1,3 +1,4 @@
+use document_legacy::document::Document;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeInput;
@@ -28,13 +29,38 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 }
 
 /// Update the inputs of the transform node to match a new transform
-pub fn update_transform(inputs: &mut Vec<NodeInput>, transform: DAffine2) {
+pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
 	let (scale, angle, translation, skew) = compute_scale_angle_translation_shear(transform);
 
 	inputs[1] = NodeInput::value(TaggedValue::DVec2(translation), false);
 	inputs[2] = NodeInput::value(TaggedValue::F64(angle), false);
 	inputs[3] = NodeInput::value(TaggedValue::DVec2(scale), false);
 	inputs[4] = NodeInput::value(TaggedValue::DVec2(skew), false);
+}
+
+/// TODO: This should be extracted from the graph at the location of the transform node.
+pub struct LayerBounds {
+	bounds: [DVec2; 2],
+	bounds_transform: DAffine2,
+}
+
+impl LayerBounds {
+	/// Extract the layer bounds and their transform for a layer.
+	pub fn new(document: &Document, layer: &[u64]) -> Self {
+		let layer = document.layer(layer).ok();
+		let bounds = layer
+			.and_then(|layer| layer.as_graph_frame().ok())
+			.and_then(|frame| frame.vector_data.as_ref().map(|vector| vector.nonzero_bounding_box()))
+			.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		let bounds_transform = DAffine2::IDENTITY;
+		Self { bounds, bounds_transform }
+	}
+	pub fn layerspace_pivot(&self, inputs: &[NodeInput]) -> DVec2 {
+		self.bounds[0] + (self.bounds[1] - self.bounds[0]) * get_current_normalised_pivot(inputs)
+	}
+	pub fn local_pivot(&self, inputs: &[NodeInput]) -> DVec2 {
+		self.bounds_transform.transform_point2(self.layerspace_pivot(inputs))
+	}
 }
 
 /// Get the current affine transform from the transform node's inputs
@@ -76,6 +102,19 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 		DVec2::ZERO
 	};
 	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
+}
+
+/// Extract the current normalised pivot from the layer
+fn get_current_normalised_pivot(inputs: &[NodeInput]) -> DVec2 {
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::DVec2(pivot),
+		..
+	} = inputs[5]
+	{
+		pivot
+	} else {
+		DVec2::splat(0.5)
+	}
 }
 
 ///

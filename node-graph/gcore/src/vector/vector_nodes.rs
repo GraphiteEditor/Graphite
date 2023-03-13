@@ -4,16 +4,21 @@ use crate::{Color, Node};
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformNode<Translation, Rotation, Scale, Shear> {
+pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
 	translation: Translation,
 	angle: Rotation,
 	scale: Scale,
 	shear: Shear,
+	pivot: Pivot,
 }
 
 #[node_macro::node_fn(TransformNode)]
-fn transform_vector_data(mut vector_data: VectorData, translation: DVec2, angle: f64, scale: DVec2, shear: DVec2) -> VectorData {
-	vector_data.transform = vector_data.transform * DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+fn transform_vector_data(mut vector_data: VectorData, translation: DVec2, angle: f64, scale: DVec2, shear: DVec2, pivot: DVec2) -> VectorData {
+	let pivot = DAffine2::from_translation(vector_data.local_pivot(pivot));
+
+	let modification = pivot * DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+	vector_data.transform = vector_data.transform * modification;
+
 	vector_data
 }
 

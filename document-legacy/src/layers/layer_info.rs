@@ -503,6 +503,13 @@ impl Layer {
 		}
 	}
 
+	pub fn as_graph_frame(&self) -> Result<&NodeGraphFrameLayer, DocumentError> {
+		match &self.data {
+			LayerDataType::NodeGraphFrame(frame) => Ok(frame),
+			_ => Err(DocumentError::NotNodeGraph),
+		}
+	}
+
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
