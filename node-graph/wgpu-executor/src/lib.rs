@@ -3,11 +3,11 @@ mod executor;
 
 use std::pin::Pin;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 pub use context::Context;
 pub use executor::GpuExecutor;
 use futures::Future;
-use gpu_executor::{Shader, ShaderIO, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
+use gpu_executor::{Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::Type;
 use wgpu::{util::DeviceExt, Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
 
@@ -26,10 +26,10 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
 		});
-		Ok((shader.io, shader_module))
+		Ok(shader_module)
 	}
 
-	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<Self::BufferHandle> {
+	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>> {
 		let bytes = data.to_bytes();
 		let buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
@@ -39,7 +39,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(ShaderInput::UniformBuffer(buffer, Type::new::<T>()))
 	}
 
-	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<Self::BufferHandle> {
+	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self::BufferHandle>> {
 		let bytes = data.to_bytes();
 		let mut usage = wgpu::BufferUsages::STORAGE;
 
@@ -61,18 +61,18 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(ShaderInput::StorageBuffer(buffer, Type::new::<T>()))
 	}
 
-	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<Self::BufferHandle> {
+	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self::BufferHandle>> {
 		let create_buffer = |usage| {
-			self.context.device.create_buffer(&BufferDescriptor {
+			Ok::<_, anyhow::Error>(self.context.device.create_buffer(&BufferDescriptor {
 				label: None,
-				size,
+				size: len as u64 * ty.size().ok_or_else(|| anyhow::anyhow!("Cannot create buffer of type {:?}", ty))? as u64,
 				usage,
 				mapped_at_creation: false,
-			})
+			}))
 		};
 		let buffer = match cpu_readable {
-			true => ShaderInput::ReadBackBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ)),
-			false => ShaderInput::OutputBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC)),
+			true => ShaderInput::ReadBackBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ)?, ty),
+			false => ShaderInput::OutputBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC)?, ty),
 		};
 		Ok(buffer)
 	}
@@ -87,12 +87,13 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
 
 		let entries = layout
-            bind_group.buffers
+			.bind_group
+			.buffers
 			.iter()
 			.chain(std::iter::once(&layout.output_buffer))
-            .flat_map(|input|input.buffer())
+			.flat_map(|input| input.buffer())
 			.enumerate()
-			.map(|(i, (_, buffer))| wgpu::BindGroupEntry {
+			.map(|(i, buffer)| wgpu::BindGroupEntry {
 				binding: i as u32,
 				resource: buffer.as_entire_binding(),
 			})
@@ -114,11 +115,18 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
-        if let Some(ShaderInput::ReadBackBuffer(output)) = read_back {
-            let size = output.size();
-            assert_eq!(size, layout.output_buffer.buffer().unwrap().size());
-            encoder.copy_buffer_to_buffer(&layout.output_buffer, 0, &output, 0, size);
-        }
+		if let Some(ShaderInput::ReadBackBuffer(output, ty)) = read_back {
+			let size = output.size();
+			assert_eq!(size, layout.output_buffer.buffer().unwrap().size());
+			assert_eq!(&ty, layout.output_buffer.ty());
+			encoder.copy_buffer_to_buffer(
+				layout.output_buffer.buffer().ok_or_else(|| anyhow::anyhow!("Tried to use an non buffer as the shader output"))?,
+				0,
+				&output,
+				0,
+				size,
+			);
+		}
 
 		// Submits command encoder for processing
 		Ok(encoder.finish())
@@ -134,38 +142,43 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(())
 	}
 
-	fn read_output_buffer(&self, buffer: Self::BufferHandle) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
-		Box::pin(async move {
-			let buffer_slice = buffer.slice(..);
+	fn read_output_buffer(&self, buffer: ShaderInput<Self::BufferHandle>) -> Result<Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>> {
+		if let ShaderInput::ReadBackBuffer(buffer, _) = buffer {
+			let future = Box::pin(async move {
+				let buffer_slice = buffer.slice(..);
 
-			// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
-			let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
-			buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+				// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
+				let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+				buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
 
-			// Wait for the mapping to finish.
-			#[cfg(feature = "profiling")]
-			nvtx::range_push!("compute");
-			let result = receiver.receive().await;
-			#[cfg(feature = "profiling")]
-			nvtx::range_pop!();
+				// Wait for the mapping to finish.
+				#[cfg(feature = "profiling")]
+				nvtx::range_push!("compute");
+				let result = receiver.receive().await;
+				#[cfg(feature = "profiling")]
+				nvtx::range_pop!();
 
-			if let Some(Ok(())) = result {
-				// Gets contents of buffer
-				let data = buffer_slice.get_mapped_range();
-				// Since contents are got in bytes, this converts these bytes back to u32
-				let result = bytemuck::cast_slice(&data).to_vec();
+				if let Some(Ok(())) = result {
+					// Gets contents of buffer
+					let data = buffer_slice.get_mapped_range();
+					// Since contents are got in bytes, this converts these bytes back to u32
+					let result = bytemuck::cast_slice(&data).to_vec();
 
-				// With the current interface, we have to make sure all mapped views are
-				// dropped before we unmap the buffer.
-				drop(data);
-				buffer.unmap(); // Unmaps buffer from memory
+					// With the current interface, we have to make sure all mapped views are
+					// dropped before we unmap the buffer.
+					drop(data);
+					buffer.unmap(); // Unmaps buffer from memory
 
-				// Returns data from buffer
-				Ok(result)
-			} else {
-				panic!("failed to run compute on gpu!")
-			}
-		})
+					// Returns data from buffer
+					Ok(result)
+				} else {
+					bail!("failed to run compute on gpu!")
+				}
+			});
+			Ok(future)
+		} else {
+			bail!("Tried to read a non readback buffer")
+		}
 	}
 }
 
