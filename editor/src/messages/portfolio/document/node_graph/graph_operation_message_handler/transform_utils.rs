@@ -55,11 +55,11 @@ impl LayerBounds {
 		let bounds_transform = DAffine2::IDENTITY;
 		Self { bounds, bounds_transform }
 	}
-	pub fn layerspace_pivot(&self, inputs: &[NodeInput]) -> DVec2 {
-		self.bounds[0] + (self.bounds[1] - self.bounds[0]) * get_current_normalised_pivot(inputs)
+	pub fn layerspace_pivot(&self, normalised_pivot: DVec2) -> DVec2 {
+		self.bounds[0] + (self.bounds[1] - self.bounds[0]) * normalised_pivot
 	}
-	pub fn local_pivot(&self, inputs: &[NodeInput]) -> DVec2 {
-		self.bounds_transform.transform_point2(self.layerspace_pivot(inputs))
+	pub fn local_pivot(&self, normalised_pivot: DVec2) -> DVec2 {
+		self.bounds_transform.transform_point2(self.layerspace_pivot(normalised_pivot))
 	}
 }
 
@@ -105,7 +105,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 }
 
 /// Extract the current normalised pivot from the layer
-fn get_current_normalised_pivot(inputs: &[NodeInput]) -> DVec2 {
+pub fn get_current_normalised_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(pivot),
 		..

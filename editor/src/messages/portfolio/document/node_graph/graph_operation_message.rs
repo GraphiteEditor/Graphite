@@ -16,6 +16,7 @@ pub enum GraphOperationMessage {
 
 	TransformChange { layer: LayerIdentifier, transform: DAffine2, transform_in: TransformIn },
 	TransformSet { layer: LayerIdentifier, transform: DAffine2, transform_in: TransformIn },
+	TransformSetPivot { layer: LayerIdentifier, pivot: DVec2 },
 
 	Vector { layer: LayerIdentifier, modification: VectorDataModification },
 }

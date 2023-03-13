@@ -2,7 +2,7 @@ use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
 use document_legacy::{LayerId, Operation};
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::vector::style::{Fill, FillType, Stroke};
@@ -111,7 +111,7 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(inputs));
+			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalised_pivot(inputs)));
 			let transform = to.inverse() * pivot.inverse() * transform * pivot * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
@@ -123,9 +123,19 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(inputs));
+			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalised_pivot(inputs)));
 			let transform = to.inverse() * pivot.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, transform);
+		});
+	}
+	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
+		self.modify_inputs("Transform", |inputs| {
+			let layer_transform = transform_utils::get_current_transform(inputs);
+			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalised_pivot(inputs)));
+			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
+			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			transform_utils::update_transform(inputs, transform);
+			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}
 }
@@ -182,6 +192,15 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 						TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
 					});
 				}
+			}
+			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
+				let bounds = LayerBounds::new(document, &layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+					modify_inputs.pivot_set(pivot, bounds);
+				}
+
+				let pivot = pivot.into();
+				responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
 
 			GraphOperationMessage::Vector { layer: _, modification: _ } => todo!(),
