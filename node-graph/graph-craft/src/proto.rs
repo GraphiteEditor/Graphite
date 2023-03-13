@@ -121,6 +121,10 @@ pub struct ProtoNode {
 pub enum ProtoNodeInput {
 	None,
 	Network(Type),
+	// A Lambda input represents an input that is not resolved through function composition but
+	// actually consuming the provided input instead of passing it to its predecessor
+	// TODO: Find a better name to avoid confusion with node parameters as lambdas, e.g. CallArg,
+	// FunctionArgument, EvalInput, ConsumeInput
 	Lambda(Type),
 	// the bool indicates whether to treat the node as lambda node
 	Node(NodeId, bool),

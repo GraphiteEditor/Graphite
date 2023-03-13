@@ -128,6 +128,10 @@ pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
 	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
 	Network(Type),
+	// A Lambda input represents an input that is not resolved through function composition but
+	// actually consuming the provided input instead of passing it to its predecessor
+	// TODO: Find a better name to avoid confusion with node parameters as lambdas, e.g. CallArg,
+	// FunctionArgument, EvalInput, ConsumeInput
 	Lambda(Type),
 }
 
