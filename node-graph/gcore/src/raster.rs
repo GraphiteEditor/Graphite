@@ -331,12 +331,23 @@ mod image {
 	use dyn_any::{DynAny, StaticType};
 	use glam::{DAffine2, DVec2};
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Image {
 		pub width: u32,
 		pub height: u32,
 		pub data: Vec<Color>,
+	}
+
+	impl Hash for Image {
+		fn hash<H: Hasher>(&self, state: &mut H) {
+			const HASH_SAMPLES: usize = 1000;
+			self.width.hash(state);
+			self.height.hash(state);
+			for i in 0..HASH_SAMPLES.min(self.data.len()) {
+				self.data[i * self.data.len() / HASH_SAMPLES].hash(state);
+			}
+		}
 	}
 
 	impl Image {
