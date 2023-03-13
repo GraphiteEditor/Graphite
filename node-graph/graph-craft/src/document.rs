@@ -69,6 +69,7 @@ impl DocumentNode {
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Lambda(ty) => (ProtoNodeInput::Lambda(ty), ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
 			assert!(
@@ -127,6 +128,7 @@ pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
 	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
 	Network(Type),
+	Lambda(Type),
 }
 
 impl NodeInput {
@@ -153,6 +155,7 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network(_) => false,
+			NodeInput::Lambda(_) => false,
 		}
 	}
 	pub fn ty(&self) -> Type {
@@ -160,6 +163,7 @@ impl NodeInput {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			NodeInput::Network(ty) => ty.clone(),
+			NodeInput::Lambda(ty) => ty.clone(),
 		}
 	}
 }
@@ -397,6 +401,7 @@ impl NodeNetwork {
 								self.inputs[index] = *network_input;
 							}
 						}
+						NodeInput::Lambda(_) => (),
 					}
 				}
 				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());

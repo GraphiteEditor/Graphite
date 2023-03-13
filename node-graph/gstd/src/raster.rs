@@ -111,7 +111,6 @@ fn downscale(image_frame: ImageFrame) -> ImageFrame {
 		}
 	}
 	log::debug!("Downscaled image from {}x{} to {}x{}", image_frame.image.width, image_frame.image.height, image.width, image.height);
-	log::debug!("Image {:?}", image);
 
 	ImageFrame {
 		image,

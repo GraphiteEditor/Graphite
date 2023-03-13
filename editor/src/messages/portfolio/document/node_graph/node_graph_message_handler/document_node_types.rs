@@ -422,7 +422,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::Network(concrete!(Image))],
+							inputs: vec![NodeInput::Lambda(concrete!(())), NodeInput::Network(concrete!(ImageFrame))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},

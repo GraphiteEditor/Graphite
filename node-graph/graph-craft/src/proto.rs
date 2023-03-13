@@ -44,6 +44,7 @@ impl core::fmt::Display for ProtoNetwork {
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
 				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
+				ProtoNodeInput::Lambda(ty) => f.write_fmt(format_args!("Lambda (type = {:?})", ty))?,
 				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
@@ -120,6 +121,7 @@ pub struct ProtoNode {
 pub enum ProtoNodeInput {
 	None,
 	Network(Type),
+	Lambda(Type),
 	// the bool indicates whether to treat the node as lambda node
 	Node(NodeId, bool),
 }
@@ -142,6 +144,10 @@ impl ProtoNode {
 		self.construction_args.hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => "none".hash(&mut hasher),
+			ProtoNodeInput::Lambda(ref ty) => {
+				"lambda".hash(&mut hasher);
+				ty.hash(&mut hasher);
+			}
 			ProtoNodeInput::Network(ref ty) => {
 				"network".hash(&mut hasher);
 				ty.hash(&mut hasher);
@@ -422,6 +428,7 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
+			ProtoNodeInput::Lambda(ref ty) => ty.clone(),
 			ProtoNodeInput::Network(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id, _) => {
 				let input = self
