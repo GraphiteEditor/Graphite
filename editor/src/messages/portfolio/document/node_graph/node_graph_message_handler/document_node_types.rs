@@ -671,7 +671,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Fill Type", TaggedValue::FillType(vector::style::FillType::None), false),
-				DocumentInputType::value("Solid Color", TaggedValue::Color(Color::TRANSPARENT), false),
+				DocumentInputType::value("Solid Color", TaggedValue::OptionalColor(None), false),
 				DocumentInputType::value("Gradient Type", TaggedValue::GradientType(vector::style::GradientType::Linear), false),
 				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 0.5)), false),
 				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(1., 0.5)), false),

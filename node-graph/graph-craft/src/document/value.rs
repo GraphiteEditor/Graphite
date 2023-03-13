@@ -45,6 +45,7 @@ pub enum TaggedValue {
 	GradientType(graphene_core::vector::style::GradientType),
 	GradientPositions(Vec<(f64, Option<graphene_core::Color>)>),
 	Quantization(graphene_core::quantization::QuantizationChannels),
+	OptionalColor(Option<graphene_core::raster::color::Color>),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -180,6 +181,10 @@ impl Hash for TaggedValue {
 				31.hash(state);
 				quantized_image.hash(state);
 			}
+			Self::OptionalColor(color) => {
+				32.hash(state);
+				color.hash(state);
+			}
 		}
 	}
 }
@@ -219,6 +224,7 @@ impl<'a> TaggedValue {
 			TaggedValue::GradientType(x) => Box::new(x),
 			TaggedValue::GradientPositions(x) => Box::new(x),
 			TaggedValue::Quantization(x) => Box::new(x),
+			TaggedValue::OptionalColor(x) => Box::new(x),
 		}
 	}
 
@@ -257,6 +263,7 @@ impl<'a> TaggedValue {
 			TaggedValue::GradientType(_) => concrete!(graphene_core::vector::style::GradientType),
 			TaggedValue::GradientPositions(_) => concrete!(Vec<(f64, Option<graphene_core::Color>)>),
 			TaggedValue::Quantization(_) => concrete!(graphene_core::quantization::QuantizationChannels),
+			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 		}
 	}
 }

@@ -80,8 +80,10 @@ impl<'a> ModifyInputsContext<'a> {
 				Fill::Gradient(_) => FillType::Gradient,
 			};
 			inputs[1] = NodeInput::value(TaggedValue::FillType(fill_type), false);
-			if let Fill::Solid(color) = fill {
-				inputs[2] = NodeInput::value(TaggedValue::Color(color), false)
+			if Fill::None == fill {
+				inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
+			} else if let Fill::Solid(color) = fill {
+				inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
 			} else if let Fill::Gradient(gradient) = fill {
 				inputs[3] = NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false);
 				inputs[4] = NodeInput::value(TaggedValue::DVec2(gradient.start), false);

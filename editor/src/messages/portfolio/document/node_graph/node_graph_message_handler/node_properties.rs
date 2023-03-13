@@ -398,18 +398,24 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Color(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
-			color_props
-				.value(Some(x as Color))
-				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
-				.widget_holder(),
-		])
+	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
+		if let &TaggedValue::Color(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(Some(x as Color))
+					.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+					.widget_holder(),
+			])
+		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(x)
+					.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value), node_id, index))
+					.widget_holder(),
+			])
+		}
 	}
 	LayoutGroup::Row { widgets }
 }

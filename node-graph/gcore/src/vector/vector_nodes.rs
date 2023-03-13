@@ -37,7 +37,7 @@ pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform
 fn set_vector_data_fill(
 	mut vector_data: VectorData,
 	fill_type: FillType,
-	solid_color: Color,
+	solid_color: Option<Color>,
 	gradient_type: GradientType,
 	start: DVec2,
 	end: DVec2,
@@ -45,8 +45,7 @@ fn set_vector_data_fill(
 	positions: Vec<(f64, Option<Color>)>,
 ) -> VectorData {
 	vector_data.style.set_fill(match fill_type {
-		FillType::None => Fill::Solid(solid_color),
-		FillType::Solid => Fill::Solid(solid_color),
+		FillType::None | FillType::Solid => solid_color.map_or(Fill::None, |solid_color| Fill::Solid(solid_color)),
 		FillType::Gradient => Fill::Gradient(Gradient {
 			start,
 			end,
