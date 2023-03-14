@@ -7,9 +7,11 @@ extern crate alloc;
 #[cfg(feature = "log")]
 extern crate log;
 
+pub mod consts;
 pub mod generic;
 pub mod ops;
 pub mod structural;
+#[cfg(feature = "std")]
 pub mod uuid;
 pub mod value;
 
@@ -21,7 +23,10 @@ pub mod raster;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
+pub mod quantization;
+
 use core::any::TypeId;
+pub use raster::Color;
 
 // pub trait Node: for<'n> NodeIO<'n> {
 pub trait Node<'i, Input: 'i>: 'i {
@@ -31,6 +36,7 @@ pub trait Node<'i, Input: 'i>: 'i {
 
 #[cfg(feature = "alloc")]
 mod types;
+#[cfg(feature = "alloc")]
 pub use types::*;
 
 pub trait NodeIO<'i, Input: 'i>: 'i + Node<'i, Input>

@@ -13,7 +13,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 #[repr(C)]
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, specta::Type)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 // TODO: Rename all instances of `path` to `layer_path`
 /// Operations that can be performed to mutate the document.
 pub enum Operation {

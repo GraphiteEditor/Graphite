@@ -12,7 +12,7 @@ use graphene_core::raster::color::Color;
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, specta::Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ArtboardMessageHandler {
 	pub artboards_document: DocumentLegacy,
 	pub artboard_ids: Vec<LayerId>,

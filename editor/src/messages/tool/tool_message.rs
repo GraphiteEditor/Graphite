@@ -12,6 +12,10 @@ pub enum ToolMessage {
 	// Sub-messages
 	#[remain::unsorted]
 	#[child]
+	TransformLayer(TransformLayerMessage),
+
+	#[remain::unsorted]
+	#[child]
 	Select(SelectToolMessage),
 	#[remain::unsorted]
 	#[child]

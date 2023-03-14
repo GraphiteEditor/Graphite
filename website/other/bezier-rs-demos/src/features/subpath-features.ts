@@ -105,6 +105,41 @@ const subpathFeatures = {
 		sliderOptions: [tSliderOptions],
 		chooseTVariant: true,
 	},
+	trim: {
+		name: "Trim",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.trim(options.tVariant1, options.tVariant2, tVariant),
+		sliderOptions: [
+			{ ...tSliderOptions, default: 0.2, variable: "tVariant1" },
+			{ ...tSliderOptions, variable: "tVariant2" },
+		],
+		chooseTVariant: true,
+	},
+	offset: {
+		name: "Offset",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance),
+		sliderOptions: [
+			{
+				variable: "distance",
+				min: -25,
+				max: 25,
+				step: 1,
+				default: 10,
+			},
+		],
+	},
+	outline: {
+		name: "Outline",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance),
+		sliderOptions: [
+			{
+				variable: "distance",
+				min: 0,
+				max: 25,
+				step: 1,
+				default: 10,
+			},
+		],
+	},
 };
 
 export type SubpathFeatureKey = keyof typeof subpathFeatures;

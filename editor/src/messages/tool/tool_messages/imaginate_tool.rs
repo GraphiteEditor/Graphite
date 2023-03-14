@@ -124,13 +124,12 @@ impl Fsm for ImaginateToolFsmState {
 
 					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
 					imaginate_inputs[0] = NodeInput::node(0, 0);
-					imaginate_inputs[1] = NodeInput::node(0, 1);
 
 					let imaginate_node_id = 100;
-					let mut network = node_graph::new_image_network(32, imaginate_node_id);
+					let mut network = node_graph::new_image_network(16, imaginate_node_id);
 					network.nodes.insert(
 						imaginate_node_id,
-						imaginate_node_type.to_document_node(imaginate_inputs, graph_craft::document::DocumentNodeMetadata::position((20, 3))),
+						imaginate_node_type.to_document_node(imaginate_inputs, graph_craft::document::DocumentNodeMetadata::position((16, 4))),
 					);
 
 					responses.push_back(

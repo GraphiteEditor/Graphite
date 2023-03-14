@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// A layer that encapsulates other layers, including potentially more folders.
 /// The contained layers are rendered in the same order they are
 /// stored in the [layers](FolderLayer::layers) field.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct FolderLayer {
 	/// The ID that will be assigned to the next layer that is added to the folder
 	next_assignment_id: LayerId,

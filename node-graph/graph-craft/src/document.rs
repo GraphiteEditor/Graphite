@@ -1,30 +1,16 @@
-use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_core::{NodeIdentifier, Type};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
+pub use graphene_core::uuid::generate_uuid;
 use graphene_core::TypeDescriptor;
-use rand_chacha::{
-	rand_core::{RngCore, SeedableRng},
-	ChaCha20Rng,
-};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
 
 pub mod value;
 
 pub type NodeId = u64;
-static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
-
-pub fn generate_uuid() -> u64 {
-	let mut lock = RNG.lock().expect("uuid mutex poisoned");
-	if lock.is_none() {
-		*lock = Some(ChaCha20Rng::seed_from_u64(0));
-	}
-	lock.as_mut().map(ChaCha20Rng::next_u64).unwrap()
-}
 
 fn merge_ids(a: u64, b: u64) -> u64 {
 	use std::hash::{Hash, Hasher};
@@ -46,7 +32,7 @@ impl DocumentNodeMetadata {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -56,17 +42,17 @@ pub struct DocumentNode {
 }
 
 impl DocumentNode {
-	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize) {
+	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool) {
 		let input = self
 			.inputs
 			.iter()
 			.enumerate()
 			.filter(|(_, input)| matches!(input, NodeInput::Network(_)))
 			.nth(offset)
-			.expect("no network input");
+			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
 		let index = input.0;
-		self.inputs[index] = NodeInput::Node { node_id, output_index };
+		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
@@ -75,12 +61,12 @@ impl DocumentNode {
 		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
 			let (input, mut args) = match first {
 				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0);
+					assert_eq!(self.inputs.len(), 0, "{}, {:?}", &self.name, &self.inputs);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
-				NodeInput::Node { node_id, output_index } => {
+				NodeInput::Node { node_id, output_index, lambda } => {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode.");
-					(ProtoNodeInput::Node(node_id), ConstructionArgs::Nodes(vec![]))
+					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
 			};
@@ -94,7 +80,7 @@ impl DocumentNode {
 
 			if let ConstructionArgs::Nodes(nodes) = &mut args {
 				nodes.extend(self.inputs.iter().map(|input| match input {
-					NodeInput::Node { node_id, .. } => *node_id,
+					NodeInput::Node { node_id, lambda, .. } => (*node_id, *lambda),
 					_ => unreachable!(),
 				}));
 			}
@@ -116,11 +102,15 @@ impl DocumentNode {
 		P: Fn(String, usize) -> Option<NodeInput>,
 	{
 		for (index, input) in self.inputs.iter_mut().enumerate() {
-			let &mut NodeInput::Node{node_id: id, output_index} = input else {
+			let &mut NodeInput::Node{node_id: id, output_index, lambda} = input else {
 				continue;
 			};
 			if let Some(&new_id) = new_ids.get(&id) {
-				*input = NodeInput::Node { node_id: new_id, output_index };
+				*input = NodeInput::Node {
+					node_id: new_id,
+					output_index,
+					lambda,
+				};
 			} else if let Some(new_input) = default_input(self.name.clone(), index) {
 				*input = new_input;
 			} else {
@@ -131,24 +121,31 @@ impl DocumentNode {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
-	Node { node_id: NodeId, output_index: usize },
-	Value { tagged_value: value::TaggedValue, exposed: bool },
+	Node { node_id: NodeId, output_index: usize, lambda: bool },
+	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
 	Network(Type),
 }
 
 impl NodeInput {
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
-		Self::Node { node_id, output_index }
+		Self::Node { node_id, output_index, lambda: false }
 	}
-	pub const fn value(tagged_value: value::TaggedValue, exposed: bool) -> Self {
+	pub const fn lambda(node_id: NodeId, output_index: usize) -> Self {
+		Self::Node { node_id, output_index, lambda: true }
+	}
+	pub const fn value(tagged_value: crate::document::value::TaggedValue, exposed: bool) -> Self {
 		Self::Value { tagged_value, exposed }
 	}
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let &mut NodeInput::Node { node_id, output_index } = self {
-			*self = NodeInput::Node { node_id: f(node_id), output_index }
+		if let &mut NodeInput::Node { node_id, output_index, lambda } = self {
+			*self = NodeInput::Node {
+				node_id: f(node_id),
+				output_index,
+				lambda,
+			}
 		}
 	}
 	pub fn is_exposed(&self) -> bool {
@@ -167,7 +164,7 @@ impl NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
@@ -204,7 +201,7 @@ impl NodeOutput {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny, specta::Type)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
@@ -259,7 +256,7 @@ impl NodeNetwork {
 			}
 
 			for input in &mut node.inputs {
-				let &mut NodeInput::Node { node_id, output_index} = input else {
+				let &mut NodeInput::Node { node_id, output_index, .. } = input else {
 					continue;
 				};
 				// Use the initial node when getting the first output
@@ -375,20 +372,13 @@ impl NodeNetwork {
 				for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
 					let offset = network_offsets.entry(network_input).or_insert(0);
 					match document_input {
-						NodeInput::Node { node_id, output_index } => {
+						NodeInput::Node { node_id, output_index, lambda } => {
 							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.populate_first_network_input(node_id, output_index, *offset);
+							network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 						}
 						NodeInput::Value { tagged_value, exposed } => {
 							// Skip formatting very large values for seconds in performance speedup
-							let name = if matches!(
-								tagged_value,
-								TaggedValue::Image(_) | TaggedValue::RcImage(_) | TaggedValue::Color(_) | TaggedValue::Subpath(_) | TaggedValue::RcSubpath(_)
-							) {
-								"Value".to_string()
-							} else {
-								format!("Value: {:?}", tagged_value)
-							};
+							let name = "Value".to_string();
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
 								name,
@@ -399,7 +389,7 @@ impl NodeNetwork {
 							assert!(!self.nodes.contains_key(&new_id));
 							self.nodes.insert(new_id, value_node);
 							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.populate_first_network_input(new_id, 0, *offset);
+							network_input.populate_first_network_input(new_id, 0, *offset, false);
 						}
 						NodeInput::Network(_) => {
 							*network_offsets.get_mut(network_input).unwrap() += 1;
@@ -416,6 +406,7 @@ impl NodeNetwork {
 					.map(|&NodeOutput { node_id, node_output_index }| NodeInput::Node {
 						node_id,
 						output_index: node_output_index,
+						lambda: false,
 					})
 					.collect();
 
@@ -640,7 +631,7 @@ mod test {
 					inputs: vec![
 						NodeInput::Network(concrete!(u32)),
 						NodeInput::Value {
-							tagged_value: value::TaggedValue::U32(2),
+							tagged_value: crate::document::value::TaggedValue::U32(2),
 							exposed: false,
 						},
 					],
@@ -655,8 +646,6 @@ mod test {
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		let flat_network = flat_network();
 
-		println!("{:#?}", network);
-		println!("{:#?}", flat_network);
 		assert_eq!(flat_network, network);
 	}
 
@@ -673,7 +662,7 @@ mod test {
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::Network(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![0]),
+			construction_args: ConstructionArgs::Nodes(vec![(0, false)]),
 		};
 		assert_eq!(proto_node, reference);
 	}
@@ -688,7 +677,7 @@ mod test {
 					1,
 					ProtoNode {
 						identifier: "graphene_core::ops::IdNode".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -697,18 +686,18 @@ mod test {
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::Network(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![14]),
+						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 					},
 				),
 				(
 					11,
 					ProtoNode {
 						identifier: "graphene_core::ops::AddNode".into(),
-						input: ProtoNodeInput::Node(10),
+						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
-				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)))),
+				(14, ProtoNode::value(ConstructionArgs::Value(crate::document::value::TaggedValue::U32(2)))),
 			]
 			.into_iter()
 			.collect(),
@@ -747,9 +736,9 @@ mod test {
 				(
 					14,
 					DocumentNode {
-						name: "Value: U32(2)".into(),
+						name: "Value".into(),
 						inputs: vec![NodeInput::Value {
-							tagged_value: value::TaggedValue::U32(2),
+							tagged_value: crate::document::value::TaggedValue::U32(2),
 							exposed: false,
 						}],
 						metadata: DocumentNodeMetadata::default(),
@@ -811,7 +800,10 @@ mod test {
 					10,
 					DocumentNode {
 						name: "Nested network".into(),
-						inputs: vec![NodeInput::value(TaggedValue::F32(1.), false), NodeInput::value(TaggedValue::F32(2.), false)],
+						inputs: vec![
+							NodeInput::value(crate::document::value::TaggedValue::F32(1.), false),
+							NodeInput::value(crate::document::value::TaggedValue::F32(2.), false),
+						],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Network(two_node_identity()),
 					},
@@ -844,7 +836,11 @@ mod test {
 		assert_eq!(result.nodes.keys().copied().collect::<Vec<_>>(), vec![101], "Should just call nested network");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+		assert_eq!(
+			nested_network_node.inputs,
+			vec![NodeInput::value(crate::document::value::TaggedValue::F32(2.), false)],
+			"Input should be 2"
+		);
 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");
@@ -863,7 +859,11 @@ mod test {
 		for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
 			let nested_network_node = result.nodes.get(&node_id).unwrap();
 			assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-			assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
+			assert_eq!(
+				nested_network_node.inputs,
+				vec![NodeInput::value(crate::document::value::TaggedValue::F32(input_value), false)],
+				"Input should be stable"
+			);
 			let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 			assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
 			assert_eq!(inner_network.outputs, vec![NodeOutput::new(inner_id, 0)], "The output should be node id");
@@ -882,7 +882,11 @@ mod test {
 		assert_eq!(result_node.inputs, vec![NodeInput::node(101, 0)], "Result node should refer to duplicate node as input");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+		assert_eq!(
+			nested_network_node.inputs,
+			vec![NodeInput::value(crate::document::value::TaggedValue::F32(2.), false)],
+			"Input should be 2"
+		);
 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");

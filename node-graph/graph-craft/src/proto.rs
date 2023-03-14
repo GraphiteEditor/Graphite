@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use xxhash_rust::xxh3::Xxh3;
 
 use crate::document::value;
 use crate::document::NodeId;
@@ -43,7 +44,7 @@ impl core::fmt::Display for ProtoNetwork {
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
 				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
-				ProtoNodeInput::Node(_) => f.write_str("Node")?,
+				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
 
@@ -54,7 +55,7 @@ impl core::fmt::Display for ProtoNetwork {
 				}
 				ConstructionArgs::Nodes(nodes) => {
 					for id in nodes {
-						write_node(f, network, *id, indent + 1)?;
+						write_node(f, network, id.0, indent + 1)?;
 					}
 				}
 			}
@@ -71,7 +72,8 @@ impl core::fmt::Display for ProtoNetwork {
 #[derive(Debug, Clone)]
 pub enum ConstructionArgs {
 	Value(value::TaggedValue),
-	Nodes(Vec<NodeId>),
+	// the bool indicates whether to treat the node as lambda node
+	Nodes(Vec<(NodeId, bool)>),
 }
 
 impl PartialEq for ConstructionArgs {
@@ -101,7 +103,7 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{}", n)).collect(),
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![format!("{:?}", value)],
 		}
 	}
@@ -118,13 +120,14 @@ pub struct ProtoNode {
 pub enum ProtoNodeInput {
 	None,
 	Network(Type),
-	Node(NodeId),
+	// the bool indicates whether to treat the node as lambda node
+	Node(NodeId, bool),
 }
 
 impl ProtoNodeInput {
 	pub fn unwrap_node(self) -> NodeId {
 		match self {
-			ProtoNodeInput::Node(id) => id,
+			ProtoNodeInput::Node(id, _) => id,
 			_ => panic!("tried to unwrap id from non node input \n node: {:#?}", self),
 		}
 	}
@@ -133,7 +136,8 @@ impl ProtoNodeInput {
 impl ProtoNode {
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
-		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		let mut hasher = Xxh3::new();
+
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		match self.input {
@@ -142,7 +146,7 @@ impl ProtoNode {
 				"network".hash(&mut hasher);
 				ty.hash(&mut hasher);
 			}
-			ProtoNodeInput::Node(id) => id.hash(&mut hasher),
+			ProtoNodeInput::Node(id, lambda) => (id, lambda).hash(&mut hasher),
 		};
 		Some(hasher.finish() as NodeId)
 	}
@@ -155,16 +159,18 @@ impl ProtoNode {
 		}
 	}
 
-	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let ProtoNodeInput::Node(id) = self.input {
-			self.input = ProtoNodeInput::Node(f(id))
+	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId, skip_lambdas: bool) {
+		if let ProtoNodeInput::Node(id, lambda) = self.input {
+			if !(skip_lambdas && lambda) {
+				self.input = ProtoNodeInput::Node(f(id), lambda)
+			}
 		}
 		if let ConstructionArgs::Nodes(ids) = &mut self.construction_args {
-			ids.iter_mut().for_each(|id| *id = f(*id));
+			ids.iter_mut().filter(|(_, lambda)| !(skip_lambdas && *lambda)).for_each(|(id, _)| *id = f(*id));
 		}
 	}
 
-	pub fn unwrap_construction_nodes(&self) -> Vec<NodeId> {
+	pub fn unwrap_construction_nodes(&self) -> Vec<(NodeId, bool)> {
 		match &self.construction_args {
 			ConstructionArgs::Nodes(nodes) => nodes.clone(),
 			_ => panic!("tried to unwrap nodes from non node construction args \n node: {:#?}", self),
@@ -186,12 +192,12 @@ impl ProtoNetwork {
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
-			if let ProtoNodeInput::Node(ref_id) = &node.input {
+			if let ProtoNodeInput::Node(ref_id, _) = &node.input {
 				self.check_ref(ref_id, id);
 				edges.entry(*ref_id).or_default().push(*id)
 			}
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
-				for ref_id in ref_nodes {
+				for (ref_id, _) in ref_nodes {
 					self.check_ref(ref_id, id);
 					edges.entry(*ref_id).or_default().push(*id)
 				}
@@ -210,7 +216,7 @@ impl ProtoNetwork {
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
 		if let Some(sni) = self.nodes[index].1.stable_node_id() {
 			lookup.insert(self.nodes[index].0, sni);
-			self.replace_node_references(&lookup);
+			self.replace_node_references(&lookup, false);
 			self.nodes[index].0 = sni;
 			sni
 		} else {
@@ -221,12 +227,12 @@ impl ProtoNetwork {
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
-			if let ProtoNodeInput::Node(ref_id) = &node.input {
+			if let ProtoNodeInput::Node(ref_id, _) = &node.input {
 				self.check_ref(ref_id, id);
 				edges.entry(*id).or_default().push(*ref_id)
 			}
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
-				for ref_id in ref_nodes {
+				for (ref_id, _) in ref_nodes {
 					self.check_ref(ref_id, id);
 					edges.entry(*id).or_default().push(*ref_id)
 				}
@@ -248,21 +254,22 @@ impl ProtoNetwork {
 
 		let resolved_lookup = resolved.clone();
 		if let Some((input_node, id, input)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
-			if let ProtoNodeInput::Node(input_node) = node.input {
+			if let ProtoNodeInput::Node(input_node, false) = node.input {
 				resolved.insert(*id);
 				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
 				Some((input_node, *id, pre_node_input.clone()))
 			} else {
+				resolved.insert(*id);
 				None
 			}
 		}) {
 			lookup.insert(id, compose_node_id);
-			self.replace_node_references(&lookup);
+			self.replace_node_references(&lookup, true);
 			self.nodes.push((
 				compose_node_id,
 				ProtoNode {
 					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
-					construction_args: ConstructionArgs::Nodes(vec![input_node, id]),
+					construction_args: ConstructionArgs::Nodes(vec![(input_node, false), (id, true)]),
 					input,
 				},
 			));
@@ -338,13 +345,13 @@ impl ProtoNetwork {
 				(pos as NodeId, node)
 			})
 			.collect();
-		self.replace_node_references(&lookup);
+		self.replace_node_references(&lookup, false);
 		assert_eq!(order.len(), self.nodes.len());
 	}
 
-	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>) {
+	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>, skip_lambdas: bool) {
 		self.nodes.iter_mut().for_each(|(_, node)| {
-			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"));
+			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"), skip_lambdas);
 		});
 		self.inputs = self.inputs.iter().filter_map(|id| lookup.get(id).copied()).collect();
 		self.output = *lookup.get(&self.output).unwrap();
@@ -403,7 +410,7 @@ impl TypingContext {
 			// If the node has nodes as parameters we can infer the types from the node outputs
 			ConstructionArgs::Nodes(ref nodes) => nodes
 				.iter()
-				.map(|id| {
+				.map(|(id, _)| {
 					self.inferred
 						.get(id)
 						.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))
@@ -416,7 +423,7 @@ impl TypingContext {
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::Network(ref ty) => ty.clone(),
-			ProtoNodeInput::Node(id) => {
+			ProtoNodeInput::Node(id, _) => {
 				let input = self
 					.inferred
 					.get(&id)
@@ -573,7 +580,7 @@ mod test {
 		println!("{:#?}", construction_network);
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
-		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![3, 4]));
+		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(3, false), (4, true)]));
 	}
 
 	#[test]
@@ -588,12 +595,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				15907139529964845467,
-				14192092348022507362,
-				14714934190542167928,
-				4518275895314664278,
-				13912679582583718470,
-				3236993912700824422
+				7332206428857154453,
+				946497269036214321,
+				3038115864048241698,
+				1932610308557160863,
+				2105748431407297710,
+				8596220090685862327
 			]
 		);
 	}
@@ -607,7 +614,7 @@ mod test {
 					7,
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -615,7 +622,7 @@ mod test {
 					1,
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(11),
+						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
@@ -624,14 +631,14 @@ mod test {
 					ProtoNode {
 						identifier: "cons".into(),
 						input: ProtoNodeInput::Network(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![14]),
+						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 					},
 				),
 				(
 					11,
 					ProtoNode {
 						identifier: "add".into(),
-						input: ProtoNodeInput::Node(10),
+						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),

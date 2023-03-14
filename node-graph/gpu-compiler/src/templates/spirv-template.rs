@@ -17,13 +17,13 @@ pub mod gpu {
 		#[spirv(global_invocation_id)] global_id: UVec3,
 		#[spirv(storage_buffer, descriptor_set = 0, binding = 0)] a: &[{{input_type}}],
 		#[spirv(storage_buffer, descriptor_set = 0, binding = 1)] y: &mut [{{output_type}}],
-		#[spirv(push_constant)] push_consts: &graphene_core::gpu::PushConstants,
+		//#[spirv(push_constant)] push_consts: &graphene_core::gpu::PushConstants,
 	) {
 		let gid = global_id.x as usize;
 		// Only process up to n, which is the length of the buffers.
-		if global_id.x < push_consts.n {
+		//if global_id.x < push_consts.n {
 			y[gid] = node_graph(a[gid]);
-		}
+		//}
 	}
 
 	fn node_graph(input: {{input_type}}) -> {{output_type}} {

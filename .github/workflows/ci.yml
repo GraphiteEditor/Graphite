@@ -50,7 +50,8 @@ jobs:
         NODE_ENV: production
       run: |
         cd frontend
-        npm run lint
+        # npm run lint
+        echo "💥 Frontend linting is temporarily disabled until it can be set up again with Svelte 💥"
 
     - name: 🔬 Check Rust formatting
       run: |
