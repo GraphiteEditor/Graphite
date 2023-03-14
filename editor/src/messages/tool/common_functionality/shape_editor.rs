@@ -312,24 +312,18 @@ impl ShapeEditor {
 					return;
 				}
 
-				let opposing_handle_length = if let Some(length) = layer_opposing_handle_lengths.get(id) {
-					length
-				} else {
+				let Some(opposing_handle_length) = layer_opposing_handle_lengths.get(id) else {
 					return;
 				};
 
 				let mut selected_handles = manipulator_group.selected_handles();
-				let handle = if let Some(handle) = selected_handles.next() {
-					handle
-				} else {
+				let Some(handle) = selected_handles.next() else {
 					return;
 				};
 
 				// Check that handle is the only selected handle.
 				if selected_handles.next().is_none() {
-					let anchor = if let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() {
-						anchor
-					} else {
+					let Some(anchor) = manipulator_group.points[ManipulatorType::Anchor].as_ref() else {
 						return;
 					};
 					if anchor.is_selected() {
@@ -337,9 +331,7 @@ impl ShapeEditor {
 					}
 
 					if let Some(opposing_handle_length) = opposing_handle_length {
-						let opposing_handle = if let Some(opposing_handle) = manipulator_group.opposing_handle(handle) {
-							opposing_handle
-						} else {
+						let Some(opposing_handle) = manipulator_group.opposing_handle(handle) else {
 							return;
 						};
 
