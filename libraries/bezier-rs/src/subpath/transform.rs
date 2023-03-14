@@ -333,6 +333,19 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Some((clipped_subpath1, clipped_subpath2.unwrap()))
 	}
 
+	/// Returns a subpath that results from rotating the path around the origin by the given angle (in radians).
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/rotate/solo" title="Rotate Demo"></iframe>
+	pub fn rotate(&self, angle: f64) -> Subpath<ManipulatorGroupId> {
+		let rotated_beziers = self.iter().map(|bezier| bezier.rotate(angle)).collect::<Vec<Bezier>>();
+		Subpath::from_beziers(&rotated_beziers[..], self.closed)
+	}
+
+	/// Returns a subpath that results from rotating the path around the provided point by the given angle (in radians).
+	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Subpath<ManipulatorGroupId> {
+		let rotated_beziers = self.iter().map(|bezier| bezier.rotate_about_point(angle, pivot)).collect::<Vec<Bezier>>();
+		Subpath::from_beziers(&rotated_beziers[..], self.closed)
+	}
+
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
 	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>

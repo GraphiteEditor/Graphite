@@ -222,6 +222,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		[ManipulatorGroup::new_anchor(left + translation), ManipulatorGroup::new_anchor(right + translation)]
 	}
+
+	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
+	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/curvature/solo" title="Curvature Demo"></iframe>
+	pub fn curvature(&self, t: SubpathTValue) -> f64 {
+		let (segment_index, t) = self.t_value_to_parametric(t);
+		self.get_segment(segment_index).unwrap().curvature(TValue::Parametric(t))
+	}
 }
 
 #[cfg(test)]
