@@ -81,7 +81,7 @@ impl NodeGraphExecutor {
 					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
 					break 'outer;
 				}
-				NodeInput::Lambda(_) => (),
+				NodeInput::ShortCircut(_) => (),
 			}
 		}
 
