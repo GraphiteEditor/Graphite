@@ -330,6 +330,7 @@ mod image {
 	use core::hash::{Hash, Hasher};
 	use dyn_any::{DynAny, StaticType};
 	use glam::DAffine2;
+	use glam::DVec2;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -424,6 +425,17 @@ mod image {
 				image: Image::empty(),
 				transform: DAffine2::ZERO,
 			}
+		}
+
+		pub fn get_mut(&mut self, x: usize, y: usize) -> &mut Color {
+			&mut self.image.data[y * (self.image.width as usize) + x]
+		}
+
+		pub fn sample(&self, x: f64, y: f64) -> Color {
+			let x = x.clamp(0.0, self.image.width as f64 - 1.0) as usize;
+			let y = y.clamp(0.0, self.image.height as f64 - 1.0) as usize;
+
+			self.image.data[y * (self.image.width as usize) + x]
 		}
 	}
 
