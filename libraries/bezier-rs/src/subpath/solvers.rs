@@ -1,6 +1,6 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{f64_compare, line_intersection, SubpathTValue};
+use crate::utils::{line_intersection, SubpathTValue};
 use crate::TValue;
 
 use glam::{DMat2, DVec2};
@@ -176,20 +176,21 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let center_to_left = left - center;
 
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
-		let tangent_angle = center_to_right.angle_between(in_segment.tangent(TValue::Parametric(1.)));
+		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
+		let tangent_angle = (right - left).angle_between(in_tangent);
 
 		let mut angle = center_to_right.angle_between(center_to_left) / 2.;
-
-		if f64_compare(angle.abs(), PI / 2., MAX_ABSOLUTE_DIFFERENCE) && tangent_angle * angle < 0. {
-			angle = -angle;
+		if tangent_angle * angle < 0. {
+			println!("First fix");
+			angle = (2. * angle - PI * (if angle < 0. { -1. } else { 1. })) / 2.; // (if angle < 0. { -1. } else { 1. }))
 		}
-		// if (0. < tangent_angle && tangent_angle < PI && -PI < angle && angle < 0.) || (0. < angle && angle < PI && -PI < tangent_angle && tangent_angle < 0.) {
-		// 	angle = -angle;
-		// 	println!("angle: {}, tangent_angle: {}", angle, tangent_angle);
-		// }
+		let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-		let rotation_matrix = DMat2::from_angle(angle);
-		let arc_point = center + rotation_matrix.mul_vec2(center_to_right);
+		if (arc_point - left).angle_between(in_tangent).abs() > PI / 2. {
+			println!("Final fix");
+			// angle = (PI - 2. * angle) / 2.;
+			// arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
+		}
 
 		let center_to_arc_point = arc_point - center;
 
@@ -256,51 +257,6 @@ mod tests {
 
 	fn normalize_t(n: i64, t: f64) -> f64 {
 		t * (n as f64) % 1.
-	}
-
-	#[test]
-	fn round_join() {
-		// TODO: Remove or write actual test
-		let s1 = DVec2::new(163., 61.);
-		let h1 = DVec2::new(140., 30.);
-		let e1 = DVec2::new(91., 177.);
-
-		let bezier = Bezier::from_quadratic_dvec2(s1, h1, e1);
-
-		let pos_offset = bezier.offset::<EmptyId>(15.);
-		let neg_offset = bezier.reverse().offset::<EmptyId>(15.);
-
-		println!("test:{}", DVec2::new(0., 1.).angle_between(DVec2::new(1., 0.)));
-
-		let (out_handle, manip, in_handle) = pos_offset.round_line_join(&neg_offset, e1);
-		let result = Subpath::new(
-			vec![
-				ManipulatorGroup {
-					anchor: pos_offset.evaluate(SubpathTValue::GlobalParametric(1.)),
-					out_handle: Some(out_handle),
-					in_handle: None,
-					id: EmptyId,
-				},
-				manip.clone(),
-				ManipulatorGroup {
-					anchor: neg_offset.evaluate(SubpathTValue::GlobalParametric(0.)),
-					out_handle: None,
-					in_handle: Some(in_handle),
-					id: EmptyId,
-				},
-			],
-			false,
-		);
-		let mut str = String::new();
-		result.to_svg(
-			&mut str,
-			"stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(),
-			String::new(),
-			String::new(),
-			"stroke=\"red\" stroke-width=\"1\" fill=\"none\"".to_string(),
-		);
-		println!("{:?}", result);
-		println!("{}", str);
 	}
 
 	#[test]
@@ -670,4 +626,152 @@ mod tests {
 	}
 
 	// TODO: add more intersection tests
+
+	#[test]
+	fn round_join_counter_clockwise_rotation() {
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(20., 20.),
+					out_handle: Some(DVec2::new(10., 90.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(114., 159.),
+					out_handle: None,
+					in_handle: Some(DVec2::new(60., 40.)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(148., 155.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let offset = subpath.offset(10., utils::Join::Round);
+		let offset_len = offset.len();
+
+		let manipulator_groups = offset.manipulator_groups();
+		let round_start = manipulator_groups[offset_len - 4].anchor;
+		let round_point = manipulator_groups[offset_len - 3].anchor;
+		let round_end = manipulator_groups[offset_len - 2].anchor;
+
+		let middle = (round_start + round_end) / 2.;
+
+		assert!((round_point - middle).angle_between(round_start - middle) > 0.);
+		assert!((round_end - middle).angle_between(round_point - middle) > 0.);
+	}
+
+	#[test]
+	fn round_join_clockwise_rotation() {
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(20., 20.),
+					out_handle: Some(DVec2::new(10., 90.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: None,
+					in_handle: Some(DVec2::new(60., 40.)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(78., 36.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let offset = subpath.offset(-15., utils::Join::Round);
+		let offset_len = offset.len();
+
+		let manipulator_groups = offset.manipulator_groups();
+		let round_start = manipulator_groups[offset_len - 4].anchor;
+		let round_point = manipulator_groups[offset_len - 3].anchor;
+		let round_end = manipulator_groups[offset_len - 2].anchor;
+
+		let middle = (round_start + round_end) / 2.;
+
+		assert!((round_point - middle).angle_between(round_start - middle) < 0.);
+		assert!((round_end - middle).angle_between(round_point - middle) < 0.);
+	}
+
+	#[test]
+	fn round_join_test() {
+		// TODO: Case where reduce ends in a really short segment
+		// Results in a really weird in_tangent for the round join
+		//M38 35 C40 40 120 120 130 30 Q175 90 145 150 Q70 185 38 35 Z
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(145., 150.),
+					out_handle: Some(DVec2::new(70., 185.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(38., 35.),
+					out_handle: Some(DVec2::new(40., 40.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(130., 30.),
+					out_handle: Some(DVec2::new(175., 90.)),
+					in_handle: Some(DVec2::new(120., 120.)),
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let offset = subpath.reverse().offset(10., utils::Join::Round);
+		let mut str = String::new();
+		offset.to_svg(&mut str, "stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(), String::new(), String::new(), String::new());
+		println!("{}", str);
+	}
+
+	#[test]
+	fn round_join_test_2() {
+		// TODO: Case where almost linear join gets wonky??
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(111., 83.),
+					out_handle: Some(DVec2::new(57., 146.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(37., 150.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let offset = subpath.offset(-10., utils::Join::Round);
+		let mut str = String::new();
+		offset.to_svg(&mut str, "stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(), String::new(), String::new(), String::new());
+		println!("{}", str);
+	}
 }

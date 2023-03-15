@@ -335,11 +335,16 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
 		// An offset at a distance 0 from the curve is simply the same curve
-		if distance == 0. {
+		// An offset of a single point is not defined
+		if distance == 0. || self.len_segments() == 1 {
 			return self.clone();
 		}
 
-		let mut subpaths = self.iter().map(|bezier| bezier.offset(distance)).collect::<Vec<Subpath<ManipulatorGroupId>>>();
+		let mut subpaths = self
+			.iter()
+			.filter(|bezier| !bezier.is_single_point())
+			.map(|bezier| bezier.offset(distance))
+			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
 		let mut drop_common_point = vec![true; self.len()];
 
 		// Clip or join consecutive Subpaths
@@ -569,6 +574,43 @@ mod tests {
 		let mut subpath = set_up_open_subpath();
 		subpath.closed = true;
 		subpath
+	}
+
+	#[test]
+	fn outline_with_single_point_segment() {
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(20., 20.),
+					out_handle: Some(DVec2::new(10., 90.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: None,
+					in_handle: Some(DVec2::new(60., 40.)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: Some(DVec2::new(40., 120.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(100., 100.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let outline = subpath.outline(10., crate::Join::Round, crate::Cap::Round).0;
+		assert_eq!(outline.len(), 25);
+		assert_eq!(outline.closed(), true);
 	}
 
 	#[test]

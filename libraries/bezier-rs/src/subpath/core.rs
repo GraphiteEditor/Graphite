@@ -88,7 +88,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns the number of segments contained within the `Subpath`.
 	pub fn len_segments(&self) -> usize {
 		let mut number_of_curves = self.len();
-		if !self.closed {
+		if !self.closed && number_of_curves > 0 {
 			number_of_curves -= 1
 		}
 		number_of_curves
