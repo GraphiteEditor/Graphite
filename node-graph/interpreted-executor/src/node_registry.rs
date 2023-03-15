@@ -135,6 +135,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
 		register_node!(graphene_core::ops::SomeNode, input: ImageFrame, params: []),
+		register_node!(graphene_std::raster::DownscaleNode, input: ImageFrame, params: []),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image, params: [String]),
 		vec![(
@@ -289,21 +290,43 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			//register_node!(graphene_std::memo::CacheNode<_>, input: Image, params: []),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
-				|_| {
-					let node: CacheNode<Image> = graphene_std::memo::CacheNode::new();
+				|args| {
+					let input: DowncastBothNode<(), Image> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<Image, _> = graphene_std::memo::CacheNode::new(input);
 					let any = DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(Image), concrete!(&Image), vec![]),
+				NodeIOTypes::new(concrete!(()), concrete!(&Image), vec![(concrete!(()), concrete!(Image))]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
-				|_| {
-					let node: CacheNode<QuantizationChannels> = graphene_std::memo::CacheNode::new();
+				|args| {
+					let input: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<ImageFrame, _> = graphene_std::memo::CacheNode::new(input);
 					let any = DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(QuantizationChannels), concrete!(&QuantizationChannels), vec![]),
+				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame), vec![(concrete!(()), concrete!(ImageFrame))]),
+			),
+			(
+				NodeIdentifier::new("graphene_std::memo::CacheNode"),
+				|args| {
+					let input: DowncastBothNode<ImageFrame, ImageFrame> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<ImageFrame, _> = graphene_std::memo::CacheNode::new(input);
+					let any = DynAnyRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(ImageFrame), concrete!(&ImageFrame), vec![(concrete!(ImageFrame), concrete!(ImageFrame))]),
+			),
+			(
+				NodeIdentifier::new("graphene_std::memo::CacheNode"),
+				|args| {
+					let input: DowncastBothNode<(), QuantizationChannels> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<QuantizationChannels, _> = graphene_std::memo::CacheNode::new(input);
+					let any = DynAnyRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(()), concrete!(&QuantizationChannels), vec![(concrete!(()), concrete!(QuantizationChannels))]),
 			),
 		],
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
