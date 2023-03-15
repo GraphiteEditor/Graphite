@@ -69,7 +69,7 @@ impl DocumentNode {
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
-				NodeInput::Lambda(ty) => (ProtoNodeInput::Lambda(ty), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Lambda(ty) => (ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
 			assert!(
@@ -122,17 +122,54 @@ impl DocumentNode {
 	}
 }
 
+/// Represents the possible inputs to a node.
+/// # ShortCircuting
+/// In Graphite nodes are functions and by default, these are composed into a single function
+/// by inserting Compose nodes.
+///
+///
+///
+///
+/// ┌─────────────────────┐               ┌─────────────────────┐                ┌─────────────────────┐
+/// │                     │◄──────────────┤                     │◄───────────────┤                     │
+/// │         A           │               │         B           │                │         C           │
+/// │                     │               │                     │                │                     │
+/// │                     ├──────────────►│                     ├───────────────►│                     │
+/// └─────────────────────┘               └─────────────────────┘                └─────────────────────┘
+///
+///
+///
+/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`)
+/// But sometimes we might want to have a little more control over the order of execution.
+/// This is why we allow nodes to opt out of the input forwarding by consuming the input directly.
+///
+///
+///
+///                                       ┌─────────────────────┐                ┌─────────────────────┐
+///                                       │                     │◄───────────────┤                     │
+///                                       │     Cache Node      │                │         C           │
+///                                       │                     │                │                     │
+/// ┌─────────────────────┐               │                     ├───────────────►│                     │
+/// │                     │               ├─────────────────────┤                └─────────────────────┘
+/// │         A           │◄──────────────┤                     │
+/// │                     │               │ * Cached Node       │
+/// │                     ├──────────────►│                     │
+/// └─────────────────────┘               └─────────────────────┘
+///
+///
+///
+///
+/// In this case the Cache node actually consumes it's input and then manually forwards it to it's parameter
+/// Node. This is necessary because the Cache Node needs to short-circut the actual node evaluation
 #[derive(Debug, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
 	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
 	Network(Type),
-	// A Lambda input represents an input that is not resolved through function composition but
+	// A short circuting input represents an input that is not resolved through function composition but
 	// actually consuming the provided input instead of passing it to its predecessor
-	// TODO: Find a better name to avoid confusion with node parameters as lambdas, e.g. CallArg,
-	// FunctionArgument, EvalInput, ConsumeInput
-	Lambda(Type),
+	ShortCircut(Type),
 }
 
 impl NodeInput {
