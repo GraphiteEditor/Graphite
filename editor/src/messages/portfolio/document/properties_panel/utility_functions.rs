@@ -48,6 +48,9 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 
 	// Find the delta transform
 	let mut delta = layer.transform.inverse() * transform;
+	if !delta.is_finite() {
+		return layer.transform.to_cols_array();
+	}
 
 	// Preserve aspect ratio
 	if matches!(transform_op, TransformOp::ScaleX | TransformOp::Width) && layer.preserve_aspect {
@@ -1155,6 +1158,7 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn update_scale_x(self, new_width: f64) -> Self {
+		debug!("modify transform value {}", new_width);
 		let scale_x = self.scale_x();
 		if scale_x != 0. {
 			self * DAffine2::from_scale((new_width / scale_x, 1.).into())
