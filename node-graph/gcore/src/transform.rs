@@ -17,8 +17,9 @@ pub struct TransformNode<Translation, Rotation, Scale, Shear> {
 #[node_macro::node_fn(TransformNode)]
 pub(crate) fn transform_vector_data(mut vector_data: VectorData, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
 	let (sin, cos) = rotate.sin_cos();
-
-	vector_data.transform = vector_data.transform * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
+	let transform = DAffine2::from_cols_array(&[scale.x * cos, shear.y * sin, shear.x * (-sin), scale.y * cos, translate.x, translate.y]);
+	vector_data.transform = transform * vector_data.transform;
+	// vector_data.transform = vector_data.transform * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
 	vector_data
 }
 
@@ -36,10 +37,14 @@ where
 		let rotate = self.rotate.eval(());
 		let scale = self.scale.eval(());
 		let shear = self.shear.eval(());
-		{
-			let (sin, cos) = rotate.sin_cos();
-			image_frame.transform = image_frame.transform * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
-			image_frame
-		}
+
+		let shear_matrix = DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+		let pivot = image_frame.transform.transform_point2(DVec2::splat(0.5));
+		let translate_to_center = DAffine2::from_translation(-pivot);
+
+		let transformation = translate_to_center.inverse() * DAffine2::from_scale_angle_translation(scale, rotate, translate) * shear_matrix * translate_to_center;
+		log::debug!("Affine transform: {}", transformation);
+		image_frame.transform = transformation * image_frame.transform; // * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
+		image_frame
 	}
 }

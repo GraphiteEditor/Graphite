@@ -168,56 +168,57 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlendImageNode<Destination, MapFn> {
-	destination: Destination,
+pub struct BlendImageNode<background, MapFn> {
+	background: background,
 	map_fn: MapFn,
 }
 
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
-fn blend_image<MapFn>(source: ImageFrame, mut destination: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
+fn blend_image<MapFn>(foreground: ImageFrame, mut background: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
-	// Transforms a point from the source image to the destination image
-	let dest_to_src = source.transform * destination.transform.inverse();
+	// Transforms a point from the foreground image to the background image
+	let bg_to_fg = foreground.transform * background.transform.inverse();
 
-	let source_size = DVec2::new(source.image.width as f64, source.image.height as f64);
-	let destination_size = DVec2::new(destination.image.width as f64, destination.image.height as f64);
+	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
+	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
 
-	// Footprint of the source image (0,0) (1, 1) in the destination image space
-	let src_aabb = compute_transformed_bounding_box(destination.transform.inverse() * source.transform).axis_aligned_bbox();
+	// Footprint of the foreground image (0,0) (1, 1) in the background image space
+	let bg_aabb = compute_transformed_bounding_box(background.transform.inverse() * foreground.transform).axis_aligned_bbox();
 
-	// Clamp the source image to the destination image
-	let start = (src_aabb.start * destination_size).max(DVec2::ZERO).as_ivec2();
-	let end = (src_aabb.end * destination_size).min(destination_size).as_ivec2();
+	// Clamp the foreground image to the background image
+	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
+	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
 
 	log::info!("start: {:?}, end: {:?}", start, end);
-	log::info!("src_aabb: {:?}", src_aabb);
-	log::info!("destination_size: {:?}", destination_size);
-	log::info!("src_to_dst: {:?}", dest_to_src);
-	log::info!("source.transform: {:?}", source.transform);
-	log::info!("destination.transform: {:?}", destination.transform);
+	log::info!("bg_aabb: {:?}", bg_aabb);
+	log::info!("background_size: {:?}", background_size);
+	log::info!("src_to_dst: {:?}", bg_to_fg);
+	log::info!("foreground.transform: {:?}", foreground.transform);
+	log::info!("background.transform: {:?}", background.transform);
 
 	for y in start.y..end.y {
 		for x in start.x..end.x {
-			let dest_uv = DVec2::new(x as f64, y as f64);
-			let src_uv = dest_to_src.transform_point2(dest_uv);
-			if !((src_uv.cmpge(DVec2::ZERO) & src_uv.cmple(source_size)) == BVec2::new(true, true)) {
+			let bg_uv = DVec2::new(x as f64, y as f64);
+			let bg_point = background.transform.transform_point2(bg_uv / background_size);
+			let fg_uv = bg_to_fg.transform_point2(bg_point);
+			if !((fg_uv.cmpge(DVec2::ZERO) & fg_uv.cmple(foreground_size)) == BVec2::new(true, true)) {
 				//log::debug!("Skipping pixel at {:?}", dest_point);
 				continue;
 			}
 
-			let source_point = src_uv;
+			let foreground_point = fg_uv;
 
-			let dst_pixel = destination.get_mut(x as usize, y as usize);
-			let src_pixel = source.sample(source_point.x, source_point.y);
+			let dst_pixel = background.get_mut(x as usize, y as usize);
+			let src_pixel = foreground.sample(foreground_point.x, foreground_point.y);
 
 			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 		}
 	}
 
-	destination
+	background
 }
 
 #[derive(Debug, Clone, Copy)]
