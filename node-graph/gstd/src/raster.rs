@@ -179,11 +179,11 @@ fn blend_image<MapFn>(foreground: ImageFrame, mut background: ImageFrame, map_fn
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
-	// Transforms a point from the foreground image to the background image
-	let bg_to_fg = foreground.transform * background.transform.inverse();
-
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
+
+	// Transforms a point from the background image to the forground image
+	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0,0) (1, 1) in the background image space
 	let bg_aabb = compute_transformed_bounding_box(background.transform.inverse() * foreground.transform).axis_aligned_bbox();
@@ -192,27 +192,17 @@ where
 	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
 	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
 
-	log::info!("start: {:?}, end: {:?}", start, end);
-	log::info!("bg_aabb: {:?}", bg_aabb);
-	log::info!("background_size: {:?}", background_size);
-	log::info!("src_to_dst: {:?}", bg_to_fg);
-	log::info!("foreground.transform: {:?}", foreground.transform);
-	log::info!("background.transform: {:?}", background.transform);
-
 	for y in start.y..end.y {
 		for x in start.x..end.x {
-			let bg_uv = DVec2::new(x as f64, y as f64);
-			let bg_point = background.transform.transform_point2(bg_uv / background_size);
-			let fg_uv = bg_to_fg.transform_point2(bg_point);
-			if !((fg_uv.cmpge(DVec2::ZERO) & fg_uv.cmple(foreground_size)) == BVec2::new(true, true)) {
+			let bg_point = DVec2::new(x as f64, y as f64);
+			let fg_point = bg_to_fg.transform_point2(bg_point);
+			if !((fg_point.cmpge(DVec2::ZERO) & fg_point.cmple(foreground_size)) == BVec2::new(true, true)) {
 				//log::debug!("Skipping pixel at {:?}", dest_point);
 				continue;
 			}
 
-			let foreground_point = fg_uv;
-
 			let dst_pixel = background.get_mut(x as usize, y as usize);
-			let src_pixel = foreground.sample(foreground_point.x, foreground_point.y);
+			let src_pixel = foreground.sample(fg_point.x, fg_point.y);
 
 			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 		}
