@@ -118,7 +118,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		if let Some(ShaderInput::ReadBackBuffer(output, ty)) = read_back {
 			let size = output.size();
 			assert_eq!(size, layout.output_buffer.buffer().unwrap().size());
-			assert_eq!(&ty, layout.output_buffer.ty());
+			assert_eq!(ty, layout.output_buffer.ty());
 			encoder.copy_buffer_to_buffer(
 				layout.output_buffer.buffer().ok_or_else(|| anyhow::anyhow!("Tried to use an non buffer as the shader output"))?,
 				0,

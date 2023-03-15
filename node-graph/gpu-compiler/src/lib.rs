@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use gpu_executor::{GPUConstant, ShaderIO, ShaderInput, SpirVCompiler};
 use graph_craft::proto::*;
 use tera::Context;
 
@@ -50,7 +51,43 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 	Ok(())
 }
 
-pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str) -> anyhow::Result<String> {
+fn constant_attribute(constant: GPUConstant) -> &'static str {
+	match constant {
+		GPUConstant::SubGroupId => "subgroup_id",
+		GPUConstant::SubGroupInvocationId => "subgroup_local_invocation_id",
+		GPUConstant::SubGroupSize => todo!(),
+		GPUConstant::NumSubGroups => "num_subgroups",
+		GPUConstant::WorkGroupId => "workgroup_id",
+		GPUConstant::WorkGroupInvocationId => "local_invocation_id",
+		GPUConstant::WorkGroupSize => todo!(),
+		GPUConstant::NumWorkGroups => "num_workgroups",
+		GPUConstant::GlobalInvokationId => "global_invocation_id",
+		GPUConstant::GlobalSize => todo!(),
+	}
+}
+
+pub fn construct_argument(input: ShaderInput<()>, position: u32) -> String {
+	match input {
+		ShaderInput::Constant(constant) => format!("#[spirv({})]: {}", constant_attribute(constant), position),
+		ShaderInput::UniformBuffer(_, _) => todo!(),
+		ShaderInput::StorageBuffer(_, _) => todo!(),
+		ShaderInput::WorkGroupMemory(_, _) => todo!(),
+		ShaderInput::OutputBuffer(_, _) => todo!(),
+		ShaderInput::ReadBackBuffer(_, _) => todo!(),
+	}
+}
+
+struct GpuCompiler {
+	compile_dir: PathBuf,
+}
+
+impl SpirVCompiler for GpuCompiler {
+	fn compile(&self, network: ProtoNetwork, io: ShaderIO) -> anyhow::Result<gpu_executor::Shader> {
+		todo!()
+	}
+}
+
+pub fn serialize_gpu(network: &ProtoNetwork, io: ShaderIO) -> anyhow::Result<String> {
 	assert_eq!(network.inputs.len(), 1);
 	fn nid(id: &u64) -> String {
 		format!("n{id}")

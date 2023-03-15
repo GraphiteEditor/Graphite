@@ -155,6 +155,7 @@ impl Type {
 		match self {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.size),
+            Self::Fn(_, _) => None,
 		}
 	}
 
@@ -162,6 +163,7 @@ impl Type {
 		match self {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.align),
+            Self::Fn(_, _) => None,
 		}
 	}
 }

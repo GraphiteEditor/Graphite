@@ -605,6 +605,8 @@ mod image {
 		}
 	}
 
+	/// Warning: This is an approximation of a hash, and is not guaranteed to not collide.
+	/// TODO: Evaluate if this will be a problem for our use case.
 	impl<P: Hash + Pixel> Hash for Image<P> {
 		fn hash<H: Hasher>(&self, state: &mut H) {
 			const HASH_SAMPLES: u64 = 1000;

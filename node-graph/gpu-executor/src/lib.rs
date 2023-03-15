@@ -1,6 +1,8 @@
 use anyhow::Result;
 use dyn_any::StaticType;
 use futures::Future;
+use glam::UVec3;
+use graph_craft::proto::ProtoNetwork;
 use graphene_core::*;
 use std::borrow::Cow;
 use std::pin::Pin;
@@ -21,12 +23,39 @@ pub trait GpuExecutor {
 	fn read_output_buffer(&self, buffer: ShaderInput<Self::BufferHandle>) -> Result<ReadBackFuture>;
 }
 
+pub trait SpirVCompiler {
+	fn compile(&self, network: ProtoNetwork, io: ShaderIO) -> Result<Shader>;
+}
+
 /// GPU constants that can be used as inputs to a shader.
 pub enum GPUConstant {
+	SubGroupId,
+	SubGroupInvocationId,
+	SubGroupSize,
+	NumSubGroups,
 	WorkGroupId,
+	WorkGroupInvocationId,
 	WorkGroupSize,
-	GlobalId,
+	NumWorkGroups,
+	GlobalInvokationId,
 	GlobalSize,
+}
+
+impl GPUConstant {
+	pub fn ty(&self) -> Type {
+		match self {
+			GPUConstant::SubGroupId => concrete!(u32),
+			GPUConstant::SubGroupInvocationId => concrete!(u32),
+			GPUConstant::SubGroupSize => concrete!(u32),
+			GPUConstant::NumSubGroups => concrete!(u32),
+			GPUConstant::WorkGroupId => concrete!(UVec3),
+			GPUConstant::WorkGroupInvocationId => concrete!(UVec3),
+			GPUConstant::WorkGroupSize => concrete!(u32),
+			GPUConstant::NumWorkGroups => concrete!(u32),
+			GPUConstant::GlobalInvokationId => concrete!(UVec3),
+			GPUConstant::GlobalSize => concrete!(UVec3),
+		}
+	}
 }
 
 /// All the possible inputs to a shader.
@@ -36,7 +65,7 @@ pub enum ShaderInput<BufferHandle> {
 	/// A struct representing a work group memory buffer.
 	/// This can not be accessed by the CPU.
 	WorkGroupMemory(usize, Type),
-	Constant(GPUConstant, Type),
+	Constant(GPUConstant),
 	OutputBuffer(BufferHandle, Type),
 	ReadBackBuffer(BufferHandle, Type),
 }
@@ -48,19 +77,19 @@ impl<BufferHandle> ShaderInput<BufferHandle> {
 			ShaderInput::UniformBuffer(buffer, _) => Some(buffer),
 			ShaderInput::StorageBuffer(buffer, _) => Some(buffer),
 			ShaderInput::WorkGroupMemory(_, _) => None,
-			ShaderInput::Constant(_, _) => None,
+			ShaderInput::Constant(_) => None,
 			ShaderInput::OutputBuffer(buffer, _) => Some(buffer),
 			ShaderInput::ReadBackBuffer(buffer, _) => Some(buffer),
 		}
 	}
-	pub fn ty(&self) -> &Type {
+	pub fn ty(&self) -> Type {
 		match self {
-			ShaderInput::UniformBuffer(_, ty) => ty,
-			ShaderInput::StorageBuffer(_, ty) => ty,
-			ShaderInput::WorkGroupMemory(_, ty) => ty,
-			ShaderInput::Constant(_, ty) => ty,
-			ShaderInput::OutputBuffer(_, ty) => ty,
-			ShaderInput::ReadBackBuffer(_, ty) => ty,
+			ShaderInput::UniformBuffer(_, ty) => ty.clone(),
+			ShaderInput::StorageBuffer(_, ty) => ty.clone(),
+			ShaderInput::WorkGroupMemory(_, ty) => ty.clone(),
+			ShaderInput::Constant(c) => c.ty(),
+			ShaderInput::OutputBuffer(_, ty) => ty.clone(),
+			ShaderInput::ReadBackBuffer(_, ty) => ty.clone(),
 		}
 	}
 }
@@ -72,8 +101,8 @@ pub struct Shader<'a> {
 }
 
 pub struct ShaderIO {
-	pub inputs: Vec<Type>,
-	pub output: Type,
+	pub inputs: Vec<ShaderInput<()>>,
+	pub output: ShaderInput<()>,
 }
 
 pub struct StorageBufferOptions {
