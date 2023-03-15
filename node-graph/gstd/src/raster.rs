@@ -90,6 +90,33 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 }
 */
 
+pub struct DownscaleNode;
+
+#[node_macro::node_fn(DownscaleNode)]
+fn downscale(image_frame: ImageFrame) -> ImageFrame {
+	let target_width = image_frame.transform.transform_vector2((1., 0.).into()).length() as usize;
+	let target_height = image_frame.transform.transform_vector2((0., 1.).into()).length() as usize;
+
+	let mut image = Image {
+		width: target_width as u32,
+		height: target_height as u32,
+		data: Vec::with_capacity(target_width * target_height),
+	};
+
+	let scale_factor = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64) / DVec2::new(target_width as f64, target_height as f64);
+	for y in 0..target_height {
+		for x in 0..target_width {
+			let pixel = image_frame.sample(DVec2::new(x as f64, y as f64) * scale_factor);
+			image.data.push(pixel);
+		}
+	}
+
+	ImageFrame {
+		image,
+		transform: image_frame.transform,
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MapImageNode<MapFn> {
 	map_fn: MapFn,
@@ -168,8 +195,8 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlendImageNode<background, MapFn> {
-	background: background,
+pub struct BlendImageNode<Background, MapFn> {
+	background: Background,
 	map_fn: MapFn,
 }
 
@@ -202,7 +229,7 @@ where
 			}
 
 			let dst_pixel = background.get_mut(x as usize, y as usize);
-			let src_pixel = foreground.sample(fg_point.x, fg_point.y);
+			let src_pixel = foreground.sample(fg_point);
 
 			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 		}

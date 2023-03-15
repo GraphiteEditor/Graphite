@@ -329,15 +329,25 @@ mod image {
 	use alloc::vec::Vec;
 	use core::hash::{Hash, Hasher};
 	use dyn_any::{DynAny, StaticType};
-	use glam::DAffine2;
-	use glam::DVec2;
+	use glam::{DAffine2, DVec2};
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type, Hash)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Image {
 		pub width: u32,
 		pub height: u32,
 		pub data: Vec<Color>,
+	}
+
+	impl Hash for Image {
+		fn hash<H: Hasher>(&self, state: &mut H) {
+			const HASH_SAMPLES: usize = 1000;
+			self.width.hash(state);
+			self.height.hash(state);
+			for i in 0..HASH_SAMPLES.min(self.data.len()) {
+				self.data[i * self.data.len() / HASH_SAMPLES].hash(state);
+			}
+		}
 	}
 
 	impl Image {
@@ -362,7 +372,7 @@ mod image {
 		}
 
 		/// Flattens each channel cast to a u8
-		pub fn as_flat_u8(self) -> (Vec<u8>, u32, u32) {
+		pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 			let Image { width, height, data } = self;
 
 			let result_bytes = data.into_iter().flat_map(|color| color.to_rgba8()).collect();
@@ -431,11 +441,12 @@ mod image {
 			&mut self.image.data[y * (self.image.width as usize) + x]
 		}
 
-		pub fn sample(&self, x: f64, y: f64) -> Color {
-			let x = x.clamp(0.0, self.image.width as f64 - 1.0) as usize;
-			let y = y.clamp(0.0, self.image.height as f64 - 1.0) as usize;
+		/// Clamps the provided point to (0, 0) (ImageSize) and returns the closest pixel
+		pub fn sample(&self, position: DVec2) -> Color {
+			let x = position.x.clamp(0., self.image.width as f64 - 1.) as usize;
+			let y = position.y.clamp(0., self.image.height as f64 - 1.) as usize;
 
-			self.image.data[y * (self.image.width as usize) + x]
+			self.image.data[x + y * self.image.width as usize]
 		}
 	}
 
