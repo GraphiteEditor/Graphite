@@ -590,11 +590,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Threshold",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
-				DocumentInputType::value("Threshold", TaggedValue::F64(50.), false),
+				DocumentInputType::value("Threshold Minimum", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Threshold Maximum", TaggedValue::F64(50.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_threshold_properties,

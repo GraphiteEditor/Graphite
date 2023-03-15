@@ -171,7 +171,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
-		raster_node!(graphene_core::raster::ThresholdNode<_, _>, params: [LuminanceCalculation, f64]),
+		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [LuminanceCalculation, f64, f64]),
 		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::BrightnessContrastNode< _, _>, params: [f64, f64]),
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
