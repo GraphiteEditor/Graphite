@@ -1158,7 +1158,6 @@ impl DAffine2Utils for DAffine2 {
 	}
 
 	fn update_scale_x(self, new_width: f64) -> Self {
-		debug!("modify transform value {}", new_width);
 		let scale_x = self.scale_x();
 		if scale_x != 0. {
 			self * DAffine2::from_scale((new_width / scale_x, 1.).into())
