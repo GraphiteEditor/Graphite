@@ -437,6 +437,11 @@ mod image {
 			}
 		}
 
+		pub fn get_mut(&mut self, x: usize, y: usize) -> &mut Color {
+			&mut self.image.data[y * (self.image.width as usize) + x]
+		}
+
+        /// Clamps the provided point to (0, 0) (ImageSize) and returns the closest pixel
 		pub fn sample(&self, position: DVec2) -> Color {
 			let x = position.x.clamp(0., self.image.width as f64 - 1.) as usize;
 			let y = position.y.clamp(0., self.image.height as f64 - 1.) as usize;
