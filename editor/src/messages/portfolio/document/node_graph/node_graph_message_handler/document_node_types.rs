@@ -652,7 +652,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Transform",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::TransformNode<_, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
