@@ -76,7 +76,7 @@ const bezierFeatures = {
 	},
 	"lookup-table": {
 		name: "Lookup Table",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.compute_lookup_table(options.steps),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => bezier.compute_lookup_table(options.steps, tVariant),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -90,6 +90,7 @@ const bezierFeatures = {
 				],
 			},
 		},
+		chooseTVariant: true,
 	},
 	derivative: {
 		name: "Derivative",

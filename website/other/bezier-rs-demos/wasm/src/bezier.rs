@@ -1,7 +1,7 @@
 use crate::svg_drawing::*;
 use crate::utils::parse_cap;
 
-use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, ProjectionOptions, TValue};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, ProjectionOptions, TValue, TValueType};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -156,9 +156,14 @@ impl WasmBezier {
 		wrap_svg_tag(content)
 	}
 
-	pub fn compute_lookup_table(&self, steps: usize) -> String {
+	pub fn compute_lookup_table(&self, steps: usize, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
-		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps));
+		let tvalue_type = match t_variant.as_str() {
+			"Parametric" => TValueType::Parametric,
+			"Euclidean" => TValueType::Euclidean,
+			_ => panic!("Unexpected TValue string: '{}'", t_variant),
+		};
+		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));
 		let circles: String = table_values
 			.iter()
 			.map(|point| draw_circle(*point, 3., RED, 1.5, WHITE))

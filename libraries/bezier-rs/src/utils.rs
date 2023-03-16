@@ -20,6 +20,12 @@ pub enum TValue {
 }
 
 #[derive(Copy, Clone, PartialEq)]
+pub enum TValueType {
+	Parametric, 
+	Euclidean,
+}
+
+#[derive(Copy, Clone, PartialEq)]
 pub enum SubpathTValue {
 	Parametric { segment_index: usize, t: f64 },
 	GlobalParametric(f64),
