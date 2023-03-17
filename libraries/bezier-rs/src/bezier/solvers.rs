@@ -78,7 +78,7 @@ impl Bezier {
 		self.tangent(t).perp()
 	}
 
-	/// Returns the curvature, a scalar value for the derivative at the point `t` along the subpath.
+	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
 	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/curvature/solo" title="Curvature Demo"></iframe>
 	pub fn curvature(&self, t: TValue) -> f64 {
