@@ -343,8 +343,14 @@ impl WasmSubpath {
 	pub fn curvature(&self, t: f64, t_variant: String) -> String {
 		let subpath = self.to_default_svg();
 		let t = parse_t_variant(&t_variant, t);
-
-		let radius = 1. / self.0.curvature(t);
+		
+		let curvature = self.0.curvature(t);
+		if curvature == 0. {
+			// Linear curve case
+			// Radius is inf, so don't draw it
+			return wrap_svg_tag(format!("{subpath}"))
+		}
+		let radius = 1. / curvature;
 		let normal_point = self.0.normal(t);
 		let intersection_point = self.0.evaluate(t);
 
