@@ -74,22 +74,17 @@ export function renderDemoPane(demoPane: DemoPane): void {
 	tVariantLabel.innerText = "TValue Variant:";
 	tVariantContainer.append(tVariantLabel);
 
-	const radioInputs = ["Parametric", "Euclidean"].map((tVariant) => {
+	const variantSelect = document.createElement("select");
+	["Parametric", "Euclidean"].forEach((tVariant) => {
 		const id = `${demoPane.id}-${tVariant}`;
-		const radioInput = document.createElement("input");
-		radioInput.type = "radio";
-		radioInput.id = id;
-		radioInput.value = tVariant;
-		radioInput.name = `TVariant - ${demoPane.id}`;
-		radioInput.checked = tVariant === "Parametric";
-		tVariantContainer.append(radioInput);
-
-		const label = document.createElement("label");
-		label.htmlFor = id;
-		label.innerText = tVariant;
-		tVariantContainer.append(label);
-		return radioInput;
+		const option = document.createElement("option");
+		option.value = tVariant;
+		option.id = id;
+		option.text = tVariant;
+		variantSelect.append(option);
 	});
+
+	tVariantContainer.appendChild(variantSelect);
 
 	const demoRow = document.createElement("div");
 	demoRow.className = "demo-row";
@@ -100,12 +95,11 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		}
 		const demoComponent = demoPane.buildDemo(demo);
 
-		radioInputs.forEach((radioInput: HTMLElement) => {
-			radioInput.addEventListener("input", (event: Event): void => {
-				demoPane.tVariant = (event.target as HTMLInputElement).value as TVariant;
-				demoComponent.setAttribute("tvariant", demoPane.tVariant);
-			});
+		variantSelect.addEventListener("change", (event: Event): void => {
+			demoPane.tVariant = (event.target as HTMLInputElement).value as TVariant;
+			demoComponent.setAttribute("tvariant", demoPane.tVariant);
 		});
+
 		demoRow.append(demoComponent);
 	});
 
