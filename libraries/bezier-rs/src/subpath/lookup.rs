@@ -1,11 +1,31 @@
 use super::*;
-use crate::consts::DEFAULT_EUCLIDEAN_ERROR_BOUND;
-use crate::utils::{SubpathTValue, TValue};
+use crate::consts::{DEFAULT_EUCLIDEAN_ERROR_BOUND, DEFAULT_LUT_STEP_SIZE};
+use crate::utils::{SubpathTValue, TValue, TValueType};
 use crate::ProjectionOptions;
 use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+	/// Return a selection of equidistant points on the bezier curve.
+	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/lookup-table/solo" title="Lookup-Table Demo"></iframe>
+	pub fn compute_lookup_table(&self, steps: Option<usize>, tvalue_type: Option<TValueType>) -> Vec<DVec2> {
+		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
+		let tvalue_type_unwrapped = tvalue_type.unwrap_or(TValueType::Parametric);
+		let ratio: f64 = 1. / (steps_unwrapped as f64);
+		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
+
+		for t in 0..steps_unwrapped + 1 {
+			if tvalue_type_unwrapped == TValueType::Parametric {
+				steps_array.push(self.evaluate(SubpathTValue::GlobalParametric(f64::from(t as i32) * ratio)))
+			} else {
+				steps_array.push(self.evaluate(SubpathTValue::GlobalEuclidean(f64::from(t as i32) * ratio)))
+			}
+		}
+
+		steps_array
+	}
+	
 	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/length/solo" title="Length Demo"></iframe>
