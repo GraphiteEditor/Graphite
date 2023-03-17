@@ -61,7 +61,7 @@ const subpathFeatures = {
 					[20, 20],
 				],
 				options.error,
-				options.minimum_seperation
+				options.minimum_separation
 			),
 		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
@@ -75,7 +75,7 @@ const subpathFeatures = {
 					[90, 120],
 				],
 				options.error,
-				options.minimum_seperation
+				options.minimum_separation
 			),
 		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
@@ -90,13 +90,13 @@ const subpathFeatures = {
 					[175, 140],
 				],
 				options.error,
-				options.minimum_seperation
+				options.minimum_separation
 			),
 		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	"self-intersect": {
 		name: "Self Intersect",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_seperation),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_separation),
 		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	split: {

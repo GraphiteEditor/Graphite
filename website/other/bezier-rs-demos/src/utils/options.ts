@@ -15,7 +15,7 @@ export const errorOptions = {
 };
 
 export const minimumSeparationOptions = {
-	variable: "minimum_seperation",
+	variable: "minimum_separation",
 	min: 0.001,
 	max: 0.25,
 	step: 0.001,
