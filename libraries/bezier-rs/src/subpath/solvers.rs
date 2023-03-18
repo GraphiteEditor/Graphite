@@ -23,7 +23,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		self.iter()
 			.enumerate()
@@ -35,18 +35,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// This function expects the following:
 	/// - other: a [Bezier] curve to check intersections against
 	/// - error: an optional f64 value to provide an error bound
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn subpath_intersections(&self, other: &Subpath<ManipulatorGroupId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersection_t_values: Vec<(usize, f64)> = other.iter().flat_map(|bezier| self.intersections(&bezier, error, minimum_separation)).collect();
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 		intersection_t_values
-	}
-
-	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
-	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
-		let (segment_index, t) = self.t_value_to_parametric(t);
-		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
 	}
 
 	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
@@ -75,6 +68,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		intersections_vec
 	}
 
+	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
+	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
+		let (segment_index, t) = self.t_value_to_parametric(t);
+		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
+	}
+
 	/// Returns a normalized unit vector representing the direction of the normal on the subpath based on the parametric `t`-value provided.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
@@ -84,7 +84,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric subpaths respectively.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
 		let number_of_curves = self.len_segments() as f64;
 
@@ -99,7 +99,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Return the min and max corners that represent the bounding box of the subpath.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
@@ -113,7 +113,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns list of `t`-values representing the inflection points of the subpath.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
 	pub fn inflections(&self) -> Vec<f64> {
 		let number_of_curves = self.len_segments() as f64;
 		let inflection_t_values: Vec<f64> = self

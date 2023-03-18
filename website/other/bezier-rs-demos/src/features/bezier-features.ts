@@ -1,5 +1,5 @@
 import { WasmBezier } from "@graphite/../wasm/pkg";
-import { tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@graphite/utils/options";
+import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@graphite/utils/options";
 import { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption, BEZIER_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const bezierFeatures = {
@@ -262,14 +262,7 @@ const bezierFeatures = {
 						step: 1,
 						default: 15,
 					},
-					{
-						variable: "cap",
-						min: 0,
-						max: 2,
-						step: 1,
-						default: 0,
-						unit: [": Butt", ": Round", ": Square"],
-					},
+					capOptions,
 				],
 			},
 		},
@@ -294,14 +287,7 @@ const bezierFeatures = {
 						step: 1,
 						default: 15,
 					},
-					{
-						variable: "cap",
-						min: 0,
-						max: 2,
-						step: 1,
-						default: 0,
-						unit: [": Butt", ": Round", ": Square"],
-					},
+					capOptions,
 				],
 			},
 		},
@@ -349,14 +335,7 @@ const bezierFeatures = {
 						step: 1,
 						default: 5,
 					},
-					{
-						variable: "cap",
-						min: 0,
-						max: 2,
-						step: 1,
-						default: 0,
-						unit: [": Butt", ": Round", ": Square"],
-					},
+					capOptions,
 				],
 			},
 		},

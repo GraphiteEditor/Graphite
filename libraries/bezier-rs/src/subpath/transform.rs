@@ -121,7 +121,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// The resulting Subpath will wind from the given `t1` to `t2`.
 	/// That means, if the value of `t1` > `t2`, it will cross the break between endpoints from `t1` to `t = 1 = 0` to `t2`.
 	/// If a path winding in the reverse direction is desired, call `trim` on the `Subpath` returned from `Subpath::reverse`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<ManipulatorGroupId> {
 		// Return a clone of the Subpath if it is not long enough to be a valid Bezier
 		if self.manipulator_groups.is_empty() {
@@ -330,7 +330,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
 	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset(&self, distance: f64, join: Join) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
@@ -469,7 +469,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Subpath::new(manipulator_groups, self.closed)
 	}
 
-	// TODO: Add comment and consider refactoring
+	/// Helper function to combine the two offsets that make up an outline.
 	pub(crate) fn combine_outline(&self, other: &Subpath<ManipulatorGroupId>, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
 		result_manipulator_groups.extend_from_slice(self.manipulator_groups());
@@ -507,7 +507,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
 	/// - `distance` - The outline's distance from the curve.
 	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
 		let pos_offset = self.offset(distance, join);
 		let neg_offset = self.reverse().offset(distance, join);

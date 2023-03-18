@@ -1,4 +1,4 @@
-import { tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@graphite/utils/options";
+import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@graphite/utils/options";
 import { InputOption, SubpathCallback, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const subpathFeatures = {
@@ -116,14 +116,7 @@ const subpathFeatures = {
 				step: 1,
 				default: 10,
 			},
-			{
-				variable: "join",
-				min: 0,
-				max: 2,
-				step: 1,
-				default: 0,
-				unit: [": Bevel", ": Miter", ": Round"],
-			},
+			joinOptions,
 		],
 	},
 	outline: {
@@ -137,22 +130,8 @@ const subpathFeatures = {
 				step: 1,
 				default: 10,
 			},
-			{
-				variable: "join",
-				min: 0,
-				max: 2,
-				step: 1,
-				default: 0,
-				unit: [": Bevel", ": Miter", ": Round"],
-			},
-			{
-				variable: "cap",
-				min: 0,
-				max: 2,
-				step: 1,
-				default: 0,
-				unit: [": Butt", ": Round", ": Square"],
-			},
+			joinOptions,
+			capOptions,
 		],
 	},
 };

@@ -45,3 +45,17 @@ export const subpathTValueVariantOptions = {
 	inputType: "dropdown",
 	options: SUBPATH_T_VALUE_VARIANTS,
 };
+
+export const joinOptions = {
+	variable: "join",
+	default: 0,
+	inputType: "dropdown",
+	options: ["Bevel", "Miter", "Round"],
+};
+
+export const capOptions = {
+	variable: "cap",
+	default: 0,
+	inputType: "dropdown",
+	options: ["Butt", "Round", "Square"],
+};

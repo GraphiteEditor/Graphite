@@ -419,7 +419,7 @@ impl Bezier {
 	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.offset(distance);
 		let third_segment = self.reverse().offset(distance);
@@ -433,13 +433,13 @@ impl Bezier {
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
 	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, cap)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
-	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="550px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
 	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let first_segment = self.graduated_offset(distance1, distance2);
 		let third_segment = self.reverse().graduated_offset(distance3, distance4);
