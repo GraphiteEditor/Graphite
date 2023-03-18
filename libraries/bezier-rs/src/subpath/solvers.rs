@@ -167,7 +167,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		None
 	}
 
-	/// Returns the subpath that creates a round join with the provided center.
+	/// Returns the necessary information to create a round join with the provided center.
+	/// The returned items correspond to:
+	/// - The `out_handle` for the last manipulator group of `self`
+	/// - The new manipulator group to be added
+	/// - The `in_handle` for the first manipulator group of `other`
 	pub(crate) fn round_line_join(&self, other: &Subpath<ManipulatorGroupId>, center: DVec2) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
@@ -177,19 +181,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
-		let tangent_angle = (right - left).angle_between(in_tangent);
 
 		let mut angle = center_to_right.angle_between(center_to_left) / 2.;
-		if tangent_angle * angle < 0. {
-			println!("First fix");
-			angle = (2. * angle - PI * (if angle < 0. { -1. } else { 1. })) / 2.; // (if angle < 0. { -1. } else { 1. }))
-		}
 		let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
 		if (arc_point - left).angle_between(in_tangent).abs() > PI / 2. {
-			println!("Final fix");
-			// angle = (PI - 2. * angle) / 2.;
-			// arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
+			angle = angle - PI * (if angle < 0. { -1. } else { 1. });
+			arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 		}
 
 		let center_to_arc_point = arc_point - center;
@@ -208,6 +206,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		)
 	}
 
+	/// Returns the necessary information to create a round cap between the end of `self` and the beginning of `other`.
+	/// The returned items correspond to:
+	/// - The `out_handle` for the last manipulator group of `self`
+	/// - The new manipulator group to be added
+	/// - The `in_handle` for the first manipulator group of `other`
 	pub(crate) fn round_cap(&self, other: &Subpath<ManipulatorGroupId>) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
 		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
 		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
@@ -233,6 +236,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		)
 	}
 
+	/// Returns the two manipulator groups that create a sqaure cap between the end of `self` and the beginning of `other`.
 	pub(crate) fn square_cap(&self, other: &Subpath<ManipulatorGroupId>) -> [ManipulatorGroup<ManipulatorGroupId>; 2] {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
@@ -745,6 +749,7 @@ mod tests {
 	#[test]
 	fn round_join_test_2() {
 		// TODO: Case where almost linear join gets wonky??
+		// M20 20 C10 90 60 40 150 40 L 73 92 Q3 131 100 100
 		let subpath = Subpath::new(
 			vec![
 				ManipulatorGroup {
@@ -754,13 +759,13 @@ mod tests {
 					id: EmptyId,
 				},
 				ManipulatorGroup {
-					anchor: DVec2::new(111., 83.),
-					out_handle: Some(DVec2::new(57., 146.)),
+					anchor: DVec2::new(73., 92.),
+					out_handle: Some(DVec2::new(3., 131.)),
 					in_handle: None,
 					id: EmptyId,
 				},
 				ManipulatorGroup {
-					anchor: DVec2::new(37., 150.),
+					anchor: DVec2::new(100., 100.),
 					out_handle: None,
 					in_handle: None,
 					id: EmptyId,
@@ -769,7 +774,7 @@ mod tests {
 			false,
 		);
 
-		let offset = subpath.offset(-10., utils::Join::Round);
+		let offset = subpath.offset(10., utils::Join::Round);
 		let mut str = String::new();
 		offset.to_svg(&mut str, "stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(), String::new(), String::new(), String::new());
 		println!("{}", str);
