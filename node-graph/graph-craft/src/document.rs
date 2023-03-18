@@ -533,7 +533,7 @@ impl NodeNetwork {
 	}
 
 	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
+	pub fn connected_to_output(&self, target_node_id: NodeId, ignore_imaginate: bool) -> bool {
 		// If the node is the output then return true
 		if self.outputs.iter().any(|&NodeOutput { node_id, .. }| node_id == target_node_id) {
 			return true;
@@ -546,6 +546,11 @@ impl NodeNetwork {
 		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
 
 		while let Some(node) = stack.pop() {
+			// Skip the imaginate node inputs
+			if ignore_imaginate && node.name == "Imaginate" {
+				continue;
+			}
+
 			for input in &node.inputs {
 				if let &NodeInput::Node { node_id: ref_id, .. } = input {
 					// Skip if already viewed
