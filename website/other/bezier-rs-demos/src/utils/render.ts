@@ -18,31 +18,74 @@ export function renderDemo(demo: Demo): void {
 	parentSliderContainer.className = "parent-slider-container";
 
 	demo.sliderOptions.forEach((sliderOption: SliderOption) => {
+		const useSelect = Array.isArray(demo.sliderUnits[sliderOption.variable]);
+
 		const sliderContainer = document.createElement("div");
-		sliderContainer.className = "slider-container";
+		sliderContainer.className = useSelect ? "select-container" : "slider-container";
 
 		const sliderLabel = document.createElement("div");
 		const sliderData = demo.sliderData[sliderOption.variable];
 		const sliderUnit = demo.getSliderUnit(sliderData, sliderOption.variable);
 		sliderLabel.className = "slider-label";
-		sliderLabel.innerText = `${sliderOption.variable}: ${sliderOption.variable !== "strategy" ? sliderData : ""}${sliderUnit}`;
+		sliderLabel.innerText = `${sliderOption.variable}: ${useSelect ? "" : sliderData}${sliderUnit}`;
 		sliderContainer.appendChild(sliderLabel);
 
-		const sliderInput = document.createElement("input");
-		sliderInput.className = "slider-input";
-		sliderInput.type = "range";
-		sliderInput.max = String(sliderOption.max);
-		sliderInput.min = String(sliderOption.min);
-		sliderInput.step = String(sliderOption.step);
-		sliderInput.value = String(sliderOption.default);
-		sliderInput.addEventListener("input", (event: Event): void => {
-			demo.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
-			const data = sliderOption.variable !== "strategy" ? demo.sliderData[sliderOption.variable] : "";
-			const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
-			sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
-			demo.drawDemo(figure);
-		});
-		sliderContainer.appendChild(sliderInput);
+		if (useSelect) {
+			const selectInput = document.createElement("select");
+			selectInput.className = "select-input"
+			selectInput.value = String(sliderOption.default);
+			(demo.sliderUnits[sliderOption.variable] as string[]).forEach((value, idx) => {
+				const id = `${idx}-${value}`;
+				const option = document.createElement("option");
+				option.value = String(idx);
+				option.id = id;
+				option.text = value;
+				selectInput.append(option);
+			});
+
+			selectInput.addEventListener("change", (event: Event): void => {
+				demo.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
+				const data = useSelect ? "" : demo.sliderData[sliderOption.variable];
+				const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
+				sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
+				demo.drawDemo(figure);
+			});
+			sliderContainer.appendChild(selectInput);
+
+		} else {
+			const sliderInput = document.createElement("input");
+			sliderInput.className = "slider-input";
+			sliderInput.type = "range";
+			sliderInput.max = String(sliderOption.max);
+			sliderInput.min = String(sliderOption.min);
+			sliderInput.step = String(sliderOption.step);
+			sliderInput.value = String(sliderOption.default);
+			const range = sliderOption.max - sliderOption.min;
+
+			const ratio = (sliderOption.default - sliderOption.min) / range;
+			sliderInput.style.background = `
+				linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
+				+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
+			`;
+
+			sliderInput.addEventListener("input", (event: Event): void => {
+				const target = event.target as HTMLInputElement;
+				demo.sliderData[sliderOption.variable] = Number(target.value);
+				const data = useSelect ? "" : demo.sliderData[sliderOption.variable];
+				const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
+				sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
+				
+				const ratio = (Number(target.value) - sliderOption.min) / range;
+			  	target.style.background = `
+					linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
+					+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
+				`;
+
+				demo.drawDemo(figure);
+			});
+			sliderContainer.appendChild(sliderInput);
+
+		}
 
 		parentSliderContainer.append(sliderContainer);
 	});
@@ -84,6 +127,7 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		variantSelect.append(option);
 	});
 
+	variantSelect.className = "select-input"
 	tVariantContainer.appendChild(variantSelect);
 
 	const demoRow = document.createElement("div");

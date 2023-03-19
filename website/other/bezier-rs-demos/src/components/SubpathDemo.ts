@@ -109,7 +109,7 @@ class SubpathDemo extends HTMLElement {
 
 	getSliderUnit(sliderValue: number, variable: string): string {
 		const sliderUnit = this.sliderUnits[variable];
-		return (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit) || "";
+		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
 	}
 }
 
