@@ -32,7 +32,7 @@ export function renderDemo(demo: Demo): void {
 
 		if (useSelect) {
 			const selectInput = document.createElement("select");
-			selectInput.className = "select-input"
+			selectInput.className = "select-input";
 			selectInput.value = String(sliderOption.default);
 			(demo.sliderUnits[sliderOption.variable] as string[]).forEach((value, idx) => {
 				const id = `${idx}-${value}`;
@@ -51,7 +51,6 @@ export function renderDemo(demo: Demo): void {
 				demo.drawDemo(figure);
 			});
 			sliderContainer.appendChild(selectInput);
-
 		} else {
 			const sliderInput = document.createElement("input");
 			sliderInput.className = "slider-input";
@@ -74,9 +73,9 @@ export function renderDemo(demo: Demo): void {
 				const data = useSelect ? "" : demo.sliderData[sliderOption.variable];
 				const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
 				sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
-				
+
 				const ratio = (Number(target.value) - sliderOption.min) / range;
-			  	target.style.background = `
+				target.style.background = `
 					linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
 					+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
 				`;
@@ -84,7 +83,6 @@ export function renderDemo(demo: Demo): void {
 				demo.drawDemo(figure);
 			});
 			sliderContainer.appendChild(sliderInput);
-
 		}
 
 		parentSliderContainer.append(sliderContainer);
@@ -127,7 +125,7 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		variantSelect.append(option);
 	});
 
-	variantSelect.className = "select-input"
+	variantSelect.className = "select-input";
 	tVariantContainer.appendChild(variantSelect);
 
 	const demoRow = document.createElement("div");
