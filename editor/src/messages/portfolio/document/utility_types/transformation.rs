@@ -189,14 +189,9 @@ pub struct Selected<'a> {
 }
 
 impl<'a> Selected<'a> {
-	pub fn new(
-		original_transforms: &'a mut OriginalTransforms,
-		pivot: &'a mut DVec2,
-		selected: &'a [&'a Vec<LayerId>],
-		responses: &'a mut VecDeque<Message>,
-		document: &'a Document,
-		shape_editor: Option<&'a ShapeEditor>,
-	) -> Self {
+	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
+		debug!("updating");
+		debug!("transform {:?}", original_transforms);
 		for path in selected {
 			if !original_transforms.contains_key(*path) {
 				if let Ok(layer) = document.layer(path) {

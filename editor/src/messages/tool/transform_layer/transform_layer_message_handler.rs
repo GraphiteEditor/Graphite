@@ -37,16 +37,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 		// You may also want the shape editor here? If not, then feel free to remove.
 		let _shape_editor = &self.shape_editor;
-
+		let mut transform = HashMap::new();
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
-		let mut selected = Selected::new(
-			&mut self.original_transforms,
-			&mut self.pivot,
-			&selected_layers,
-			responses,
-			&document.document_legacy,
-			Some(_shape_editor),
-		);
+		let mut selected = Selected::new(&mut transform, &mut self.pivot, &selected_layers, responses, &document.document_legacy);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if operation != TransformOperation::None {
