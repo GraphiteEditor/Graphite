@@ -98,7 +98,7 @@ const subpathFeatures = {
 	curvature: {
 		name: "Curvature",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.curvature(options.t, tVariant),
-		sliderOptions: [tSliderOptions],
+		sliderOptions: [{ ...tSliderOptions, default: 0.2 }],
 		chooseTVariant: true,
 	},
 	split: {

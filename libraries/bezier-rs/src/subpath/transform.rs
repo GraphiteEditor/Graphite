@@ -336,14 +336,29 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns a subpath that results from rotating the path around the origin by the given angle (in radians).
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Subpath<ManipulatorGroupId> {
-		let rotated_beziers = self.iter().map(|bezier| bezier.rotate(angle)).collect::<Vec<Bezier>>();
-		Subpath::from_beziers(&rotated_beziers[..], self.closed)
+		let mut rotated_subpath = self.clone();
+
+		let affine_transform: DAffine2 = DAffine2::from_angle(angle);
+		rotated_subpath.apply_transform(affine_transform);
+
+		rotated_subpath
 	}
 
 	/// Returns a subpath that results from rotating the path around the provided point by the given angle (in radians).
 	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Subpath<ManipulatorGroupId> {
-		let rotated_beziers = self.iter().map(|bezier| bezier.rotate_about_point(angle, pivot)).collect::<Vec<Bezier>>();
-		Subpath::from_beziers(&rotated_beziers[..], self.closed)
+		let mut rotated_subpath = self.clone();
+
+		// Translate before and after the rotation to account for the pivot
+		let translate1: DAffine2 = DAffine2::from_translation(-pivot);
+		rotated_subpath.apply_transform(translate1);
+
+		let rotate: DAffine2 = DAffine2::from_angle(angle);
+		rotated_subpath.apply_transform(rotate);
+
+		let translate2: DAffine2 = DAffine2::from_translation(pivot);
+		rotated_subpath.apply_transform(translate2);
+
+		rotated_subpath
 	}
 
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.

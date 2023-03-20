@@ -225,21 +225,25 @@ impl WasmBezier {
 		let t = parse_t_variant(&t_variant, raw_t);
 
 		let curvature = self.0.curvature(t);
-		if curvature > 0. {
-			let radius = 1. / self.0.curvature(t);
-			let normal_point = self.0.normal(t);
-			let intersection_point = self.0.evaluate(t);
-
-			let curvature_center = intersection_point + normal_point * radius;
-
-			content = format!(
-				"{content}{}{}{}{}",
-				draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
-				draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
-				draw_circle(intersection_point, 3., RED, 1., WHITE),
-				draw_circle(curvature_center, 3., RED, 1., WHITE),
-			);
+		if curvature == 0. {
+			// Linear curve case
+			// Radius is inf, so don't draw it
+			return wrap_svg_tag(format!("{bezier}"));
 		}
+		let radius = 1. / curvature;
+		let normal_point = self.0.normal(t);
+		let intersection_point = self.0.evaluate(t);
+
+		let curvature_center = intersection_point + normal_point * radius;
+
+		content = format!(
+			"{content}{}{}{}{}",
+			draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
+			draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
+			draw_circle(intersection_point, 3., RED, 1., WHITE),
+			draw_circle(curvature_center, 3., RED, 1., WHITE),
+		);
+
 		wrap_svg_tag(content)
 	}
 
