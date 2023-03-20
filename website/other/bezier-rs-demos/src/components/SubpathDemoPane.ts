@@ -22,22 +22,22 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 			{
 				title: "Open Subpath",
 				triples: [
-					[[20, 20], undefined, [10, 90]],
-					[[150, 40], [60, 40], undefined],
-					[[175, 175], undefined, undefined],
-					[[100, 100], [40, 120], undefined],
+					[[45, 20], undefined, [35, 90]],
+					[[175, 40], [85, 40], undefined],
+					[[200, 175], undefined, undefined],
+					[[125, 100], [65, 120], undefined],
 				],
 				closed: false,
 			},
 			{
 				title: "Closed Subpath",
 				triples: [
-					[[35, 125], undefined, [40, 40]],
-					[[130, 30], [120, 120], undefined],
+					[[60, 125], undefined, [65, 40]],
+					[[155, 30], [145, 120], undefined],
 					[
-						[145, 150],
-						[175, 90],
-						[70, 185],
+						[170, 150],
+						[200, 90],
+						[95, 185],
 					],
 				],
 				closed: true,

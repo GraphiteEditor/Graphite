@@ -143,6 +143,9 @@ const bezierFeatures = {
 			Quadratic: {
 				inputOptions: [bezierTValueVariantOptions, tSliderOptions],
 			},
+			Cubic: {
+				inputOptions: [bezierTValueVariantOptions, {...tSliderOptions, default: 0.7}],
+			},
 		},
 	},
 	split: {
@@ -366,9 +369,9 @@ const bezierFeatures = {
 				},
 				Quadratic: {
 					customPoints: [
-						[50, 50],
-						[85, 65],
-						[100, 100],
+						[70, 40],
+						[180, 50],
+						[160, 150],
 					],
 					inputOptions,
 					disabled: false,
@@ -390,8 +393,8 @@ const bezierFeatures = {
 		name: "Intersect (Line Segment)",
 		callback: (bezier: WasmBezierInstance): string => {
 			const line = [
-				[150, 150],
-				[20, 20],
+				[45, 30],
+				[195, 160],
 			];
 			return bezier.intersect_line_segment(line);
 		},
@@ -400,9 +403,9 @@ const bezierFeatures = {
 		name: "Intersect (Quadratic)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const quadratic = [
-				[20, 80],
-				[180, 10],
-				[90, 120],
+				[45, 80],
+				[205, 10],
+				[115, 120],
 			];
 			return bezier.intersect_quadratic_segment(quadratic, options.error, options.minimum_separation);
 		},
@@ -416,10 +419,10 @@ const bezierFeatures = {
 		name: "Intersect (Cubic)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const cubic = [
-				[40, 20],
-				[100, 40],
-				[40, 120],
-				[175, 140],
+				[65, 20],
+				[125, 40],
+				[65, 120],
+				[200, 140],
 			];
 			return bezier.intersect_cubic_segment(cubic, options.error, options.minimum_separation);
 		},
@@ -454,8 +457,8 @@ const bezierFeatures = {
 		name: "Intersect (Rectangle)",
 		callback: (bezier: WasmBezierInstance): string =>
 			bezier.intersect_rectangle([
-				[50, 50],
-				[150, 150],
+				[75, 50],
+				[175, 150],
 			]),
 	},
 	rotate: {
@@ -492,21 +495,21 @@ const bezierFeatures = {
 			let examplePoints = [];
 			if (points.length === 2) {
 				examplePoints = [
-					[120, 155],
-					[40, 155],
+					[145, 155],
+					[65, 155],
 				];
 			} else if (points.length === 3) {
 				examplePoints = [
-					[40, 150],
-					[95, 195],
-					[155, 145],
+					[65, 150],
+					[120, 195],
+					[190, 145],
 				];
 			} else {
 				examplePoints = [
-					[140, 150],
-					[85, 110],
-					[65, 180],
-					[30, 140],
+					[165, 150],
+					[110, 110],
+					[90, 180],
+					[55, 140],
 				];
 			}
 			return bezier.join(examplePoints);
@@ -514,23 +517,23 @@ const bezierFeatures = {
 		demoOptions: {
 			Linear: {
 				customPoints: [
-					[45, 40],
-					[130, 90],
+					[70, 40],
+					[155, 90],
 				],
 			},
 			Quadratic: {
 				customPoints: [
-					[153, 40],
-					[40, 20],
-					[75, 85],
+					[185, 40],
+					[65, 20],
+					[100, 85],
 				],
 			},
 			Cubic: {
 				customPoints: [
-					[20, 80],
-					[40, 20],
-					[90, 100],
-					[130, 55],
+					[45, 80],
+					[65, 20],
+					[115, 100],
+					[155, 55],
 				],
 			},
 		},

@@ -5,23 +5,23 @@ import { BezierCurveType, BEZIER_CURVE_TYPE, BezierDemoOptions, InputOption, Dem
 const demoDefaults = {
 	Linear: {
 		points: [
-			[30, 60],
-			[140, 120],
+			[55, 60],
+			[165, 120],
 		],
 	},
 	Quadratic: {
 		points: [
-			[30, 50],
-			[140, 30],
-			[160, 170],
+			[55, 50],
+			[165, 30],
+			[185, 170],
 		],
 	},
 	Cubic: {
 		points: [
-			[30, 30],
-			[60, 140],
-			[150, 30],
-			[160, 160],
+			[55, 30],
+			[85, 140],
+			[175, 30],
+			[185, 160],
 		],
 	},
 };

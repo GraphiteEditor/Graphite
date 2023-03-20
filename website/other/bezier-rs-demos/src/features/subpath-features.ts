@@ -53,8 +53,8 @@ const subpathFeatures = {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_line_segment(
 				[
-					[150, 150],
-					[20, 20],
+					[80, 30],
+					[210, 150],
 				],
 				options.error,
 				options.minimum_separation
@@ -66,9 +66,9 @@ const subpathFeatures = {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_quadratic_segment(
 				[
-					[20, 80],
-					[180, 10],
-					[90, 120],
+					[25, 50],
+					[205, 10],
+					[135, 180],
 				],
 				options.error,
 				options.minimum_separation
@@ -80,10 +80,10 @@ const subpathFeatures = {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_cubic_segment(
 				[
-					[40, 20],
-					[100, 40],
-					[40, 120],
-					[175, 140],
+					[65, 20],
+					[125, 40],
+					[65, 120],
+					[200, 140],
 				],
 				options.error,
 				options.minimum_separation
