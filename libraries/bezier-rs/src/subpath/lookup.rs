@@ -25,7 +25,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		steps_array
 	}
-	
+
 	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/length/solo" title="Length Demo"></iframe>

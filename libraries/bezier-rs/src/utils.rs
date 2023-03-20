@@ -21,7 +21,7 @@ pub enum TValue {
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum TValueType {
-	Parametric, 
+	Parametric,
 	Euclidean,
 }
 
