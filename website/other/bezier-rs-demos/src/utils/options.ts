@@ -1,3 +1,5 @@
+import { BEZIER_T_VALUE_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
+
 export const tSliderOptions = {
 	min: 0,
 	max: 1,
@@ -29,3 +31,18 @@ export const intersectionErrorOptions = {
 	step: 0.0025,
 	default: 0.02,
 };
+
+export const bezierTValueVariantOptions = {
+	variable: "TVariant",
+	default: 0,
+	inputType: "dropdown",
+	options: BEZIER_T_VALUE_VARIANTS,
+}
+
+export const subpathTValueVariantOptions = {
+	variable: "TVariant",
+	default: 0,
+	inputType: "dropdown",
+	options: SUBPATH_T_VALUE_VARIANTS,
+}
+

@@ -1,6 +1,6 @@
 import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 import { renderDemoPane } from "@/utils/render";
-import { TVariant, Demo, DemoPane, SliderOption, SubpathDemoArgs } from "@/utils/types";
+import { Demo, DemoPane, InputOption, SubpathDemoArgs } from "@/utils/types";
 
 class SubpathDemoPane extends HTMLElement implements DemoPane {
 	// Props
@@ -8,18 +8,14 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 
 	name!: string;
 
-	sliderOptions!: SliderOption[];
+	inputOptions!: InputOption[];
 
 	triggerOnMouseMove!: boolean;
-
-	chooseTVariant!: boolean;
 
 	// Data
 	demos!: SubpathDemoArgs[];
 
 	id!: string;
-
-	tVariant!: TVariant;
 
 	connectedCallback(): void {
 		this.demos = [
@@ -47,13 +43,11 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 				closed: true,
 			},
 		];
-		this.tVariant = "Parametric";
 		this.key = (this.getAttribute("name") || "") as SubpathFeatureKey;
 		this.id = `subpath/${this.key}`;
 		this.name = subpathFeatures[this.key].name;
-		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
+		this.inputOptions = JSON.parse(this.getAttribute("inputOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
-		this.chooseTVariant = this.getAttribute("chooseTVariant") === "true";
 
 		this.render();
 	}
@@ -68,9 +62,8 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 		subpathDemo.setAttribute("triples", JSON.stringify(demo.triples));
 		subpathDemo.setAttribute("closed", String(demo.closed));
 		subpathDemo.setAttribute("key", this.key);
-		subpathDemo.setAttribute("sliderOptions", JSON.stringify(this.sliderOptions));
+		subpathDemo.setAttribute("inputOptions", JSON.stringify(this.inputOptions));
 		subpathDemo.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
-		subpathDemo.setAttribute("tvariant", this.tVariant);
 		return subpathDemo;
 	}
 }

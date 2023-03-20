@@ -2,7 +2,7 @@ import { WasmSubpath } from "@/../wasm/pkg";
 import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 import { renderDemo } from "@/utils/render";
 
-import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, SliderOption, TVariant } from "@/utils/types";
+import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, InputOption } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
@@ -17,11 +17,9 @@ class SubpathDemo extends HTMLElement {
 
 	closed!: boolean;
 
-	sliderOptions!: SliderOption[];
+	inputOptions!: InputOption[];
 
 	triggerOnMouseMove!: boolean;
-
-	tVariant!: TVariant;
 
 	// Data
 	subpath!: WasmSubpath;
@@ -36,30 +34,17 @@ class SubpathDemo extends HTMLElement {
 
 	sliderUnits!: Record<string, string | string[]>;
 
-	static get observedAttributes(): string[] {
-		return ["tvariant"];
-	}
-
-	attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
-		if (name === "tvariant" && oldValue) {
-			this.tVariant = (newValue || "Parametric") as TVariant;
-			const figure = this.querySelector("figure") as HTMLElement;
-			this.drawDemo(figure);
-		}
-	}
-
 	async connectedCallback(): Promise<void> {
 		this.title = this.getAttribute("title") || "";
 		this.triples = JSON.parse(this.getAttribute("triples") || "[]");
 		this.key = this.getAttribute("key") as SubpathFeatureKey;
-		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
+		this.inputOptions = JSON.parse(this.getAttribute("inputOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
 		this.closed = this.getAttribute("closed") === "true";
-		this.tVariant = (this.getAttribute("tvariant") || "Parametric") as TVariant;
 
 		this.callback = subpathFeatures[this.key].callback as SubpathCallback;
-		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
-		this.sliderUnits = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.unit })));
+		this.sliderData = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.default })));
+		this.sliderUnits = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.unit })));
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
@@ -73,7 +58,7 @@ class SubpathDemo extends HTMLElement {
 	}
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
-		figure.innerHTML = this.callback(this.subpath, this.sliderData, mouseLocation, this.tVariant);
+		figure.innerHTML = this.callback(this.subpath, this.sliderData, mouseLocation);
 	}
 
 	onMouseDown(event: MouseEvent): void {

@@ -1,4 +1,4 @@
-import { TVariant, Demo, DemoPane, SliderOption } from "@/utils/types";
+import { Demo, DemoPane, InputOption } from "@/utils/types";
 
 export function renderDemo(demo: Demo): void {
 	const header = document.createElement("h4");
@@ -17,24 +17,24 @@ export function renderDemo(demo: Demo): void {
 	const parentSliderContainer = document.createElement("div");
 	parentSliderContainer.className = "parent-slider-container";
 
-	demo.sliderOptions.forEach((sliderOption: SliderOption) => {
-		const useSelect = Array.isArray(demo.sliderUnits[sliderOption.variable]);
+	demo.inputOptions.forEach((inputOption: InputOption) => {
+		const isDropdown = inputOption.inputType === "dropdown"
 
 		const sliderContainer = document.createElement("div");
-		sliderContainer.className = useSelect ? "select-container" : "slider-container";
+		sliderContainer.className = isDropdown ? "select-container" : "slider-container";
 
 		const sliderLabel = document.createElement("div");
-		const sliderData = demo.sliderData[sliderOption.variable];
-		const sliderUnit = demo.getSliderUnit(sliderData, sliderOption.variable);
+		const sliderData = demo.sliderData[inputOption.variable];
+		const sliderUnit = demo.getSliderUnit(sliderData, inputOption.variable);
 		sliderLabel.className = "slider-label";
-		sliderLabel.innerText = `${sliderOption.variable}: ${useSelect ? "" : sliderData}${sliderUnit}`;
+		sliderLabel.innerText = `${inputOption.variable}: ${isDropdown ? "" : sliderData}${sliderUnit}`;
 		sliderContainer.appendChild(sliderLabel);
 
-		if (useSelect) {
+		if (isDropdown) {
 			const selectInput = document.createElement("select");
 			selectInput.className = "select-input";
-			selectInput.value = String(sliderOption.default);
-			(demo.sliderUnits[sliderOption.variable] as string[]).forEach((value, idx) => {
+			selectInput.value = String(inputOption.default);
+			inputOption.options?.forEach((value, idx) => {
 				const id = `${idx}-${value}`;
 				const option = document.createElement("option");
 				option.value = String(idx);
@@ -44,10 +44,7 @@ export function renderDemo(demo: Demo): void {
 			});
 
 			selectInput.addEventListener("change", (event: Event): void => {
-				demo.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
-				const data = useSelect ? "" : demo.sliderData[sliderOption.variable];
-				const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
-				sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
+				demo.sliderData[inputOption.variable] = Number((event.target as HTMLInputElement).value);
 				demo.drawDemo(figure);
 			});
 			sliderContainer.appendChild(selectInput);
@@ -55,13 +52,13 @@ export function renderDemo(demo: Demo): void {
 			const sliderInput = document.createElement("input");
 			sliderInput.className = "slider-input";
 			sliderInput.type = "range";
-			sliderInput.max = String(sliderOption.max);
-			sliderInput.min = String(sliderOption.min);
-			sliderInput.step = String(sliderOption.step);
-			sliderInput.value = String(sliderOption.default);
-			const range = sliderOption.max - sliderOption.min;
+			sliderInput.max = String(inputOption.max);
+			sliderInput.min = String(inputOption.min);
+			sliderInput.step = String(inputOption.step);
+			sliderInput.value = String(inputOption.default);
+			const range = Number(inputOption.max) - Number(inputOption.min);
 
-			const ratio = (sliderOption.default - sliderOption.min) / range;
+			const ratio = (Number(inputOption.default) - Number(inputOption.min)) / range;
 			sliderInput.style.background = `
 				linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
 				+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
@@ -69,12 +66,12 @@ export function renderDemo(demo: Demo): void {
 
 			sliderInput.addEventListener("input", (event: Event): void => {
 				const target = event.target as HTMLInputElement;
-				demo.sliderData[sliderOption.variable] = Number(target.value);
-				const data = useSelect ? "" : demo.sliderData[sliderOption.variable];
-				const unit = demo.getSliderUnit(demo.sliderData[sliderOption.variable], sliderOption.variable);
-				sliderLabel.innerText = `${sliderOption.variable}: ${data}${unit}`;
+				demo.sliderData[inputOption.variable] = Number(target.value);
+				const data = demo.sliderData[inputOption.variable];
+				const unit = demo.getSliderUnit(demo.sliderData[inputOption.variable], inputOption.variable);
+				sliderLabel.innerText = `${inputOption.variable}: ${data}${unit}`;
 
-				const ratio = (Number(target.value) - sliderOption.min) / range;
+				const ratio = (Number(target.value) - Number(inputOption.min)) / range;
 				target.style.background = `
 					linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
 					+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
@@ -108,26 +105,6 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		container.append(header);
 	}
 
-	const tVariantContainer = document.createElement("div");
-	tVariantContainer.className = "t-variant-choice";
-
-	const tVariantLabel = document.createElement("strong");
-	tVariantLabel.innerText = "TValue Variant:";
-	tVariantContainer.append(tVariantLabel);
-
-	const variantSelect = document.createElement("select");
-	["Parametric", "Euclidean"].forEach((tVariant) => {
-		const id = `${demoPane.id}-${tVariant}`;
-		const option = document.createElement("option");
-		option.value = tVariant;
-		option.id = id;
-		option.text = tVariant;
-		variantSelect.append(option);
-	});
-
-	variantSelect.className = "select-input";
-	tVariantContainer.appendChild(variantSelect);
-
 	const demoRow = document.createElement("div");
 	demoRow.className = "demo-row";
 
@@ -136,20 +113,9 @@ export function renderDemoPane(demoPane: DemoPane): void {
 			return;
 		}
 		const demoComponent = demoPane.buildDemo(demo);
-
-		variantSelect.addEventListener("change", (event: Event): void => {
-			demoPane.tVariant = (event.target as HTMLInputElement).value as TVariant;
-			demoComponent.setAttribute("tvariant", demoPane.tVariant);
-		});
-
 		demoRow.append(demoComponent);
 	});
 
 	container.append(demoRow);
-
-	if (demoPane.chooseTVariant) {
-		container.append(tVariantContainer);
-	}
-
 	demoPane.append(container);
 }
