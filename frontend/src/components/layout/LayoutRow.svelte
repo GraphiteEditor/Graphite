@@ -9,7 +9,7 @@
 	export let scrollableX = false;
 	export let scrollableY = false;
 
-	let self: HTMLDivElement;
+	let self: HTMLDivElement | undefined;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
@@ -18,7 +18,7 @@
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
-	export function div(): HTMLDivElement {
+	export function div(): HTMLDivElement | undefined {
 		return self;
 	}
 </script>

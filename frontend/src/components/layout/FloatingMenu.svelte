@@ -28,10 +28,10 @@
 	export let escapeCloses = true;
 	export let strayCloses = true;
 
-	let tail: HTMLDivElement;
-	let self: HTMLDivElement;
-	let floatingMenuContainer: HTMLDivElement;
-	let floatingMenuContent: LayoutCol;
+	let tail: HTMLDivElement | undefined;
+	let self: HTMLDivElement | undefined;
+	let floatingMenuContainer: HTMLDivElement | undefined;
+	let floatingMenuContent: LayoutCol | undefined;
 
 	// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
 	// Since CSS doesn't let us make the floating menu (with `position: fixed`) have a 100% width of this container, we need to use JS to observe its size and
@@ -82,8 +82,10 @@
 			await tick();
 
 			// Start a new observation of the now-open floating menu
-			containerResizeObserver.disconnect();
-			containerResizeObserver.observe(floatingMenuContainer);
+			if (floatingMenuContainer) {
+				containerResizeObserver.disconnect();
+				containerResizeObserver.observe(floatingMenuContainer);
+			}
 		}
 
 		// Switching from open to closed
@@ -117,12 +119,13 @@
 
 		const workspace = document.querySelector("[data-workspace]");
 
-		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent) return;
+		const floatingMenuContentDiv = floatingMenuContent?.div();
+		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
 		workspaceBounds = workspace.getBoundingClientRect();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
-		floatingMenuContentBounds = floatingMenuContent.div().getBoundingClientRect();
+		floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 
@@ -130,10 +133,10 @@
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			const tailOffset = type === "Popover" ? 10 : 0;
-			if (direction === "Bottom") floatingMenuContent.div().style.top = `${tailOffset + floatingMenuBounds.top}px`;
-			if (direction === "Top") floatingMenuContent.div().style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
-			if (direction === "Right") floatingMenuContent.div().style.left = `${tailOffset + floatingMenuBounds.left}px`;
-			if (direction === "Left") floatingMenuContent.div().style.right = `${tailOffset + floatingMenuBounds.right}px`;
+			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.top}px`;
+			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
+			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.left}px`;
+			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + floatingMenuBounds.right}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
@@ -152,11 +155,11 @@
 
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (floatingMenuContentBounds.left - windowEdgeMargin <= workspaceBounds.left) {
-				floatingMenuContent.div().style.left = `${windowEdgeMargin}px`;
+				floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
 				if (workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
 			if (floatingMenuContentBounds.right + windowEdgeMargin >= workspaceBounds.right) {
-				floatingMenuContent.div().style.right = `${windowEdgeMargin}px`;
+				floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
 				if (workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
@@ -165,11 +168,11 @@
 
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (floatingMenuContentBounds.top - windowEdgeMargin <= workspaceBounds.top) {
-				floatingMenuContent.div().style.top = `${windowEdgeMargin}px`;
+				floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
 				if (workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
 			if (floatingMenuContentBounds.bottom + windowEdgeMargin >= workspaceBounds.bottom) {
-				floatingMenuContent.div().style.bottom = `${windowEdgeMargin}px`;
+				floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
 				if (workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
@@ -179,16 +182,16 @@
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
-					floatingMenuContent.div().style.borderTopLeftRadius = "0";
+					floatingMenuContentDiv.style.borderTopLeftRadius = "0";
 					break;
 				case "TopRight":
-					floatingMenuContent.div().style.borderTopRightRadius = "0";
+					floatingMenuContentDiv.style.borderTopRightRadius = "0";
 					break;
 				case "BottomLeft":
-					floatingMenuContent.div().style.borderBottomLeftRadius = "0";
+					floatingMenuContentDiv.style.borderBottomLeftRadius = "0";
 					break;
 				case "BottomRight":
-					floatingMenuContent.div().style.borderBottomRightRadius = "0";
+					floatingMenuContentDiv.style.borderBottomRightRadius = "0";
 					break;
 				default:
 					break;
@@ -196,7 +199,7 @@
 		}
 	}
 
-	export function div(): HTMLDivElement {
+	export function div(): HTMLDivElement | undefined {
 		return self;
 	}
 
@@ -217,7 +220,7 @@
 
 		// Measure the width of the floating menu content element, if it's currently visible
 		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy Svelte template if condition
-		const naturalWidth: number | undefined = floatingMenuContent?.div().clientWidth;
+		const naturalWidth: number | undefined = floatingMenuContent?.div()?.clientWidth;
 
 		// Turn off measuring mode for the component, which triggers another call to the `afterUpdate()` Svelte event, so we can turn off the protection after that has happened
 		measuringOngoing = false;
@@ -365,7 +368,7 @@
 
 	function isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
 		// Consider all child menus as well as the top-level one
-		const allContainedFloatingMenus = [...self.querySelectorAll("[data-floating-menu-content]")];
+		const allContainedFloatingMenus = [...(self?.querySelectorAll("[data-floating-menu-content]") || [])];
 
 		return !allContainedFloatingMenus.find((element) => !isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 	}

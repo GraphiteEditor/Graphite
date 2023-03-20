@@ -18,7 +18,7 @@
 		changeFont: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined };
 	}>();
 
-	let menuList: MenuList;
+	let menuList: MenuList | undefined;
 
 	export let fontFamily: string;
 	export let fontStyle: string;
@@ -49,7 +49,7 @@
 
 		if (activeEntry) {
 			const index = entries.indexOf(activeEntry);
-			menuList.scrollViewTo(Math.max(0, index * 20 - 190));
+			menuList?.scrollViewTo(Math.max(0, index * 20 - 190));
 		}
 	}
 
@@ -113,7 +113,7 @@
 		{tooltip}
 		tabindex={disabled ? -1 : 0}
 		on:click={toggleOpen}
-		on:keydown={(e) => menuList.keydown(e, false)}
+		on:keydown={(e) => menuList?.keydown(e, false)}
 		data-floating-menu-spawner
 	>
 		<TextLabel class="dropdown-label">{activeEntry?.value || ""}</TextLabel>

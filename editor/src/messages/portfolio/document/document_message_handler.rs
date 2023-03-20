@@ -512,23 +512,36 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
 				}
 			}
-			NodeGraphFrameGenerate => {
-				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, None) {
+			NodeGraphFrameClear {
+				layer_path,
+				node_id,
+				cached_index: input_index,
+			} => {
+				let value = graph_craft::document::value::TaggedValue::RcImage(None);
+				responses.push_back(NodeGraphMessage::SetInputValue { node_id, input_index, value }.into());
+				responses.push_back(NodeGraphFrameGenerate { layer_path }.into());
+			}
+			NodeGraphFrameGenerate { layer_path } => {
+				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, None) {
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameImaginate { imaginate_node } => {
-				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, Some(imaginate_node)) {
+			NodeGraphFrameImaginate { layer_path, imaginate_node } => {
+				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameImaginateRandom { imaginate_node, then_generate } => {
+			NodeGraphFrameImaginateRandom {
+				layer_path,
+				imaginate_node,
+				then_generate,
+			} => {
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
 						node_id: *imaginate_node.last().unwrap(),
 						// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-						input_index: 2,
+						input_index: 1,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
 					.into(),
@@ -536,7 +549,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Generate the image
 				if then_generate {
-					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { layer_path, imaginate_node }.into());
 				}
 			}
 			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
@@ -612,6 +625,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
 				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
 
+				// Scale the image to fit into a 512x512 box
+				let image_size = image_size / DVec2::splat((image_size.max_element() / 512.).max(1.));
+
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
 
@@ -648,13 +664,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.push_back(
 					DocumentOperation::SetLayerTransform {
-						path,
+						path: path.clone(),
 						transform: transform.to_cols_array(),
 					}
 					.into(),
 				);
 
-				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate { layer_path: path }.into());
 
 				// Force chosen tool to be Select Tool after importing image.
 				responses.push_back(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into());
@@ -1012,18 +1028,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData, imaginate_node: Option<Vec<NodeId>>) -> Option<Message> {
-		let layer_path = {
-			let mut selected_nodegraph_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
-
-			// Get what is hopefully the only selected nodegraph layer
-			match selected_nodegraph_layers.next() {
-				// Continue only if there are no additional nodegraph layers also selected
-				Some(layer_path) if selected_nodegraph_layers.next().is_none() => layer_path.to_owned(),
-				_ => return None,
-			}
-		};
-
+	pub fn call_node_graph_frame(
+		&mut self,
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		_preferences: &PreferencesMessageHandler,
+		persistent_data: &PersistentData,
+		imaginate_node: Option<Vec<NodeId>>,
+	) -> Option<Message> {
 		// Prepare the node graph input image
 
 		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_graph().ok()) else {
@@ -1031,7 +1043,7 @@ impl DocumentMessageHandler {
 		};
 
 		// Skip processing under node graph frame input if not connected
-		if !node_network.connected_to_output(node_network.inputs[0]) {
+		if !node_network.connected_to_output(node_network.inputs[0], false) {
 			return Some(
 				PortfolioMessage::ProcessNodeGraphFrame {
 					document_id,

@@ -21,7 +21,7 @@
 	export let handlePosition = 0.5;
 	export let handleLength = 0.5;
 
-	let scrollTrack: HTMLDivElement;
+	let scrollTrack: HTMLDivElement | undefined;
 	let dragging = false;
 	let pointerPos = 0;
 	let thumbTop: string | undefined = undefined;
@@ -34,10 +34,12 @@
 	$: [thumbTop, thumbBottom, thumbLeft, thumbRight] = direction === "Vertical" ? [`${start * 100}%`, `${end * 100}%`, "0%", "0%"] : ["0%", "0%", `${start * 100}%`, `${end * 100}%`];
 
 	function trackLength(): number | undefined {
+		if (scrollTrack === undefined) return undefined;
 		return direction === "Vertical" ? scrollTrack.clientHeight - handleLength : scrollTrack.clientWidth;
 	}
 
 	function trackOffset(): number | undefined {
+		if (scrollTrack === undefined) return undefined;
 		return direction === "Vertical" ? scrollTrack.getBoundingClientRect().top : scrollTrack.getBoundingClientRect().left;
 	}
 

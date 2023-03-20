@@ -28,7 +28,7 @@
 	export let sharpRightCorners = false;
 	export let placeholder: string | undefined = undefined;
 
-	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement;
+	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
 	let id = `${Math.random()}`.substring(2);
 	let macKeyboardLayout = platformIsMac();
 
@@ -37,28 +37,32 @@
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
+		if (!inputOrTextarea) return;
+
 		// Setting the value directly is required to make the following `select()` call work
 		inputOrTextarea.value = currentText;
 		inputOrTextarea.select();
 	}
 
 	export function focus() {
-		inputOrTextarea.focus();
+		inputOrTextarea?.focus();
 	}
 
 	export function unFocus() {
-		inputOrTextarea.blur();
+		inputOrTextarea?.blur();
 	}
 
 	export function getValue(): string {
-		return inputOrTextarea.value;
+		return inputOrTextarea?.value || "";
 	}
 
 	export function setInputElementValue(value: string) {
+		if (!inputOrTextarea) return;
+
 		inputOrTextarea.value = value;
 	}
 
-	export function element(): HTMLInputElement | HTMLTextAreaElement {
+	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
 		return inputOrTextarea;
 	}
 </script>

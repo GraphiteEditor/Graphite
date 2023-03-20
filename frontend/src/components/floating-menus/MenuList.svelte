@@ -13,8 +13,8 @@
 	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
 
-	let self: FloatingMenu;
-	let scroller: LayoutCol;
+	let self: FloatingMenu | undefined;
+	let scroller: LayoutCol | undefined;
 
 	// emits: ["update:open", "update:activeEntry", "naturalWidth"],
 	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry }>();
@@ -171,7 +171,7 @@
 	}
 
 	export function scrollViewTo(distanceDown: number): void {
-		scroller.div().scrollTo(0, distanceDown);
+		scroller?.div()?.scrollTo(0, distanceDown);
 	}
 </script>
 
@@ -236,6 +236,7 @@
 					{/if}
 
 					{#if entry.children}
+						<!-- TODO: Solve the red underline error on the bind:this below -->
 						<svelte:self on:naturalWidth open={entry.ref?.open || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
 					{/if}
 				</LayoutRow>

@@ -1,4 +1,3 @@
-use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_core::{NodeIdentifier, Type};
 
@@ -70,6 +69,7 @@ impl DocumentNode {
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
+				NodeInput::ShortCircut(ty) => (ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
 			assert!(
@@ -122,12 +122,52 @@ impl DocumentNode {
 	}
 }
 
+/// Represents the possible inputs to a node.
+/// # ShortCircuting
+/// In Graphite nodes are functions and by default, these are composed into a single function
+/// by inserting Compose nodes.
+///
+///
+///
+///
+/// ┌─────────────────┐               ┌──────────────────┐                ┌──────────────────┐
+/// │                 │◄──────────────┤                  │◄───────────────┤                  │
+/// │        A        │               │        B         │                │        C         │
+/// │                 ├──────────────►│                  ├───────────────►│                  │
+/// └─────────────────┘               └──────────────────┘                └──────────────────┘
+///
+///
+///
+/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`)
+/// But sometimes we might want to have a little more control over the order of execution.
+/// This is why we allow nodes to opt out of the input forwarding by consuming the input directly.
+///
+///
+///
+///                                    ┌─────────────────────┐                ┌─────────────┐
+///                                    │                     │◄───────────────┤             │
+///                                    │     Cache Node      │                │      C      │
+///                                    │                     ├───────────────►│             │
+/// ┌──────────────────┐               ├─────────────────────┤                └─────────────┘
+/// │                  │◄──────────────┤                     │
+/// │        A         │               │ * Cached Node       │
+/// │                  ├──────────────►│                     │
+/// └──────────────────┘               └─────────────────────┘
+///
+///
+///
+///
+/// In this case the Cache node actually consumes it's input and then manually forwards it to it's parameter
+/// Node. This is necessary because the Cache Node needs to short-circut the actual node evaluation
 #[derive(Debug, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
-	Value { tagged_value: value::TaggedValue, exposed: bool },
+	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
 	Network(Type),
+	// A short circuting input represents an input that is not resolved through function composition but
+	// actually consuming the provided input instead of passing it to its predecessor
+	ShortCircut(Type),
 }
 
 impl NodeInput {
@@ -137,7 +177,7 @@ impl NodeInput {
 	pub const fn lambda(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index, lambda: true }
 	}
-	pub const fn value(tagged_value: value::TaggedValue, exposed: bool) -> Self {
+	pub const fn value(tagged_value: crate::document::value::TaggedValue, exposed: bool) -> Self {
 		Self::Value { tagged_value, exposed }
 	}
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
@@ -154,6 +194,7 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network(_) => false,
+			NodeInput::ShortCircut(_) => false,
 		}
 	}
 	pub fn ty(&self) -> Type {
@@ -161,6 +202,7 @@ impl NodeInput {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			NodeInput::Network(ty) => ty.clone(),
+			NodeInput::ShortCircut(ty) => ty.clone(),
 		}
 	}
 }
@@ -398,6 +440,7 @@ impl NodeNetwork {
 								self.inputs[index] = *network_input;
 							}
 						}
+						NodeInput::ShortCircut(_) => (),
 					}
 				}
 				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
@@ -490,7 +533,7 @@ impl NodeNetwork {
 	}
 
 	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
+	pub fn connected_to_output(&self, target_node_id: NodeId, ignore_imaginate: bool) -> bool {
 		// If the node is the output then return true
 		if self.outputs.iter().any(|&NodeOutput { node_id, .. }| node_id == target_node_id) {
 			return true;
@@ -503,6 +546,11 @@ impl NodeNetwork {
 		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
 
 		while let Some(node) = stack.pop() {
+			// Skip the imaginate node inputs
+			if ignore_imaginate && node.name == "Imaginate" {
+				continue;
+			}
+
 			for input in &node.inputs {
 				if let &NodeInput::Node { node_id: ref_id, .. } = input {
 					// Skip if already viewed
@@ -632,7 +680,7 @@ mod test {
 					inputs: vec![
 						NodeInput::Network(concrete!(u32)),
 						NodeInput::Value {
-							tagged_value: value::TaggedValue::U32(2),
+							tagged_value: crate::document::value::TaggedValue::U32(2),
 							exposed: false,
 						},
 					],
@@ -698,7 +746,7 @@ mod test {
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
-				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)))),
+				(14, ProtoNode::value(ConstructionArgs::Value(crate::document::value::TaggedValue::U32(2)))),
 			]
 			.into_iter()
 			.collect(),
@@ -739,7 +787,7 @@ mod test {
 					DocumentNode {
 						name: "Value".into(),
 						inputs: vec![NodeInput::Value {
-							tagged_value: value::TaggedValue::U32(2),
+							tagged_value: crate::document::value::TaggedValue::U32(2),
 							exposed: false,
 						}],
 						metadata: DocumentNodeMetadata::default(),
@@ -801,7 +849,10 @@ mod test {
 					10,
 					DocumentNode {
 						name: "Nested network".into(),
-						inputs: vec![NodeInput::value(TaggedValue::F32(1.), false), NodeInput::value(TaggedValue::F32(2.), false)],
+						inputs: vec![
+							NodeInput::value(crate::document::value::TaggedValue::F32(1.), false),
+							NodeInput::value(crate::document::value::TaggedValue::F32(2.), false),
+						],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Network(two_node_identity()),
 					},
@@ -834,7 +885,11 @@ mod test {
 		assert_eq!(result.nodes.keys().copied().collect::<Vec<_>>(), vec![101], "Should just call nested network");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+		assert_eq!(
+			nested_network_node.inputs,
+			vec![NodeInput::value(crate::document::value::TaggedValue::F32(2.), false)],
+			"Input should be 2"
+		);
 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");
@@ -853,7 +908,11 @@ mod test {
 		for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
 			let nested_network_node = result.nodes.get(&node_id).unwrap();
 			assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-			assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
+			assert_eq!(
+				nested_network_node.inputs,
+				vec![NodeInput::value(crate::document::value::TaggedValue::F32(input_value), false)],
+				"Input should be stable"
+			);
 			let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 			assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
 			assert_eq!(inner_network.outputs, vec![NodeOutput::new(inner_id, 0)], "The output should be node id");
@@ -872,7 +931,11 @@ mod test {
 		assert_eq!(result_node.inputs, vec![NodeInput::node(101, 0)], "Result node should refer to duplicate node as input");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+		assert_eq!(
+			nested_network_node.inputs,
+			vec![NodeInput::value(crate::document::value::TaggedValue::F32(2.), false)],
+			"Input should be 2"
+		);
 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");

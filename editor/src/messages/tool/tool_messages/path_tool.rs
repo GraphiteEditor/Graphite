@@ -526,10 +526,7 @@ impl Fsm for PathToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PathToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::Lmb, "Select Point"),
-					HintInfo::keys([Key::Shift], "Grow/Shrink Selection").prepend_plus(),
-				]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 				HintGroup(vec![
