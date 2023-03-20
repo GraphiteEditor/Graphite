@@ -4,22 +4,6 @@ use crate::{Color, Node};
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformNode<Translation, Rotation, Scale, Shear> {
-	translate: Translation,
-	rotate: Rotation,
-	scale: Scale,
-	shear: Shear,
-}
-
-#[node_macro::node_fn(TransformNode)]
-fn transform_vector_data(mut vector_data: VectorData, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
-	let (sin, cos) = rotate.sin_cos();
-
-	vector_data.transform = vector_data.transform * DAffine2::from_cols_array(&[scale.x + cos, shear.y + sin, shear.x - sin, scale.y + cos, translate.x, translate.y]);
-	vector_data
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform, Positions> {
 	fill_type: FillType,
 	solid_color: SolidColor,

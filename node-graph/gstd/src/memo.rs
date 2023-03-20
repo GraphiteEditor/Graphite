@@ -1,20 +1,24 @@
-use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use xxhash_rust::xxh3::Xxh3;
 
 use graphene_core::Node;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
-pub struct CacheNode<T> {
+pub struct CacheNode<T, CachedNode> {
 	// We have to use an append only data structure to make sure the references
 	// to the cache entries are always valid
 	cache: boxcar::Vec<(u64, T)>,
+	node: CachedNode,
 }
-impl<'i, T: 'i + Hash> Node<'i, T> for CacheNode<T> {
+impl<'i, T: 'i, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for CacheNode<T, CachedNode>
+where
+	CachedNode: for<'any_input> Node<'any_input, I, Output = T>,
+{
 	type Output = &'i T;
-	fn eval<'s: 'i>(&'s self, input: T) -> Self::Output {
-		let mut hasher = DefaultHasher::new();
+	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+		let mut hasher = Xxh3::new();
 		input.hash(&mut hasher);
 		let hash = hasher.finish();
 
@@ -22,15 +26,16 @@ impl<'i, T: 'i + Hash> Node<'i, T> for CacheNode<T> {
 			return cached_value;
 		} else {
 			trace!("Cache miss");
-			let index = self.cache.push((hash, input));
+			let output = self.node.eval(input);
+			let index = self.cache.push((hash, output));
 			return &self.cache[index].1;
 		}
 	}
 }
 
-impl<T> CacheNode<T> {
-	pub fn new() -> CacheNode<T> {
-		CacheNode { cache: boxcar::Vec::new() }
+impl<T, CachedNode> CacheNode<T, CachedNode> {
+	pub fn new(node: CachedNode) -> CacheNode<T, CachedNode> {
+		CacheNode { cache: boxcar::Vec::new(), node }
 	}
 }
 
@@ -51,7 +56,7 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 	fn eval<'s: 'i>(&'s self, input: Option<T>) -> Self::Output {
 		match input {
 			Some(input) => {
-				let mut hasher = DefaultHasher::new();
+				let mut hasher = Xxh3::new();
 				input.hash(&mut hasher);
 				let hash = hasher.finish();
 

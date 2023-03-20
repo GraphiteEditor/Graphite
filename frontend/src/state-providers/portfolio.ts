@@ -1,5 +1,6 @@
 /* eslint-disable max-classes-per-file */
-import { reactive, readonly } from "vue";
+
+import {writable} from "svelte/store";
 
 import { downloadFileText, downloadFileBlob, upload } from "@/utility-functions/files";
 import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@/utility-functions/imaginate";
@@ -23,7 +24,7 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
-	const state = reactive({
+	const { subscribe, update } = writable({
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
@@ -31,12 +32,18 @@ export function createPortfolioState(editor: Editor) {
 
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
-		state.documents = updateOpenDocumentList.openDocuments;
+		update((state) => {
+			state.documents = updateOpenDocumentList.openDocuments;
+			return state;
+		})
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
-		// Assume we receive a correct document id
-		const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.documentId);
-		state.activeDocumentIndex = activeId;
+		update((state) => {
+			// Assume we receive a correct document id
+			const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.documentId);
+			state.activeDocumentIndex = activeId;
+			return state;
+		})
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
 		const extension = editor.instance.fileSaveSuffix();
@@ -122,7 +129,7 @@ export function createPortfolioState(editor: Editor) {
 	});
 
 	return {
-		state: readonly(state) as typeof state,
+		subscribe,
 	};
 }
 export type PortfolioState = ReturnType<typeof createPortfolioState>;

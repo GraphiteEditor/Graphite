@@ -4,33 +4,9 @@
 // It is needed for class-transformer to work and is imported as a side effect.
 // The library replaces the Reflect API on the window to support more features.
 import "reflect-metadata";
-import { createApp } from "vue";
 
-import { initWasm } from "@/wasm-communication/editor";
+import App from "@/App.svelte";
 
-import App from "@/App.vue";
+document.body.setAttribute("data-app-container", "");
 
-// This exported function is called in `index.html` after confirming that the browser supports all required JS standards
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).graphiteAppInit = async (): Promise<void> => {
-	// Initialize the WASM module for the editor backend
-	await initWasm();
-
-	// Initialize the Vue application
-	createApp(App)
-		.directive("focus", {
-			// When the bound element is inserted into the DOM
-			mounted(el) {
-				let focus = el;
-
-				// Find actual relevant child
-				while (focus.children.length) focus = focus.children[0];
-
-				// Random timeout needed?
-				setTimeout(() => {
-					focus.focus(); // Focus the element
-				}, 0);
-			},
-		})
-		.mount("#app");
-};
+export default new App({ target: document.body });

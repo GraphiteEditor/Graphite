@@ -6,7 +6,6 @@ pub mod navigation;
 pub mod node_graph;
 pub mod overlays;
 pub mod properties_panel;
-pub mod transform_layer;
 pub mod utility_types;
 
 #[doc(inline)]
