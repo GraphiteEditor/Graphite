@@ -33,7 +33,6 @@ use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
 use graphene_core::raster::{Color, ImageFrame};
-use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -323,24 +322,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_front(BroadcastEvent::SelectionChanged.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			DeleteSelectedManipulatorPoints => {
-				responses.push_back(StartTransaction.into());
-
-				responses.push_front(
-					DocumentOperation::DeleteSelectedManipulatorPoints {
-						layer_paths: self.selected_layers_without_children().iter().map(|path| path.to_vec()).collect(),
-					}
-					.into(),
-				);
-			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
-			}
-			DeselectAllManipulatorPoints => {
-				for layer_path in self.selected_layers_without_children() {
-					responses.push_back(DocumentOperation::DeselectAllManipulatorPoints { layer_path: layer_path.to_vec() }.into());
-				}
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
@@ -503,11 +487,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-			}
-			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
-				if let Ok(_layer) = self.document_legacy.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
-				}
 			}
 			NodeGraphFrameGenerate => {
 				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, None) {
@@ -900,9 +879,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			ToggleSelectedHandleMirroring { layer_path, toggle_angle } => {
-				responses.push_back(DocumentOperation::SetSelectedHandleMirroring { layer_path, toggle_angle }.into());
-			}
 			Undo => {
 				self.undo_in_progress = true;
 				responses.push_back(BroadcastEvent::ToolAbort.into());
@@ -1232,22 +1208,6 @@ impl DocumentMessageHandler {
 			Ok(layer) => layer.visible,
 			Err(_) => false,
 		})
-	}
-
-	/// Returns a copy of all the currently selected [Subpath]s.
-	pub fn selected_subpaths(&self) -> Vec<Subpath> {
-		self.selected_visible_layers()
-			.flat_map(|layer| self.document_legacy.layer(layer))
-			.flat_map(|layer| layer.as_subpath_copy())
-			.collect::<Vec<Subpath>>()
-	}
-
-	/// Returns references to all the currently selected [Subpath]s.
-	pub fn selected_subpaths_ref(&self) -> Vec<&Subpath> {
-		self.selected_visible_layers()
-			.flat_map(|layer| self.document_legacy.layer(layer))
-			.flat_map(|layer| layer.as_subpath())
-			.collect::<Vec<&Subpath>>()
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.

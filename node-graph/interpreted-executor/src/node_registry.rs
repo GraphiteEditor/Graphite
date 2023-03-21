@@ -328,9 +328,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [graphene_core::Color, f64, Vec<f32>, f64, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f64]),
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
 		register_node!(
-			graphene_core::vector::generator_nodes::PathGenerator,
+			graphene_core::vector::generator_nodes::PathGenerator<_>,
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
-			params: []
+			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
 		),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();

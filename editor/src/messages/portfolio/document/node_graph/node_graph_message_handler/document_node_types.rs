@@ -640,12 +640,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Path Generator",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator"),
-			inputs: vec![DocumentInputType {
-				name: "Path Data",
-				data_type: FrontendGraphDataType::Subpath,
-				default: NodeInput::value(TaggedValue::Subpaths(vec![]), false),
-			}],
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
+			inputs: vec![
+				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
+				DocumentInputType::value("Mirror", TaggedValue::ManipulatorGroupIds(vec![]), false),
+			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
 		},

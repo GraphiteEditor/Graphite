@@ -151,6 +151,7 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
+			self.hints(snapping, selected.responses);
 		}
 	}
 
@@ -174,6 +175,32 @@ impl TransformOperation {
 		};
 
 		self.apply_transform_operation(selected, snapping);
+	}
+
+	pub fn hints(&self, snapping: bool, responses: &mut VecDeque<Message>) {
+		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+
+		let mut hints = Vec::new();
+
+		let value_str = match self {
+			TransformOperation::None => String::new(),
+			TransformOperation::Grabbing(translation) => format!("Translate X: {} Y: {}", translation.to_dvec().x, translation.to_dvec().y),
+			TransformOperation::Rotating(rotation) => format!("Rotate {}°", rotation.to_f64(snapping)),
+			TransformOperation::Scaling(scale) => format!("Scale X: {} Y: {}", scale.to_dvec(snapping).x, scale.to_dvec(snapping).y),
+		};
+		hints.push(HintInfo::label(value_str));
+		hints.push(HintInfo::keys([Key::Shift], "Precision Mode"));
+		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
+			hints.push(HintInfo::keys([Key::Control], "Snap"));
+		}
+		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
+			hints.push(HintInfo::keys([Key::KeyX], "X Axis"));
+			hints.push(HintInfo::keys([Key::KeyY], "Y Axis"));
+		}
+
+		let hint_data = HintData(vec![HintGroup(hints)]);
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
 

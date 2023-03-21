@@ -1,3 +1,4 @@
+use dyn_any::{DynAny, StaticType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Serialize, Deserialize, specta::Type)]
@@ -70,7 +71,7 @@ mod uuid_generation {
 
 pub use uuid_generation::*;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorGroupId(u64);
 

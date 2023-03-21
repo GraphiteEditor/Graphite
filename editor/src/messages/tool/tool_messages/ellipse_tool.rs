@@ -48,8 +48,8 @@ impl ToolMetadata for EllipseTool {
 
 impl PropertyHolder for EllipseTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EllipseTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EllipseTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
 	}
 
@@ -99,7 +99,13 @@ impl Fsm for EllipseToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document,
+			global_tool_data,
+			input,
+			render_data,
+			..
+		}: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

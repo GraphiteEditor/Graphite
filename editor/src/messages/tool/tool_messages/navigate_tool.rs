@@ -50,8 +50,8 @@ impl ToolMetadata for NavigateTool {
 
 impl PropertyHolder for NavigateTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NavigateTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NavigateTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
@@ -105,7 +105,7 @@ impl Fsm for NavigateToolFsmState {
 		self,
 		message: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(_document, _document_id, _global_tool_data, input, _render_data): ToolActionHandlerData,
+		ToolActionHandlerData { input, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		messages: &mut VecDeque<Message>,
 	) -> Self {

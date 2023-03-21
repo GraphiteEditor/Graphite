@@ -1,4 +1,6 @@
-use super::utility_types::{tool_message_to_tool_type, ToolFsmState};
+use super::common_functionality::overlay_renderer::OverlayRenderer;
+use super::common_functionality::shape_editor::ShapeState;
+use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
@@ -11,8 +13,10 @@ use graphene_core::raster::color::Color;
 
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
-	tool_state: ToolFsmState,
-	transform_layer_handler: TransformLayerMessageHandler,
+	pub tool_state: ToolFsmState,
+	pub transform_layer_handler: TransformLayerMessageHandler,
+	pub shape_overlay: OverlayRenderer,
+	pub shape_editor: ShapeState,
 }
 
 impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData)> for ToolMessageHandler {
@@ -31,7 +35,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			#[remain::unsorted]
 			ToolMessage::TransformLayer(message) => self
 				.transform_layer_handler
-				.process_message(message, responses, (document, input, &render_data, &self.tool_state.tool_data)),
+				.process_message(message, responses, (document, input, &render_data, &self.tool_state.tool_data, &mut self.shape_editor)),
 
 			#[remain::unsorted]
 			ToolMessage::ActivateToolSelect => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into()),
@@ -70,7 +74,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
-				let document_data = &self.tool_state.document_tool_data;
 				let old_tool = tool_data.active_tool_type;
 
 				// Do nothing if switching to the same tool
@@ -81,13 +84,26 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Send the old and new tools a transition to their FSM Abort states
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+						let mut data = ToolActionHandlerData {
+							document,
+							document_id,
+							global_tool_data: &self.tool_state.document_tool_data,
+							input,
+							render_data: &render_data,
+							shape_overlay: &mut self.shape_overlay,
+							shape_editor: &mut self.shape_editor,
+						};
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
-							tool.process_message(tool_abort_message, responses, (document, document_id, document_data, input, &render_data));
+							tool.process_message(tool_abort_message, responses, &mut data);
 						}
 
 						if update_hints_and_cursor {
-							tool.process_message(ToolMessage::UpdateHints, responses, (document, document_id, document_data, input, &render_data));
-							tool.process_message(ToolMessage::UpdateCursor, responses, (document, document_id, document_data, input, &render_data));
+							if self.transform_layer_handler.is_transforming() {
+								self.transform_layer_handler.hints(responses);
+							} else {
+								tool.process_message(ToolMessage::UpdateHints, responses, &mut data)
+							}
+							tool.process_message(ToolMessage::UpdateCursor, responses, &mut data);
 						}
 					}
 				};
@@ -150,13 +166,19 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				document_data.update_working_colors(responses);
 				responses.push_back(FrontendMessage::TriggerRefreshBoundsOfViewports.into());
 
+				let mut data = ToolActionHandlerData {
+					document,
+					document_id,
+					global_tool_data: &self.tool_state.document_tool_data,
+					input,
+					render_data: &render_data,
+					shape_overlay: &mut self.shape_overlay,
+					shape_editor: &mut self.shape_editor,
+				};
+
 				// Set initial hints and cursor
-				tool_data
-					.active_tool_mut()
-					.process_message(ToolMessage::UpdateHints, responses, (document, document_id, document_data, input, &render_data));
-				tool_data
-					.active_tool_mut()
-					.process_message(ToolMessage::UpdateCursor, responses, (document, document_id, document_data, input, &render_data));
+				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
+				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -210,12 +232,28 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 					ToolMessage::UpdateCursor | ToolMessage::UpdateHints => self.tool_state.tool_data.active_tool_type,
 					tool_message => tool_message_to_tool_type(tool_message),
 				};
-				let document_data = &self.tool_state.document_tool_data;
 				let tool_data = &mut self.tool_state.tool_data;
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 					if tool_type == tool_data.active_tool_type {
-						tool.process_message(tool_message, responses, (document, document_id, document_data, input, &render_data));
+						let mut data = ToolActionHandlerData {
+							document,
+							document_id,
+							global_tool_data: &self.tool_state.document_tool_data,
+							input,
+							render_data: &render_data,
+							shape_overlay: &mut self.shape_overlay,
+							shape_editor: &mut self.shape_editor,
+						};
+						if matches!(tool_message, ToolMessage::UpdateHints) {
+							if self.transform_layer_handler.is_transforming() {
+								self.transform_layer_handler.hints(responses);
+							} else {
+								tool.process_message(ToolMessage::UpdateHints, responses, &mut data)
+							}
+						} else {
+							tool.process_message(tool_message, responses, &mut data);
+						}
 					}
 				}
 			}

@@ -8,6 +8,7 @@ use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
 
+use graphene_core::vector::VectorData;
 use graphene_std::vector::subpath::Subpath;
 
 use core::fmt;
@@ -437,16 +438,9 @@ impl Layer {
 		}
 	}
 
-	pub fn as_subpath(&self) -> Option<&Subpath> {
+	pub fn as_vector_data(&self) -> Option<&VectorData> {
 		match &self.data {
-			LayerDataType::Shape(s) => Some(&s.shape),
-			_ => None,
-		}
-	}
-
-	pub fn as_subpath_copy(&self) -> Option<Subpath> {
-		match &self.data {
-			LayerDataType::Shape(s) => Some(s.shape.clone()),
+			LayerDataType::NodeGraphFrame(NodeGraphFrameLayer { vector_data: Some(vector_data), .. }) => Some(vector_data),
 			_ => None,
 		}
 	}

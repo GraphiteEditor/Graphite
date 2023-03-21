@@ -6,9 +6,10 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::vector::style::{Fill, FillType, Stroke};
+use graphene_core::vector::SelectedType;
 use transform_utils::LayerBounds;
 
-use super::resolve_document_node_type;
+use super::{resolve_document_node_type, VectorDataModification};
 
 mod transform_utils;
 
@@ -140,6 +141,113 @@ impl<'a> ModifyInputsContext<'a> {
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}
+
+	fn vector_modify(&mut self, modification: VectorDataModification) {
+		self.modify_inputs("Path Generator", |inputs| {
+			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
+				panic!("Path generator does not have subpath and mirror angle inputs");
+			};
+
+			let NodeInput::Value {
+				tagged_value: TaggedValue::Subpaths(subpaths),
+				..
+			} = subpaths else{
+				return;
+			};
+			let NodeInput::Value {
+				tagged_value: TaggedValue::ManipulatorGroupIds(mirror_angle_groups),
+				..
+			} = mirror_angle_groups else{
+				return;
+			};
+
+			match modification {
+				VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group } => {
+					let subpath = &mut subpaths[subpath_index];
+					subpath.insert_manipulator_group(subpath.len(), manipulator_group)
+				}
+				VectorDataModification::AddStartManipulatorGroup { subpath_index, manipulator_group } => {
+					let subpath = &mut subpaths[subpath_index];
+					subpath.insert_manipulator_group(0, manipulator_group)
+				}
+				VectorDataModification::AddManipulatorGroup { manipulator_group, after_id } => {
+					for subpath in subpaths {
+						if let Some(index) = subpath.manipulator_index_from_id(after_id) {
+							subpath.insert_manipulator_group(index + 1, manipulator_group);
+							break;
+						}
+					}
+				}
+				VectorDataModification::RemoveManipulatorGroup { id } => {
+					for subpath in subpaths {
+						if let Some(index) = subpath.manipulator_index_from_id(id) {
+							subpath.remove_manipulator_group(index);
+							break;
+						}
+					}
+				}
+				VectorDataModification::RemoveManipulatorPoint { point } => {
+					for subpath in subpaths {
+						if point.manipulator_type == SelectedType::Anchor {
+							if let Some(index) = subpath.manipulator_index_from_id(point.group) {
+								subpath.remove_manipulator_group(index);
+								break;
+							}
+						} else if let Some(group) = subpath.manipulator_mut_from_id(point.group) {
+							if point.manipulator_type == SelectedType::InHandle {
+								group.in_handle = None;
+							} else if point.manipulator_type == SelectedType::OutHandle {
+								group.out_handle = None;
+							}
+						}
+					}
+				}
+				VectorDataModification::SetClosed { index, closed } => {
+					subpaths[index].set_closed(closed);
+				}
+				VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle } => {
+					if !mirror_angle {
+						mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
+					} else if !mirror_angle_groups.contains(&id) {
+						mirror_angle_groups.push(id);
+					}
+				}
+				VectorDataModification::SetManipulatorPosition { point, position } => {
+					for subpath in subpaths {
+						if let Some(manipulator) = subpath.manipulator_mut_from_id(point.group) {
+							match point.manipulator_type {
+								SelectedType::Anchor => manipulator.anchor = position,
+								SelectedType::InHandle => manipulator.in_handle = Some(position),
+								SelectedType::OutHandle => manipulator.out_handle = Some(position),
+							}
+							if point.manipulator_type != SelectedType::Anchor && mirror_angle_groups.contains(&point.group) {
+								let reflect = |opposite: DVec2| {
+									(manipulator.anchor - position)
+										.try_normalize()
+										.map(|direction| direction * (opposite - manipulator.anchor).length() + manipulator.anchor)
+										.unwrap_or(opposite)
+								};
+								match point.manipulator_type {
+									SelectedType::InHandle => manipulator.out_handle = manipulator.out_handle.map(reflect),
+									SelectedType::OutHandle => manipulator.in_handle = manipulator.in_handle.map(reflect),
+									_ => {}
+								}
+							}
+
+							break;
+						}
+					}
+				}
+				VectorDataModification::ToggleManipulatorHandleMirroring { id } => {
+					if mirror_angle_groups.contains(&id) {
+						mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
+					} else {
+						mirror_angle_groups.push(id);
+					}
+				}
+			}
+		});
+	}
 }
 
 impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
@@ -205,7 +313,11 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
 
-			GraphOperationMessage::Vector { layer: _, modification: _ } => todo!(),
+			GraphOperationMessage::Vector { layer, modification } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+					modify_inputs.vector_modify(modification);
+				}
+			}
 		}
 	}
 

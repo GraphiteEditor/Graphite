@@ -75,8 +75,8 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for GradientTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message {
 			match action {
 				GradientOptionsUpdate::Type(gradient_type) => {
@@ -396,7 +396,13 @@ impl Fsm for GradientToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document,
+			global_tool_data,
+			input,
+			render_data,
+			..
+		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

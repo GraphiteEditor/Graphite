@@ -65,9 +65,7 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	DeleteSelectedLayers,
-	DeleteSelectedManipulatorPoints,
 	DeselectAllLayers,
-	DeselectAllManipulatorPoints,
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
@@ -95,11 +93,6 @@ pub enum DocumentMessage {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
 		reverse_index: bool,
-	},
-	MoveSelectedManipulatorPoints {
-		layer_path: Vec<LayerId>,
-		delta: (f64, f64),
-		mirror_distance: bool,
 	},
 	NodeGraphFrameGenerate,
 	NodeGraphFrameImaginate {
@@ -186,10 +179,6 @@ pub enum DocumentMessage {
 	},
 	ToggleLayerVisibility {
 		layer_path: Vec<LayerId>,
-	},
-	ToggleSelectedHandleMirroring {
-		layer_path: Vec<LayerId>,
-		toggle_angle: bool,
 	},
 	Undo,
 	UndoFinished,

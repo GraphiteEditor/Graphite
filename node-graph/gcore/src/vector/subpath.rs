@@ -49,13 +49,17 @@ impl Subpath {
 
 	/// Convert to the legacy Subpath from the `bezier_rs::Subpath`.
 	pub fn from_bezier_crate(value: &[bezier_rs::Subpath<ManipulatorGroupId>]) -> Self {
-		Self(
-			value
-				.into_iter()
-				.flat_map(|subpath| subpath.manipulator_groups())
-				.map(|group| ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle))
-				.collect(),
-		)
+		let mut groups = IdBackedVec::new();
+		for subpath in value {
+			for group in subpath.manipulator_groups() {
+				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
+			}
+			if subpath.closed() {
+				let group = subpath.manipulator_groups()[0];
+				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
+			}
+		}
+		Self(groups)
 	}
 
 	// ** PRIMITIVE CONSTRUCTION **

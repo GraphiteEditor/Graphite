@@ -23,11 +23,15 @@ fn unit_square(_input: ()) -> VectorData {
 // TODO: I removed the Arc requirement we shouuld think about when it makes sense to use its
 // vs making a generic value node
 #[derive(Debug, Clone)]
-pub struct PathGenerator;
+pub struct PathGenerator<Mirror> {
+	mirror: Mirror,
+}
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>) -> super::VectorData {
-	super::VectorData::from_subpaths(path_data)
+fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>, mirror: Vec<ManipulatorGroupId>) -> super::VectorData {
+	let mut vector_data = super::VectorData::from_subpaths(path_data);
+	vector_data.mirror_angle = mirror;
+	vector_data
 }
 
 use crate::raster::Image;

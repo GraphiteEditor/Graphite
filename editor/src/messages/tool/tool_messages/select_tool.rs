@@ -245,8 +245,8 @@ impl PropertyHolder for SelectTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
 			self.tool_data.nested_selection_behavior = nested_selection_behavior;
 			responses.push_back(ToolMessage::UpdateHints.into());
@@ -431,7 +431,7 @@ impl Fsm for SelectToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData { document, input, render_data, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

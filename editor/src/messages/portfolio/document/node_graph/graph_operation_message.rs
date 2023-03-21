@@ -1,9 +1,9 @@
 use crate::messages::prelude::*;
 
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::{consts::ManipulatorType, manipulator_group::ManipulatorGroup};
-
 use glam::{DAffine2, DVec2};
+use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::style::{Fill, Stroke};
+use graphene_core::vector::ManipulatorPointId;
 
 pub type LayerIdentifier = Vec<document_legacy::LayerId>;
 
@@ -28,22 +28,17 @@ pub enum TransformIn {
 	Viewport,
 }
 
-/// TODO: State like mirroring needs to be stored in tools after bézier_rs migration
+type ManipulatorGroup = bezier_rs::ManipulatorGroup<ManipulatorGroupId>;
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorDataModification {
-	DeleteSelectedManipulatorPoints { layer_paths: Vec<LayerIdentifier> },
-	DeselectAllManipulatorPoints,
-	DeselectManipulatorPoints { point_ids: Vec<(u64, ManipulatorType)> },
-	InsertManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: u64 },
-	MoveManipulatorPoint { id: u64, manipulator_type: ManipulatorType, position: DVec2 },
-	MoveSelectedManipulatorPoints { delta: DVec2, mirror_distance: bool },
-	PushFrontManipulatorGroup { manipulator_group: ManipulatorGroup },
-	PushManipulatorGroup { manipulator_group: ManipulatorGroup },
-	RemoveManipulatorGroup { id: u64 },
-	RemoveManipulatorPoint { id: u64, manipulator_type: ManipulatorType },
-	SelectAllAnchors,
-	SelectManipulatorPoints { point_ids: Vec<(u64, ManipulatorType)>, add: bool },
-	SetManipulatorHandleMirroring { id: u64, mirror_angle: bool },
-	SetManipulatorPoints { id: u64, manipulator_type: ManipulatorType, position: Option<DVec2> },
-	SetSelectedHandleMirroring { toggle_angle: bool },
+	AddEndManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
+	AddManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: ManipulatorGroupId },
+	AddStartManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
+	RemoveManipulatorGroup { id: ManipulatorGroupId },
+	RemoveManipulatorPoint { point: ManipulatorPointId },
+	SetClosed { index: usize, closed: bool },
+	SetManipulatorHandleMirroring { id: ManipulatorGroupId, mirror_angle: bool },
+	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
+	ToggleManipulatorHandleMirroring { id: ManipulatorGroupId },
 }
