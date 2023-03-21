@@ -18,7 +18,7 @@ export function renderDemo(demo: Demo): void {
 	parentSliderContainer.className = "parent-slider-container";
 
 	demo.inputOptions.forEach((inputOption: InputOption) => {
-		const isDropdown = inputOption.inputType === "dropdown"
+		const isDropdown = inputOption.inputType === "dropdown";
 
 		const sliderContainer = document.createElement("div");
 		sliderContainer.className = isDropdown ? "select-container" : "slider-container";

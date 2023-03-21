@@ -72,7 +72,7 @@ const bezierFeatures = {
 			Quadratic: {
 				inputOptions: [bezierTValueVariantOptions, tSliderOptions],
 			},
-		}
+		},
 	},
 	"lookup-table": {
 		name: "Lookup Table",
@@ -144,7 +144,7 @@ const bezierFeatures = {
 				inputOptions: [bezierTValueVariantOptions, tSliderOptions],
 			},
 			Cubic: {
-				inputOptions: [bezierTValueVariantOptions, {...tSliderOptions, default: 0.7}],
+				inputOptions: [bezierTValueVariantOptions, { ...tSliderOptions, default: 0.7 }],
 			},
 		},
 	},
@@ -339,7 +339,7 @@ const bezierFeatures = {
 	arcs: {
 		name: "Arcs",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.arcs(options.error, options.max_iterations, options.strategy),
-		demoOptions: ((): BezierDemoOptions=> {
+		demoOptions: ((): BezierDemoOptions => {
 			const inputOptions: InputOption[] = [
 				{
 					variable: "strategy",

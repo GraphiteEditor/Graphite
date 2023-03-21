@@ -37,12 +37,11 @@ export const bezierTValueVariantOptions = {
 	default: 0,
 	inputType: "dropdown",
 	options: BEZIER_T_VALUE_VARIANTS,
-}
+};
 
 export const subpathTValueVariantOptions = {
 	variable: "TVariant",
 	default: 0,
 	inputType: "dropdown",
 	options: SUBPATH_T_VALUE_VARIANTS,
-}
-
+};

@@ -30,7 +30,7 @@ export type InputOption = {
 	default?: number;
 	unit?: string | string[];
 	inputType?: "slider" | "dropdown";
-	options?: string[]
+	options?: string[];
 };
 
 export function getCurveType(numPoints: number): BezierCurveType {
@@ -88,5 +88,5 @@ export interface DemoPane extends HTMLElement {
 	buildDemo(demo: DemoArgs): Demo;
 }
 
-export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const
-export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const
+export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
+export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;

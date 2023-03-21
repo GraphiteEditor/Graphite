@@ -34,7 +34,7 @@ class BezierDemoPane extends HTMLElement implements DemoPane {
 
 	demoOptions!: BezierDemoOptions;
 
-	triggerOnMouseMove!: boolean;;
+	triggerOnMouseMove!: boolean;
 
 	// Data
 	demos!: BezierDemoArgs[];

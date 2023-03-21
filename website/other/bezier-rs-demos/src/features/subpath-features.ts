@@ -103,11 +103,7 @@ const subpathFeatures = {
 	trim: {
 		name: "Trim",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.trim(options.t1, options.t2, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
-		inputOptions: [
-			subpathTValueVariantOptions,
-			{ ...tSliderOptions, default: 0.2, variable: "t1" },
-			{ ...tSliderOptions, variable: "t2" },
-		],
+		inputOptions: [subpathTValueVariantOptions, { ...tSliderOptions, default: 0.2, variable: "t1" }, { ...tSliderOptions, variable: "t2" }],
 	},
 	offset: {
 		name: "Offset",

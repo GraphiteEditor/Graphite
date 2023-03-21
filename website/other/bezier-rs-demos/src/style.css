@@ -14,11 +14,12 @@ body {
 	background-color: white;
 }
 
-.website-header{
+.website-header {
 	color: var(--color-navy);
-	font-family: "Bona Nova", serif;	
+	font-family: "Bona Nova", serif;
 }
-.website-description{
+
+.website-description {
 	font-weight: 500;
 	color: var(--color-navy);
 }
@@ -140,7 +141,7 @@ input[type="range"] {
 	background-size: 70% 100%;
 	background-repeat: no-repeat;
 }
-	
+
 /* Input Thumb */
 input[type="range"]::-webkit-slider-thumb {
 	-webkit-appearance: none;
@@ -151,7 +152,7 @@ input[type="range"]::-webkit-slider-thumb {
 	box-shadow: 0 0 2px 0 #555;
 	transition: background .3s ease-in-out;
 }
-	
+
 input[type="range"]::-moz-range-thumb {
 	-webkit-appearance: none;
 	appearance: none;
@@ -162,7 +163,7 @@ input[type="range"]::-moz-range-thumb {
 	box-shadow: 0 0 2px 0 #555;
 	transition: background .3s ease-in-out;
 }
-	
+
 input[type="range"]::-ms-thumb {
 	-webkit-appearance: none;
 	appearance: none;
@@ -173,28 +174,28 @@ input[type="range"]::-ms-thumb {
 	box-shadow: 0 0 2px 0 #555;
 	transition: background .3s ease-in-out;
 }
-	
+
 input[type="range"]::-webkit-slider-thumb:hover {
 	background: linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), var(--range-fill-dark);
 }
-	
+
 input[type="range"]::-moz-range-thumb:hover {
 	background: linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), var(--range-fill-dark);
 }
-	
+
 input[type="range"]::-ms-thumb:hover {
 	background: linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), var(--range-fill-dark);
 }
-	
-	/* Input Track */
-input[type=range]::-webkit-slider-runnable-track  {
+
+/* Input Track */
+input[type=range]::-webkit-slider-runnable-track {
 	-webkit-appearance: none;
 	box-shadow: none;
 	border: none;
 	background: transparent;
 	background: none;
 }
-	
+
 input[type=range]::-moz-range-track {
 	-webkit-appearance: none;
 	appearance: none;
@@ -202,9 +203,9 @@ input[type=range]::-moz-range-track {
 	border: none;
 	background: transparent;
 	background: none;
-;
+	;
 }
-	
+
 input[type="range"]::-ms-track {
 	-webkit-appearance: none;
 	appearance: none;
