@@ -38,6 +38,8 @@
 	let searchTerm = "";
 	let nodeListLocation: { x: number; y: number } | undefined = undefined;
 
+	$: watchNodes($nodeGraph.nodes);
+
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
 	$: nodeGraphBarLayout = $nodeGraph.nodeGraphBarLayout;
@@ -46,8 +48,6 @@
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
 	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
-
-	$: watchNodes($nodeGraph.nodes);
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;

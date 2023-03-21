@@ -50,6 +50,8 @@
 	let floatingMenuBounds = new DOMRect();
 	let floatingMenuContentBounds = new DOMRect();
 
+	$: watchOpenChange(open);
+
 	$: minWidthStyleValue = measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`;
 	$: displayTail = open && type === "Popover";
 	$: displayContainer = open || measuringOngoing;
@@ -59,8 +61,6 @@
 	$: extraStyles = Object.entries(styles)
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
-
-	$: watchOpenChange(open);
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {

@@ -64,8 +64,9 @@
 	// "dragging": the user is dragging the slider left/right.
 	let rangeSliderClickDragState: "default" | "mousedown" | "dragging" = "default";
 
-	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: watchValue(value);
+
+	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 
 	// Called only when `value` is changed from outside this component
 	function watchValue(value: number | undefined) {
@@ -130,7 +131,7 @@
 	function onSliderPointerUp() {
 		// User clicked but didn't drag, so we focus the text input element
 		if (rangeSliderClickDragState === "mousedown") {
-			const inputElement = self?.element()?.querySelector("[data-input-element]") as HTMLInputElement | undefined;
+			const inputElement = self?.element();
 			if (!inputElement) return;
 
 			// Set the slider position back to the original position to undo the user moving it

@@ -29,11 +29,11 @@
 	let open = false;
 	let minWidth = 0;
 
-	$: selectedIndex, watchSelectedIndex();
+	$: watchSelectedIndex(selectedIndex);
 	$: watchActiveEntry(activeEntry);
 
 	// Called only when `selectedIndex` is changed from outside this component
-	function watchSelectedIndex() {
+	function watchSelectedIndex(_?: number) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
