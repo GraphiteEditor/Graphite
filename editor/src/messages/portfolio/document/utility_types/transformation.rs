@@ -1,17 +1,34 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shape_editor::{self, ShapeEditor};
-use crate::messages::tool::utility_types::{ToolData, ToolType};
-
+use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
+use graphene_core::vector::consts::ManipulatorType;
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
-pub type OriginalTransforms = HashMap<Vec<LayerId>, DAffine2>;
+#[derive(Debug, PartialEq)]
+pub enum OriginalTransforms {
+	Layer(HashMap<Vec<LayerId>, DAffine2>),
+	Path(HashMap<(u64, ManipulatorType), Vec<DVec2>>),
+}
+impl Default for OriginalTransforms {
+	fn default() -> Self {
+		OriginalTransforms::Path(HashMap::new())
+	}
+}
+impl Clone for OriginalTransforms {
+	fn clone(&self) -> Self {
+		match self {
+			OriginalTransforms::Layer(layer_map) => OriginalTransforms::Layer(layer_map.clone()),
+			OriginalTransforms::Path(path_map) => OriginalTransforms::Path(path_map.clone()),
+		}
+	}
+}
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Axis {
@@ -66,6 +83,13 @@ impl Translation {
 			constraint: self.constraint,
 		}
 	}
+	pub fn set_amount(self, change: DVec2) -> Self {
+		Self {
+			dragged_distance: change,
+			typed_distance: None,
+			constraint: self.constraint,
+		}
+	}
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Copy)]
@@ -90,6 +114,12 @@ impl Rotation {
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_angle: self.dragged_angle + delta,
+			typed_angle: None,
+		}
+	}
+	pub fn set_amount(self, angle: f64) -> Self {
+		Self {
+			dragged_angle: angle,
 			typed_angle: None,
 		}
 	}
@@ -128,6 +158,14 @@ impl Scale {
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_factor: self.dragged_factor + delta,
+			typed_factor: None,
+			constraint: self.constraint,
+		}
+	}
+
+	pub fn set_amount(self, change: f64) -> Self {
+		Self {
+			dragged_factor: 1. + change,
 			typed_factor: None,
 			constraint: self.constraint,
 		}
@@ -186,18 +224,50 @@ pub struct Selected<'a> {
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
 	pub shape_editor: Option<&'a ShapeEditor>,
+	pub tool_type: &'a ToolType,
 }
 
 impl<'a> Selected<'a> {
-	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
-		debug!("updating");
-		debug!("transform {:?}", original_transforms);
-		for path in selected {
-			if !original_transforms.contains_key(*path) {
-				if let Ok(layer) = document.layer(path) {
-					original_transforms.insert(path.to_vec(), layer.transform);
-				} else {
-					warn!("Didn't find a layer for {:?}", path);
+	pub fn new(
+		original_transforms: &'a mut OriginalTransforms,
+		pivot: &'a mut DVec2,
+		selected: &'a [&'a Vec<LayerId>],
+		responses: &'a mut VecDeque<Message>,
+		document: &'a Document,
+		shape_editor: Option<&'a ShapeEditor>,
+		tool_type: &'a ToolType,
+	) -> Self {
+
+		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
+			*original_transforms = OriginalTransforms::Layer(HashMap::new());
+		}
+		if (*tool_type == ToolType::Path) && (*original_transforms == OriginalTransforms::Layer(HashMap::new())) {
+			*original_transforms = OriginalTransforms::Path(HashMap::new());
+		}
+		match original_transforms {
+			OriginalTransforms::Layer(layer_map) => {
+				for path in selected {
+					if !layer_map.contains_key(path.clone()) {
+						if let Ok(layer) = document.layer(path) {
+							layer_map.insert(path.to_vec(), layer.transform);
+						} else {
+							warn!("Didn't find a layer for {:?}", path);
+						}
+					}
+				}
+			}
+
+			OriginalTransforms::Path(path_map) => {
+				for path in selected {
+					match shape_editor {
+						Some(shape_editor) => {
+							let points = shape_editor.selected_points(document);
+							if !path_map.contains_key(&(path[0], ManipulatorType::Anchor)) {
+								path_map.insert((path[0], ManipulatorType::Anchor), points.map(|p| p.position).collect());
+							}
+						}
+						None => warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType"),
+					};
 				}
 			}
 		}
@@ -208,6 +278,7 @@ impl<'a> Selected<'a> {
 			original_transforms,
 			pivot,
 			shape_editor,
+			tool_type,
 		}
 	}
 
@@ -239,40 +310,16 @@ impl<'a> Selected<'a> {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
-				let original_layer_transforms = *self.original_transforms.get(*layer_path).unwrap();
-
-				let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
-				let new = to.inverse() * transformation * to * original_layer_transforms;
-
-				if tool {
-					let path = self.shape_editor.unwrap().selected_layers_ref();
-					let viewspace = self.document.generate_transform_relative_to_viewport(path[0]).ok().unwrap();
-					let layerspace_rotation = viewspace.inverse() * transformation;
-					let points = self.shape_editor.unwrap().selected_points(&self.document);
-					let subpath = self.document.layer(&layer_path).ok().and_then(|layer| layer.as_subpath());
-					for point in points {
-						let mut group_id = 0;
-						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
-							let points_in_group = man_group.1.selected_points();
-							for p in points_in_group {
-								if p.position == point.position {
-									group_id = *man_group.0;
-								}
-							}
+				if !tool {
+					let original_layer_transforms = match self.original_transforms {
+						OriginalTransforms::Layer(layer_map) => *layer_map.get(*layer_path).unwrap(),
+						OriginalTransforms::Path(_path_map) => {
+							warn!("Found Path variant in original_transforms, returning identity transform for layer {:?}", layer_path);
+							DAffine2::IDENTITY
 						}
-						let viewspace_point = viewspace.transform_point2(point.position);
-						let new_pos = layerspace_rotation.transform_point2(viewspace_point);
-						let manip_type = point.manipulator_type;
-						let op = DocumentOperation::MoveManipulatorPoint {
-							layer_path: layer_path.to_vec(),
-							id: group_id, //manGroupID
-							manipulator_type: manip_type,
-							position: new_pos.into(),
-						}
-						.into();
-						self.responses.push_back(op);
-					}
-				} else {
+					};
+					let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
+					let new = to.inverse() * transformation * to * original_layer_transforms;
 					self.responses.push_back(
 						DocumentOperation::SetLayerTransform {
 							path: layer_path.to_vec(),
@@ -281,22 +328,62 @@ impl<'a> Selected<'a> {
 						.into(),
 					);
 				}
+				if tool {
+					let viewspace = self.document.generate_transform_relative_to_viewport(*layer_path).ok().unwrap_or_default();
+					let layerspace_rotation = viewspace.inverse() * transformation;
+					let initial_points = match self.original_transforms {
+						OriginalTransforms::Layer(_layer_map) => None,
+						OriginalTransforms::Path(path_map) => path_map.get(&(layer_path[0], ManipulatorType::Anchor)),
+					};
+
+					let points = self.shape_editor.unwrap().selected_points(&self.document);
+					let subpath = self.document.layer(&layer_path).ok().and_then(|layer| layer.as_subpath());
+					for point in points.zip(initial_points.unwrap()) {
+						let mut group_id = 0;
+						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
+							let points_in_group = man_group.1.selected_points();
+							for p in points_in_group {
+								if p.position == point.0.position {
+									group_id = *man_group.0;
+								}
+							}
+						}
+
+						let viewport_point = viewspace.transform_point2(*point.1);
+						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+
+						let op = DocumentOperation::MoveManipulatorPoint {
+							layer_path: (*layer_path).to_vec(),
+							id: group_id, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
+							manipulator_type: point.0.manipulator_type,
+							position: new_pos_viewport.into(),
+						}
+						.into();
+						self.responses.push_back(op);
+					}
+				}
 
 				self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 		}
 	}
 	pub fn revert_operation(&mut self) {
-		for path in self.selected {
-			if let Some(transform) = self.original_transforms.get(*path) {
-				// Push front to stop document switching before sending the transform
-				self.responses.push_front(
-					DocumentOperation::SetLayerTransform {
-						path: path.to_vec(),
-						transform: transform.to_cols_array(),
+		for path in self.selected.iter().copied() {
+			let original_transform = &self.original_transforms;
+			match original_transform {
+				OriginalTransforms::Layer(transform) => {
+					if let Some(original_transform) = transform.get(path) {
+						// Push front to stop document switching before sending the transform
+						self.responses.push_front(
+							DocumentOperation::SetLayerTransform {
+								path: path.to_vec(),
+								transform: original_transform.to_cols_array(),
+							}
+							.into(),
+						);
 					}
-					.into(),
-				);
+				}
+				OriginalTransforms::Path(_) => {}
 			}
 		}
 	}

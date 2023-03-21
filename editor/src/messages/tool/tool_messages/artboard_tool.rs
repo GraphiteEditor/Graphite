@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
+use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -345,7 +346,14 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
+						match &mut bounds.original_transforms {
+							OriginalTransforms::Layer(layer_map) => {
+								layer_map.clear();
+							}
+							OriginalTransforms::Path(path_map) => {
+								path_map.clear();
+							}
+						}
 					}
 
 					ArtboardToolFsmState::Ready
@@ -354,7 +362,14 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
+						match &mut bounds.original_transforms {
+							OriginalTransforms::Layer(layer_map) => {
+								layer_map.clear();
+							}
+							OriginalTransforms::Path(path_map) => {
+								path_map.clear();
+							}
+						}
 					}
 
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -365,7 +380,14 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
+						match &mut bounds.original_transforms {
+							OriginalTransforms::Layer(layer_map) => {
+								layer_map.clear();
+							}
+							OriginalTransforms::Path(path_map) => {
+								path_map.clear();
+							}
+						}
 					}
 
 					ArtboardToolFsmState::Ready

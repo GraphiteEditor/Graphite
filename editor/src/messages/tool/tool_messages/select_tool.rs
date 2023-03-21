@@ -10,16 +10,14 @@ use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton
 use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
-use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::portfolio::document::utility_types::transformation::{OriginalTransforms, Selected};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
-use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeEditor};
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
 use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
@@ -306,7 +304,6 @@ enum SelectToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
-	shape_editor: ShapeEditor,
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<Vec<LayerId>>,
@@ -545,7 +542,8 @@ impl Fsm for SelectToolFsmState {
 								selected,
 								responses,
 								document,
-								Some(&tool_data.shape_editor),
+								None,
+								&ToolType::Select,
 							);
 							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
@@ -562,7 +560,8 @@ impl Fsm for SelectToolFsmState {
 								&selected,
 								responses,
 								&document.document_legacy,
-								Some(&tool_data.shape_editor),
+								None,
+								&ToolType::Select,
 							);
 
 							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
@@ -671,7 +670,8 @@ impl Fsm for SelectToolFsmState {
 								selected,
 								responses,
 								&document.document_legacy,
-								Some(&tool_data.shape_editor),
+								None,
+								&ToolType::Select,
 							);
 
 							selected.update_transforms(delta, false);
@@ -704,7 +704,8 @@ impl Fsm for SelectToolFsmState {
 							&selected,
 							responses,
 							&document.document_legacy,
-							Some(&tool_data.shape_editor),
+							None,
+							&ToolType::Select,
 						);
 
 						selected.update_transforms(delta, false);
@@ -800,7 +801,14 @@ impl Fsm for SelectToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
+						match &mut bounds.original_transforms {
+							OriginalTransforms::Layer(layer_map) => {
+								layer_map.clear();
+							}
+							OriginalTransforms::Path(path_map) => {
+								path_map.clear();
+							}
+						}
 					}
 
 					Ready
@@ -813,7 +821,14 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(response.into());
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
+						match &mut bounds.original_transforms {
+							OriginalTransforms::Layer(layer_map) => {
+								layer_map.clear();
+							}
+							OriginalTransforms::Path(path_map) => {
+								path_map.clear();
+							}
+						}
 					}
 
 					Ready
@@ -886,7 +901,8 @@ impl Fsm for SelectToolFsmState {
 							&selected,
 							responses,
 							&document.document_legacy,
-							Some(&tool_data.shape_editor),
+							None,
+							&ToolType::Select,
 						);
 
 						selected.revert_operation();
