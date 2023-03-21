@@ -33,6 +33,7 @@
 	let macKeyboardLayout = platformIsMac();
 
 	$: inputValue = value;
+
 	$: dispatch("value", inputValue);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.

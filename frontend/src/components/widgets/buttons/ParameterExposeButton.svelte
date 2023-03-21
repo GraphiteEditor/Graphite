@@ -9,7 +9,7 @@
 </script>
 
 <LayoutRow class="parameter-expose-button">
-	<button class:exposed style:--data-type-color={`var(--color-data-${dataType})`} on:click={action} title={tooltip} tabindex="0" />
+	<button class:exposed style:--data-type-color={`var(--color-data-${dataType})`} on:click={action} title={tooltip} tabindex="-1" />
 </LayoutRow>
 
 <style lang="scss" global>

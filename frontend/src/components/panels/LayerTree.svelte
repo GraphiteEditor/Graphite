@@ -100,8 +100,9 @@
 	async function onEditLayerName(listing: LayerListingInfo) {
 		if (listing.editingName) return;
 
-		listing.editingName = true;
 		draggable = false;
+		listing.editingName = true;
+		layers = layers;
 
 		await tick();
 
@@ -117,6 +118,7 @@
 
 		const name = (e.target as HTMLInputElement | undefined)?.value;
 		listing.editingName = false;
+		layers = layers;
 		if (name) editor.instance.setLayerName(listing.entry.path, name);
 	}
 
@@ -124,6 +126,7 @@
 		draggable = true;
 
 		listing.editingName = false;
+		layers = layers;
 
 		await tick();
 		window.getSelection()?.removeAllRanges();
@@ -211,7 +214,7 @@
 			});
 		}
 
-		markerHeight -= (treeOffset || 0);
+		markerHeight -= treeOffset || 0;
 
 		return {
 			select,

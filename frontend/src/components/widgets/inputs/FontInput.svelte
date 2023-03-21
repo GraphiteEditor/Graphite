@@ -32,9 +32,9 @@
 	let activeEntry: MenuListEntry | undefined = undefined;
 	let minWidth = isStyle ? 0 : 300;
 
-	$: fontFamily, fontStyle, watchFont();
+	$: watchFont(fontFamily, fontStyle);
 
-	async function watchFont(): Promise<void> {
+	async function watchFont(..._: string[]): Promise<void> {
 		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop
 		const newEntries = await getEntries();
 		entries = newEntries;
