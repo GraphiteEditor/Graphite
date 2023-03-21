@@ -102,8 +102,8 @@ impl WasmSubpath {
 	pub fn compute_lookup_table(&self, steps: usize, t_variant: String) -> String {
 		let subpath = self.to_default_svg();
 		let tvalue_type = match t_variant.as_str() {
-			"Parametric" => TValueType::Parametric,
-			"Euclidean" => TValueType::Euclidean,
+			"GlobalParametric" => TValueType::Parametric,
+			"GlobalEuclidean" => TValueType::Euclidean,
 			_ => panic!("Unexpected TValue string: '{}'", t_variant),
 		};
 		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));

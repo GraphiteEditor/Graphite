@@ -22,8 +22,9 @@ const subpathFeatures = {
 	},
 	"lookup-table": {
 		name: "Lookup Table",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.compute_lookup_table(options.steps, tVariant),
-		sliderOptions: [
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.compute_lookup_table(options.steps, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [
+			subpathTValueVariantOptions,
 			{
 				min: 2,
 				max: 15,
@@ -32,7 +33,6 @@ const subpathFeatures = {
 				variable: "steps",
 			},
 		],
-		chooseTVariant: true,
 	},
 	project: {
 		name: "Project",
