@@ -664,15 +664,7 @@ impl Fsm for SelectToolFsmState {
 							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(
-								&mut bounds.original_transforms,
-								&mut pivot,
-								selected,
-								responses,
-								&document.document_legacy,
-								None,
-								&ToolType::Select,
-							);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 
 							selected.update_transforms(delta, false);
 						}
