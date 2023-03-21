@@ -1,6 +1,5 @@
 :root {
 	--color-navy: #16323f;
-	--color-crimson: #803847;
 	--color-gray: #cccccc;
 	--range-fill-dark: var(--color-navy);
 	--range-fill-light: var(--color-gray);
@@ -92,7 +91,7 @@ body > h2 {
 /* Demo styles */
 .demo-header {
 	font-family: "Bona Nova", serif;
-	color: var(--color-crimson);
+	color: var(--color-navy);
 	margin-top: 10px;
 	margin-bottom: 5px;
 }
@@ -137,9 +136,9 @@ input[type="range"] {
 	height: 7px;
 	background: rgba(255, 255, 255, 0.6);
 	border-radius: 5px;
-	background: linear-gradient(var(--range-fill-dark), var(--range-fill-dark));
-	background-size: 70% 100%;
+	background: linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height) + var(--range-ratio) * (100% - var(--range-thumb-height))) var(--range-fill-light);
 	background-repeat: no-repeat;
+
 }
 
 /* Input Thumb */
@@ -164,26 +163,11 @@ input[type="range"]::-moz-range-thumb {
 	transition: background .3s ease-in-out;
 }
 
-input[type="range"]::-ms-thumb {
-	-webkit-appearance: none;
-	appearance: none;
-	height: var(--range-thumb-height);
-	width: var(--range-thumb-height);
-	border-radius: 50%;
-	background: var(--range-fill-dark);
-	box-shadow: 0 0 2px 0 #555;
-	transition: background .3s ease-in-out;
-}
-
 input[type="range"]::-webkit-slider-thumb:hover {
 	background: linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), var(--range-fill-dark);
 }
 
 input[type="range"]::-moz-range-thumb:hover {
-	background: linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), var(--range-fill-dark);
-}
-
-input[type="range"]::-ms-thumb:hover {
 	background: linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), var(--range-fill-dark);
 }
 
@@ -205,15 +189,6 @@ input[type=range]::-moz-range-track {
 	background: none;
 	;
 }
-
-input[type="range"]::-ms-track {
-	-webkit-appearance: none;
-	appearance: none;
-	border: none;
-	box-shadow: none;
-	background: none;
-}
-
 
 /* Select Styles */
 select {

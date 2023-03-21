@@ -59,10 +59,7 @@ export function renderDemo(demo: Demo): void {
 			const range = Number(inputOption.max) - Number(inputOption.min);
 
 			const ratio = (Number(inputOption.default) - Number(inputOption.min)) / range;
-			sliderInput.style.background = `
-				linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
-				+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
-			`;
+			sliderInput.style.setProperty("--range-ratio", String(ratio));
 
 			sliderInput.addEventListener("input", (event: Event): void => {
 				const target = event.target as HTMLInputElement;
@@ -72,10 +69,7 @@ export function renderDemo(demo: Demo): void {
 				sliderLabel.innerText = `${inputOption.variable}: ${data}${unit}`;
 
 				const ratio = (Number(target.value) - Number(inputOption.min)) / range;
-				target.style.background = `
-					linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height)
-					+ ${ratio} * (100% - var(--range-thumb-height))) 100% no-repeat var(--range-fill-light)
-				`;
+				sliderInput.style.setProperty("--range-ratio", String(ratio));
 
 				demo.drawDemo(figure);
 			});
