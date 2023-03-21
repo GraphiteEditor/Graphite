@@ -1,4 +1,6 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
+use gpu_executor::ShaderIO;
+use gpu_executor::ShaderInput;
 use graph_craft::concrete;
 use graph_craft::document::*;
 
@@ -28,7 +30,12 @@ fn main() {
 	let compiler = graph_craft::executor::Compiler {};
 	let proto_network = compiler.compile_single(network, true).unwrap();
 
-	let compile_request = CompileRequest::new(proto_network, vec![concrete!(u32)], concrete!(u32));
+	let io = ShaderIO {
+		inputs: vec![ShaderInput::StorageBuffer((), concrete!(u32))],
+		output: ShaderInput::OutputBuffer((), concrete!(u32)),
+	};
+
+	let compile_request = CompileRequest::new(proto_network, vec![concrete!(u32)], concrete!(u32), io);
 	let response = client.post("http://localhost:3000/compile/spirv").json(&compile_request).send().unwrap();
 	println!("response: {:?}", response);
 }

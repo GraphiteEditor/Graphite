@@ -4,6 +4,7 @@ use futures::Future;
 use glam::UVec3;
 use graph_craft::proto::ProtoNetwork;
 use graphene_core::*;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::pin::Pin;
 
@@ -27,7 +28,13 @@ pub trait SpirVCompiler {
 	fn compile(&self, network: ProtoNetwork, io: &ShaderIO) -> Result<Shader>;
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CompileRequest {
+	pub network: ProtoNetwork,
+	pub io: ShaderIO,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// GPU constants that can be used as inputs to a shader.
 pub enum GPUConstant {
 	SubGroupId,
@@ -59,7 +66,7 @@ impl GPUConstant {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// All the possible inputs to a shader.
 pub enum ShaderInput<BufferHandle> {
 	UniformBuffer(BufferHandle, Type),
@@ -102,7 +109,7 @@ pub struct Shader<'a> {
 	pub io: ShaderIO,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ShaderIO {
 	pub inputs: Vec<ShaderInput<()>>,
 	pub output: ShaderInput<()>,

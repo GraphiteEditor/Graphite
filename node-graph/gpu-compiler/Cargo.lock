@@ -563,6 +563,7 @@ dependencies = [
  "log",
  "node-macro",
  "num-traits",
+ "serde",
  "spirv",
 ]
 

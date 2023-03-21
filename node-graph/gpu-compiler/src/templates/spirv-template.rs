@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(unchecked_math)]
-#![deny(warnings)]
 
 #[cfg(target_arch = "spirv")]
 extern crate spirv_std;
@@ -20,15 +19,17 @@ pub mod gpu {
 	) {
 		use graphene_core::Node;
 
-        {$ for input in inputs %}
-        let i{{loop.index0}} = graphene_core::value::CopiedNode::new({{input}});
+        {% for input in input_nodes %}
+        let i{{loop.index0}} = graphene_core::value::CopiedNode::new(i{{loop.index0}});
 		let _{{input.id}} = {{input.fqn}}::new({% for arg in input.args %}{{arg}}, {% endfor %});
-        let {{input.id}} = graphene_core::structural::ComposeNode::new(i{{loop.index0}}, _{{input.id}}));
+        let {{input.id}} = graphene_core::structural::ComposeNode::new(i{{loop.index0}}, _{{input.id}});
         {% endfor %}
 
 		{% for node in nodes %}
 		let {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}{{arg}}, {% endfor %});
 		{% endfor %}
-		{{last_node}}.eval(input)
+		let output = {{last_node}}.eval(());
+        // TODO: Write output to buffer
+
 	}
 }

@@ -118,7 +118,9 @@ pub fn serialize_gpu(network: &ProtoNetwork, io: &ShaderIO) -> anyhow::Result<St
 		args: Vec<String>,
 	}
 	for id in network.inputs.iter() {
-		let (_, node) = &network.nodes[*id as usize];
+		let Some((_, node)) = network.nodes.iter().find(|(i, _)| i == id) else {
+            anyhow::bail!("Input node not found");
+        };
 		let fqn = &node.identifier.name;
 		let id = nid(id);
 		input_nodes.push(Node {

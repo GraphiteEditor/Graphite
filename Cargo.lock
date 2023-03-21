@@ -609,6 +609,7 @@ dependencies = [
  "anyhow",
  "future-executor",
  "gpu-compiler-bin-wrapper",
+ "gpu-executor",
  "graph-craft",
  "reqwest",
  "serde_json",
@@ -1537,6 +1538,7 @@ name = "gpu-compiler-bin-wrapper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "gpu-executor",
  "graph-craft",
  "log",
  "serde",
