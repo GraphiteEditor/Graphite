@@ -24,8 +24,8 @@
 	let panelSizes = PANEL_SIZES;
 	let documentPanel: Panel | undefined;
 
-	$: activeDocumentIndex = $portfolio.activeDocumentIndex;
-	$: nodeGraphVisible = $workspace.nodeGraphVisible;
+	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
+
 	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
 		const name = doc.displayName;
 
@@ -34,12 +34,6 @@
 		const tooltip = `Document ID ${doc.id}`;
 		return { name, tooltip };
 	});
-	$: {
-		scrollIntoView(activeDocumentIndex);
-	}
-	function scrollIntoView(activeDocumentIndex: number) {
-		documentPanel?.scrollTabIntoView(activeDocumentIndex);
-	}
 
 	const editor = getContext<Editor>("editor");
 	const workspace = getContext<WorkspaceState>("workspace");
@@ -117,7 +111,7 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if nodeGraphVisible}
+			{#if $workspace.nodeGraphVisible}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={resizePanel} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["graph"] }} data-subdivision-name="graph">
 					<Panel panelType="NodeGraph" tabLabels={[{ name: "Node Graph" }]} tabActiveIndex={0} />
