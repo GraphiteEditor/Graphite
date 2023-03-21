@@ -342,7 +342,7 @@ impl ProtoNetwork {
 				}
 			}
 		}
-		info!("Sorted order {sorted:?}");
+		debug!("Sorted order {sorted:?}");
 		sorted
 	}*/
 
