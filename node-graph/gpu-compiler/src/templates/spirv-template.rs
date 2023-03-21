@@ -14,25 +14,21 @@ pub mod gpu {
 	#[allow(unused)]
 	#[spirv(compute(threads({{compute_threads}})))]
 	pub fn eval (
-		#[spirv(global_invocation_id)] global_id: UVec3,
-		#[spirv(storage_buffer, descriptor_set = 0, binding = 0)] a: &[{{input_type}}],
-		#[spirv(storage_buffer, descriptor_set = 0, binding = 1)] y: &mut [{{output_type}}],
-		//#[spirv(push_constant)] push_consts: &graphene_core::gpu::PushConstants,
+        {% for input in inputs %}
+        {{input}}
+        {% endfor %}
 	) {
-		let gid = global_id.x as usize;
-		// Only process up to n, which is the length of the buffers.
-		//if global_id.x < push_consts.n {
-			y[gid] = node_graph(a[gid]);
-		//}
-	}
-
-	fn node_graph(input: {{input_type}}) -> {{output_type}} {
 		use graphene_core::Node;
+
+        {$ for input in inputs %}
+        let i{{loop.index0}} = graphene_core::value::CopiedNode::new({{input}});
+		let _{{input.id}} = {{input.fqn}}::new({% for arg in input.args %}{{arg}}, {% endfor %});
+        let {{input.id}} = graphene_core::structural::ComposeNode::new(i{{loop.index0}}, _{{input.id}}));
+        {% endfor %}
 
 		{% for node in nodes %}
 		let {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}{{arg}}, {% endfor %});
 		{% endfor %}
 		{{last_node}}.eval(input)
 	}
-
 }

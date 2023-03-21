@@ -24,9 +24,10 @@ pub trait GpuExecutor {
 }
 
 pub trait SpirVCompiler {
-	fn compile(&self, network: ProtoNetwork, io: ShaderIO) -> Result<Shader>;
+	fn compile(&self, network: ProtoNetwork, io: &ShaderIO) -> Result<Shader>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// GPU constants that can be used as inputs to a shader.
 pub enum GPUConstant {
 	SubGroupId,
@@ -58,6 +59,7 @@ impl GPUConstant {
 	}
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// All the possible inputs to a shader.
 pub enum ShaderInput<BufferHandle> {
 	UniformBuffer(BufferHandle, Type),
@@ -100,6 +102,7 @@ pub struct Shader<'a> {
 	pub io: ShaderIO,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ShaderIO {
 	pub inputs: Vec<ShaderInput<()>>,
 	pub output: ShaderInput<()>,
