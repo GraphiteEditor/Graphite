@@ -49,7 +49,7 @@ pub trait Fsm {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
@@ -78,7 +78,7 @@ pub trait Fsm {
 		Self: PartialEq + Sized + Copy,
 	{
 		// If this message is one of the standard tool messages, process it and exit early
-		if self.standard_tool_messages(&message, messages) {
+		if self.standard_tool_messages(&message, messages, tool_data) {
 			return;
 		}
 
@@ -532,6 +532,17 @@ impl HintInfo {
 	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
 		Self {
 			key_groups: vec![],
+			key_groups_mac: None,
+			mouse: Some(mouse_motion),
+			label: label.into(),
+			plus: false,
+		}
+	}
+
+	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+		let keys: Vec<_> = keys.into_iter().collect();
+		Self {
+			key_groups: vec![KeysGroup(keys).into()],
 			key_groups_mac: None,
 			mouse: Some(mouse_motion),
 			label: label.into(),

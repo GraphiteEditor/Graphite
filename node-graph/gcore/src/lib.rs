@@ -19,6 +19,8 @@ pub mod value;
 pub mod gpu;
 
 pub mod raster;
+#[cfg(feature = "alloc")]
+pub mod transform;
 
 #[cfg(feature = "alloc")]
 pub mod vector;

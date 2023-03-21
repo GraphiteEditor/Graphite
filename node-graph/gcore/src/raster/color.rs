@@ -603,16 +603,6 @@ impl Color {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
 	}
 	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
-		let color = Color {
-			red: f(self.red, other.red),
-			green: f(self.green, other.green),
-			blue: f(self.blue, other.blue),
-			alpha: self.alpha,
-		};
-		#[cfg(feature = "log")]
-		if *self == Color::RED {
-			debug!("{} {} {} {}", color.red, color.green, color.blue, color.alpha);
-		}
 		Color {
 			red: f(self.red, other.red).clamp(0., 1.),
 			green: f(self.green, other.green).clamp(0., 1.),

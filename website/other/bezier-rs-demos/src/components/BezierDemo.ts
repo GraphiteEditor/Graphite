@@ -1,7 +1,7 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
 import { renderDemo } from "@/utils/render";
-import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, SliderOption, WasmBezierManipulatorKey, TVariant, Demo } from "@/utils/types";
+import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, InputOption, WasmBezierManipulatorKey, Demo } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 
@@ -20,11 +20,9 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	key!: BezierFeatureKey;
 
-	sliderOptions!: SliderOption[];
+	inputOptions!: InputOption[];
 
 	triggerOnMouseMove!: boolean;
-
-	tVariant!: TVariant;
 
 	// Data
 	bezier!: WasmBezier;
@@ -39,33 +37,20 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	sliderUnits!: Record<string, string | string[]>;
 
-	static get observedAttributes(): string[] {
-		return ["tvariant"];
-	}
-
-	attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
-		if (name === "tvariant" && oldValue) {
-			this.tVariant = (newValue || "Parametric") as TVariant;
-			const figure = this.querySelector("figure") as HTMLElement;
-			this.drawDemo(figure);
-		}
-	}
-
 	async connectedCallback(): Promise<void> {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
 		this.key = this.getAttribute("key") as BezierFeatureKey;
-		this.sliderOptions = JSON.parse(this.getAttribute("sliderOptions") || "[]");
+		this.inputOptions = JSON.parse(this.getAttribute("inputOptions") || "[]");
 		this.triggerOnMouseMove = this.getAttribute("triggerOnMouseMove") === "true";
-		this.tVariant = (this.getAttribute("tvariant") || "Parametric") as TVariant;
 
 		this.callback = bezierFeatures[this.key].callback as BezierCallback;
 		const curveType = getCurveType(this.points.length);
 
 		this.manipulatorKeys = MANIPULATOR_KEYS_FROM_BEZIER_TYPE[curveType];
 		this.activeIndex = undefined as number | undefined;
-		this.sliderData = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.default })));
-		this.sliderUnits = Object.assign({}, ...this.sliderOptions.map((s) => ({ [s.variable]: s.unit })));
+		this.sliderData = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.default })));
+		this.sliderUnits = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.unit })));
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
@@ -79,7 +64,7 @@ class BezierDemo extends HTMLElement implements Demo {
 	}
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
-		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation, this.tVariant);
+		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation);
 	}
 
 	onMouseDown(event: MouseEvent): void {
@@ -114,7 +99,7 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	getSliderUnit(sliderValue: number, variable: string): string {
 		const sliderUnit = this.sliderUnits[variable];
-		return (Array.isArray(sliderUnit) ? sliderUnit[sliderValue] : sliderUnit) || "";
+		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
 	}
 }
 
