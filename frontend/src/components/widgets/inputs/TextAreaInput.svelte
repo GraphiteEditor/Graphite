@@ -30,7 +30,7 @@
 		if (self) dispatch("commitText", self.getValue());
 
 		// Required if value is not changed by the parent component upon update:value event
-		self?.setInputElementValue(value);
+		self?.setInputElementValue(self.getValue());
 	}
 
 	function onCancelTextChange() {

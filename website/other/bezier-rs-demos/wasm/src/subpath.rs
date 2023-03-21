@@ -23,8 +23,8 @@ const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 
 fn parse_t_variant(t_variant: &String, t: f64) -> SubpathTValue {
 	match t_variant.as_str() {
-		"Parametric" => SubpathTValue::GlobalParametric(t),
-		"Euclidean" => SubpathTValue::GlobalEuclidean(t),
+		"GlobalParametric" => SubpathTValue::GlobalParametric(t),
+		"GlobalEuclidean" => SubpathTValue::GlobalEuclidean(t),
 		_ => panic!("Unexpected TValue string: '{}'", t_variant),
 	}
 }

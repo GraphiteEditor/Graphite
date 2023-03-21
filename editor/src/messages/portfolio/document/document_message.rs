@@ -94,11 +94,20 @@ pub enum DocumentMessage {
 		insert_index: isize,
 		reverse_index: bool,
 	},
-	NodeGraphFrameGenerate,
+	NodeGraphFrameClear {
+		layer_path: Vec<LayerId>,
+		node_id: NodeId,
+		cached_index: usize,
+	},
+	NodeGraphFrameGenerate {
+		layer_path: Vec<LayerId>,
+	},
 	NodeGraphFrameImaginate {
+		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 	},
 	NodeGraphFrameImaginateRandom {
+		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
 	},

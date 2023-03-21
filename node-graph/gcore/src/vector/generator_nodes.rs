@@ -43,7 +43,6 @@ pub struct BlitSubpath<P> {
 
 #[node_macro::node_fn(BlitSubpath)]
 fn bilt_subpath(base_image: Image, path_data: VectorData) -> Image {
-	log::info!("Blitting subpath {path_data:#?}");
 	// TODO: Get forma to compile
 	/*use forma::prelude::*;
 	let composition = Composition::new();

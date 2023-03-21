@@ -224,7 +224,6 @@ where
 			let bg_point = DVec2::new(x as f64, y as f64);
 			let fg_point = bg_to_fg.transform_point2(bg_point);
 			if !((fg_point.cmpge(DVec2::ZERO) & fg_point.cmple(foreground_size)) == BVec2::new(true, true)) {
-				//log::debug!("Skipping pixel at {:?}", dest_point);
 				continue;
 			}
 
@@ -245,7 +244,6 @@ pub struct ImaginateNode<E> {
 
 #[node_macro::node_fn(ImaginateNode)]
 fn imaginate(image_frame: ImageFrame, cached: Option<std::sync::Arc<graphene_core::raster::Image>>) -> ImageFrame {
-	info!("Imaginating image with {} pixels", image_frame.image.data.len());
 	let cached_image = cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image_frame.image);
 	ImageFrame {
 		image: cached_image,

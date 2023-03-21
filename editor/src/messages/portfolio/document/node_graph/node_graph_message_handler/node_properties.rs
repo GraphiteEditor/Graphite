@@ -420,11 +420,12 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 	LayoutGroup::Row { widgets }
 }
 /// Properties for the input node, with information describing how frames work and a refresh button
-pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
+	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
 		.tooltip("Refresh the artwork under the frame")
-		.on_update(|_| DocumentMessage::NodeGraphFrameGenerate.into())
+		.on_update(move |_| DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() }.into())
 		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
@@ -826,8 +827,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Generate with a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
+						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginateRandom {
+								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: true,
 							}
@@ -840,8 +843,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
+						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginate {
+								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 							}
 							.into()
@@ -852,7 +857,17 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
 					.disabled(cached_data.is_none())
-					.on_update(update_value(|_| TaggedValue::RcImage(None), node_id, cached_index))
+					.on_update({
+						let layer_path = context.layer_path.to_vec();
+						move |_| {
+							DocumentMessage::NodeGraphFrameClear {
+								node_id,
+								layer_path: layer_path.clone(),
+								cached_index,
+							}
+							.into()
+						}
+					})
 					.widget_holder(),
 			]),
 		}
@@ -874,8 +889,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Set a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
+						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginateRandom {
+								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: false,
 							}
@@ -903,7 +920,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		transform,
 	});
 	// Compute the transform input to the node graph frame
-	let transform: glam::DAffine2 = context.executor.compute_input(context.network, &imaginate_node, 1, image_frame).unwrap_or_default();
+	let image_frame: graphene_core::raster::ImageFrame = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
+	let transform = image_frame.transform;
 
 	let resolution = {
 		use document_legacy::document::pick_safe_imaginate_resolution;

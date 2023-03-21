@@ -29,13 +29,10 @@ impl NodeGraphExecutor {
 		scoped_network.duplicate_outputs(&mut generate_uuid);
 		scoped_network.remove_dead_nodes();
 
-		//debug!("Execute document network:\n{scoped_network:#?}");
-
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
 		let proto_network = c.compile_single(scoped_network, true)?;
-		//debug!("Execute proto network:\n{proto_network}");
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
 			error!("Failed to update executor:\n{}", e);
@@ -151,8 +148,14 @@ impl NodeGraphExecutor {
 		};
 		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image_frame))?;
 
-		let base_image = if use_base_image {
-			let image: Image = self.compute_input(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?;
+		let input_image_frame: Option<ImageFrame> = if use_base_image {
+			Some(self.compute_input::<ImageFrame>(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?)
+		} else {
+			None
+		};
+
+		let image_transform = input_image_frame.as_ref().map(|image_frame| image_frame.transform);
+		let base_image = if let Some(ImageFrame { image, .. }) = input_image_frame {
 			// Only use if has size
 			if image.width > 0 && image.height > 0 {
 				let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
@@ -166,7 +169,7 @@ impl NodeGraphExecutor {
 			None
 		};
 
-		let mask_image = if base_image.is_some() {
+		let mask_image = if let Some(transform) = image_transform {
 			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image_frame))?;
 
 			// Calculate the size of the node graph frame

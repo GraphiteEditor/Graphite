@@ -1,5 +1,5 @@
-import { tSliderOptions, intersectionErrorOptions, minimumSeparationOptions } from "@/utils/options";
-import { TVariant, SliderOption, SubpathCallback, WasmSubpathInstance } from "@/utils/types";
+import { tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@/utils/options";
+import { InputOption, SubpathCallback, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -8,9 +8,8 @@ const subpathFeatures = {
 	},
 	insert: {
 		name: "Insert",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.insert(options.t, tVariant),
-		sliderOptions: [tSliderOptions],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.insert(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, tSliderOptions],
 	},
 	length: {
 		name: "Length",
@@ -18,9 +17,8 @@ const subpathFeatures = {
 	},
 	evaluate: {
 		name: "Evaluate",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.evaluate(options.t, tVariant),
-		sliderOptions: [tSliderOptions],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.evaluate(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, tSliderOptions],
 	},
 	project: {
 		name: "Project",
@@ -30,15 +28,13 @@ const subpathFeatures = {
 	},
 	tangent: {
 		name: "Tangent",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.tangent(options.t, tVariant),
-		sliderOptions: [tSliderOptions],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.tangent(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, tSliderOptions],
 	},
 	normal: {
 		name: "Normal",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.normal(options.t, tVariant),
-		sliderOptions: [tSliderOptions],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.normal(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, tSliderOptions],
 	},
 	"local-extrema": {
 		name: "Local Extrema",
@@ -57,67 +53,62 @@ const subpathFeatures = {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_line_segment(
 				[
-					[150, 150],
-					[20, 20],
+					[80, 30],
+					[210, 150],
 				],
 				options.error,
-				options.minimum_seperation
+				options.minimum_separation
 			),
-		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	"intersect-quadratic": {
 		name: "Intersect (Quadratic Segment)",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_quadratic_segment(
 				[
-					[20, 80],
-					[180, 10],
-					[90, 120],
+					[25, 50],
+					[205, 10],
+					[135, 180],
 				],
 				options.error,
-				options.minimum_seperation
+				options.minimum_separation
 			),
-		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	"intersect-cubic": {
 		name: "Intersect (Cubic Segment)",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_cubic_segment(
 				[
-					[40, 20],
-					[100, 40],
-					[40, 120],
-					[175, 140],
+					[65, 20],
+					[125, 40],
+					[65, 120],
+					[200, 140],
 				],
 				options.error,
-				options.minimum_seperation
+				options.minimum_separation
 			),
-		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	"self-intersect": {
 		name: "Self Intersect",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_seperation),
-		sliderOptions: [intersectionErrorOptions, minimumSeparationOptions],
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_separation),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	split: {
 		name: "Split",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.split(options.t, tVariant),
-		sliderOptions: [tSliderOptions],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.split(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, tSliderOptions],
 	},
 	trim: {
 		name: "Trim",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.trim(options.tVariant1, options.tVariant2, tVariant),
-		sliderOptions: [
-			{ ...tSliderOptions, default: 0.2, variable: "tVariant1" },
-			{ ...tSliderOptions, variable: "tVariant2" },
-		],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.trim(options.t1, options.t2, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, { ...tSliderOptions, default: 0.2, variable: "t1" }, { ...tSliderOptions, variable: "t2" }],
 	},
 	offset: {
 		name: "Offset",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance),
-		sliderOptions: [
+		inputOptions: [
 			{
 				variable: "distance",
 				min: -25,
@@ -130,7 +121,7 @@ const subpathFeatures = {
 	outline: {
 		name: "Outline",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance),
-		sliderOptions: [
+		inputOptions: [
 			{
 				variable: "distance",
 				min: 0,
@@ -146,8 +137,7 @@ export type SubpathFeatureKey = keyof typeof subpathFeatures;
 export type SubpathFeatureOptions = {
 	name: string;
 	callback: SubpathCallback;
-	sliderOptions?: SliderOption[];
+	inputOptions?: InputOption[];
 	triggerOnMouseMove?: boolean;
-	chooseTVariant?: boolean;
 };
 export default subpathFeatures as Record<SubpathFeatureKey, SubpathFeatureOptions>;

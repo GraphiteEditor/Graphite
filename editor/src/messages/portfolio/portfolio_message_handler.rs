@@ -231,7 +231,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				percent,
 				status,
 			} => {
-				debug!("ImaginateSetGeneratingStatus: {:?} {:?} {:?} {:?}", document_id, layer_path, node_path, percent);
 				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 				if let Some(percentage) = percent {
 					responses.push_back(
@@ -360,13 +359,17 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document.set_save_state(document_is_saved);
 						self.load_document(document, document_id, responses);
 					}
-					Err(e) => responses.push_back(
-						DialogMessage::DisplayDialogError {
-							title: "Failed to open document".to_string(),
-							description: e.to_string(),
+					Err(e) => {
+						if !document_is_auto_saved {
+							responses.push_back(
+								DialogMessage::DisplayDialogError {
+									title: "Failed to open document".to_string(),
+									description: e.to_string(),
+								}
+								.into(),
+							);
 						}
-						.into(),
-					),
+					}
 				}
 			}
 			// TODO: Paste message is unused, delete it?
