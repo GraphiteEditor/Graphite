@@ -34,6 +34,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		let shape_editor = &self.shape_editor;
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
 
+		// set og to default whenevever we being an op with path tool
+		//TODO: check all these values in selected to see if they change on pointer move
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
 			&mut self.pivot,
@@ -49,17 +51,19 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				selected.revert_operation();
 				typing.clear();
 			}
-			if let TransformOperation::Scaling(_) = self.transform_operation {
+			let mut point_count: usize = 0;
+			if using_path_tool {
+				*selected.original_transforms = OriginalTransforms::default();
 				let path = shape_editor.selected_layers_ref();
 				let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap_or_default();
 				let points = shape_editor.selected_points(&document.document_legacy);
-				let mut count: usize = 0;
+
 				*selected.pivot = points
 					.map(|point| {
-						count += 1;
+						point_count += 1;
 						viewspace.transform_point2(point.position)
 					})
-					.sum::<DVec2>() / count as f64;
+					.sum::<DVec2>() / point_count as f64;
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
@@ -140,11 +144,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				if selected_layers.is_empty() {
 					return;
 				}
-
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
 
 				match &mut selected.original_transforms {
 					OriginalTransforms::Layer(layer_map) => {
@@ -186,19 +188,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				if self.typing.digits.is_empty() {
 					let delta_pos = ipp.mouse.position - self.mouse_position;
-					let mut point_count: usize = 0;
-					if using_path_tool {
-						let path = shape_editor.selected_layers_ref();
-						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap_or_default();
-						let points = shape_editor.selected_points(&document.document_legacy);
 
-						*selected.pivot = points
-							.map(|point| {
-								point_count += 1;
-								viewspace.transform_point2(point.position)
-							})
-							.sum::<DVec2>() / point_count as f64;
-					}
 					match self.transform_operation {
 						TransformOperation::None => unreachable!(),
 						TransformOperation::Grabbing(translation) => {
@@ -216,14 +206,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							if using_path_tool {
-								//fix this when we know what to do with rotating 1 point
-								if point_count > 1 {
-									self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
-								}
-							} else {
-								self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
-							}
+
+							//TODO: fix this when we know what to do with rotating 1 point
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -241,7 +226,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
 						}
 					};
-				}
+				} //TODO: check here
 				self.mouse_position = ipp.mouse.position;
 			}
 			SelectionChanged => {

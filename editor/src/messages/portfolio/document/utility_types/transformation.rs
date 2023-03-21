@@ -190,6 +190,7 @@ impl TransformOperation {
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				TransformOperation::None => unreachable!(),
 			};
+
 			selected.update_transforms(transformation, tool);
 		}
 	}
@@ -237,12 +238,12 @@ impl<'a> Selected<'a> {
 		shape_editor: Option<&'a ShapeEditor>,
 		tool_type: &'a ToolType,
 	) -> Self {
+		
+		//if its select tool and og transform was the default new path map
 		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
-		if (*tool_type == ToolType::Path) && (*original_transforms == OriginalTransforms::Layer(HashMap::new())) {
-			*original_transforms = OriginalTransforms::Path(HashMap::new());
-		}
+
 		match original_transforms {
 			OriginalTransforms::Layer(layer_map) => {
 				for path in selected {
@@ -330,35 +331,44 @@ impl<'a> Selected<'a> {
 				if tool {
 					let viewspace = self.document.generate_transform_relative_to_viewport(*layer_path).ok().unwrap_or_default();
 					let layerspace_rotation = viewspace.inverse() * transformation;
+
 					let initial_points = match self.original_transforms {
-						OriginalTransforms::Layer(_layer_map) => None,
+						OriginalTransforms::Layer(_layer_map) => {
+							warn!("Found Layer variant in original_transforms when Path wanted, returning identity transform for layer");
+							None
+						}
 						OriginalTransforms::Path(path_map) => path_map.get(&(layer_path[0], ManipulatorType::Anchor)),
 					};
 
 					let points = self.shape_editor.unwrap().selected_points(&self.document);
 					let subpath = self.document.layer(&layer_path).ok().and_then(|layer| layer.as_subpath());
-					for point in points.zip(initial_points.unwrap()) {
-						let mut group_id = 0;
-						for man_group in subpath.unwrap().manipulator_groups().enumerate() {
-							let points_in_group = man_group.1.selected_points();
-							for p in points_in_group {
-								if p.position == point.0.position {
-									group_id = *man_group.0;
+					match initial_points {
+						Some(original) => {
+							for point in points.zip(original) {
+								let mut group_id = 0;
+								for man_group in subpath.unwrap().manipulator_groups().enumerate() {
+									let points_in_group = man_group.1.selected_points();
+									for p in points_in_group {
+										if p.position == point.0.position {
+											group_id = *man_group.0;
+										}
+									}
 								}
+
+								let viewport_point = viewspace.transform_point2(*point.1);
+								let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+
+								let op = DocumentOperation::MoveManipulatorPoint {
+									layer_path: (*layer_path).to_vec(),
+									id: group_id, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
+									manipulator_type: point.0.manipulator_type,
+									position: new_pos_viewport.into(),
+								}
+								.into();
+								self.responses.push_back(op);
 							}
 						}
-
-						let viewport_point = viewspace.transform_point2(*point.1);
-						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-
-						let op = DocumentOperation::MoveManipulatorPoint {
-							layer_path: (*layer_path).to_vec(),
-							id: group_id, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
-							manipulator_type: point.0.manipulator_type,
-							position: new_pos_viewport.into(),
-						}
-						.into();
-						self.responses.push_back(op);
+						None => warn!("Initial Points empty, it should not be possible to reach here without points"),
 					}
 				}
 
