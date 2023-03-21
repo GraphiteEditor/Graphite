@@ -97,9 +97,8 @@ const subpathFeatures = {
 	},
 	curvature: {
 		name: "Curvature",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined, tVariant: TVariant): string => subpath.curvature(options.t, tVariant),
-		sliderOptions: [{ ...tSliderOptions, default: 0.2 }],
-		chooseTVariant: true,
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.curvature(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, { ...tSliderOptions, default: 0.2 }],
 	},
 	split: {
 		name: "Split",
@@ -143,7 +142,7 @@ const subpathFeatures = {
 	rotate: {
 		name: "Rotate",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.rotate(options.angle * Math.PI, 100, 100),
-		sliderOptions: [
+		inputOptions: [
 			{
 				variable: "angle",
 				min: 0,
