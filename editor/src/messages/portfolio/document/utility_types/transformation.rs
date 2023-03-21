@@ -238,7 +238,6 @@ impl<'a> Selected<'a> {
 		shape_editor: Option<&'a ShapeEditor>,
 		tool_type: &'a ToolType,
 	) -> Self {
-		
 		//if its select tool and og transform was the default new path map
 		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
