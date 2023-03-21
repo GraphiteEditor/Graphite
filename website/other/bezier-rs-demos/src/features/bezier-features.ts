@@ -467,7 +467,7 @@ const bezierFeatures = {
 	},
 	rotate: {
 		name: "Rotate",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.rotate(options.angle * Math.PI, 100, 100),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.rotate(options.angle * Math.PI, 125, 100),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [

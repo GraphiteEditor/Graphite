@@ -141,7 +141,7 @@ const subpathFeatures = {
 	},
 	rotate: {
 		name: "Rotate",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.rotate(options.angle * Math.PI, 100, 100),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.rotate(options.angle * Math.PI, 125, 100),
 		inputOptions: [
 			{
 				variable: "angle",
