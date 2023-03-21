@@ -231,7 +231,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				percent,
 				status,
 			} => {
-				debug!("ImaginateSetGeneratingStatus: {:?} {:?} {:?} {:?}", document_id, layer_path, node_path, percent);
 				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 				if let Some(percentage) = percent {
 					responses.push_back(

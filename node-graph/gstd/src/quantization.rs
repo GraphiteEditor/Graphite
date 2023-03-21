@@ -24,8 +24,6 @@ fn generate_quantization_fn(image_frame: ImageFrame, samples: u32, function: u32
 		.filter(|(i, _)| i % (image.data.len() / len) == 0)
 		.map(|(_, x)| vec![x.r() as f64, x.g() as f64, x.b() as f64, x.a() as f64])
 		.for_each(|x| x.into_iter().enumerate().for_each(|(i, value)| channels[i].push(value)));
-	log::info!("Quantizing {} samples", channels[0].len());
-	log::info!("In {} channels", channels.len());
 	let quantization: Vec<Quantization> = channels.into_iter().map(|x| generate_quantization_per_channel(x, samples)).collect();
 	core::array::from_fn(|i| quantization[i].clone())
 }
