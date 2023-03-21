@@ -1,3 +1,5 @@
+import { BEZIER_T_VALUE_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
+
 export const tSliderOptions = {
 	min: 0,
 	max: 1,
@@ -15,7 +17,7 @@ export const errorOptions = {
 };
 
 export const minimumSeparationOptions = {
-	variable: "minimum_seperation",
+	variable: "minimum_separation",
 	min: 0.001,
 	max: 0.25,
 	step: 0.001,
@@ -28,4 +30,18 @@ export const intersectionErrorOptions = {
 	max: 0.525,
 	step: 0.0025,
 	default: 0.02,
+};
+
+export const bezierTValueVariantOptions = {
+	variable: "TVariant",
+	default: 0,
+	inputType: "dropdown",
+	options: BEZIER_T_VALUE_VARIANTS,
+};
+
+export const subpathTValueVariantOptions = {
+	variable: "TVariant",
+	default: 0,
+	inputType: "dropdown",
+	options: SUBPATH_T_VALUE_VARIANTS,
 };

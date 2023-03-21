@@ -18,6 +18,12 @@ declare global {
 }
 
 window.document.title = "Bezier-rs Interactive Documentation";
+window.document.head.innerHTML += `
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=EB+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+`.trim();
 
 window.customElements.define("bezier-demo", BezierDemo);
 window.customElements.define("bezier-demo-pane", BezierDemoPane);
@@ -31,7 +37,6 @@ function renderBezierPane(featureName: BezierFeatureKey, container: HTMLElement 
 	demo.setAttribute("name", featureName);
 	demo.setAttribute("demoOptions", JSON.stringify(feature.demoOptions || {}));
 	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	demo.setAttribute("chooseTVariant", String(feature.chooseTVariant));
 	container?.append(demo);
 }
 
@@ -40,9 +45,8 @@ function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElemen
 	const demo = document.createElement("subpath-demo-pane");
 
 	demo.setAttribute("name", featureName);
-	demo.setAttribute("sliderOptions", JSON.stringify(feature.sliderOptions || []));
+	demo.setAttribute("inputOptions", JSON.stringify(feature.inputOptions || []));
 	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	demo.setAttribute("chooseTVariant", String(feature.chooseTVariant));
 	container?.append(demo);
 }
 
@@ -76,16 +80,16 @@ function renderExamples(): void {
 		renderSubpathPane(splitHash[1] as SubpathFeatureKey, document.getElementById("subpath-demos"));
 	} else {
 		window.document.body.innerHTML = `
-		<h1>Bezier-rs Interactive Documentation</h1>
-		<p>
+		<h1 class="website-header">Bezier-rs Interactive Documentation</h1>
+		<p class="website-description">
 			This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
 			<a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
 			for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
 		</p>
 		
-		<h2>Beziers</h2>
+		<h2 class="class-header">Beziers</h2>
 		<div id="bezier-demos"></div>
-		<h2>Subpaths</h2>
+		<h2 class="class-header">Subpaths</h2>
 		<div id="subpath-demos"></div>
 		`.trim();
 
