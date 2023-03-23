@@ -2,7 +2,7 @@ use super::*;
 
 use crate::compare::compare_points;
 use crate::utils::{f64_compare, Cap, TValue};
-use crate::{AppendType, Subpath};
+use crate::{AppendType, ManipulatorGroup, Subpath};
 
 use glam::DMat2;
 use std::f64::consts::PI;
@@ -357,6 +357,9 @@ impl Bezier {
 	/// while negative values will offset in the opposite direction.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
+		if self.is_single_point() {
+			return Subpath::from_bezier(self);
+		}
 		let reduced = self.reduce(None);
 		let mut scaled = Subpath::new(vec![], false);
 		reduced.iter().enumerate().for_each(|(index, bezier)| {
@@ -421,8 +424,14 @@ impl Bezier {
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
-		let first_segment = self.offset(distance);
-		let third_segment = self.reverse().offset(distance);
+		let (first_segment, third_segment) = if self.is_single_point() {
+			(
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance)], false),
+			)
+		} else {
+			(self.offset(distance), self.reverse().offset(distance))
+		};
 
 		if first_segment.is_empty() || third_segment.is_empty() {
 			return Subpath::new(vec![], false);
@@ -441,8 +450,14 @@ impl Bezier {
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	/// <iframe frameBorder="0" width="100%" height="550px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
 	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
-		let first_segment = self.graduated_offset(distance1, distance2);
-		let third_segment = self.reverse().graduated_offset(distance3, distance4);
+		let (first_segment, third_segment) = if self.is_single_point() {
+			(
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance1)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance1)], false),
+			)
+		} else {
+			(self.graduated_offset(distance1, distance2), self.reverse().graduated_offset(distance3, distance4))
+		};
 
 		if first_segment.is_empty() || third_segment.is_empty() {
 			return Subpath::new(vec![], false);
@@ -896,6 +911,44 @@ mod tests {
 
 		// Assert the second cap touches the line start point at the halfway point
 		assert!(outline.iter().nth(3).unwrap().evaluate(TValue::Parametric(0.5)).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
+	fn test_outline_single_point_circle() {
+		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(50., 50.), DVec2::new(0., 0.)).reverse();
+		let p = DVec2::new(25., 25.);
+
+		let line = Bezier::from_linear_dvec2(p, p);
+		let outline = line.outline::<EmptyId>(25., Cap::Round);
+		assert_eq!(outline, ellipse);
+
+		let cubic = Bezier::from_cubic_dvec2(p, p, p, p);
+		let outline_cubic = cubic.outline::<EmptyId>(25., Cap::Round);
+		assert_eq!(outline_cubic, ellipse);
+	}
+
+	#[test]
+	fn test_outline_single_point_square() {
+		let square: Subpath<EmptyId> = Subpath::from_anchors(
+			[
+				DVec2::new(25., 50.),
+				DVec2::new(50., 50.),
+				DVec2::new(50., 0.),
+				DVec2::new(25., 0.),
+				DVec2::new(0., 0.),
+				DVec2::new(0., 50.),
+			],
+			true,
+		);
+		let p = DVec2::new(25., 25.);
+
+		let line = Bezier::from_linear_dvec2(p, p);
+		let outline = line.outline::<EmptyId>(25., Cap::Square);
+		assert_eq!(outline, square);
+
+		let cubic = Bezier::from_cubic_dvec2(p, p, p, p);
+		let outline_cubic = cubic.outline::<EmptyId>(25., Cap::Square);
+		assert_eq!(outline_cubic, square);
 	}
 
 	#[test]

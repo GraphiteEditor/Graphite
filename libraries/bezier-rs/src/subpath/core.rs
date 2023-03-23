@@ -112,6 +112,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		&self.manipulator_groups
 	}
 
+	/// Returns if the Subpath is equivalent to a single point.
+	pub fn is_single_point(&self) -> bool {
+		if self.is_empty() {
+			return false;
+		}
+		let point = self.manipulator_groups[0].anchor;
+		self.manipulator_groups
+			.iter()
+			.all(|manipulator_group| manipulator_group.anchor.abs_diff_eq(point, MAX_ABSOLUTE_DIFFERENCE))
+	}
+
 	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.
 	pub fn curve_to_svg(&self, svg: &mut String, attributes: String) {
 		let curve_start_argument = format!("{SVG_ARG_MOVE}{} {}", self[0].anchor.x, self[0].anchor.y);

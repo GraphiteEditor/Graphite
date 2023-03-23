@@ -247,19 +247,10 @@ impl WasmBezier {
 		let t = parse_t_variant(&t_variant, raw_t);
 		let beziers: [Bezier; 2] = self.0.split(t);
 
-		let mut original_bezier_svg = String::new();
-		self.0.to_svg(
-			&mut original_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, WHITE),
-			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, WHITE),
-			HANDLE_ATTRIBUTES.to_string(),
-			HANDLE_LINE_ATTRIBUTES.to_string(),
-		);
-
 		let mut bezier_svg_1 = String::new();
 		beziers[0].to_svg(
 			&mut bezier_svg_1,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
@@ -268,13 +259,13 @@ impl WasmBezier {
 		let mut bezier_svg_2 = String::new();
 		beziers[1].to_svg(
 			&mut bezier_svg_2,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
 		);
 
-		wrap_svg_tag(format!("{original_bezier_svg}{bezier_svg_1}{bezier_svg_2}"))
+		wrap_svg_tag(format!("{}{bezier_svg_1}{bezier_svg_2}", self.get_bezier_path()))
 	}
 
 	pub fn trim(&self, raw_t1: f64, raw_t2: f64, t_variant: String) -> String {
@@ -284,7 +275,7 @@ impl WasmBezier {
 		let mut trimmed_bezier_svg = String::new();
 		trimmed_bezier.to_svg(
 			&mut trimmed_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),

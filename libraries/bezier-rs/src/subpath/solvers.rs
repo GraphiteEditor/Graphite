@@ -1,6 +1,6 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{line_intersection, SubpathTValue};
+use crate::utils::{compute_circular_subpath_details, line_intersection, SubpathTValue};
 use crate::TValue;
 
 use glam::{DMat2, DVec2};
@@ -48,7 +48,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
 	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
@@ -190,20 +190,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 		}
 
-		let center_to_arc_point = arc_point - center;
-
-		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
-		let handle_offset_factor = 4. / 3. * (angle / 4.).tan();
-
-		(
-			left - center_to_left.perp() * handle_offset_factor,
-			ManipulatorGroup::new(
-				arc_point,
-				Some(arc_point + center_to_arc_point.perp() * handle_offset_factor),
-				Some(arc_point - center_to_arc_point.perp() * handle_offset_factor),
-			),
-			right + center_to_right.perp() * handle_offset_factor,
-		)
+		compute_circular_subpath_details(left, arc_point, right, center, Some(angle))
 	}
 
 	/// Returns the necessary information to create a round cap between the end of `self` and the beginning of `other`.
@@ -212,28 +199,15 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - The new manipulator group to be added
 	/// - The `in_handle` for the first manipulator group of `other`
 	pub(crate) fn round_cap(&self, other: &Subpath<ManipulatorGroupId>) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
-		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
-		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
-
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 
 		let center = (right + left) / 2.;
 		let center_to_right = right - center;
-		let center_to_left = left - center;
 
 		let arc_point = center + center_to_right.perp();
-		let center_to_arc_point = arc_point - center;
 
-		(
-			left - center_to_left.perp() * HANDLE_OFFSET_FACTOR,
-			ManipulatorGroup::new(
-				arc_point,
-				Some(arc_point + center_to_arc_point.perp() * HANDLE_OFFSET_FACTOR),
-				Some(arc_point - center_to_arc_point.perp() * HANDLE_OFFSET_FACTOR),
-			),
-			right + center_to_right.perp() * HANDLE_OFFSET_FACTOR,
-		)
+		compute_circular_subpath_details(left, arc_point, right, center, None)
 	}
 
 	/// Returns the two manipulator groups that create a sqaure cap between the end of `self` and the beginning of `other`.
@@ -633,6 +607,7 @@ mod tests {
 
 	#[test]
 	fn round_join_counter_clockwise_rotation() {
+		// Test case where the round join is drawn in the counter clockwise direction between two consecutive offsets
 		let subpath = Subpath::new(
 			vec![
 				ManipulatorGroup {
@@ -673,6 +648,7 @@ mod tests {
 
 	#[test]
 	fn round_join_clockwise_rotation() {
+		// Test case where the round join is drawn in the clockwise direction between two consecutive offsets
 		let subpath = Subpath::new(
 			vec![
 				ManipulatorGroup {
@@ -709,74 +685,5 @@ mod tests {
 
 		assert!((round_point - middle).angle_between(round_start - middle) < 0.);
 		assert!((round_end - middle).angle_between(round_point - middle) < 0.);
-	}
-
-	#[test]
-	fn round_join_test() {
-		// TODO: Case where reduce ends in a really short segment
-		// Results in a really weird in_tangent for the round join
-		//M38 35 C40 40 120 120 130 30 Q175 90 145 150 Q70 185 38 35 Z
-		let subpath = Subpath::new(
-			vec![
-				ManipulatorGroup {
-					anchor: DVec2::new(145., 150.),
-					out_handle: Some(DVec2::new(70., 185.)),
-					in_handle: None,
-					id: EmptyId,
-				},
-				ManipulatorGroup {
-					anchor: DVec2::new(38., 35.),
-					out_handle: Some(DVec2::new(40., 40.)),
-					in_handle: None,
-					id: EmptyId,
-				},
-				ManipulatorGroup {
-					anchor: DVec2::new(130., 30.),
-					out_handle: Some(DVec2::new(175., 90.)),
-					in_handle: Some(DVec2::new(120., 120.)),
-					id: EmptyId,
-				},
-			],
-			false,
-		);
-
-		let offset = subpath.reverse().offset(10., utils::Join::Round);
-		let mut str = String::new();
-		offset.to_svg(&mut str, "stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(), String::new(), String::new(), String::new());
-		println!("{}", str);
-	}
-
-	#[test]
-	fn round_join_test_2() {
-		// TODO: Case where almost linear join gets wonky??
-		// M20 20 C10 90 60 40 150 40 L 73 92 Q3 131 100 100
-		let subpath = Subpath::new(
-			vec![
-				ManipulatorGroup {
-					anchor: DVec2::new(150., 40.),
-					out_handle: None,
-					in_handle: None,
-					id: EmptyId,
-				},
-				ManipulatorGroup {
-					anchor: DVec2::new(73., 92.),
-					out_handle: Some(DVec2::new(3., 131.)),
-					in_handle: None,
-					id: EmptyId,
-				},
-				ManipulatorGroup {
-					anchor: DVec2::new(100., 100.),
-					out_handle: None,
-					in_handle: None,
-					id: EmptyId,
-				},
-			],
-			false,
-		);
-
-		let offset = subpath.offset(10., utils::Join::Round);
-		let mut str = String::new();
-		offset.to_svg(&mut str, "stroke=\"black\" stroke-width=\"2\" fill=\"none\"".to_string(), String::new(), String::new(), String::new());
-		println!("{}", str);
 	}
 }
