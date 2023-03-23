@@ -1,31 +1,31 @@
 <script lang="ts">
-	import { debouncer } from "@/utility-functions/debounce";
-	import type { Widget } from "@/wasm-communication/messages";
-	import { narrowWidgetProps } from "@/wasm-communication/messages";
-	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@/wasm-communication/messages";
+	import { debouncer } from "@graphite/utility-functions/debounce";
+	import type { Widget } from "@graphite/wasm-communication/messages";
+	import { narrowWidgetProps } from "@graphite/wasm-communication/messages";
+	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@graphite/wasm-communication/messages";
 
-	import PivotAssist from "@/components/widgets/assists/PivotAssist.svelte";
-	import BreadcrumbTrailButtons from "@/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
-	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
-	import ParameterExposeButton from "@/components/widgets/buttons/ParameterExposeButton.svelte";
-	import PopoverButton from "@/components/widgets/buttons/PopoverButton.svelte";
-	import TextButton from "@/components/widgets/buttons/TextButton.svelte";
-	import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.svelte";
-	import ColorInput from "@/components/widgets/inputs/ColorInput.svelte";
-	import DropdownInput from "@/components/widgets/inputs/DropdownInput.svelte";
-	import FontInput from "@/components/widgets/inputs/FontInput.svelte";
-	import LayerReferenceInput from "@/components/widgets/inputs/LayerReferenceInput.svelte";
-	import NumberInput from "@/components/widgets/inputs/NumberInput.svelte";
-	import OptionalInput from "@/components/widgets/inputs/OptionalInput.svelte";
-	import RadioInput from "@/components/widgets/inputs/RadioInput.svelte";
-	import SwatchPairInput from "@/components/widgets/inputs/SwatchPairInput.svelte";
-	import TextAreaInput from "@/components/widgets/inputs/TextAreaInput.svelte";
-	import TextInput from "@/components/widgets/inputs/TextInput.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import PivotAssist from "@graphite/components/widgets/assists/PivotAssist.svelte";
+	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
+	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
+	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
+	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
+	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
+	import LayerReferenceInput from "@graphite/components/widgets/inputs/LayerReferenceInput.svelte";
+	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
+	import OptionalInput from "@graphite/components/widgets/inputs/OptionalInput.svelte";
+	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
+	import SwatchPairInput from "@graphite/components/widgets/inputs/SwatchPairInput.svelte";
+	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
+	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import { getContext } from "svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	const SUFFIX_WIDGETS = ["PopoverButton"];
 

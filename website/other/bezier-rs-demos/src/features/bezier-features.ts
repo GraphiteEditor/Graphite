@@ -1,6 +1,6 @@
-import { WasmBezier } from "@/../wasm/pkg";
-import { tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@/utils/options";
-import { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption, BEZIER_T_VALUE_VARIANTS } from "@/utils/types";
+import { WasmBezier } from "@graphite/../wasm/pkg";
+import { tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@graphite/utils/options";
+import { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption, BEZIER_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const bezierFeatures = {
 	constructor: {

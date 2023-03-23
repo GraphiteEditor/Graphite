@@ -5,7 +5,7 @@
 // The library replaces the Reflect API on the window to support more features.
 import "reflect-metadata";
 
-import App from "@/App.svelte";
+import App from "@graphite/App.svelte";
 
 document.body.setAttribute("data-app-container", "");
 

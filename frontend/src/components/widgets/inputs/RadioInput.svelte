@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type RadioEntries, type RadioEntryData } from "@/wasm-communication/messages";
+	import { type RadioEntries, type RadioEntryData } from "@graphite/wasm-communication/messages";
 
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:selectedIndex"],
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();

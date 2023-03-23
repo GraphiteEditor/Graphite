@@ -65,7 +65,7 @@ module.exports = {
 		"no-bitwise": "off",
 		"no-shadow": "off",
 		"no-use-before-define": "off",
-		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
+		"no-restricted-imports": ["error", { patterns: [".*", "!@graphite/*"] }],
 
 		// TypeScript plugin config
 		"@typescript-eslint/indent": "off",
