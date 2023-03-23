@@ -1091,9 +1091,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc_codegen_spirv"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b803b49618cdde99e1065af9415f489b993374765e30a6b80f2bea2cca65914"
+checksum = "c6de1de7d66862f309ca53b040507527f1d9cd89e590105319d4f584e01e18c7"
 dependencies = [
  "ar",
  "either",
@@ -1118,9 +1118,9 @@ dependencies = [
 
 [[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330aedc6b09b9bf3c58cc7fb942c1377310a9cff00fae9e4f6cc09a7a28f542e"
+checksum = "c393e1e763a7a1104ab5d34b17c1ee97ca4148b49801488158974dcf135e83fc"
 dependencies = [
  "rspirv",
  "serde",
@@ -1303,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93f656f97ac742e5603843d2ea3ea644cdf5630635b3320ec87666385766e7ab"
+checksum = "e617e4b134c14cda656d6553ff007c532876f7e006d0da8060ccf6b3669b6c86"
 dependencies = [
  "memchr",
  "raw-string",
@@ -1317,9 +1317,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "210182f2a5ac041abed607fe1e8f9b09d10fa8761c14c81d499fca62698a19dc"
+checksum = "19bd20655904cb6136aeb82da8fd21bcc0ffca973d2794da8acc530efd66b854"
 dependencies = [
  "bitflags",
  "glam",
@@ -1330,9 +1330,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b96c4f0d292ef14fd88e645abc207a1252c91632e219af3f2e2e885ae1052054"
+checksum = "16e4c2790b4cac7b2f81037c3108e81aecd7713a975ded4f400a1b05fe4168dd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1342,9 +1342,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "929da244d6ac6735f79dcf02e91ba8de9404699c9b9eb247677a4af90dd71857"
+checksum = "5a8f7324f64b41beeaae97030f6128ad72747466b4c03459c3714adb84bc6f63"
 
 [[package]]
 name = "spirv-tools"

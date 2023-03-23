@@ -179,6 +179,18 @@ impl<'a> TaggedValue {
 		}
 	}
 
+	pub fn to_primitive_string(&self) -> String {
+		match self {
+			TaggedValue::None => "()".to_string(),
+			TaggedValue::String(x) => x.clone(),
+			TaggedValue::U32(x) => x.to_string(),
+			TaggedValue::F32(x) => x.to_string(),
+			TaggedValue::F64(x) => x.to_string(),
+			TaggedValue::Bool(x) => x.to_string(),
+			_ => panic!("Cannot convert to primitive string"),
+		}
+	}
+
 	pub fn ty(&self) -> Type {
 		use graphene_core::TypeDescriptor;
 		use std::borrow::Cow;

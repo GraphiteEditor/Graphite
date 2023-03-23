@@ -109,7 +109,7 @@ impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{}", n.0)).collect(),
-			ConstructionArgs::Value(value) => vec![format!("{:?}", value)],
+			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
 		}
 	}
 }

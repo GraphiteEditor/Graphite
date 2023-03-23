@@ -16,7 +16,8 @@ where
 	type Output = <Second as Node<'i, <First as Node<'i, Input>>::Output>>::Output;
 	fn eval(&'i self, input: Input) -> Self::Output {
 		let arg = self.first.eval(input);
-		self.second.eval(arg)
+		let second = &self.second;
+		second.eval(arg)
 	}
 }
 

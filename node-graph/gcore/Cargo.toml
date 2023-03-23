@@ -31,7 +31,7 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 	"glam",
 ], optional = true, default-features = false }
 
-spirv-std = { version = "0.5", features = ["glam"], optional = true }
+spirv-std = { version = "0.6", optional = true }
 bytemuck = { version = "1.8", features = ["derive"] }
 async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = [

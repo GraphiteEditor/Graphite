@@ -71,12 +71,16 @@ pub fn construct_argument(input: &ShaderInput<()>, position: u32) -> String {
 	match input {
 		ShaderInput::Constant(constant) => format!("#[spirv({})] i{}: {},", constant_attribute(constant), position, constant.ty()),
 		ShaderInput::UniformBuffer(_, ty) => {
-			format!("#[spirv(uniform, descriptor_set = 0, binding = {})] i{}: {}", position, position, ty,)
+			format!("#[spirv(uniform, descriptor_set = 0, binding = {})] i{}: &[{}]", position, position, ty,)
 		}
 		ShaderInput::StorageBuffer(_, ty) | ShaderInput::OutputBuffer(_, ty) | ShaderInput::ReadBackBuffer(_, ty) => {
-			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: {}", position, position, ty,)
+			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &[{}]", position, position, ty,)
+		}
+		ShaderInput::OutputBuffer(_, ty) => {
+			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &mut[{}]", position, position, ty,)
 		}
 		ShaderInput::WorkGroupMemory(_, ty) => format!("#[spirv(workgroup_memory] i{}: {}", position, ty,),
+		_ => todo!(),
 	}
 }
 
@@ -107,6 +111,8 @@ pub fn serialize_gpu(network: &ProtoNetwork, io: &ShaderIO) -> anyhow::Result<St
 		format!("n{id}")
 	}
 
+	dbg!(&network);
+	dbg!(&io);
 	let inputs = io.inputs.iter().enumerate().map(|(i, input)| construct_argument(input, i as u32)).collect::<Vec<_>>();
 
 	let mut nodes = Vec::new();

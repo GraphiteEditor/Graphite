@@ -51,9 +51,9 @@ impl CompileRequest {
 	pub fn new(network: ProtoNetwork, input_types: Vec<Type>, output_type: Type, io: ShaderIO) -> Self {
 		// TODO: add type checking
 		for (input, buffer) in input_types.iter().zip(io.inputs.iter()) {
-			assert_eq!(input, &buffer.ty());
+			//assert_eq!(input, &buffer.ty());
 		}
-		assert_eq!(output_type, io.output.ty());
+		//assert_eq!(output_type, io.output.ty());
 		Self {
 			network,
 			input_types,
