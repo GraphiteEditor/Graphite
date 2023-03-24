@@ -6,7 +6,6 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::vector::style::{Fill, FillType, Stroke};
-use graphene_core::vector::SelectedType;
 use transform_utils::LayerBounds;
 
 use super::{resolve_document_node_type, VectorDataModification};
@@ -71,7 +70,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.node_graph.layer_path = Some(self.layer.to_vec());
 		self.node_graph.nested_path.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
-		self.responses.add(DocumentMessage::NodeGraphFrameGenerate);
+		let layer_path = self.layer.to_vec();
+		self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
 	}
 	fn fill_set(&mut self, fill: Fill) {
 		self.modify_inputs("Fill", |inputs| {
@@ -143,6 +143,9 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn vector_modify(&mut self, modification: VectorDataModification) {
+		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
+		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
+
 		self.modify_inputs("Path Generator", |inputs| {
 			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
 				panic!("Path generator does not have subpath and mirror angle inputs");
@@ -161,91 +164,23 @@ impl<'a> ModifyInputsContext<'a> {
 				return;
 			};
 
-			match modification {
-				VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group } => {
-					let subpath = &mut subpaths[subpath_index];
-					subpath.insert_manipulator_group(subpath.len(), manipulator_group)
-				}
-				VectorDataModification::AddStartManipulatorGroup { subpath_index, manipulator_group } => {
-					let subpath = &mut subpaths[subpath_index];
-					subpath.insert_manipulator_group(0, manipulator_group)
-				}
-				VectorDataModification::AddManipulatorGroup { manipulator_group, after_id } => {
-					for subpath in subpaths {
-						if let Some(index) = subpath.manipulator_index_from_id(after_id) {
-							subpath.insert_manipulator_group(index + 1, manipulator_group);
-							break;
-						}
-					}
-				}
-				VectorDataModification::RemoveManipulatorGroup { id } => {
-					for subpath in subpaths {
-						if let Some(index) = subpath.manipulator_index_from_id(id) {
-							subpath.remove_manipulator_group(index);
-							break;
-						}
-					}
-				}
-				VectorDataModification::RemoveManipulatorPoint { point } => {
-					for subpath in subpaths {
-						if point.manipulator_type == SelectedType::Anchor {
-							if let Some(index) = subpath.manipulator_index_from_id(point.group) {
-								subpath.remove_manipulator_group(index);
-								break;
-							}
-						} else if let Some(group) = subpath.manipulator_mut_from_id(point.group) {
-							if point.manipulator_type == SelectedType::InHandle {
-								group.in_handle = None;
-							} else if point.manipulator_type == SelectedType::OutHandle {
-								group.out_handle = None;
-							}
-						}
-					}
-				}
-				VectorDataModification::SetClosed { index, closed } => {
-					subpaths[index].set_closed(closed);
-				}
-				VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle } => {
-					if !mirror_angle {
-						mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
-					} else if !mirror_angle_groups.contains(&id) {
-						mirror_angle_groups.push(id);
-					}
-				}
-				VectorDataModification::SetManipulatorPosition { point, position } => {
-					for subpath in subpaths {
-						if let Some(manipulator) = subpath.manipulator_mut_from_id(point.group) {
-							match point.manipulator_type {
-								SelectedType::Anchor => manipulator.anchor = position,
-								SelectedType::InHandle => manipulator.in_handle = Some(position),
-								SelectedType::OutHandle => manipulator.out_handle = Some(position),
-							}
-							if point.manipulator_type != SelectedType::Anchor && mirror_angle_groups.contains(&point.group) {
-								let reflect = |opposite: DVec2| {
-									(manipulator.anchor - position)
-										.try_normalize()
-										.map(|direction| direction * (opposite - manipulator.anchor).length() + manipulator.anchor)
-										.unwrap_or(opposite)
-								};
-								match point.manipulator_type {
-									SelectedType::InHandle => manipulator.out_handle = manipulator.out_handle.map(reflect),
-									SelectedType::OutHandle => manipulator.in_handle = manipulator.in_handle.map(reflect),
-									_ => {}
-								}
-							}
+			[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 
-							break;
-						}
-					}
-				}
-				VectorDataModification::ToggleManipulatorHandleMirroring { id } => {
-					if mirror_angle_groups.contains(&id) {
-						mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
-					} else {
-						mirror_angle_groups.push(id);
-					}
-				}
-			}
+			transform_utils::VectorModificationState { subpaths, mirror_angle_groups }.modify(modification);
+
+			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
+		});
+		self.modify_inputs("Transform", |inputs| {
+			let layer_transform = transform_utils::get_current_transform(inputs);
+			let normalised_pivot = transform_utils::get_current_normalised_pivot(inputs);
+
+			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalised_pivot + old_bounds_min;
+			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalised_pivot + new_bounds_min;
+			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
+			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
+
+			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			transform_utils::update_transform(inputs, transform);
 		});
 	}
 }

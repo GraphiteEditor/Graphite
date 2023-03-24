@@ -130,6 +130,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// TODO: Consider the shared point between adjacent beziers.
 		inflection_t_values
 	}
+
+	/// Does a path contain a point? Based on the non zero winding
+	pub fn contains_point(&self, target_point: DVec2) -> bool {
+		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
+	}
 }
 
 #[cfg(test)]

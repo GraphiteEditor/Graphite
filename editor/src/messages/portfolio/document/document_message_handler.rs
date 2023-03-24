@@ -640,8 +640,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 
 				responses.add(GraphOperationMessage::TransformSet {
-					layer: path,
-					transform: transform,
+					layer: path.clone(),
+					transform,
 					transform_in: TransformIn::Local,
 				});
 

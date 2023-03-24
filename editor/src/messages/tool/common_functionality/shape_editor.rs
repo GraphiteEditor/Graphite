@@ -107,7 +107,10 @@ impl ShapeState {
 
 	/// Set the shapes we consider for selection, we will choose draggable manipulators from these shapes.
 	pub fn set_selected_layers(&mut self, target_layers: Vec<Vec<LayerId>>) {
-		self.selected_shape_state = target_layers.into_iter().map(|layer| (layer, SelectedLayerState::default())).collect();
+		self.selected_shape_state.retain(|layer_path, _| target_layers.contains(layer_path));
+		for layer in target_layers {
+			self.selected_shape_state.entry(layer).or_insert_with(SelectedLayerState::default);
+		}
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
@@ -372,8 +375,8 @@ impl ShapeState {
 
 		let vector_data = document.layer(layer_path).ok()?.as_vector_data()?;
 
-		for (subpath_index, subpath) in vector_data.subpaths.iter().enumerate() {
-			for bezier in subpath.iter() {
+		for subpath in &vector_data.subpaths {
+			for (manipulator_index, bezier) in subpath.iter().enumerate() {
 				let t = bezier.project(layer_pos, projection_options);
 				let layerspace = bezier.evaluate(TValue::Parametric(t));
 
@@ -382,8 +385,8 @@ impl ShapeState {
 
 				if distance_squared < closest_distance_squared {
 					closest_distance_squared = distance_squared;
-					let start = subpath.manipulator_groups()[subpath_index];
-					let end = subpath.manipulator_groups()[(subpath_index + 1) % subpath.len()];
+					let start = subpath.manipulator_groups()[manipulator_index];
+					let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
 					result = Some((start.id, end.id, bezier, t));
 				}
 			}
@@ -411,7 +414,7 @@ impl ShapeState {
 				let manipulator_group = bezier_rs::ManipulatorGroup::new(first.end(), first.handle_end(), second.handle_start());
 				let insert = GraphOperationMessage::Vector {
 					layer: layer_path.clone(),
-					modification: VectorDataModification::AddManipulatorGroup { manipulator_group, after_id: end },
+					modification: VectorDataModification::AddManipulatorGroup { manipulator_group, after_id: start },
 				};
 				responses.add(insert);
 

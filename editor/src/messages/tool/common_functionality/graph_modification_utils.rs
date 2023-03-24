@@ -14,12 +14,12 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: 
 
 	responses.push_back(
 		Operation::AddNodeGraphFrame {
-			path: layer_path,
+			path: layer_path.clone(),
 			insert_index: -1,
 			transform: DAffine2::ZERO.to_cols_array(),
 			network,
 		}
 		.into(),
 	);
-	responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+	responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
 }

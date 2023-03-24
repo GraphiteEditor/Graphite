@@ -1,7 +1,7 @@
 use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
-use crate::intersection::{intersect_quad_bez_path, Quad};
+use crate::intersection::{intersect_quad_bez_path, intersect_quad_subpath, Quad};
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
@@ -114,7 +114,12 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _render_data: &RenderData) {
-		if intersect_quad_bez_path(quad, &self.bounds(), true) {
+		if let Some(vector_data) = &self.vector_data {
+			let filled_style = vector_data.style.fill().is_some();
+			if vector_data.subpaths.iter().any(|subpath| intersect_quad_subpath(quad, subpath, filled_style || subpath.closed())) {
+				intersections.push(path.clone());
+			}
+		} else if intersect_quad_bez_path(quad, &self.bounds(), true) {
 			intersections.push(path.clone());
 		}
 	}

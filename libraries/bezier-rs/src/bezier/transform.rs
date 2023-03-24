@@ -163,7 +163,7 @@ impl Bezier {
 	}
 
 	/// Add the bezier endpoints if not already present, and combine and sort the dimensional extrema.
-	fn get_extrema_t_list(&self) -> Vec<f64> {
+	pub(crate) fn get_extrema_t_list(&self) -> Vec<f64> {
 		let mut extrema = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
 		extrema.append(&mut vec![0., 1.]);
 		extrema.dedup();

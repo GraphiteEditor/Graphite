@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::TValue;
+use crate::utils::{solve_cubic, solve_quadratic, TValue};
 
 use glam::DMat2;
 use std::ops::Range;
@@ -402,6 +402,105 @@ impl Bezier {
 		let handle1 = self.non_normalized_tangent(1.) / 3. + self.end;
 		let handle2 = other.start - other.non_normalized_tangent(0.) / 3.;
 		Bezier::from_cubic_dvec2(self.end, handle1, handle2, other.start)
+	}
+
+	/// Compute the winding order (number of times crossing an infinate line to the left of the point)
+	///
+	/// Assumes curve is split at the extrema.
+	fn pre_split_winding_number(&self, target_point: DVec2) -> i32 {
+		// Clockwise is -1, anticlockwise is +1 (with +y as up)
+		// Looking only to the left (-x) of the target_point
+		let resulting_sign = if self.end.y > self.start.y {
+			if target_point.y < self.start.y || target_point.y >= self.end.y {
+				return 0;
+			}
+			-1
+		} else if self.end.y < self.start.y {
+			if target_point.y < self.end.y || target_point.y >= self.start.y {
+				return 0;
+			}
+			1
+		} else {
+			return 0;
+		};
+		match &self.handles {
+			BezierHandles::Linear => {
+				if target_point.x < self.start.x.min(self.end.x) {
+					return 0;
+				}
+				if target_point.x >= self.start.x.max(self.end.x) {
+					return resulting_sign;
+				}
+				// line equation ax + by = c
+				let a = self.end.y - self.start.y;
+				let b = self.start.x - self.end.x;
+				let c = a * self.start.x + b * self.start.y;
+				if (a * target_point.x + b * target_point.y - c) * (resulting_sign as f64) <= 0.0 {
+					resulting_sign
+				} else {
+					0
+				}
+			}
+			BezierHandles::Quadratic { handle: p1 } => {
+				if target_point.x < self.start.x.min(self.end.x).min(p1.x) {
+					return 0;
+				}
+				if target_point.x >= self.start.x.max(self.end.x).max(p1.x) {
+					return resulting_sign;
+				}
+				let a = self.end.y - 2.0 * p1.y + self.start.y;
+				let b = 2.0 * (p1.y - self.start.y);
+				let c = self.start.y - target_point.y;
+
+				let discriminant = b * b - 4. * a * c;
+				let two_times_a = 2. * a;
+				for t in solve_quadratic(discriminant, two_times_a, b, c) {
+					if (0.0..=1.0).contains(&t) {
+						let x = self.evaluate(TValue::Parametric(t)).x;
+						if target_point.x >= x {
+							return resulting_sign;
+						} else {
+							return 0;
+						}
+					}
+				}
+				0
+			}
+			BezierHandles::Cubic { handle_start: p1, handle_end: p2 } => {
+				if target_point.x < self.start.x.min(self.end.x).min(p1.x).min(p2.x) {
+					return 0;
+				}
+				if target_point.x >= self.start.x.max(self.end.x).max(p1.x).max(p2.x) {
+					return resulting_sign;
+				}
+				let a = self.end.y - 3.0 * p2.y + 3.0 * p1.y - self.start.y;
+				let b = 3.0 * (p2.y - 2.0 * p1.y + self.start.y);
+				let c = 3.0 * (p1.y - self.start.y);
+				let d = self.start.y - target_point.y;
+				for t in solve_cubic(a, b, c, d) {
+					if (0.0..=1.0).contains(&t) {
+						let x = self.evaluate(TValue::Parametric(t)).x;
+						if target_point.x >= x {
+							return resulting_sign;
+						} else {
+							return 0;
+						}
+					}
+				}
+				0
+			}
+		}
+	}
+
+	/// Compute the winding number contribution of a single segment.
+	///
+	/// Cast a ray to the left and count intersections.
+	pub fn winding(&self, target_point: DVec2) -> i32 {
+		let extrema = self.get_extrema_t_list();
+		extrema
+			.windows(2)
+			.map(|t| self.trim(TValue::Parametric(t[0]), TValue::Parametric(t[1])).pre_split_winding_number(target_point))
+			.sum()
 	}
 }
 
