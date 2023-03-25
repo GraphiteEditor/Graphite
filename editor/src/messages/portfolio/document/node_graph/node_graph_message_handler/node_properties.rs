@@ -691,20 +691,43 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateServerStatus::Connected => "Connected",
 		};
 		let widgets = vec![
-			WidgetHolder::text_widget("Server"),
-			WidgetHolder::unrelated_separator(),
-			IconButton::new("Settings", 24)
-				.tooltip("Preferences: Imaginate")
-				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
-				.widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status),
-			WidgetHolder::related_separator(),
-			IconButton::new("Reload", 24)
-				.tooltip("Refresh connection status")
-				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
-				.widget_holder(),
-		];
+			vec![
+				WidgetHolder::text_widget("Server"),
+				WidgetHolder::unrelated_separator(),
+				IconButton::new("Settings", 24)
+					.tooltip("Preferences: Imaginate")
+					.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
+					.widget_holder(),
+				WidgetHolder::unrelated_separator(),
+				WidgetHolder::bold_text(status),
+			],
+			if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
+				vec![
+					WidgetHolder::unrelated_separator(),
+					TextButton::new("Help")
+						.tooltip("Learn how to connect Imaginate to an image generation server")
+						.on_update(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://github.com/GraphiteEditor/Graphite/discussions/1089".to_string(),
+							}
+							.into()
+						})
+						.widget_holder(),
+				]
+			} else {
+				vec![]
+			},
+			vec![
+				WidgetHolder::related_separator(),
+				IconButton::new("Reload", 24)
+					.tooltip("Refresh connection status")
+					.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
+					.widget_holder(),
+			],
+		]
+		.into_iter()
+		.flatten()
+		.collect();
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
