@@ -602,12 +602,43 @@ impl Color {
 	pub fn map_rgb<F: Fn(f32) -> f32>(&self, f: F) -> Self {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
 	}
-	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
-		Color {
-			red: f(self.red, other.red).clamp(0., 1.),
-			green: f(self.green, other.green).clamp(0., 1.),
-			blue: f(self.blue, other.blue).clamp(0., 1.),
+
+	pub fn to_unassociated_alpha(&self) -> Self {
+		let factor = 1. / self.alpha;
+		Self {
+			red: self.red * factor,
+			green: self.green * factor,
+			blue: self.blue * factor,
 			alpha: self.alpha,
+		}
+	}
+
+	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
+		let background = self.to_unassociated_alpha();
+		Color {
+			red: f(background.red, other.red).clamp(0., 1.),
+			green: f(background.green, other.green).clamp(0., 1.),
+			blue: f(background.blue, other.blue).clamp(0., 1.),
+			alpha: other.alpha,
+		}
+	}
+
+	pub fn multiply_alpha(&self, alpha: f32) -> Self {
+		Self {
+			red: self.red * alpha,
+			green: self.green * alpha,
+			blue: self.blue * alpha,
+			alpha: self.alpha * alpha,
+		}
+	}
+
+	pub fn alpha_blend(&self, other: Color) -> Self {
+		let inv_alpha = 1. - other.alpha;
+		Self {
+			red: self.red * inv_alpha + other.red,
+			green: self.green * inv_alpha + other.green,
+			blue: self.blue * inv_alpha + other.blue,
+			alpha: self.alpha * inv_alpha + other.alpha,
 		}
 	}
 }

@@ -19,3 +19,5 @@ pub mod executor;
 pub mod quantization;
 
 pub use graphene_core::*;
+
+pub mod brush;

@@ -9,12 +9,16 @@ pub use std::borrow::Cow;
 pub struct NodeIOTypes {
 	pub input: Type,
 	pub output: Type,
-	pub parameters: Vec<(Type, Type)>,
+	pub parameters: Vec<Type>,
 }
 
 impl NodeIOTypes {
-	pub fn new(input: Type, output: Type, parameters: Vec<(Type, Type)>) -> Self {
+	pub fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
 		Self { input, output, parameters }
+	}
+
+	pub fn ty(&self) -> Type {
+		Type::Fn(Box::new(self.input.clone()), Box::new(self.output.clone()))
 	}
 }
 
@@ -32,6 +36,20 @@ macro_rules! generic {
 	($type:ty) => {{
 		Type::Generic(Cow::Borrowed(stringify!($type)))
 	}};
+}
+
+#[macro_export]
+macro_rules! fn_type {
+	($input:ty, $output:ty) => {
+		Type::Fn(Box::new(concrete!($input)), Box::new(concrete!($output)))
+	};
+}
+
+#[macro_export]
+macro_rules! value_fn {
+	($output:ty) => {
+		Type::Fn(Box::new(concrete!(())), Box::new(concrete!($output)))
+	};
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
@@ -72,16 +90,62 @@ impl PartialEq for TypeDescriptor {
 pub enum Type {
 	Generic(Cow<'static, str>),
 	Concrete(TypeDescriptor),
+	Fn(Box<Type>, Box<Type>),
+}
+
+impl Type {
+	pub fn is_generic(&self) -> bool {
+		matches!(self, Type::Generic(_))
+	}
+
+	pub fn is_concrete(&self) -> bool {
+		matches!(self, Type::Concrete(_))
+	}
+
+	pub fn is_fn(&self) -> bool {
+		matches!(self, Type::Fn(_, _))
+	}
+
+	pub fn is_value(&self) -> bool {
+		matches!(self, Type::Fn(_, _) | Type::Concrete(_))
+	}
+
+	pub fn is_unit(&self) -> bool {
+		matches!(self, Type::Fn(_, _) | Type::Concrete(_))
+	}
+
+	pub fn is_generic_fn(&self) -> bool {
+		matches!(self, Type::Fn(_, _) | Type::Generic(_))
+	}
+
+	pub fn first(&self) -> Option<&Type> {
+		match self {
+			Type::Fn(first, _) => Some(first),
+			_ => None,
+		}
+	}
+
+	pub fn second(&self) -> Option<&Type> {
+		match self {
+			Type::Fn(_, second) => Some(second),
+			_ => None,
+		}
+	}
+
+	pub fn function(input: &Type, output: &Type) -> Type {
+		Type::Fn(Box::new(input.clone()), Box::new(output.clone()))
+	}
 }
 
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
-			Self::Generic(arg0) => f.write_fmt(format_args!("Generic({})", arg0)),
+			Self::Generic(arg0) => write!(f, "Generic({})", arg0),
 			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({}, {:?}))", arg0.name, arg0.id)),
+			Self::Concrete(arg0) => write!(f, "Concrete({}, {:?})", arg0.name, arg0.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => f.write_fmt(format_args!("Concrete({})", arg0.name)),
+			Self::Concrete(arg0) => write!(f, "Concrete({})", arg0.name),
+			Self::Fn(arg0, arg1) => write!(f, "({:?} -> {:?})", arg0, arg1),
 		}
 	}
 }
@@ -91,6 +155,7 @@ impl std::fmt::Display for Type {
 		match self {
 			Type::Generic(name) => write!(f, "{}", name),
 			Type::Concrete(ty) => write!(f, "{}", ty.name),
+			Type::Fn(input, output) => write!(f, "({} -> {})", input, output),
 		}
 	}
 }

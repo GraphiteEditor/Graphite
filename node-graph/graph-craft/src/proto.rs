@@ -416,7 +416,8 @@ impl TypingContext {
 			// If the node has a value parameter we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None));
-				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![]);
+                // TODO: This should return a reference to the value
+				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![v.ty()]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -427,9 +428,9 @@ impl TypingContext {
 					self.inferred
 						.get(id)
 						.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))
-						.map(|node| (node.input.clone(), node.output.clone()))
+						.map(|node| node.ty())
 				})
-				.collect::<Result<Vec<(Type, Type)>, String>>()?,
+				.collect::<Result<Vec<Type>, String>>()?,
 		};
 
 		// Get the node input type from the proto node declaration
@@ -450,26 +451,27 @@ impl TypingContext {
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
 		}
-		if parameters.iter().any(|p| matches!(p.1, Type::Generic(_))) {
+		if parameters.iter().any(|p| match p {
+			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)) => true,
+			_ => false,
+		}) {
 			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}
-		let covariant = |output, input| match (&output, &input) {
-			(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
-			(Type::Concrete(_), Type::Generic(_)) => true,
-			// TODO: relax this requirement when allowing generic types as inputs
-			(Type::Generic(_), _) => false,
-		};
+		fn covariant(from: &Type, to: &Type) -> bool {
+			match (from, to) {
+				(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
+				(Type::Fn(a1, b1), Type::Fn(a2, b2)) => covariant(a1, a2) && covariant(b1, b2),
+				// TODO: relax this requirement when allowing generic types as inputs
+				(Type::Generic(_), _) => false,
+				(_, Type::Generic(_)) => true,
+                _ => false,
+			}
+		}
 
 		// List of all implementations that match the input and parameter types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| {
-				covariant(input.clone(), node_io.input.clone())
-					&& parameters
-						.iter()
-						.zip(node_io.parameters.iter())
-						.all(|(p1, p2)| covariant(p1.0.clone(), p2.0.clone()) && covariant(p1.1.clone(), p2.1.clone()))
-			})
+			.filter(|node_io| covariant(&input, &node_io.input) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1, p2) && covariant(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -517,7 +519,7 @@ impl TypingContext {
 
 /// Returns a list of all generic types used in the node
 fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
-	let inputs = [&types.input].into_iter().chain(types.parameters.iter().map(|(_, x)| x));
+	let inputs = [&types.input].into_iter().chain(types.parameters.iter().flat_map(|x| x.second()));
 	let mut generics = inputs
 		.filter_map(|t| match t {
 			Type::Generic(out) => Some(out.clone()),
@@ -532,15 +534,16 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 }
 
 /// Checks if a generic type can be substituted with a concrete type and returns the concrete type
-fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[(Type, Type)], generic: &str) -> Result<Type, String> {
-	let inputs = [(&types.input, input)]
+fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
+	let inputs = [(Some(&types.input), Some(input))]
 		.into_iter()
-		.chain(types.parameters.iter().map(|(_, x)| x).zip(parameters.iter().map(|(_, x)| x)));
-	let mut concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Type::Generic(input) if generic == input));
-	let (_, out_ty) = concrete_inputs
+		.chain(types.parameters.iter().map(|x| x.second()).zip(parameters.iter().map(|x| x.second())));
+	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
+    let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
+	let out_ty = outputs
 		.next()
 		.ok_or_else(|| format!("Generic output type {generic} is not dependent on input {input:?} or parameters {parameters:?}",))?;
-	if concrete_inputs.any(|(_, ty)| ty != out_ty) {
+	if outputs.any(|ty| ty != out_ty) {
 		return Err(format!("Generic output type {generic} is dependent on multiple inputs or parameters",));
 	}
 	Ok(out_ty.clone())

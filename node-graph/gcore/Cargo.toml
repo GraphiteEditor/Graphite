@@ -12,7 +12,7 @@ license = "MIT OR Apache-2.0"
 std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta"]
 default = ["async", "serde", "kurbo", "log", "std"]
 log = ["dep:log"]
-serde = ["dep:serde", "glam/serde"]
+serde = ["dep:serde", "glam/serde", "bezier-rs/serde"]
 gpu = ["spirv-std", "bytemuck", "glam/bytemuck", "dyn-any", "glam/libm"]
 async = ["async-trait", "alloc"]
 nightly = []
@@ -20,13 +20,18 @@ alloc = ["dyn-any", "bezier-rs", "once_cell"]
 type_id_logging = []
 
 [dependencies]
-dyn-any = {path = "../../libraries/dyn-any", features = ["derive", "glam"], optional = true, default-features = false }
+dyn-any = { path = "../../libraries/dyn-any", features = [
+	"derive",
+	"glam",
+], optional = true, default-features = false }
 
-spirv-std = { version = "0.5", features = ["glam"] , optional = true}
-bytemuck = {version = "1.8", features = ["derive"], optional = true}
-async-trait = {version = "0.1", optional = true}
-serde = {version =  "1.0", features = ["derive"], optional = true, default-features = false }
-log = {version = "0.4", optional = true}
+spirv-std = { version = "0.5", features = ["glam"], optional = true }
+bytemuck = { version = "1.8", features = ["derive"], optional = true }
+async-trait = { version = "0.1", optional = true }
+serde = { version = "1.0", features = [
+	"derive",
+], optional = true, default-features = false }
+log = { version = "0.4", optional = true }
 
 bezier-rs = { path = "../../libraries/bezier-rs", optional = true }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
@@ -34,8 +39,10 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 ], optional = true }
 rand_chacha = "0.3.1"
 spin = "0.9.2"
-glam = { version = "^0.22", default-features = false, features = ["scalar-math"]}
-node-macro = {path = "../node-macro"}
+glam = { version = "^0.22", default-features = false, features = [
+	"scalar-math",
+] }
+node-macro = { path = "../node-macro" }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }

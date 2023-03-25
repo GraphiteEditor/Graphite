@@ -515,6 +515,14 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
+pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let size = number_widget(document_node, node_id, 2, "Size", NumberInput::default().min(0.).max(80.).int(), true);
+	let hardness = number_widget(document_node, node_id, 3, "Hardness", NumberInput::default().min(0.).max(2.), true);
+	let opacity = number_widget(document_node, node_id, 4, "Opacity", NumberInput::default().min(0.).max(1.), true);
+
+	vec![LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: opacity }]
+}
+
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
 	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);

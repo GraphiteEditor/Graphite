@@ -339,11 +339,15 @@ pub struct BlendNode<BlendMode, Opacity> {
 	opacity: Opacity,
 }
 
+impl<Opacity: dyn_any::StaticTypeSized, Blend: dyn_any::StaticTypeSized> StaticType for BlendNode<Blend, Opacity> {
+	type Static = BlendNode<Blend::Static, Opacity::Static>;
+}
+
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
 	let (source_color, backdrop) = input;
-	let actual_opacity = 1. - (opacity / 100.) as f32;
-	return match blend_mode {
+	let actual_opacity = (opacity / 100.) as f32;
+	let target_color = match blend_mode {
 		BlendMode::Normal => backdrop.blend_rgb(source_color, Color::blend_normal),
 		BlendMode::Multiply => backdrop.blend_rgb(source_color, Color::blend_multiply),
 		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
@@ -374,8 +378,10 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Saturation => backdrop.blend_saturation(source_color),
 		BlendMode::Color => backdrop.blend_color(source_color),
 		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
-	}
-	.lerp(backdrop, actual_opacity);
+	};
+	let multiplied_target_color = target_color.multiply_alpha(actual_opacity);
+	let out = backdrop.alpha_blend(multiplied_target_color);
+	out
 }
 
 #[derive(Debug, Clone, Copy)]
