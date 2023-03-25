@@ -213,7 +213,7 @@ impl Bezier {
 	}
 
 	/// Returns true if the start, end and handles of the Bezier are all at the same location
-	pub fn is_single_point(&self) -> bool {
+	pub fn is_point(&self) -> bool {
 		let points = self.get_points().collect::<Vec<DVec2>>();
 		let start = self.start();
 

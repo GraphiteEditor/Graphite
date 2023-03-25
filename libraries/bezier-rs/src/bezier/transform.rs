@@ -357,14 +357,14 @@ impl Bezier {
 	/// while negative values will offset in the opposite direction.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
-		if self.is_single_point() {
+		if self.is_point() {
 			return Subpath::from_bezier(self);
 		}
 		let reduced = self.reduce(None);
 		let mut scaled = Subpath::new(vec![], false);
 		reduced.iter().enumerate().for_each(|(index, bezier)| {
 			let scaled_bezier = bezier.scale(distance);
-			if !bezier.is_single_point() {
+			if !bezier.is_point() {
 				if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
 					scaled.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
 				} else {
@@ -395,7 +395,7 @@ impl Bezier {
 
 		let mut result = Subpath::new(vec![], false);
 		reduced.iter().enumerate().for_each(|(index, bezier)| {
-			if !bezier.is_single_point() {
+			if !bezier.is_point() {
 				let current_length = bezier.length(None);
 				let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
 				let scaled_bezier = bezier.graduated_scale(next_start_distance, next_end_distance);
@@ -424,7 +424,7 @@ impl Bezier {
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
-		let (first_segment, third_segment) = if self.is_single_point() {
+		let (pos_offset, neg_offset) = if self.is_point() {
 			(
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance)], false),
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance)], false),
@@ -433,11 +433,11 @@ impl Bezier {
 			(self.offset(distance), self.reverse().offset(distance))
 		};
 
-		if first_segment.is_empty() || third_segment.is_empty() {
+		if pos_offset.is_empty() || neg_offset.is_empty() {
 			return Subpath::new(vec![], false);
 		}
 
-		first_segment.combine_outline(&third_segment, cap)
+		pos_offset.combine_outline(&neg_offset, cap)
 	}
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
@@ -450,7 +450,7 @@ impl Bezier {
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	/// <iframe frameBorder="0" width="100%" height="550px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
 	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
-		let (first_segment, third_segment) = if self.is_single_point() {
+		let (pos_offset, neg_offset) = if self.is_point() {
 			(
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance1)], false),
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance1)], false),
@@ -459,11 +459,11 @@ impl Bezier {
 			(self.graduated_offset(distance1, distance2), self.reverse().graduated_offset(distance3, distance4))
 		};
 
-		if first_segment.is_empty() || third_segment.is_empty() {
+		if pos_offset.is_empty() || neg_offset.is_empty() {
 			return Subpath::new(vec![], false);
 		}
 
-		first_segment.combine_outline(&third_segment, cap)
+		pos_offset.combine_outline(&neg_offset, cap)
 	}
 
 	/// Approximate a bezier curve with circular arcs.
@@ -878,7 +878,7 @@ mod tests {
 		let reduce = bezier.reduce(None);
 		let offset = bezier.offset::<EmptyId>(15.);
 		assert!(reduce.last().is_some());
-		assert!(reduce.last().unwrap().is_single_point());
+		assert!(reduce.last().unwrap().is_point());
 		// Expect the single point bezier to be dropped in the offset
 		assert_eq!(reduce.len(), offset.len_segments() + 1);
 	}

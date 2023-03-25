@@ -347,7 +347,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		let mut subpaths = self
 			.iter()
-			.filter(|bezier| !bezier.is_single_point())
+			.filter(|bezier| !bezier.is_point())
 			.map(|bezier| bezier.offset(distance))
 			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
 		let mut drop_common_point = vec![true; self.len()];
@@ -385,16 +385,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			}
 			// The angle is convex. The Subpath must be joined using the specified join type
 			if apply_join {
+				drop_common_point[j] = false;
 				match join {
-					Join::Bevel => {
-						drop_common_point[j] = false;
-					}
+					Join::Bevel => {}
 					Join::Miter => {
 						let miter_manipulator_group = subpaths[i].miter_line_join(&subpaths[j]);
 						if let Some(miter_manipulator_group) = miter_manipulator_group {
 							subpaths[i].manipulator_groups.push(miter_manipulator_group);
 						}
-						drop_common_point[j] = false;
 					}
 					Join::Round => {
 						let (out_handle, round_point, in_handle) = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
@@ -402,12 +400,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						subpaths[i].manipulator_groups[last_index].out_handle = Some(out_handle);
 						subpaths[i].manipulator_groups.push(round_point.clone());
 						subpaths[j].manipulator_groups[0].in_handle = Some(in_handle);
-						drop_common_point[j] = false;
 					}
 				}
-			} else {
-				// Otherwise, default to the bevel join
-				// drop_common_point[j] = false;
 			}
 		}
 
@@ -428,17 +422,15 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				}
 			}
 			if apply_join {
+				drop_common_point[0] = false;
 				match join {
-					Join::Bevel => {
-						drop_common_point[0] = false;
-					}
+					Join::Bevel => {}
 					Join::Miter => {
 						let last_subpath_index = subpaths.len() - 1;
 						let miter_manipulator_group = subpaths[last_subpath_index].miter_line_join(&subpaths[0]);
 						if let Some(miter_manipulator_group) = miter_manipulator_group {
 							subpaths[last_subpath_index].manipulator_groups.push(miter_manipulator_group);
 						}
-						drop_common_point[0] = false;
 					}
 					Join::Round => {
 						let last_subpath_index = subpaths.len() - 1;
@@ -447,7 +439,6 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						subpaths[last_subpath_index].manipulator_groups[last_index].out_handle = Some(out_handle);
 						subpaths[last_subpath_index].manipulator_groups.push(round_point);
 						subpaths[0].manipulator_groups[0].in_handle = Some(in_handle);
-						drop_common_point[0] = false;
 					}
 				}
 			}
@@ -514,8 +505,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
 	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
-		let is_single_point = self.is_single_point();
-		let (pos_offset, neg_offset) = if is_single_point {
+		let is_point = self.is_point();
+		let (pos_offset, neg_offset) = if is_point {
 			let point = self.manipulator_groups[0].anchor;
 			(
 				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::Y * distance)], false),
@@ -525,7 +516,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			(self.offset(distance, join), self.reverse().offset(distance, join))
 		};
 
-		if self.closed && !is_single_point {
+		if self.closed && !is_point {
 			return (pos_offset, Some(neg_offset));
 		}
 

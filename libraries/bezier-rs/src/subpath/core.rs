@@ -113,7 +113,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns if the Subpath is equivalent to a single point.
-	pub fn is_single_point(&self) -> bool {
+	pub fn is_point(&self) -> bool {
 		if self.is_empty() {
 			return false;
 		}
