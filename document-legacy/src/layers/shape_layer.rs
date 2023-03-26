@@ -59,7 +59,7 @@ impl LayerData for ShapeLayer {
 
 	fn bounding_box(&self, transform: glam::DAffine2, _render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let mut subpath = self.shape.clone();
-		if transform.matrix2 == DMat2::ZERO {
+		if transform.matrix2 == DMat2::ZERO || !transform.is_finite() {
 			return None;
 		}
 		subpath.apply_affine(transform);

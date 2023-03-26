@@ -48,6 +48,9 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 
 	// Find the delta transform
 	let mut delta = layer.transform.inverse() * transform;
+	if !delta.is_finite() {
+		return layer.transform.to_cols_array();
+	}
 
 	// Preserve aspect ratio
 	if matches!(transform_op, TransformOp::ScaleX | TransformOp::Width) && layer.preserve_aspect {
