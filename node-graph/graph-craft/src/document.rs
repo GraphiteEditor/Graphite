@@ -123,27 +123,25 @@ impl DocumentNode {
 }
 
 /// Represents the possible inputs to a node.
-/// # ShortCircuting
+///
+/// # Short circuting
+///
 /// In Graphite nodes are functions and by default, these are composed into a single function
 /// by inserting Compose nodes.
 ///
-///
-///
-///
+/// ```text
 /// ┌─────────────────┐               ┌──────────────────┐                ┌──────────────────┐
 /// │                 │◄──────────────┤                  │◄───────────────┤                  │
 /// │        A        │               │        B         │                │        C         │
 /// │                 ├──────────────►│                  ├───────────────►│                  │
 /// └─────────────────┘               └──────────────────┘                └──────────────────┘
+/// ```
 ///
-///
-///
-/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`)
+/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`).
 /// But sometimes we might want to have a little more control over the order of execution.
 /// This is why we allow nodes to opt out of the input forwarding by consuming the input directly.
 ///
-///
-///
+/// ```text
 ///                                    ┌─────────────────────┐                ┌─────────────┐
 ///                                    │                     │◄───────────────┤             │
 ///                                    │     Cache Node      │                │      C      │
@@ -153,20 +151,26 @@ impl DocumentNode {
 /// │        A         │               │ * Cached Node       │
 /// │                  ├──────────────►│                     │
 /// └──────────────────┘               └─────────────────────┘
+/// ```
 ///
-///
-///
-///
-/// In this case the Cache node actually consumes it's input and then manually forwards it to it's parameter
-/// Node. This is necessary because the Cache Node needs to short-circut the actual node evaluation
+/// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
+/// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
 #[derive(Debug, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
-	Node { node_id: NodeId, output_index: usize, lambda: bool },
-	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
+	Node {
+		node_id: NodeId,
+		output_index: usize,
+		lambda: bool,
+	},
+	Value {
+		tagged_value: crate::document::value::TaggedValue,
+		exposed: bool,
+	},
 	Network(Type),
-	// A short circuting input represents an input that is not resolved through function composition but
-	// actually consuming the provided input instead of passing it to its predecessor
+	/// A short circuting input represents an input that is not resolved through function composition
+	/// but actually consuming the provided input instead of passing it to its predecessor.
+	/// See [NodeInput] docs for more explanation.
 	ShortCircut(Type),
 }
 
@@ -293,7 +297,7 @@ impl NodeNetwork {
 		let mut duplicating_nodes = HashMap::new();
 		// Find the nodes where the inputs require duplicating
 		for node in &mut self.nodes.values_mut() {
-			// Recursivly duplicate children
+			// Recursively duplicate children
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
 				network.duplicate_outputs(gen_id);
 			}
