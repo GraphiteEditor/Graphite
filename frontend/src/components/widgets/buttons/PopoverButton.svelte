@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { IconName } from "@/utility-functions/icons";
+	import type { IconName } from "@graphite/utility-functions/icons";
 
-	import FloatingMenu from "@/components/layout/FloatingMenu.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
+	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 
 	export let icon: IconName = "DropdownArrow";
 	export let tooltip: string | undefined = undefined;

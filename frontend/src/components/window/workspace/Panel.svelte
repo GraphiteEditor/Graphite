@@ -1,11 +1,11 @@
 <script lang="ts" context="module">
-	import Document from "@/components/panels/Document.svelte";
-	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
-	import LayerTree from "@/components/panels/LayerTree.svelte";
-	import NodeGraph from "@/components/panels/NodeGraph.svelte";
-	import PopoverButton from "@/components/widgets/buttons/PopoverButton.svelte";
-	import Properties from "@/components/panels/Properties.svelte";
-	import TextButton from "@/components/widgets/buttons/TextButton.svelte";
+	import Document from "@graphite/components/panels/Document.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import LayerTree from "@graphite/components/panels/LayerTree.svelte";
+	import NodeGraph from "@graphite/components/panels/NodeGraph.svelte";
+	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
+	import Properties from "@graphite/components/panels/Properties.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
@@ -19,16 +19,16 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import { platformIsMac, isEventSupported } from "@/utility-functions/platform";
+	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
-	import { type LayoutKeysGroup, type Key } from "@/wasm-communication/messages";
+	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

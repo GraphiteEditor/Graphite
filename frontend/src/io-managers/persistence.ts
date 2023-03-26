@@ -1,9 +1,9 @@
 import { createStore, del, get, set, update } from "idb-keyval";
 import { get as getFromStore } from "svelte/store";
 
-import { type PortfolioState } from "@/state-providers/portfolio";
-import { type Editor } from "@/wasm-communication/editor";
-import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerSavePreferences, TriggerLoadAutoSaveDocuments, TriggerLoadPreferences } from "@/wasm-communication/messages";
+import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { type Editor } from "@graphite/wasm-communication/editor";
+import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerSavePreferences, TriggerLoadAutoSaveDocuments, TriggerLoadPreferences } from "@graphite/wasm-communication/messages";
 
 const graphiteStore = createStore("graphite", "store");
 
