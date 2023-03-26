@@ -3,14 +3,13 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
-use document_legacy::Operation;
-
-use glam::DAffine2;
+use glam::DVec2;
+use graphene_core::vector::style::Fill;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -80,8 +79,8 @@ impl PropertyHolder for ShapeTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for ShapeTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message {
 			match action {
 				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
@@ -139,7 +138,13 @@ impl Fsm for ShapeToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document,
+			global_tool_data,
+			input,
+			render_data,
+			..
+		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -153,20 +158,16 @@ impl Fsm for ShapeToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					shape_data.path = Some(document.get_path_for_new_layer());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					let layer_path = document.get_path_for_new_layer();
+					shape_data.path = Some(layer_path.clone());
 					tool_data.sides = tool_options.vertices;
 
-					responses.push_back(
-						Operation::AddNgon {
-							path: shape_data.path.clone().unwrap(),
-							insert_index: -1,
-							transform: DAffine2::ZERO.to_cols_array(),
-							sides: tool_data.sides,
-							style: style::PathStyle::new(None, style::Fill::solid(global_tool_data.primary_color)),
-						}
-						.into(),
-					);
+					let subpath = bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_data.sides as u64, 1.);
+					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+					responses.add(GraphOperationMessage::FillSet {
+						layer: layer_path,
+						fill: Fill::solid(global_tool_data.primary_color),
+					});
 
 					Drawing
 				}

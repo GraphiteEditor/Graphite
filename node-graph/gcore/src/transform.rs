@@ -7,26 +7,31 @@ use crate::vector::VectorData;
 use crate::Node;
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformNode<Translation, Rotation, Scale, Shear> {
+pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
 	pub(crate) translate: Translation,
 	pub(crate) rotate: Rotation,
 	pub(crate) scale: Scale,
 	pub(crate) shear: Shear,
+	pub(crate) pivot: Pivot,
 }
 
 #[node_macro::node_fn(TransformNode)]
-pub(crate) fn transform_vector_data(mut vector_data: VectorData, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2) -> VectorData {
-	let transform = generate_transform(shear, &vector_data.transform, scale, rotate, translate);
-	vector_data.transform = transform * vector_data.transform;
+pub(crate) fn transform_vector_data(mut vector_data: VectorData, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2, pivot: DVec2) -> VectorData {
+	let pivot = DAffine2::from_translation(vector_data.local_pivot(pivot));
+
+	let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+	vector_data.transform = modification * vector_data.transform;
+
 	vector_data
 }
 
-impl<'input, Translation: 'input, Rotation: 'input, Scale: 'input, Shear: 'input> Node<'input, ImageFrame> for TransformNode<Translation, Rotation, Scale, Shear>
+impl<'input, Translation: 'input, Rotation: 'input, Scale: 'input, Shear: 'input, Pivot: 'input> Node<'input, ImageFrame> for TransformNode<Translation, Rotation, Scale, Shear, Pivot>
 where
 	Translation: for<'any_input> Node<'any_input, (), Output = DVec2>,
 	Rotation: for<'any_input> Node<'any_input, (), Output = f64>,
 	Scale: for<'any_input> Node<'any_input, (), Output = DVec2>,
 	Shear: for<'any_input> Node<'any_input, (), Output = DVec2>,
+	Pivot: for<'any_input> Node<'any_input, (), Output = DVec2>,
 {
 	type Output = ImageFrame;
 	#[inline]
@@ -48,6 +53,5 @@ fn generate_transform(shear: DVec2, transform: &DAffine2, scale: DVec2, rotate: 
 	let pivot = transform.transform_point2(DVec2::splat(0.5));
 	let translate_to_center = DAffine2::from_translation(-pivot);
 
-	let transformation = translate_to_center.inverse() * DAffine2::from_scale_angle_translation(scale, rotate, translate) * shear_matrix * translate_to_center;
-	transformation
+	translate_to_center.inverse() * DAffine2::from_scale_angle_translation(scale, rotate, translate) * shear_matrix * translate_to_center
 }

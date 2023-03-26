@@ -104,7 +104,7 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
-	pub fn apply_transformation(&self, transformation_function: &dyn Fn(DVec2) -> DVec2) -> Bezier {
+	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Bezier {
 		let transformed_start = transformation_function(self.start);
 		let transformed_end = transformation_function(self.end);
 		match self.handles {
@@ -125,18 +125,18 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
-		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
+		self.apply_transformation(|point| rotation_matrix.mul_vec2(point))
 	}
 
 	/// Returns a Bezier curve that results from rotating the curve around the provided point by the given angle (in radians).
 	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
-		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point - pivot) + pivot)
+		self.apply_transformation(|point| rotation_matrix.mul_vec2(point - pivot) + pivot)
 	}
 
 	/// Returns a Bezier curve that results from translating the curve by the given `DVec2`.
 	pub fn translate(&self, translation: DVec2) -> Bezier {
-		self.apply_transformation(&|point| point + translation)
+		self.apply_transformation(|point| point + translation)
 	}
 
 	/// Determine if it is possible to scale the given curve, using the following conditions:
@@ -163,7 +163,7 @@ impl Bezier {
 	}
 
 	/// Add the bezier endpoints if not already present, and combine and sort the dimensional extrema.
-	fn get_extrema_t_list(&self) -> Vec<f64> {
+	pub(crate) fn get_extrema_t_list(&self) -> Vec<f64> {
 		let mut extrema = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
 		extrema.append(&mut vec![0., 1.]);
 		extrema.dedup();
@@ -274,7 +274,7 @@ impl Bezier {
 		};
 
 		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
-		intermediate.apply_transformation(&|point| {
+		intermediate.apply_transformation(|point| {
 			let mut direction_unit_vector = (intersection - point).normalize();
 			if should_flip_direction {
 				direction_unit_vector *= -1.;

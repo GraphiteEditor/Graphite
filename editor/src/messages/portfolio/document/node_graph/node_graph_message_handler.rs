@@ -46,7 +46,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Image(_) => Self::Raster,
 			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::RcSubpath(_) | TaggedValue::Subpath(_) | TaggedValue::VectorData(_) => Self::Subpath,
+			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			_ => Self::General,
 		}
 	}
@@ -238,23 +238,7 @@ impl NodeGraphMessageHandler {
 
 		// If empty, show all nodes in the network starting with the output
 		if self.selected_nodes.is_empty() {
-			let mut stack = network.outputs.iter().map(|output| output.node_id).collect::<Vec<_>>();
-			let mut nodes = Vec::new();
-			while let Some(node_id) = stack.pop() {
-				let Some(document_node) = network.nodes.get(&node_id) else {
-					continue;
-				};
-
-				stack.extend(
-					document_node
-						.inputs
-						.iter()
-						.take(1) // Only show the primary input
-						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
-				);
-				nodes.push((document_node, node_id));
-			}
-			for &(document_node, node_id) in nodes.iter().rev() {
+			for (document_node, node_id) in network.primary_flow().collect::<Vec<_>>().into_iter().rev() {
 				sections.push(node_properties::generate_node_properties(document_node, node_id, context));
 			}
 		}

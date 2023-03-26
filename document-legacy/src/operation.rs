@@ -187,6 +187,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		subpath: Subpath,
 	},
+	SetVectorData {
+		path: Vec<LayerId>,
+		vector_data: graphene_core::vector::VectorData,
+	},
 	InsertManipulatorGroup {
 		layer_path: Vec<LayerId>,
 		manipulator_group: ManipulatorGroup,

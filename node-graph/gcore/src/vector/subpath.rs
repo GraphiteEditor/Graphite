@@ -1,3 +1,5 @@
+use crate::uuid::ManipulatorGroupId;
+
 use super::consts::ManipulatorType;
 use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
@@ -43,6 +45,21 @@ impl Subpath {
 	/// This exists to smooth the transition away from Kurbo
 	pub fn from_kurbo_shape<T: Shape>(shape: &T) -> Self {
 		shape.path_elements(0.1).into()
+	}
+
+	/// Convert to the legacy Subpath from the `bezier_rs::Subpath`.
+	pub fn from_bezier_crate(value: &[bezier_rs::Subpath<ManipulatorGroupId>]) -> Self {
+		let mut groups = IdBackedVec::new();
+		for subpath in value {
+			for group in subpath.manipulator_groups() {
+				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
+			}
+			if subpath.closed() {
+				let group = subpath.manipulator_groups()[0];
+				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
+			}
+		}
+		Self(groups)
 	}
 
 	// ** PRIMITIVE CONSTRUCTION **

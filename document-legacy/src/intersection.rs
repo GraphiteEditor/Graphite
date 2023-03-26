@@ -1,6 +1,7 @@
 use crate::boolean_ops::{split_path_seg, subdivide_path_seg};
 use crate::consts::{F64LOOSE, F64PRECISE};
 
+use graphene_core::uuid::ManipulatorGroupId;
 use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DMat2, DVec2};
@@ -17,6 +18,13 @@ impl Quad {
 	pub fn from_box(bbox: [DVec2; 2]) -> Self {
 		let size = bbox[1] - bbox[0];
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
+	}
+
+	/// Get all the edges in the quad.
+	pub fn lines_glam(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
+		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
+			.into_iter()
+			.map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
 	}
 
 	/// Get all the edges in the quad.
@@ -99,6 +107,35 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 
 	// Check if shape is entirely within selection
 	get_arbitrary_point_on_path(&shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
+}
+
+pub fn intersect_quad_subpath(quad: Quad, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, close_subpath: bool) -> bool {
+	let mut subpath = subpath.clone();
+
+	// For close_subpath shapes act like shape was closed even if it isn't
+	if close_subpath && !subpath.closed() {
+		subpath.set_closed(true);
+	}
+
+	// Check if outlines intersect
+	if subpath
+		.iter()
+		.any(|path_segment| quad.lines_glam().any(|line| !path_segment.intersections(&line, None, None).is_empty()))
+	{
+		return true;
+	}
+	// Check if selection is entirely within the shape
+	if close_subpath && subpath.contains_point(quad.center()) {
+		return true;
+	}
+
+	// Check if shape is entirely within selection
+	subpath
+		.manipulator_groups()
+		.first()
+		.map(|group| group.anchor)
+		.map(|shape_point| quad.path().contains(to_point(shape_point)))
+		.unwrap_or_default()
 }
 
 /// Returns a point on `path`.

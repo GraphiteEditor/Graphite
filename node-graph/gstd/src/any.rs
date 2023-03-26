@@ -30,7 +30,7 @@ where
 	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
-			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {e} in:\n{node_name}"));
+			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyRefNode Input, {e} in:\n{node_name}"));
 			Box::new(self.node.eval(*input))
 		}
 	}
@@ -52,7 +52,7 @@ where
 	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
-			let input: Box<&_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {e} in:\n{node_name}"));
+			let input: Box<&_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyInRefNode Input, {e} in:\n{node_name}"));
 			Box::new(self.node.eval(*input))
 		}
 	}

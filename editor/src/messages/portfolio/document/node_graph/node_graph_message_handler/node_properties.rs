@@ -398,18 +398,24 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Color(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
-			color_props
-				.value(Some(x as Color))
-				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
-				.widget_holder(),
-		])
+	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
+		if let &TaggedValue::Color(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(Some(x as Color))
+					.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+					.widget_holder(),
+			])
+		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(x)
+					.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value), node_id, index))
+					.widget_holder(),
+			])
+		}
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -574,7 +580,23 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let translation = {
 		let index = 1;
 
-		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, true);
+		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, false);
+
+		let pivot_index = 5;
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::DVec2(pivot),
+			exposed: false,
+		} = document_node.inputs[pivot_index]
+		{
+			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(
+				PivotAssist::new(pivot.into())
+					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.widget_holder(),
+			);
+		} else {
+			add_blank_assist(&mut widgets);
+		}
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(vec2),
@@ -1044,7 +1066,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).widget_holder(),
+				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).tooltip("When selecing a layer in a folder, shallow select will select the parent folder whereas deep select will select the layer. Double clicking in shallow select mode will select the layer.").widget_holder(),
 			]);
 		}
 		LayoutGroup::Row { widgets }.with_tooltip("Algorithm used to generate the image during each sampling step")
@@ -1289,7 +1311,8 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	if fill_type.is_none() || solid {
+	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
+	if fill_type.is_none() || solid || empty {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
 	}
@@ -1300,7 +1323,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
 	}
 
-	if gradient || solid {
+	if gradient || solid || empty {
 		let new_fill_type = if gradient { FillType::Solid } else { FillType::Gradient };
 		let switch_button = TextButton::new(if gradient { "Use Solid Color" } else { "Use Gradient" })
 			.tooltip(if gradient {

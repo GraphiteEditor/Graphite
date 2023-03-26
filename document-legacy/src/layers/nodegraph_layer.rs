@@ -1,10 +1,11 @@
 use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
-use crate::intersection::{intersect_quad_bez_path, Quad};
+use crate::intersection::{intersect_quad_bez_path, intersect_quad_subpath, Quad};
 use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
+use graphene_core::vector::VectorData;
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -23,6 +24,7 @@ pub struct NodeGraphFrameLayer {
 	#[serde(skip)]
 	pub dimensions: DVec2,
 	pub image_data: Option<ImageData>,
+	pub vector_data: Option<VectorData>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, specta::Type)]
@@ -33,7 +35,7 @@ pub struct ImageData {
 }
 
 impl LayerData for NodeGraphFrameLayer {
-	fn render(&mut self, svg: &mut String, _svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
+	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
@@ -56,7 +58,21 @@ impl LayerData for NodeGraphFrameLayer {
 			.enumerate()
 			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
 
-		if let Some(blob_url) = &self.blob_url {
+		// Render any paths if they exist
+		if let Some(vector_data) = &self.vector_data {
+			let layer_bounds = vector_data.bounding_box().unwrap_or_default();
+			let transfomed_bounds = vector_data.bounding_box_with_transform(transform).unwrap_or_default();
+
+			let _ = write!(svg, "<path d=\"");
+			for subpath in &vector_data.subpaths {
+				let _ = subpath.subpath_to_svg(svg, transform);
+			}
+			svg.push('"');
+
+			svg.push_str(&vector_data.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transfomed_bounds));
+			let _ = write!(svg, "/>");
+		} else if let Some(blob_url) = &self.blob_url {
+			// Render the image if it exists
 			let _ = write!(
 				svg,
 				r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix({})" />"#,
@@ -66,6 +82,7 @@ impl LayerData for NodeGraphFrameLayer {
 				matrix
 			);
 		} else {
+			// Render a dotted blue outline if there is no image or vector data
 			let _ = write!(
 				svg,
 				r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
@@ -81,6 +98,10 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _render_data: &RenderData) -> Option<[DVec2; 2]> {
+		if let Some(vector_data) = &self.vector_data {
+			return vector_data.bounding_box_with_transform(transform);
+		}
+
 		let mut path = self.bounds();
 
 		if transform.matrix2 == DMat2::ZERO {
@@ -93,7 +114,12 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _render_data: &RenderData) {
-		if intersect_quad_bez_path(quad, &self.bounds(), true) {
+		if let Some(vector_data) = &self.vector_data {
+			let filled_style = vector_data.style.fill().is_some();
+			if vector_data.subpaths.iter().any(|subpath| intersect_quad_subpath(quad, subpath, filled_style || subpath.closed())) {
+				intersections.push(path.clone());
+			}
+		} else if intersect_quad_bez_path(quad, &self.bounds(), true) {
 			intersections.push(path.clone());
 		}
 	}
