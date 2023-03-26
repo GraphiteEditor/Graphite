@@ -192,7 +192,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
 	}
 
-	/// Constructs an elipse with `corner1` and `corner2` as the two corners of the bounding box.
+	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.
 	pub fn new_ellipse(corner1: DVec2, corner2: DVec2) -> Self {
 		let size = (corner1 - corner2).abs();
 		let center = (corner1 + corner2) / 2.;
