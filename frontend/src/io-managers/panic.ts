@@ -1,11 +1,11 @@
-import { wipeDocuments } from "@/io-managers/persistence";
-import { type DialogState } from "@/state-providers/dialog";
-import { type IconName } from "@/utility-functions/icons";
-import { browserVersion, operatingSystem } from "@/utility-functions/platform";
-import { stripIndents } from "@/utility-functions/strip-indents";
-import { type Editor } from "@/wasm-communication/editor";
-import type { TextLabel } from "@/wasm-communication/messages";
-import { type TextButtonWidget, type WidgetLayout, Widget, DisplayDialogPanic } from "@/wasm-communication/messages";
+import { wipeDocuments } from "@graphite/io-managers/persistence";
+import { type DialogState } from "@graphite/state-providers/dialog";
+import { type IconName } from "@graphite/utility-functions/icons";
+import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
+import { stripIndents } from "@graphite/utility-functions/strip-indents";
+import { type Editor } from "@graphite/wasm-communication/editor";
+import type { TextLabel } from "@graphite/wasm-communication/messages";
+import { type TextButtonWidget, type WidgetLayout, Widget, DisplayDialogPanic } from "@graphite/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
