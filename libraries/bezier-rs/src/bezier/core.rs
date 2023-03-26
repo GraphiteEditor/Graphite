@@ -123,6 +123,16 @@ impl Bezier {
 		format!("{handle_args} {} {}", self.end.x, self.end.y)
 	}
 
+	/// Write the curve argument to the string
+	pub fn write_curve_argument(&self, svg: &mut String) -> std::fmt::Result {
+		match self.handles {
+			BezierHandles::Linear => svg.push_str(SVG_ARG_LINEAR),
+			BezierHandles::Quadratic { handle } => write!(svg, "{SVG_ARG_QUADRATIC}{},{}", handle.x, handle.y)?,
+			BezierHandles::Cubic { handle_start, handle_end } => write!(svg, "{SVG_ARG_CUBIC}{},{} {},{}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)?,
+		}
+		write!(svg, " {},{}", self.end.x, self.end.y)
+	}
+
 	/// Return the string argument used to create the lines connecting handles to endpoints in an SVG `path`
 	pub(crate) fn svg_handle_line_argument(&self) -> Option<String> {
 		match self.handles {

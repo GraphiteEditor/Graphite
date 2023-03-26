@@ -43,8 +43,8 @@ impl ToolMetadata for EyedropperTool {
 
 impl PropertyHolder for EyedropperTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for EyedropperTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EyedropperTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
 	}
 
@@ -87,7 +87,7 @@ impl Fsm for EyedropperToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(_document, _document_id, global_tool_data, input, _render_data): ToolActionHandlerData,
+		ToolActionHandlerData { global_tool_data, input, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

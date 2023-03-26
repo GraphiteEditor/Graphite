@@ -2,7 +2,8 @@ use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use document_legacy::layers::style::RenderData;
@@ -11,7 +12,7 @@ use glam::DVec2;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
-	transform_operation: TransformOperation,
+	pub transform_operation: TransformOperation,
 
 	slow: bool,
 	snap: bool,
@@ -22,21 +23,24 @@ pub struct TransformLayerMessageHandler {
 
 	original_transforms: OriginalTransforms,
 	pivot: DVec2,
-
-	shape_editor: ShapeEditor,
+}
+impl TransformLayerMessageHandler {
+	pub fn is_transforming(&self) -> bool {
+		self.transform_operation != TransformOperation::None
+	}
+	pub fn hints(&self, responses: &mut VecDeque<Message>) {
+		self.transform_operation.hints(self.snap, responses);
+	}
 }
 
-type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>, &'a ToolData);
+type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>, &'a ToolData, &'a mut ShapeState);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data): TransformData) {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data, shape_editor): TransformData) {
 		use TransformLayerMessage::*;
 
 		// TODO: Transform individual points when using the path tool.
 		let _using_path_tool = tool_data.active_tool_type == ToolType::Path;
-
-		// You may also want the shape editor here? If not, then feel free to remove.
-		let _shape_editor = &self.shape_editor;
 
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
 		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, &document.document_legacy);
@@ -61,7 +65,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -123,7 +128,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
@@ -178,7 +184,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 			SelectionChanged => {
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
-				self.shape_editor.set_selected_layers(layer_paths);
+				shape_editor.set_selected_layers(layer_paths);
 			}
 			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
