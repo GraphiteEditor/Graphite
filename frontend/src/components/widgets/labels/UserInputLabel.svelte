@@ -1,14 +1,14 @@
 <script lang="ts">
-	import type { IconName } from "@/utility-functions/icons";
-	import { platformIsMac } from "@/utility-functions/platform";
-	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@/wasm-communication/messages";
+	import type { IconName } from "@graphite/utility-functions/icons";
+	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/wasm-communication/messages";
 
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import { getContext } from "svelte";
-	import type { FullscreenState } from "@/state-providers/fullscreen";
+	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 
 	type LabelData = { label?: string; icon?: IconName; width: string };
 

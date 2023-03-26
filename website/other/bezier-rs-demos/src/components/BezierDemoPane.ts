@@ -1,6 +1,6 @@
-import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
-import { renderDemoPane } from "@/utils/render";
-import { BezierCurveType, BEZIER_CURVE_TYPE, BezierDemoOptions, InputOption, Demo, DemoPane, BezierDemoArgs } from "@/utils/types";
+import bezierFeatures, { BezierFeatureKey } from "@graphite/features/bezier-features";
+import { renderDemoPane } from "@graphite/utils/render";
+import { BezierCurveType, BEZIER_CURVE_TYPE, BezierDemoOptions, InputOption, Demo, DemoPane, BezierDemoArgs } from "@graphite/utils/types";
 
 const demoDefaults = {
 	Linear: {

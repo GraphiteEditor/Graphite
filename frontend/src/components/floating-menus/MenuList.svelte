@@ -3,15 +3,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
-	import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
+	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;

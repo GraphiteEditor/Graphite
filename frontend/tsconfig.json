@@ -14,7 +14,7 @@
 		"baseUrl": ".",
 		"types": ["node", "svelte", "svelte/store", "svelte/motion", "svelte/transition", "svelte/animate", "svelte/easing"],
 		"paths": {
-			"@/*": ["src/*"]
+			"@graphite/*": ["src/*"]
 		},
 		"lib": ["esnext", "dom", "dom.iterable", "scripthost"]
 	},
