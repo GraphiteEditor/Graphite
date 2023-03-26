@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { Color } from "@/wasm-communication/messages";
+	import type { Color } from "@graphite/wasm-communication/messages";
 
-	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

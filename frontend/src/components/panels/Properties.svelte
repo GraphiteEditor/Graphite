@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@graphite/wasm-communication/messages";
 
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

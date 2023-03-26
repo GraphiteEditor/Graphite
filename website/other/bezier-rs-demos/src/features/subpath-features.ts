@@ -1,5 +1,5 @@
-import { tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@/utils/options";
-import { InputOption, SubpathCallback, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
+import { tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@graphite/utils/options";
+import { InputOption, SubpathCallback, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const subpathFeatures = {
 	constructor: {

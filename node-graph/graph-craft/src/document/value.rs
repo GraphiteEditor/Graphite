@@ -27,7 +27,7 @@ pub enum TaggedValue {
 	RcImage(Option<Arc<graphene_core::raster::Image>>),
 	ImageFrame(graphene_core::raster::ImageFrame),
 	Color(graphene_core::raster::color::Color),
-	Subpath(bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>),
+	Subpaths(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
@@ -45,141 +45,65 @@ pub enum TaggedValue {
 	GradientType(graphene_core::vector::style::GradientType),
 	GradientPositions(Vec<(f64, Option<graphene_core::Color>)>),
 	Quantization(graphene_core::quantization::QuantizationChannels),
+	OptionalColor(Option<graphene_core::raster::color::Color>),
+	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for TaggedValue {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		core::mem::discriminant(self).hash(state);
 		match self {
-			Self::None => 0.hash(state),
-			Self::String(s) => {
-				1.hash(state);
-				s.hash(state)
-			}
-			Self::U32(u) => {
-				2.hash(state);
-				u.hash(state)
-			}
-			Self::F32(f) => {
-				3.hash(state);
-				f.to_bits().hash(state)
-			}
-			Self::F64(f) => {
-				4.hash(state);
-				f.to_bits().hash(state)
-			}
-			Self::Bool(b) => {
-				5.hash(state);
-				b.hash(state)
-			}
-			Self::DVec2(v) => {
-				6.hash(state);
-				v.to_array().iter().for_each(|x| x.to_bits().hash(state))
-			}
-			Self::OptionalDVec2(None) => 7.hash(state),
+			Self::None => {}
+			Self::String(s) => s.hash(state),
+			Self::U32(u) => u.hash(state),
+			Self::F32(f) => f.to_bits().hash(state),
+			Self::F64(f) => f.to_bits().hash(state),
+			Self::Bool(b) => b.hash(state),
+			Self::DVec2(v) => v.to_array().iter().for_each(|x| x.to_bits().hash(state)),
+			Self::OptionalDVec2(None) => 0.hash(state),
 			Self::OptionalDVec2(Some(v)) => {
-				8.hash(state);
+				1.hash(state);
 				Self::DVec2(*v).hash(state)
 			}
-			Self::DAffine2(m) => {
-				9.hash(state);
-				m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-			}
-			Self::Image(i) => {
-				10.hash(state);
-				i.hash(state)
-			}
-			Self::RcImage(i) => {
-				11.hash(state);
-				i.hash(state)
-			}
-			Self::Color(c) => {
-				12.hash(state);
-				c.hash(state)
-			}
-			Self::Subpath(s) => {
-				13.hash(state);
-				s.hash(state)
-			}
-			Self::RcSubpath(s) => {
-				14.hash(state);
-				s.hash(state)
-			}
-			Self::BlendMode(b) => {
-				15.hash(state);
-				b.hash(state)
-			}
-			Self::LuminanceCalculation(l) => {
-				16.hash(state);
-				l.hash(state)
-			}
-			Self::ImaginateSamplingMethod(m) => {
-				17.hash(state);
-				m.hash(state)
-			}
-			Self::ImaginateMaskStartingFill(f) => {
-				18.hash(state);
-				f.hash(state)
-			}
-			Self::ImaginateStatus(s) => {
-				19.hash(state);
-				s.hash(state)
-			}
-			Self::LayerPath(p) => {
-				20.hash(state);
-				p.hash(state)
-			}
+			Self::DAffine2(m) => m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state)),
+			Self::Image(i) => i.hash(state),
+			Self::RcImage(i) => i.hash(state),
+			Self::Color(c) => c.hash(state),
+			Self::Subpaths(s) => s.iter().for_each(|subpath| subpath.hash(state)),
+			Self::RcSubpath(s) => s.hash(state),
+			Self::BlendMode(b) => b.hash(state),
+			Self::LuminanceCalculation(l) => l.hash(state),
+			Self::ImaginateSamplingMethod(m) => m.hash(state),
+			Self::ImaginateMaskStartingFill(f) => f.hash(state),
+			Self::ImaginateStatus(s) => s.hash(state),
+			Self::LayerPath(p) => p.hash(state),
 			Self::ImageFrame(i) => {
-				21.hash(state);
 				i.image.hash(state);
 				i.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 			}
 			Self::VectorData(vector_data) => {
-				22.hash(state);
 				vector_data.subpaths.hash(state);
 				vector_data.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 				vector_data.style.hash(state);
 			}
-			Self::Fill(fill) => {
-				23.hash(state);
-				fill.hash(state);
-			}
-			Self::Stroke(stroke) => {
-				24.hash(state);
-				stroke.hash(state);
-			}
-			Self::VecF32(vec_f32) => {
-				25.hash(state);
-				vec_f32.iter().for_each(|val| val.to_bits().hash(state));
-			}
-			Self::LineCap(line_cap) => {
-				26.hash(state);
-				line_cap.hash(state);
-			}
-			Self::LineJoin(line_join) => {
-				27.hash(state);
-				line_join.hash(state);
-			}
-			Self::FillType(fill_type) => {
-				28.hash(state);
-				fill_type.hash(state);
-			}
-			Self::GradientType(gradient_type) => {
-				29.hash(state);
-				gradient_type.hash(state);
-			}
+			Self::Fill(fill) => fill.hash(state),
+			Self::Stroke(stroke) => stroke.hash(state),
+			Self::VecF32(vec_f32) => vec_f32.iter().for_each(|val| val.to_bits().hash(state)),
+			Self::LineCap(line_cap) => line_cap.hash(state),
+			Self::LineJoin(line_join) => line_join.hash(state),
+			Self::FillType(fill_type) => fill_type.hash(state),
+			Self::GradientType(gradient_type) => gradient_type.hash(state),
 			Self::GradientPositions(gradient_positions) => {
-				30.hash(state);
 				gradient_positions.len().hash(state);
 				for (position, color) in gradient_positions {
 					position.to_bits().hash(state);
 					color.hash(state);
 				}
 			}
-			Self::Quantization(quantized_image) => {
-				31.hash(state);
-				quantized_image.hash(state);
-			}
+			Self::Quantization(quantized_image) => quantized_image.hash(state),
+			Self::OptionalColor(color) => color.hash(state),
+			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
 		}
 	}
 }
@@ -201,7 +125,7 @@ impl<'a> TaggedValue {
 			TaggedValue::RcImage(x) => Box::new(x),
 			TaggedValue::ImageFrame(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
-			TaggedValue::Subpath(x) => Box::new(x),
+			TaggedValue::Subpaths(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
 			TaggedValue::BlendMode(x) => Box::new(x),
 			TaggedValue::LuminanceCalculation(x) => Box::new(x),
@@ -219,6 +143,8 @@ impl<'a> TaggedValue {
 			TaggedValue::GradientType(x) => Box::new(x),
 			TaggedValue::GradientPositions(x) => Box::new(x),
 			TaggedValue::Quantization(x) => Box::new(x),
+			TaggedValue::OptionalColor(x) => Box::new(x),
+			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 		}
 	}
 
@@ -238,7 +164,7 @@ impl<'a> TaggedValue {
 			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
 			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
-			TaggedValue::Subpath(_) => concrete!(bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>),
+			TaggedValue::Subpaths(_) => concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
@@ -257,6 +183,8 @@ impl<'a> TaggedValue {
 			TaggedValue::GradientType(_) => concrete!(graphene_core::vector::style::GradientType),
 			TaggedValue::GradientPositions(_) => concrete!(Vec<(f64, Option<graphene_core::Color>)>),
 			TaggedValue::Quantization(_) => concrete!(graphene_core::quantization::QuantizationChannels),
+			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
+			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 		}
 	}
 }

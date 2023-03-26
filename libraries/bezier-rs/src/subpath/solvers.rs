@@ -103,6 +103,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 
+	/// Return the min and max corners that represent the bounding box of the subpath, after a given affine transform.
+	pub fn bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		self.iter()
+			.map(|bezier| bezier.apply_transformation(&|v| transform.transform_point2(v)).bounding_box())
+			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
 	/// Returns list of `t`-values representing the inflection points of the subpath.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
@@ -122,6 +129,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		// TODO: Consider the shared point between adjacent beziers.
 		inflection_t_values
+	}
+
+	/// Does a path contain a point? Based on the non zero winding
+	pub fn contains_point(&self, target_point: DVec2) -> bool {
+		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
 	}
 }
 

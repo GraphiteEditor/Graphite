@@ -10,7 +10,7 @@ pub mod subpath;
 pub use subpath::Subpath;
 
 mod vector_data;
-pub use vector_data::VectorData;
+pub use vector_data::*;
 
 mod id_vec;
 pub use id_vec::IdBackedVec;

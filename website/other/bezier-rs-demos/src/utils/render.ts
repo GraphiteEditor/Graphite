@@ -1,4 +1,4 @@
-import { Demo, DemoPane, InputOption } from "@/utils/types";
+import { Demo, DemoPane, InputOption } from "@graphite/utils/types";
 
 export function renderDemo(demo: Demo): void {
 	const header = document.createElement("h4");

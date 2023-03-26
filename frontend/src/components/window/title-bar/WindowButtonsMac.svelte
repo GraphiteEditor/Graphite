@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
 	export let maximized = false;
 </script>

@@ -1,6 +1,6 @@
-import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
-import { renderDemoPane } from "@/utils/render";
-import { Demo, DemoPane, InputOption, SubpathDemoArgs } from "@/utils/types";
+import subpathFeatures, { SubpathFeatureKey } from "@graphite/features/subpath-features";
+import { renderDemoPane } from "@graphite/utils/render";
+import { Demo, DemoPane, InputOption, SubpathDemoArgs } from "@graphite/utils/types";
 
 class SubpathDemoPane extends HTMLElement implements DemoPane {
 	// Props

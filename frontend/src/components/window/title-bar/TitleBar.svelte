@@ -3,13 +3,13 @@
 </script>
 
 <script lang="ts">
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import MenuBarInput from "@/components/widgets/inputs/MenuBarInput.svelte";
-	import WindowButtonsMac from "@/components/window/title-bar/WindowButtonsMac.svelte";
-	import WindowButtonsWeb from "@/components/window/title-bar/WindowButtonsWeb.svelte";
-	import WindowButtonsWindows from "@/components/window/title-bar/WindowButtonsWindows.svelte";
-	import WindowTitle from "@/components/window/title-bar/WindowTitle.svelte";
-	import type { PortfolioState } from "@/state-providers/portfolio";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import MenuBarInput from "@graphite/components/widgets/inputs/MenuBarInput.svelte";
+	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
+	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
+	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
+	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
+	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import { getContext } from "svelte";
 
 	export let platform: Platform;
