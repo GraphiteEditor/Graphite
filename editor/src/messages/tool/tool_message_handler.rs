@@ -101,7 +101,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							if self.transform_layer_handler.is_transforming() {
 								self.transform_layer_handler.hints(responses);
 							} else {
-								tool.process_message(ToolMessage::UpdateHints, responses, &mut data)
+								tool.process_message(ToolMessage::UpdateHints, responses, &mut data);
 							}
 							tool.process_message(ToolMessage::UpdateCursor, responses, &mut data);
 						}

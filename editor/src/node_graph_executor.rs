@@ -245,7 +245,7 @@ impl NodeGraphExecutor {
 		}?;
 		let network = node_graph_frame.network.clone();
 
-		// Special execution path for generating imaginate (as generation requires io from outside node graph)
+		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
 		if let Some(imaginate_node) = imaginate_node {
 			responses.push_back(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, image_frame, persistent_data)?);
 			return Ok(());

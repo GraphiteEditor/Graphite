@@ -1,9 +1,10 @@
 use crate::messages::prelude::*;
 
-use glam::{DAffine2, DVec2};
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::ManipulatorPointId;
+
+use glam::{DAffine2, DVec2};
 
 pub type LayerIdentifier = Vec<document_legacy::LayerId>;
 

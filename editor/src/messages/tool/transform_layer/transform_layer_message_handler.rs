@@ -2,7 +2,6 @@ use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
-
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
@@ -29,7 +28,12 @@ impl TransformLayerMessageHandler {
 		self.transform_operation != TransformOperation::None
 	}
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		self.transform_operation.hints(self.snap, responses);
+		let axis_constraint = match self.transform_operation {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
+		};
+		self.transform_operation.hints(self.snap, axis_constraint, responses);
 	}
 }
 
@@ -115,7 +119,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+				self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				self.original_transforms.clear();
@@ -139,7 +143,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let new_snap = ipp.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+					let axis_constraint = match self.transform_operation {
+						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+						TransformOperation::Scaling(scaling) => scaling.constraint,
+						_ => Axis::Both,
+					};
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -149,8 +158,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::None => unreachable!(),
 						TransformOperation::Grabbing(translation) => {
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
+							let axis_constraint = translation.constraint;
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let selected_pivot = selected.mean_average_of_pivots(render_data);
@@ -163,7 +173,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -175,8 +185,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							};
 
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
+							let axis_constraint = scale.constraint;
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 						}
 					};
 				}

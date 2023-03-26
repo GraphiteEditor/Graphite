@@ -39,4 +39,3 @@ node-macro = {path = "../node-macro"}
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
-# forma = { version = "0.1.0", package = "forma-render" }

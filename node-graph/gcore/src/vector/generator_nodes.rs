@@ -20,8 +20,7 @@ fn unit_square(_input: ()) -> VectorData {
 	super::VectorData::from_subpaths(vec![Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE)])
 }
 
-// TODO: I removed the Arc requirement we shouuld think about when it makes sense to use its
-// vs making a generic value node
+// TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
 #[derive(Debug, Clone)]
 pub struct PathGenerator<Mirror> {
 	mirror: Mirror,

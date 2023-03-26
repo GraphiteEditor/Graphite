@@ -179,14 +179,14 @@ impl ShapeState {
 				}
 
 				if mirror_distance && point.manipulator_type != SelectedType::Anchor && vector_data.mirror_angle.contains(&point.group) {
-					let Some(mut origional_handle_position) = point.manipulator_type.get_position(group) else { continue };
-					origional_handle_position += delta;
+					let Some(mut original_handle_position) = point.manipulator_type.get_position(group) else { continue };
+					original_handle_position += delta;
 
 					let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
 					if state.is_selected(point) {
 						continue;
 					}
-					let position = group.anchor - (origional_handle_position - group.anchor);
+					let position = group.anchor - (original_handle_position - group.anchor);
 					responses.add(GraphOperationMessage::Vector {
 						layer: layer_path.clone(),
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
@@ -363,8 +363,6 @@ impl ShapeState {
 	}
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
-	///
-	/// Returns a tuple of subpath_index, manipulator_start and `t` as an f64.
 	fn closest_segment(&self, document: &Document, layer_path: &[LayerId], position: glam::DVec2, tolerance: f64) -> Option<(ManipulatorGroupId, ManipulatorGroupId, Bezier, f64)> {
 		let transform = document.generate_transform_relative_to_viewport(layer_path).ok()?;
 		let layer_pos = transform.inverse().transform_point2(position);

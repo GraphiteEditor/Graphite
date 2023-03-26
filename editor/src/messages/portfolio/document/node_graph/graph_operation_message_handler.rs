@@ -1,14 +1,14 @@
+use super::{resolve_document_node_type, VectorDataModification};
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
 use document_legacy::{LayerId, Operation};
-use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::vector::style::{Fill, FillType, Stroke};
 use transform_utils::LayerBounds;
 
-use super::{resolve_document_node_type, VectorDataModification};
+use glam::{DAffine2, DVec2};
 
 mod transform_utils;
 
@@ -37,7 +37,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let document_node = self.network.nodes.get_mut(&node_id).unwrap();
 		update_input(&mut document_node.inputs);
 	}
-	/// Insert a new node and modify the inputs
+
+	/// Inserts a new node and modifies the inputs
 	fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
 		let output_node_id = self.network.outputs[0].node_id;
 		let Some(output_node) = self.network.nodes.get_mut(&output_node_id) else {
@@ -73,6 +74,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let layer_path = self.layer.to_vec();
 		self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
 	}
+
 	fn fill_set(&mut self, fill: Fill) {
 		self.modify_inputs("Fill", |inputs| {
 			let fill_type = match fill {
@@ -94,6 +96,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		});
 	}
+
 	fn stroke_set(&mut self, stroke: Stroke) {
 		self.modify_inputs("Stroke", |inputs| {
 			inputs[1] = NodeInput::value(TaggedValue::Color(stroke.color.unwrap_or_default()), false);
@@ -114,11 +117,12 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalised_pivot(inputs)));
+			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let transform = to.inverse() * pivot.inverse() * transform * pivot * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
+
 	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds) {
 		self.modify_inputs("Transform", |inputs| {
 			let to = match transform_in {
@@ -126,15 +130,16 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalised_pivot(inputs)));
+			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let transform = to.inverse() * pivot.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
+
 	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
 		self.modify_inputs("Transform", |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
-			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalised_pivot(inputs)));
+			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
 			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
@@ -172,10 +177,10 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 		self.modify_inputs("Transform", |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
-			let normalised_pivot = transform_utils::get_current_normalised_pivot(inputs);
+			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
 
-			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalised_pivot + old_bounds_min;
-			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalised_pivot + new_bounds_min;
+			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
+			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
 			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
 			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
 
