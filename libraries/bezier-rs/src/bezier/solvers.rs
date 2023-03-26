@@ -435,7 +435,7 @@ impl Bezier {
 				let a = self.end.y - self.start.y;
 				let b = self.start.x - self.end.x;
 				let c = a * self.start.x + b * self.start.y;
-				if (a * target_point.x + b * target_point.y - c) * (resulting_sign as f64) <= 0.0 {
+				if (a * target_point.x + b * target_point.y - c) * (resulting_sign as f64) <= 0. {
 					resulting_sign
 				} else {
 					0
@@ -448,14 +448,14 @@ impl Bezier {
 				if target_point.x >= self.start.x.max(self.end.x).max(p1.x) {
 					return resulting_sign;
 				}
-				let a = self.end.y - 2.0 * p1.y + self.start.y;
-				let b = 2.0 * (p1.y - self.start.y);
+				let a = self.end.y - 2. * p1.y + self.start.y;
+				let b = 2. * (p1.y - self.start.y);
 				let c = self.start.y - target_point.y;
 
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
 				for t in solve_quadratic(discriminant, two_times_a, b, c) {
-					if (0.0..=1.0).contains(&t) {
+					if (0.0..=1.).contains(&t) {
 						let x = self.evaluate(TValue::Parametric(t)).x;
 						if target_point.x >= x {
 							return resulting_sign;
@@ -473,12 +473,12 @@ impl Bezier {
 				if target_point.x >= self.start.x.max(self.end.x).max(p1.x).max(p2.x) {
 					return resulting_sign;
 				}
-				let a = self.end.y - 3.0 * p2.y + 3.0 * p1.y - self.start.y;
-				let b = 3.0 * (p2.y - 2.0 * p1.y + self.start.y);
-				let c = 3.0 * (p1.y - self.start.y);
+				let a = self.end.y - 3. * p2.y + 3. * p1.y - self.start.y;
+				let b = 3. * (p2.y - 2. * p1.y + self.start.y);
+				let c = 3. * (p1.y - self.start.y);
 				let d = self.start.y - target_point.y;
 				for t in solve_cubic(a, b, c, d) {
-					if (0.0..=1.0).contains(&t) {
+					if (0.0..=1.).contains(&t) {
 						let x = self.evaluate(TValue::Parametric(t)).x;
 						if target_point.x >= x {
 							return resulting_sign;

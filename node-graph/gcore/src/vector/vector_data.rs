@@ -3,6 +3,7 @@ use crate::{uuid::ManipulatorGroupId, Color};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};
+
 use glam::{DAffine2, DVec2};
 
 /// [VectorData] is passed between nodes.
@@ -17,7 +18,7 @@ pub struct VectorData {
 }
 
 impl VectorData {
-	/// An empty subpath with no data, an identity transform and a black fill.
+	/// An empty subpath with no data, an identity transform, and a black fill.
 	pub const fn empty() -> Self {
 		Self {
 			subpaths: Vec::new(),
@@ -77,15 +78,15 @@ impl VectorData {
 	}
 
 	/// Compute the pivot of the layer in layerspace (the coordinates of the subpaths)
-	pub fn layerspace_pivot(&self, normalised_pivot: DVec2) -> DVec2 {
+	pub fn layerspace_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
 		let [bounds_min, bounds_max] = self.nonzero_bounding_box();
 		let bounds_size = bounds_max - bounds_min;
-		bounds_min + bounds_size * normalised_pivot
+		bounds_min + bounds_size * normalized_pivot
 	}
 
 	/// Compute the pivot in local space with the current transform applied
-	pub fn local_pivot(&self, normalised_pivot: DVec2) -> DVec2 {
-		self.transform.transform_point2(self.layerspace_pivot(normalised_pivot))
+	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
+		self.transform.transform_point2(self.layerspace_pivot(normalized_pivot))
 	}
 }
 

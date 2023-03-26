@@ -6,7 +6,7 @@ use graph_craft::document::{value::TaggedValue, NodeInput};
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
-/// Convert an affine transform into scale angle translation and shear, assuming shear.y = 0.
+/// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {
 	let x_axis = transform.matrix2.x_axis;
 	let y_axis = transform.matrix2.y_axis;
@@ -33,15 +33,15 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 
 /// Update the inputs of the transform node to match a new transform
 pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
-	let (scale, angle, translation, skew) = compute_scale_angle_translation_shear(transform);
+	let (scale, angle, translation, shear) = compute_scale_angle_translation_shear(transform);
 
 	inputs[1] = NodeInput::value(TaggedValue::DVec2(translation), false);
 	inputs[2] = NodeInput::value(TaggedValue::F64(angle), false);
 	inputs[3] = NodeInput::value(TaggedValue::DVec2(scale), false);
-	inputs[4] = NodeInput::value(TaggedValue::DVec2(skew), false);
+	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
 }
 
-/// TODO: This should be extracted from the graph at the location of the transform node.
+// TODO: This should be extracted from the graph at the location of the transform node.
 pub struct LayerBounds {
 	pub bounds: [DVec2; 2],
 	pub bounds_transform: DAffine2,
@@ -64,11 +64,13 @@ impl LayerBounds {
 			layer_transform,
 		}
 	}
-	pub fn layerspace_pivot(&self, normalised_pivot: DVec2) -> DVec2 {
-		self.bounds[0] + (self.bounds[1] - self.bounds[0]) * normalised_pivot
+
+	pub fn layerspace_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
+		self.bounds[0] + (self.bounds[1] - self.bounds[0]) * normalized_pivot
 	}
-	pub fn local_pivot(&self, normalised_pivot: DVec2) -> DVec2 {
-		self.bounds_transform.transform_point2(self.layerspace_pivot(normalised_pivot))
+
+	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
+		self.bounds_transform.transform_point2(self.layerspace_pivot(normalized_pivot))
 	}
 }
 
@@ -83,6 +85,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		DVec2::ZERO
 	};
+
 	let angle = if let NodeInput::Value {
 		tagged_value: TaggedValue::F64(angle),
 		..
@@ -92,6 +95,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		0.
 	};
+
 	let scale = if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(scale),
 		..
@@ -101,6 +105,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		DVec2::ONE
 	};
+
 	let shear = if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(shear),
 		..
@@ -110,11 +115,12 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		DVec2::ZERO
 	};
+
 	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
-/// Extract the current normalised pivot from the layer
-pub fn get_current_normalised_pivot(inputs: &[NodeInput]) -> DVec2 {
+/// Extract the current normalized pivot from the layer
+pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(pivot),
 		..
@@ -126,12 +132,16 @@ pub fn get_current_normalised_pivot(inputs: &[NodeInput]) -> DVec2 {
 	}
 }
 
+/// ![](https://files.keavon.com/-/OptimisticSpotlessTinamou/capture.png)
 ///
-//   \begin{bmatrix}
-//     S_{x}\cos(\theta)-S_{y}\sin(\theta)H_{y} & S_{x}\cos(\theta)H_{x}-S_{y}\sin(\theta) & T_{x}\\
-//     S_{x}\sin(\theta)+S_{y}\cos(\theta)H_{y} & S_{x}\sin(\theta)H_{x}+S_{y}\cos(\theta) & T_{y}\\
-//     0 & 0 & 1
-//   \end{bmatrix}
+/// Source:
+/// ```tex
+/// \begin{bmatrix}
+/// S_{x}\cos(\theta)-S_{y}\sin(\theta)H_{y} & S_{x}\cos(\theta)H_{x}-S_{y}\sin(\theta) & T_{x}\\
+/// S_{x}\sin(\theta)+S_{y}\cos(\theta)H_{y} & S_{x}\sin(\theta)H_{x}+S_{y}\cos(\theta) & T_{y}\\
+/// 0 & 0 & 1
+/// \end{bmatrix}
+/// ```
 #[test]
 fn derive_transform() {
 	for shear_x in -10..=10 {
@@ -147,19 +157,19 @@ fn derive_transform() {
 					let scale = DVec2::new(scale_x, scale_y);
 					let translate = DVec2::new(5666., 644.);
 
-					let origional_transform = DAffine2::from_cols(
+					let original_transform = DAffine2::from_cols(
 						DVec2::new(scale.x * angle.cos() - scale.y * angle.sin() * shear.y, scale.x * angle.sin() + scale.y * angle.cos() * shear.y),
 						DVec2::new(scale.x * angle.cos() * shear.x - scale.y * angle.sin(), scale.x * angle.sin() * shear.x + scale.y * angle.cos()),
 						translate,
 					);
 
-					let (new_scale, new_angle, new_translation, new_shear) = compute_scale_angle_translation_shear(origional_transform);
+					let (new_scale, new_angle, new_translation, new_shear) = compute_scale_angle_translation_shear(original_transform);
 					let new_transform = DAffine2::from_scale_angle_translation(new_scale, new_angle, new_translation) * DAffine2::from_cols_array(&[1., new_shear.y, new_shear.x, 1., 0., 0.]);
 
 					assert!(
-						new_transform.abs_diff_eq(origional_transform, 1e-10),
-						"origional_transform {} new_transform {} / scale {} new_scale {} / angle {} new_angle {} / shear {} / new_shear {}",
-						origional_transform,
+						new_transform.abs_diff_eq(original_transform, 1e-10),
+						"original_transform {} new_transform {} / scale {} new_scale {} / angle {} new_angle {} / shear {} / new_shear {}",
+						original_transform,
 						new_transform,
 						scale,
 						new_scale,
@@ -194,7 +204,7 @@ fn subpath_bounds(subpaths: &[Subpath<ManipulatorGroupId>]) -> [DVec2; 2] {
 		.unwrap_or_default()
 }
 
-/// Returns corners of all subpaths (but expanded to avoid div zero errors)
+/// Returns corners of all subpaths (but expanded to avoid division-by-zero errors)
 pub fn nonzero_subpath_bounds(subpaths: &[Subpath<ManipulatorGroupId>]) -> [DVec2; 2] {
 	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
 	clamp_bounds(bounds_min, bounds_max)
@@ -213,6 +223,7 @@ impl<'a> VectorModificationState<'a> {
 		let subpath = &mut self.subpaths[subpath_index];
 		subpath.insert_manipulator_group(subpath.len(), manipulator_group)
 	}
+
 	fn insert(&mut self, manipulator_group: ManipulatorGroup<ManipulatorGroupId>, after_id: ManipulatorGroupId) {
 		for subpath in self.subpaths.iter_mut() {
 			if let Some(index) = subpath.manipulator_index_from_id(after_id) {
@@ -221,6 +232,7 @@ impl<'a> VectorModificationState<'a> {
 			}
 		}
 	}
+
 	fn remove_group(&mut self, id: ManipulatorGroupId) {
 		for subpath in self.subpaths.iter_mut() {
 			if let Some(index) = subpath.manipulator_index_from_id(id) {
@@ -229,6 +241,7 @@ impl<'a> VectorModificationState<'a> {
 			}
 		}
 	}
+
 	fn remove_point(&mut self, point: ManipulatorPointId) {
 		for subpath in self.subpaths.iter_mut() {
 			if point.manipulator_type == SelectedType::Anchor {
@@ -245,6 +258,7 @@ impl<'a> VectorModificationState<'a> {
 			}
 		}
 	}
+
 	fn set_mirror(&mut self, id: ManipulatorGroupId, mirror_angle: bool) {
 		if !mirror_angle {
 			self.mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
@@ -252,6 +266,7 @@ impl<'a> VectorModificationState<'a> {
 			self.mirror_angle_groups.push(id);
 		}
 	}
+
 	fn toggle_mirror(&mut self, id: ManipulatorGroupId) {
 		if self.mirror_angle_groups.contains(&id) {
 			self.mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
@@ -259,6 +274,7 @@ impl<'a> VectorModificationState<'a> {
 			self.mirror_angle_groups.push(id);
 		}
 	}
+
 	fn set_position(&mut self, point: ManipulatorPointId, position: DVec2) {
 		for subpath in self.subpaths.iter_mut() {
 			if let Some(manipulator) = subpath.manipulator_mut_from_id(point.group) {
@@ -285,6 +301,7 @@ impl<'a> VectorModificationState<'a> {
 			}
 		}
 	}
+
 	pub fn modify(&mut self, modification: VectorDataModification) {
 		match modification {
 			VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group } => self.insert_end(subpath_index, manipulator_group),

@@ -1066,7 +1066,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).tooltip("When selecing a layer in a folder, shallow select will select the parent folder whereas deep select will select the layer. Double clicking in shallow select mode will select the layer.").widget_holder(),
+				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).widget_holder(),
 			]);
 		}
 		LayoutGroup::Row { widgets }.with_tooltip("Algorithm used to generate the image during each sampling step")

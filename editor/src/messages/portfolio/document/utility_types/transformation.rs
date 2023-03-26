@@ -141,7 +141,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -151,7 +151,7 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
-			self.hints(snapping, selected.responses);
+			self.hints(snapping, axis_constraint, selected.responses);
 		}
 	}
 
@@ -163,7 +163,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, axis);
 	}
 
 	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
@@ -174,20 +174,38 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		let axis_constraint = match self {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
+		};
+
+		self.apply_transform_operation(selected, snapping, axis_constraint);
 	}
 
-	pub fn hints(&self, snapping: bool, responses: &mut VecDeque<Message>) {
+	pub fn hints(&self, snapping: bool, axis_constraint: Axis, responses: &mut VecDeque<Message>) {
 		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut hints = Vec::new();
 
+		let axis_str = |vector: DVec2, separate: bool| match axis_constraint {
+			Axis::Both => {
+				if separate {
+					format!("X: {}, Y: {}", vector.x, vector.y)
+				} else {
+					vector.x.to_string()
+				}
+			}
+			Axis::X => format!("X: {}", vector.x),
+			Axis::Y => format!("Y: {}", vector.y),
+		};
+
 		let value_str = match self {
 			TransformOperation::None => String::new(),
-			TransformOperation::Grabbing(translation) => format!("Translate X: {} Y: {}", translation.to_dvec().x, translation.to_dvec().y),
-			TransformOperation::Rotating(rotation) => format!("Rotate {}°", rotation.to_f64(snapping)),
-			TransformOperation::Scaling(scale) => format!("Scale X: {} Y: {}", scale.to_dvec(snapping).x, scale.to_dvec(snapping).y),
+			TransformOperation::Grabbing(translation) => format!("Translate {}", axis_str(translation.to_dvec(), true)),
+			TransformOperation::Rotating(rotation) => format!("Rotate {}°", rotation.to_f64(snapping) * 360. / std::f64::consts::TAU),
+			TransformOperation::Scaling(scale) => format!("Scale {}", axis_str(scale.to_dvec(snapping), false)),
 		};
 		hints.push(HintInfo::label(value_str));
 		hints.push(HintInfo::keys([Key::Shift], "Precision Mode"));

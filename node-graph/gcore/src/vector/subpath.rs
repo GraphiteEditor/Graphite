@@ -1,9 +1,8 @@
-use crate::uuid::ManipulatorGroupId;
-
 use super::consts::ManipulatorType;
 use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
+use crate::uuid::ManipulatorGroupId;
 
 use alloc::string::String;
 use alloc::vec;

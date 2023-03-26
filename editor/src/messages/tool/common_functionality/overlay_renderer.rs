@@ -1,3 +1,4 @@
+use super::shape_editor::SelectedShapeState;
 use crate::application::generate_uuid;
 use crate::consts::VIEWPORT_GRID_ROUNDING_BIAS;
 use crate::consts::{COLOR_ACCENT, HIDE_HANDLE_DISTANCE, MANIPULATOR_GROUP_MARKER_SIZE, PATH_OUTLINE_WEIGHT};
@@ -9,11 +10,9 @@ use document_legacy::layers::style::{self, Fill, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_core::raster::color::Color;
 use graphene_core::uuid::ManipulatorGroupId;
-
-use glam::{DAffine2, DVec2};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
-use super::shape_editor::SelectedShapeState;
+use glam::{DAffine2, DVec2};
 
 /// [ManipulatorGroupOverlay]s is the collection of overlays that make up an [ManipulatorGroup] visible in the editor.
 #[derive(Clone, Debug, Default)]
@@ -238,20 +237,25 @@ impl OverlayRenderer {
 	/// Updates the position of the overlays based on the [Subpath] points.
 	fn place_manipulator_group_overlays(manipulator_group: &GraphiteManipulatorGroup, overlays: &mut ManipulatorGroupOverlays, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
 		let anchor = manipulator_group.anchor;
+
 		let mut place_handle_and_line = |handle_position: DVec2, line_overlay: &[LayerId], marker_source: &mut Option<Vec<LayerId>>| {
 			let line_vector = parent_transform.transform_point2(anchor) - parent_transform.transform_point2(handle_position);
 			let scale = DVec2::splat(line_vector.length());
 			let angle = -line_vector.angle_between(DVec2::X);
+
 			let translation = (parent_transform.transform_point2(handle_position) + VIEWPORT_GRID_ROUNDING_BIAS).round() + DVec2::splat(0.5);
 			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 			responses.push_back(Self::overlay_transform_message(line_overlay.to_vec(), transform));
 
 			let marker_overlay = marker_source.take().unwrap_or_else(|| Self::create_handle_overlay(responses));
+
 			let scale = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
 			let angle = 0.;
 			let translation = (parent_transform.transform_point2(handle_position) - (scale / 2.) + VIEWPORT_GRID_ROUNDING_BIAS).round();
 			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
+
 			responses.push_back(Self::overlay_transform_message(marker_overlay.clone(), transform));
+
 			*marker_source = Some(marker_overlay);
 		};
 
@@ -259,8 +263,8 @@ impl OverlayRenderer {
 		if let (Some(handle_position), Some(line_overlay)) = (manipulator_group.in_handle, overlays.in_line.as_mut()) {
 			place_handle_and_line(handle_position, line_overlay, &mut overlays.in_handle);
 		}
-		if let (Some(handle_psoition), Some(line_overlay)) = (manipulator_group.out_handle, overlays.out_line.as_ref()) {
-			place_handle_and_line(handle_psoition, line_overlay, &mut overlays.out_handle);
+		if let (Some(handle_position), Some(line_overlay)) = (manipulator_group.out_handle, overlays.out_line.as_ref()) {
+			place_handle_and_line(handle_position, line_overlay, &mut overlays.out_handle);
 		}
 
 		// Place the anchor point overlay

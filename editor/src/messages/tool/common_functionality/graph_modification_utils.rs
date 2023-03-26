@@ -3,8 +3,9 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use document_legacy::{LayerId, Operation};
-use glam::DAffine2;
 use graphene_core::uuid::ManipulatorGroupId;
+
+use glam::DAffine2;
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].

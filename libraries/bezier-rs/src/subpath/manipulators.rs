@@ -9,7 +9,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.closed
 	}
 
-	/// Set if the subpath is closed.
+	/// Set whether the subpath is closed.
 	pub fn set_closed(&mut self, new_closed: bool) {
 		self.closed = new_closed;
 	}
@@ -29,12 +29,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.manipulator_groups.iter().position(|manipulator_group| manipulator_group.id == id)
 	}
 
-	/// Insert a manipulator group at an index
+	/// Insert a manipulator group at an index.
 	pub fn insert_manipulator_group(&mut self, index: usize, group: ManipulatorGroup<ManipulatorGroupId>) {
 		self.manipulator_groups.insert(index, group)
 	}
 
-	/// Remove a manipulator group at an index
+	/// Remove a manipulator group at an index.
 	pub fn remove_manipulator_group(&mut self, index: usize) -> ManipulatorGroup<ManipulatorGroupId> {
 		self.manipulator_groups.remove(index)
 	}
