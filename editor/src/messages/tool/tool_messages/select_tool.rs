@@ -19,7 +19,6 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::{Layer, LayerDataType};
@@ -219,24 +218,24 @@ impl PropertyHolder for SelectTool {
 				})),
 				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
 				IconButton::new("BooleanUnion", 24)
-					.tooltip("Boolean Union")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into())
+					.tooltip("Boolean Union (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractFront", 24)
-					.tooltip("Boolean Subtract Front")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into())
+					.tooltip("Boolean Subtract Front (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractBack", 24)
-					.tooltip("Boolean Subtract Back")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into())
+					.tooltip("Boolean Subtract Back (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanIntersect", 24)
-					.tooltip("Boolean Intersect")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into())
+					.tooltip("Boolean Intersect (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanDifference", 24)
-					.tooltip("Boolean Difference")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into())
+					.tooltip("Boolean Difference (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				WidgetHolder::related_separator(),
 				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
