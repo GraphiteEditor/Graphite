@@ -330,25 +330,24 @@ impl WasmSubpath {
 		let subpath = self.to_default_svg();
 		let t = parse_t_variant(&t_variant, t);
 
-		let curvature = self.0.curvature(t);
-		if curvature == 0. {
-			// Linear curve case
-			// Radius is inf, so don't draw it
-			return wrap_svg_tag(format!("{subpath}"));
-		}
-		let radius = 1. / curvature;
-		let normal_point = self.0.normal(t);
 		let intersection_point = self.0.evaluate(t);
+		let normal_point = self.0.normal(t);
+		let curvature = self.0.curvature(t);
+		let content = if curvature < 0.000001 {
+			// Linear curve segment: the radius is infinite so we don't draw it
+			format!("{subpath}{}", draw_circle(intersection_point, 3., RED, 1., WHITE))
+		} else {
+			let radius = 1. / curvature;
+			let curvature_center = intersection_point + normal_point * radius;
 
-		let curvature_center = intersection_point + normal_point * radius;
-
-		let content = format!(
-			"{subpath}{}{}{}{}",
-			draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
-			draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
-			draw_circle(intersection_point, 3., RED, 1., WHITE),
-			draw_circle(curvature_center, 3., RED, 1., WHITE),
-		);
+			format!(
+				"{subpath}{}{}{}{}",
+				draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
+				draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
+				draw_circle(intersection_point, 3., RED, 1., WHITE),
+				draw_circle(curvature_center, 3., RED, 1., WHITE),
+			)
+		};
 		wrap_svg_tag(content)
 	}
 
