@@ -221,25 +221,27 @@ impl WasmBezier {
 	}
 
 	pub fn curvature(&self, raw_t: f64, t_variant: String) -> String {
-		let mut content = self.get_bezier_path();
+		let bezier = self.get_bezier_path();
 		let t = parse_t_variant(&t_variant, raw_t);
 
+		let intersection_point = self.0.evaluate(t);
+		let normal_point = self.0.normal(t);
 		let curvature = self.0.curvature(t);
-		if curvature > 0. {
-			let radius = 1. / self.0.curvature(t);
-			let normal_point = self.0.normal(t);
-			let intersection_point = self.0.evaluate(t);
-
+		let content = if curvature < 0.000001 {
+			// Linear curve segment: the radius is infinite so we don't draw it
+			format!("{bezier}{}", draw_circle(intersection_point, 3., RED, 1., WHITE))
+		} else {
+			let radius = 1. / curvature;
 			let curvature_center = intersection_point + normal_point * radius;
 
-			content = format!(
-				"{content}{}{}{}{}",
+			format!(
+				"{bezier}{}{}{}{}",
 				draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
 				draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
 				draw_circle(intersection_point, 3., RED, 1., WHITE),
 				draw_circle(curvature_center, 3., RED, 1., WHITE),
-			);
-		}
+			)
+		};
 		wrap_svg_tag(content)
 	}
 
@@ -386,32 +388,18 @@ impl WasmBezier {
 		let pivot = draw_circle(DVec2::new(pivot_x, pivot_y), 3., GRAY, 1.5, WHITE);
 
 		// Line between pivot and start point on curve
-		let original_dashed_line_start = format!(
+		let original_dashed_line = format!(
 			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
 			self.0.start().x,
 			self.0.start().y
 		);
-		let rotated_dashed_line_start = format!(
+		let rotated_dashed_line = format!(
 			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
 			rotated_bezier.start().x,
 			rotated_bezier.start().y
 		);
 
-		// Line between pivot and end point on curve
-		let original_dashed_line_end = format!(
-			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
-			self.0.end().x,
-			self.0.end().y
-		);
-		let rotated_dashed_line_end = format!(
-			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
-			rotated_bezier.end().x,
-			rotated_bezier.end().y
-		);
-
-		wrap_svg_tag(format!(
-			"{original_bezier_svg}{rotated_bezier_svg}{pivot}{original_dashed_line_start}{rotated_dashed_line_start}{original_dashed_line_end}{rotated_dashed_line_end}"
-		))
+		wrap_svg_tag(format!("{original_bezier_svg}{rotated_bezier_svg}{pivot}{original_dashed_line}{rotated_dashed_line}"))
 	}
 
 	fn intersect(&self, curve: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<f64> {

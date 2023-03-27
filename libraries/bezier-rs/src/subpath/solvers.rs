@@ -107,7 +107,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Return the min and max corners that represent the bounding box of the subpath, after a given affine transform.
 	pub fn bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
 		self.iter()
-			.map(|bezier| bezier.apply_transformation(&|v| transform.transform_point2(v)).bounding_box())
+			.map(|bezier| bezier.apply_transformation(|v| transform.transform_point2(v)).bounding_box())
 			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 
@@ -221,6 +221,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let translation = center_to_right.perp();
 
 		[ManipulatorGroup::new_anchor(left + translation), ManipulatorGroup::new_anchor(right + translation)]
+	}
+
+	/// Returns the curvature, a scalar value for the derivative at the point `t` along the subpath.
+	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/curvature/solo" title="Curvature Demo"></iframe>
+	pub fn curvature(&self, t: SubpathTValue) -> f64 {
+		let (segment_index, t) = self.t_value_to_parametric(t);
+		self.get_segment(segment_index).unwrap().curvature(TValue::Parametric(t))
 	}
 }
 

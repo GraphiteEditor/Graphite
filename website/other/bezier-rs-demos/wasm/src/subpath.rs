@@ -181,6 +181,28 @@ impl WasmSubpath {
 		wrap_svg_tag(content)
 	}
 
+	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
+		let subpath_svg = self.to_default_svg();
+		let rotated_subpath = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
+		let mut rotated_subpath_svg = String::new();
+		rotated_subpath.to_svg(&mut rotated_subpath_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+		let pivot = draw_circle(DVec2::new(pivot_x, pivot_y), 3., GRAY, 1.5, WHITE);
+
+		// Line between pivot and start point on curve
+		let original_dashed_line = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			self.0.iter().nth(0).unwrap().start().x,
+			self.0.iter().nth(0).unwrap().start().y
+		);
+		let rotated_dashed_line = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			rotated_subpath.iter().nth(0).unwrap().start().x,
+			rotated_subpath.iter().nth(0).unwrap().start().y
+		);
+
+		wrap_svg_tag(format!("{subpath_svg}{rotated_subpath_svg}{pivot}{original_dashed_line}{rotated_dashed_line}"))
+	}
+
 	pub fn project(&self, x: f64, y: f64) -> String {
 		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
 		let projected_point = self.0.evaluate(SubpathTValue::Parametric { segment_index, t: projected_t });
@@ -302,6 +324,31 @@ impl WasmSubpath {
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
 		wrap_svg_tag(format!("{subpath_svg}{self_intersections_svg}"))
+	}
+
+	pub fn curvature(&self, t: f64, t_variant: String) -> String {
+		let subpath = self.to_default_svg();
+		let t = parse_t_variant(&t_variant, t);
+
+		let intersection_point = self.0.evaluate(t);
+		let normal_point = self.0.normal(t);
+		let curvature = self.0.curvature(t);
+		let content = if curvature < 0.000001 {
+			// Linear curve segment: the radius is infinite so we don't draw it
+			format!("{subpath}{}", draw_circle(intersection_point, 3., RED, 1., WHITE))
+		} else {
+			let radius = 1. / curvature;
+			let curvature_center = intersection_point + normal_point * radius;
+
+			format!(
+				"{subpath}{}{}{}{}",
+				draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
+				draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
+				draw_circle(intersection_point, 3., RED, 1., WHITE),
+				draw_circle(curvature_center, 3., RED, 1., WHITE),
+			)
+		};
+		wrap_svg_tag(content)
 	}
 
 	pub fn split(&self, t: f64, t_variant: String) -> String {

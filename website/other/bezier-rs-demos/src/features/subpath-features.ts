@@ -95,6 +95,11 @@ const subpathFeatures = {
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_separation),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
+	curvature: {
+		name: "Curvature",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.curvature(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
+		inputOptions: [subpathTValueVariantOptions, { ...tSliderOptions, default: 0.2 }],
+	},
 	split: {
 		name: "Split",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.split(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
@@ -132,6 +137,20 @@ const subpathFeatures = {
 			},
 			joinOptions,
 			{ ...capOptions, isDisabledForClosed: true },
+		],
+	},
+	rotate: {
+		name: "Rotate",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.rotate(options.angle * Math.PI, 125, 100),
+		inputOptions: [
+			{
+				variable: "angle",
+				min: 0,
+				max: 2,
+				step: 1 / 50,
+				default: 0.12,
+				unit: "π",
+			},
 		],
 	},
 };
