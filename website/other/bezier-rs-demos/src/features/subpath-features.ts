@@ -1,5 +1,5 @@
-import { tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@graphite/utils/options";
-import { InputOption, SubpathCallback, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
+import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@graphite/utils/options";
+import { SubpathCallback, SubpathInputOption, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -107,7 +107,7 @@ const subpathFeatures = {
 	},
 	offset: {
 		name: "Offset",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance, options.join),
 		inputOptions: [
 			{
 				variable: "distance",
@@ -116,11 +116,12 @@ const subpathFeatures = {
 				step: 1,
 				default: 10,
 			},
+			joinOptions,
 		],
 	},
 	outline: {
 		name: "Outline",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance, options.join, options.cap),
 		inputOptions: [
 			{
 				variable: "distance",
@@ -129,6 +130,8 @@ const subpathFeatures = {
 				step: 1,
 				default: 10,
 			},
+			joinOptions,
+			{ ...capOptions, isDisabledForClosed: true },
 		],
 	},
 };
@@ -137,7 +140,7 @@ export type SubpathFeatureKey = keyof typeof subpathFeatures;
 export type SubpathFeatureOptions = {
 	name: string;
 	callback: SubpathCallback;
-	inputOptions?: InputOption[];
+	inputOptions?: SubpathInputOption[];
 	triggerOnMouseMove?: boolean;
 };
 export default subpathFeatures as Record<SubpathFeatureKey, SubpathFeatureOptions>;

@@ -211,6 +211,13 @@ impl Bezier {
 
 		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points.into_iter()).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
 	}
+
+	/// Returns true if the start, end and handles of the Bezier are all at the same location
+	pub fn is_point(&self) -> bool {
+		let start = self.start();
+
+		self.get_points().all(|point| point.abs_diff_eq(start, MAX_ABSOLUTE_DIFFERENCE))
+	}
 }
 
 #[cfg(test)]

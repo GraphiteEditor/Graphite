@@ -1,5 +1,5 @@
 import { WasmBezier } from "@graphite/../wasm/pkg";
-import { tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@graphite/utils/options";
+import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@graphite/utils/options";
 import { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption, BEZIER_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const bezierFeatures = {
@@ -251,7 +251,7 @@ const bezierFeatures = {
 	},
 	outline: {
 		name: "Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.outline(options.distance, options.cap),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -262,13 +262,14 @@ const bezierFeatures = {
 						step: 1,
 						default: 15,
 					},
+					capOptions,
 				],
 			},
 		},
 	},
 	"graduated-outline": {
 		name: "Graduated Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.graduated_outline(options.start_distance, options.end_distance, options.cap),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -286,6 +287,7 @@ const bezierFeatures = {
 						step: 1,
 						default: 15,
 					},
+					capOptions,
 				],
 			},
 		},
@@ -300,7 +302,8 @@ const bezierFeatures = {
 	},
 	"skewed-outline": {
 		name: "Skewed Outline",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string =>
+			bezier.skewed_outline(options.distance1, options.distance2, options.distance3, options.distance4, options.cap),
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [
@@ -332,6 +335,7 @@ const bezierFeatures = {
 						step: 1,
 						default: 5,
 					},
+					capOptions,
 				],
 			},
 		},

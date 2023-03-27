@@ -1,6 +1,6 @@
 import subpathFeatures, { SubpathFeatureKey } from "@graphite/features/subpath-features";
 import { renderDemoPane } from "@graphite/utils/render";
-import { Demo, DemoPane, InputOption, SubpathDemoArgs } from "@graphite/utils/types";
+import { Demo, DemoPane, SubpathDemoArgs, SubpathInputOption } from "@graphite/utils/types";
 
 class SubpathDemoPane extends HTMLElement implements DemoPane {
 	// Props
@@ -8,7 +8,7 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 
 	name!: string;
 
-	inputOptions!: InputOption[];
+	inputOptions!: SubpathInputOption[];
 
 	triggerOnMouseMove!: boolean;
 
@@ -62,7 +62,12 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 		subpathDemo.setAttribute("triples", JSON.stringify(demo.triples));
 		subpathDemo.setAttribute("closed", String(demo.closed));
 		subpathDemo.setAttribute("key", this.key);
-		subpathDemo.setAttribute("inputOptions", JSON.stringify(this.inputOptions));
+
+		const inputOptions = this.inputOptions.map((option) => ({
+			...option,
+			disabled: option.isDisabledForClosed && demo.closed,
+		}));
+		subpathDemo.setAttribute("inputOptions", JSON.stringify(inputOptions));
 		subpathDemo.setAttribute("triggerOnMouseMove", String(this.triggerOnMouseMove));
 		return subpathDemo;
 	}

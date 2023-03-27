@@ -2,9 +2,9 @@ use std::vec;
 
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{Joint, SubpathTValue, TValue};
+use crate::utils::{Cap, Join, SubpathTValue, TValue};
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.
@@ -109,9 +109,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns a [Subpath] with a reversed winding order.
+	/// Note that a reversed closed subpath will start on the same manipulator group and simply wind the other direction
 	pub fn reverse(&self) -> Subpath<ManipulatorGroupId> {
+		let mut reversed = Subpath::reverse_manipulator_groups(self.manipulator_groups());
+		if self.closed {
+			reversed.rotate_right(1);
+		};
 		Subpath {
-			manipulator_groups: Subpath::reverse_manipulator_groups(&self.manipulator_groups),
+			manipulator_groups: reversed,
 			closed: self.closed,
 		}
 	}
@@ -121,7 +126,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// The resulting Subpath will wind from the given `t1` to `t2`.
 	/// That means, if the value of `t1` > `t2`, it will cross the break between endpoints from `t1` to `t = 1 = 0` to `t2`.
 	/// If a path winding in the reverse direction is desired, call `trim` on the `Subpath` returned from `Subpath::reverse`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<ManipulatorGroupId> {
 		// Return a clone of the Subpath if it is not long enough to be a valid Bezier
 		if self.manipulator_groups.is_empty() {
@@ -278,6 +283,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Smooths a Subpath up to the first derivative, using a weighted averaged based on segment length.
 	/// The Subpath must be open, and contain no quadratic segments.
 	pub(crate) fn smooth_open_subpath(&mut self) {
+		if self.len() < 2 {
+			return;
+		}
 		for i in 1..self.len() - 1 {
 			let first_bezier = self.manipulator_groups[i - 1].to_bezier(&self.manipulator_groups[i]);
 			let second_bezier = self.manipulator_groups[i].to_bezier(&self.manipulator_groups[i + 1]);
@@ -326,17 +334,22 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
-	/// The intersections of segments of the subpath are joined using the method specified by the `joint` argument.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
-	pub fn offset(&self, distance: f64, joint: Joint) -> Subpath<ManipulatorGroupId> {
+	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
+	pub fn offset(&self, distance: f64, join: Join) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
 		// An offset at a distance 0 from the curve is simply the same curve
-		if distance == 0. {
+		// An offset of a single point is not defined
+		if distance == 0. || self.len() == 1 {
 			return self.clone();
 		}
 
-		let mut subpaths = self.iter().map(|bezier| bezier.offset(distance)).collect::<Vec<Subpath<ManipulatorGroupId>>>();
+		let mut subpaths = self
+			.iter()
+			.filter(|bezier| !bezier.is_point())
+			.map(|bezier| bezier.offset(distance))
+			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
 		let mut drop_common_point = vec![true; self.len()];
 
 		// Clip or join consecutive Subpaths
@@ -359,7 +372,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let angle = out_tangent.angle_between(in_tangent);
 
 			// The angle is concave. The Subpath overlap and must be clipped
-			let mut apply_joint = true;
+			let mut apply_join = true;
 			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
 				// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
 				// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
@@ -367,16 +380,27 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_simple_subpaths(subpath1, subpath2) {
 					subpaths[i] = clipped_subpath1;
 					subpaths[j] = clipped_subpath2;
-					apply_joint = false;
+					apply_join = false;
 				}
 			}
-			// The angle is convex. The Subpath must be joined using the specified Joint type
-			if apply_joint {
-				match joint {
-					Joint::Bevel => {
-						drop_common_point[j] = false;
+			// The angle is convex. The Subpath must be joined using the specified join type
+			if apply_join {
+				drop_common_point[j] = false;
+				match join {
+					Join::Bevel => {}
+					Join::Miter => {
+						let miter_manipulator_group = subpaths[i].miter_line_join(&subpaths[j]);
+						if let Some(miter_manipulator_group) = miter_manipulator_group {
+							subpaths[i].manipulator_groups.push(miter_manipulator_group);
+						}
 					}
-					_ => unimplemented!(),
+					Join::Round => {
+						let (out_handle, round_point, in_handle) = subpaths[i].round_line_join(&subpaths[j], self.manipulator_groups[j].anchor);
+						let last_index = subpaths[i].manipulator_groups.len() - 1;
+						subpaths[i].manipulator_groups[last_index].out_handle = Some(out_handle);
+						subpaths[i].manipulator_groups.push(round_point.clone());
+						subpaths[j].manipulator_groups[0].in_handle = Some(in_handle);
+					}
 				}
 			}
 		}
@@ -387,22 +411,35 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
 			let angle = out_tangent.angle_between(in_tangent);
 
-			let mut apply_joint = true;
+			let mut apply_join = true;
 			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
 				if let Some((clipped_subpath1, clipped_subpath2)) = Subpath::clip_simple_subpaths(&subpaths[subpaths.len() - 1], &subpaths[0]) {
 					// Merge the clipped subpaths
 					let last_index = subpaths.len() - 1;
 					subpaths[last_index] = clipped_subpath1;
 					subpaths[0] = clipped_subpath2;
-					apply_joint = false;
+					apply_join = false;
 				}
 			}
-			if apply_joint {
-				match joint {
-					Joint::Bevel => {
-						drop_common_point[0] = false;
+			if apply_join {
+				drop_common_point[0] = false;
+				match join {
+					Join::Bevel => {}
+					Join::Miter => {
+						let last_subpath_index = subpaths.len() - 1;
+						let miter_manipulator_group = subpaths[last_subpath_index].miter_line_join(&subpaths[0]);
+						if let Some(miter_manipulator_group) = miter_manipulator_group {
+							subpaths[last_subpath_index].manipulator_groups.push(miter_manipulator_group);
+						}
 					}
-					_ => unimplemented!(),
+					Join::Round => {
+						let last_subpath_index = subpaths.len() - 1;
+						let (out_handle, round_point, in_handle) = subpaths[last_subpath_index].round_line_join(&subpaths[0], self.manipulator_groups[0].anchor);
+						let last_index = subpaths[last_subpath_index].manipulator_groups.len() - 1;
+						subpaths[last_subpath_index].manipulator_groups[last_index].out_handle = Some(out_handle);
+						subpaths[last_subpath_index].manipulator_groups.push(round_point);
+						subpaths[0].manipulator_groups[0].in_handle = Some(in_handle);
+					}
 				}
 			}
 		}
@@ -428,34 +465,68 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Subpath::new(manipulator_groups, self.closed)
 	}
 
+	/// Helper function to combine the two offsets that make up an outline.
+	pub(crate) fn combine_outline(&self, other: &Subpath<ManipulatorGroupId>, cap: Cap) -> Subpath<ManipulatorGroupId> {
+		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
+		result_manipulator_groups.extend_from_slice(self.manipulator_groups());
+		match cap {
+			Cap::Butt => {
+				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+			}
+			Cap::Round => {
+				let last_index = result_manipulator_groups.len() - 1;
+				let (out_handle, round_point, in_handle) = self.round_cap(other);
+				result_manipulator_groups[last_index].out_handle = Some(out_handle);
+				result_manipulator_groups.push(round_point);
+				result_manipulator_groups.extend_from_slice(&other.manipulator_groups);
+				result_manipulator_groups[last_index + 2].in_handle = Some(in_handle);
+
+				let last_index = result_manipulator_groups.len() - 1;
+				let (out_handle, round_point, in_handle) = other.round_cap(self);
+				result_manipulator_groups[last_index].out_handle = Some(out_handle);
+				result_manipulator_groups.push(round_point);
+				result_manipulator_groups[0].in_handle = Some(in_handle);
+			}
+			Cap::Square => {
+				let square_points = self.square_cap(other);
+				result_manipulator_groups.extend_from_slice(&square_points);
+				result_manipulator_groups.extend_from_slice(other.manipulator_groups());
+				let square_points = other.square_cap(self);
+				result_manipulator_groups.extend_from_slice(&square_points);
+			}
+		}
+		Subpath::new(result_manipulator_groups, true)
+	}
+
 	// TODO: Replace this return type with `Path`, once the `Path` data type has been created.
 	/// Outline returns a single closed subpath (if the original subpath was open) or two closed subpaths (if the original subpath was closed) that forms
 	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
 	/// - `distance` - The outline's distance from the curve.
-	/// - `joint` - The joint type used to cap the endpoints of open bezier curves, and join successive subpath segments.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline(&self, distance: f64, joint: Joint) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
-		let mut pos_offset = self.offset(distance, joint);
-		let mut neg_offset = self.reverse().offset(distance, joint);
+	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
+	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
+	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+		let is_point = self.is_point();
+		let (pos_offset, neg_offset) = if is_point {
+			let point = self.manipulator_groups[0].anchor;
+			(
+				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::NEG_Y * distance)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::Y * distance)], false),
+			)
+		} else {
+			(self.offset(distance, join), self.reverse().offset(distance, join))
+		};
 
-		if self.closed {
+		if self.closed && !is_point {
 			return (pos_offset, Some(neg_offset));
 		}
 
-		match joint {
-			Joint::Bevel => {
-				pos_offset.manipulator_groups.append(&mut neg_offset.manipulator_groups);
-				pos_offset.closed = true;
-				(pos_offset, None)
-			}
-			_ => unimplemented!(),
-		}
+		(pos_offset.combine_outline(&neg_offset, cap), None)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{ManipulatorGroup, Subpath};
+	use super::{Cap, Join, ManipulatorGroup, Subpath};
 	use crate::compare::{compare_points, compare_subpaths, compare_vec_of_points};
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils::{SubpathTValue, TValue};
@@ -507,6 +578,43 @@ mod tests {
 		let mut subpath = set_up_open_subpath();
 		subpath.closed = true;
 		subpath
+	}
+
+	#[test]
+	fn outline_with_single_point_segment() {
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(20., 20.),
+					out_handle: Some(DVec2::new(10., 90.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: None,
+					in_handle: Some(DVec2::new(60., 40.)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: Some(DVec2::new(40., 120.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(100., 100.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let outline = subpath.outline(10., crate::Join::Round, crate::Cap::Round).0;
+		assert!(outline.manipulator_groups.windows(2).all(|pair| !pair[0].anchor.abs_diff_eq(pair[1].anchor, MAX_ABSOLUTE_DIFFERENCE)));
+		assert_eq!(outline.closed(), true);
 	}
 
 	#[test]
@@ -628,9 +736,15 @@ mod tests {
 		let result = temporary.reverse();
 		let end = result.len();
 
-		assert_eq!(temporary.manipulator_groups[0].anchor, result.manipulator_groups[end - 1].anchor);
-		assert_eq!(temporary.manipulator_groups[0].in_handle, result.manipulator_groups[end - 1].out_handle);
-		assert_eq!(temporary.manipulator_groups[0].out_handle, result.manipulator_groups[end - 1].in_handle);
+		// Second manipulator group on the temporary subpath should be the reflected version of the last in the result
+		assert_eq!(temporary.manipulator_groups[1].anchor, result.manipulator_groups[end - 1].anchor);
+		assert_eq!(temporary.manipulator_groups[1].in_handle, result.manipulator_groups[end - 1].out_handle);
+		assert_eq!(temporary.manipulator_groups[1].out_handle, result.manipulator_groups[end - 1].in_handle);
+
+		// The first manipulator group in both should be the reflected versions of each other
+		assert_eq!(temporary.manipulator_groups[0].anchor, result.manipulator_groups[0].anchor);
+		assert_eq!(temporary.manipulator_groups[0].in_handle, result.manipulator_groups[0].out_handle);
+		assert_eq!(temporary.manipulator_groups[0].out_handle, result.manipulator_groups[0].in_handle);
 		assert_eq!(subpath, result);
 	}
 
@@ -906,5 +1020,47 @@ mod tests {
 		assert!(result.manipulator_groups[0].in_handle.is_none());
 		assert!(result.manipulator_groups[0].out_handle.is_none());
 		assert_eq!(result.manipulator_groups.len(), 1);
+	}
+
+	#[test]
+	fn outline_single_point_circle() {
+		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(0., 0.), DVec2::new(50., 50.)).reverse();
+		let p = DVec2::new(25., 25.);
+
+		let subpath: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], false);
+		let outline_open = subpath.outline(25., Join::Bevel, Cap::Round);
+		assert_eq!(outline_open.0, ellipse);
+		assert_eq!(outline_open.1, None);
+
+		let subpath_closed: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], true);
+		let outline_closed = subpath_closed.outline(25., Join::Bevel, Cap::Round);
+		assert_eq!(outline_closed.0, ellipse);
+		assert_eq!(outline_closed.1, None);
+	}
+
+	#[test]
+	fn outline_single_point_square() {
+		let square: Subpath<EmptyId> = Subpath::from_anchors(
+			[
+				DVec2::new(25., 0.),
+				DVec2::new(0., 0.),
+				DVec2::new(0., 50.),
+				DVec2::new(25., 50.),
+				DVec2::new(50., 50.),
+				DVec2::new(50., 0.),
+			],
+			true,
+		);
+		let p = DVec2::new(25., 25.);
+
+		let subpath: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], false);
+		let outline_open = subpath.outline(25., Join::Bevel, Cap::Square);
+		assert_eq!(outline_open.0, square);
+		assert_eq!(outline_open.1, None);
+
+		let subpath_closed: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], true);
+		let outline_closed = subpath_closed.outline(25., Join::Bevel, Cap::Square);
+		assert_eq!(outline_closed.0, square);
+		assert_eq!(outline_closed.1, None);
 	}
 }
