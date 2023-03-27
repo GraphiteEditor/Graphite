@@ -1,4 +1,6 @@
 use crate::svg_drawing::*;
+use crate::utils::parse_cap;
+
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, ProjectionOptions, TValue};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -219,22 +221,25 @@ impl WasmBezier {
 	}
 
 	pub fn curvature(&self, raw_t: f64, t_variant: String) -> String {
-		let bezier = self.get_bezier_path();
+		let mut content = self.get_bezier_path();
 		let t = parse_t_variant(&t_variant, raw_t);
 
-		let radius = 1. / self.0.curvature(t);
-		let normal_point = self.0.normal(t);
-		let intersection_point = self.0.evaluate(t);
+		let curvature = self.0.curvature(t);
+		if curvature > 0. {
+			let radius = 1. / self.0.curvature(t);
+			let normal_point = self.0.normal(t);
+			let intersection_point = self.0.evaluate(t);
 
-		let curvature_center = intersection_point + normal_point * radius;
+			let curvature_center = intersection_point + normal_point * radius;
 
-		let content = format!(
-			"{bezier}{}{}{}{}",
-			draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
-			draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
-			draw_circle(intersection_point, 3., RED, 1., WHITE),
-			draw_circle(curvature_center, 3., RED, 1., WHITE),
-		);
+			content = format!(
+				"{content}{}{}{}{}",
+				draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
+				draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
+				draw_circle(intersection_point, 3., RED, 1., WHITE),
+				draw_circle(curvature_center, 3., RED, 1., WHITE),
+			);
+		}
 		wrap_svg_tag(content)
 	}
 
@@ -242,19 +247,10 @@ impl WasmBezier {
 		let t = parse_t_variant(&t_variant, raw_t);
 		let beziers: [Bezier; 2] = self.0.split(t);
 
-		let mut original_bezier_svg = String::new();
-		self.0.to_svg(
-			&mut original_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, WHITE),
-			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, WHITE),
-			HANDLE_ATTRIBUTES.to_string(),
-			HANDLE_LINE_ATTRIBUTES.to_string(),
-		);
-
 		let mut bezier_svg_1 = String::new();
 		beziers[0].to_svg(
 			&mut bezier_svg_1,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, ORANGE).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, ORANGE),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, ORANGE),
@@ -263,13 +259,13 @@ impl WasmBezier {
 		let mut bezier_svg_2 = String::new();
 		beziers[1].to_svg(
 			&mut bezier_svg_2,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
 		);
 
-		wrap_svg_tag(format!("{original_bezier_svg}{bezier_svg_1}{bezier_svg_2}"))
+		wrap_svg_tag(format!("{}{bezier_svg_1}{bezier_svg_2}", self.get_bezier_path()))
 	}
 
 	pub fn trim(&self, raw_t1: f64, raw_t2: f64, t_variant: String) -> String {
@@ -279,7 +275,7 @@ impl WasmBezier {
 		let mut trimmed_bezier_svg = String::new();
 		trimmed_bezier.to_svg(
 			&mut trimmed_bezier_svg,
-			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED),
+			CURVE_ATTRIBUTES.to_string().replace(BLACK, RED).replace("stroke-width=\"2\"", "stroke-width=\"8\"") + " opacity=\"0.5\"",
 			ANCHOR_ATTRIBUTES.to_string().replace(BLACK, RED),
 			HANDLE_ATTRIBUTES.to_string().replace(GRAY, RED),
 			HANDLE_LINE_ATTRIBUTES.to_string().replace(GRAY, RED),
@@ -570,8 +566,9 @@ impl WasmBezier {
 		wrap_svg_tag(bezier_curves_svg)
 	}
 
-	pub fn outline(&self, distance: f64) -> String {
-		let outline_subpath = self.0.outline::<EmptyId>(distance);
+	pub fn outline(&self, distance: f64, cap: i32) -> String {
+		let cap = parse_cap(cap);
+		let outline_subpath = self.0.outline::<EmptyId>(distance, cap);
 		if outline_subpath.is_empty() {
 			return String::new();
 		}
@@ -583,8 +580,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
-	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64) -> String {
-		let outline_subpath = self.0.graduated_outline::<EmptyId>(start_distance, end_distance);
+	pub fn graduated_outline(&self, start_distance: f64, end_distance: f64, cap: i32) -> String {
+		let cap = parse_cap(cap);
+		let outline_subpath = self.0.graduated_outline::<EmptyId>(start_distance, end_distance, cap);
 		if outline_subpath.is_empty() {
 			return String::new();
 		}
@@ -596,8 +594,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier_svg}{outline_svg}"))
 	}
 
-	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> String {
-		let outline_subpath = self.0.skewed_outline::<EmptyId>(distance1, distance2, distance3, distance4);
+	pub fn skewed_outline(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: i32) -> String {
+		let cap = parse_cap(cap);
+		let outline_subpath = self.0.skewed_outline::<EmptyId>(distance1, distance2, distance3, distance4, cap);
 		if outline_subpath.is_empty() {
 			return String::new();
 		}

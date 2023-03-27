@@ -1,9 +1,10 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::SubpathTValue;
+use crate::utils::{compute_circular_subpath_details, line_intersection, SubpathTValue};
 use crate::TValue;
 
-use glam::DVec2;
+use glam::{DMat2, DVec2};
+use std::f64::consts::PI;
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Calculate the point on the subpath based on the parametric `t`-value provided.
@@ -22,7 +23,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		self.iter()
 			.enumerate()
@@ -34,18 +35,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// This function expects the following:
 	/// - other: a [Bezier] curve to check intersections against
 	/// - error: an optional f64 value to provide an error bound
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn subpath_intersections(&self, other: &Subpath<ManipulatorGroupId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersection_t_values: Vec<(usize, f64)> = other.iter().flat_map(|bezier| self.intersections(&bezier, error, minimum_separation)).collect();
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 		intersection_t_values
-	}
-
-	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
-	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
-		let (segment_index, t) = self.t_value_to_parametric(t);
-		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
 	}
 
 	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
@@ -54,7 +48,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/bezier-rs-demos#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
 	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
@@ -74,6 +68,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		intersections_vec
 	}
 
+	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/tangent/solo" title="Tangent Demo"></iframe>
+	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
+		let (segment_index, t) = self.t_value_to_parametric(t);
+		self.get_segment(segment_index).unwrap().tangent(TValue::Parametric(t))
+	}
+
 	/// Returns a normalized unit vector representing the direction of the normal on the subpath based on the parametric `t`-value provided.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: SubpathTValue) -> DVec2 {
@@ -83,7 +84,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric subpaths respectively.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/local-extrema/solo" title="Local Extrema Demo"></iframe>
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
 		let number_of_curves = self.len_segments() as f64;
 
@@ -98,7 +99,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Return the min and max corners that represent the bounding box of the subpath.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
@@ -112,7 +113,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns list of `t`-values representing the inflection points of the subpath.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/bezier-rs-demos#subpath/inflections/solo" title="Inflections Demo"></iframe>
 	pub fn inflections(&self) -> Vec<f64> {
 		let number_of_curves = self.len_segments() as f64;
 		let inflection_t_values: Vec<f64> = self
@@ -134,6 +135,92 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Does a path contain a point? Based on the non zero winding
 	pub fn contains_point(&self, target_point: DVec2) -> bool {
 		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
+	}
+
+	/// Returns the manipulator point that is needed for a miter join if it is possible.
+	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
+		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
+		let out_segment = other.get_segment(0).unwrap();
+		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
+		let out_tangent = out_segment.tangent(TValue::Parametric(0.));
+
+		let normalized_in_tangent = in_tangent.normalize();
+		let normalized_out_tangent = out_tangent.normalize();
+
+		// The tangents must not be parallel for the miter join
+		if !normalized_in_tangent.abs_diff_eq(normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) && !normalized_in_tangent.abs_diff_eq(-normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) {
+			let intersection = line_intersection(in_segment.end(), in_tangent, out_segment.start(), out_tangent);
+
+			// Draw the miter join if the intersection occurs in the correct direction with respect to the path
+			if (intersection - in_segment.end()).normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
+				&& (out_segment.start() - intersection).normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			{
+				return Some(ManipulatorGroup {
+					anchor: intersection,
+					in_handle: None,
+					out_handle: None,
+					id: ManipulatorGroupId::new(),
+				});
+			}
+		}
+		// If we can't draw the miter join, default to a bevel join
+		None
+	}
+
+	/// Returns the necessary information to create a round join with the provided center.
+	/// The returned items correspond to:
+	/// - The `out_handle` for the last manipulator group of `self`
+	/// - The new manipulator group to be added
+	/// - The `in_handle` for the first manipulator group of `other`
+	pub(crate) fn round_line_join(&self, other: &Subpath<ManipulatorGroupId>, center: DVec2) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+		let left = self.manipulator_groups[self.len() - 1].anchor;
+		let right = other.manipulator_groups[0].anchor;
+
+		let center_to_right = right - center;
+		let center_to_left = left - center;
+
+		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
+		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
+
+		let mut angle = center_to_right.angle_between(center_to_left) / 2.;
+		let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
+
+		if (arc_point - left).angle_between(in_tangent).abs() > PI / 2. {
+			angle = angle - PI * (if angle < 0. { -1. } else { 1. });
+			arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
+		}
+
+		compute_circular_subpath_details(left, arc_point, right, center, Some(angle))
+	}
+
+	/// Returns the necessary information to create a round cap between the end of `self` and the beginning of `other`.
+	/// The returned items correspond to:
+	/// - The `out_handle` for the last manipulator group of `self`
+	/// - The new manipulator group to be added
+	/// - The `in_handle` for the first manipulator group of `other`
+	pub(crate) fn round_cap(&self, other: &Subpath<ManipulatorGroupId>) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+		let left = self.manipulator_groups[self.len() - 1].anchor;
+		let right = other.manipulator_groups[0].anchor;
+
+		let center = (right + left) / 2.;
+		let center_to_right = right - center;
+
+		let arc_point = center + center_to_right.perp();
+
+		compute_circular_subpath_details(left, arc_point, right, center, None)
+	}
+
+	/// Returns the two manipulator groups that create a sqaure cap between the end of `self` and the beginning of `other`.
+	pub(crate) fn square_cap(&self, other: &Subpath<ManipulatorGroupId>) -> [ManipulatorGroup<ManipulatorGroupId>; 2] {
+		let left = self.manipulator_groups[self.len() - 1].anchor;
+		let right = other.manipulator_groups[0].anchor;
+
+		let center = (right + left) / 2.;
+		let center_to_right = right - center;
+
+		let translation = center_to_right.perp();
+
+		[ManipulatorGroup::new_anchor(left + translation), ManipulatorGroup::new_anchor(right + translation)]
 	}
 }
 
@@ -517,4 +604,86 @@ mod tests {
 	}
 
 	// TODO: add more intersection tests
+
+	#[test]
+	fn round_join_counter_clockwise_rotation() {
+		// Test case where the round join is drawn in the counter clockwise direction between two consecutive offsets
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(20., 20.),
+					out_handle: Some(DVec2::new(10., 90.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(114., 159.),
+					out_handle: None,
+					in_handle: Some(DVec2::new(60., 40.)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(148., 155.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let offset = subpath.offset(10., utils::Join::Round);
+		let offset_len = offset.len();
+
+		let manipulator_groups = offset.manipulator_groups();
+		let round_start = manipulator_groups[offset_len - 4].anchor;
+		let round_point = manipulator_groups[offset_len - 3].anchor;
+		let round_end = manipulator_groups[offset_len - 2].anchor;
+
+		let middle = (round_start + round_end) / 2.;
+
+		assert!((round_point - middle).angle_between(round_start - middle) > 0.);
+		assert!((round_end - middle).angle_between(round_point - middle) > 0.);
+	}
+
+	#[test]
+	fn round_join_clockwise_rotation() {
+		// Test case where the round join is drawn in the clockwise direction between two consecutive offsets
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(20., 20.),
+					out_handle: Some(DVec2::new(10., 90.)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(150., 40.),
+					out_handle: None,
+					in_handle: Some(DVec2::new(60., 40.)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(78., 36.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let offset = subpath.offset(-15., utils::Join::Round);
+		let offset_len = offset.len();
+
+		let manipulator_groups = offset.manipulator_groups();
+		let round_start = manipulator_groups[offset_len - 4].anchor;
+		let round_point = manipulator_groups[offset_len - 3].anchor;
+		let round_end = manipulator_groups[offset_len - 2].anchor;
+
+		let middle = (round_start + round_end) / 2.;
+
+		assert!((round_point - middle).angle_between(round_start - middle) < 0.);
+		assert!((round_end - middle).angle_between(round_point - middle) < 0.);
+	}
 }

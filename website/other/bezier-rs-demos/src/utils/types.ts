@@ -22,6 +22,10 @@ export type BezierDemoOptions = {
 	};
 };
 
+export type SubpathInputOption = InputOption & {
+	isDisabledForClosed?: boolean;
+};
+
 export type InputOption = {
 	variable: string;
 	min?: number;
@@ -31,6 +35,7 @@ export type InputOption = {
 	unit?: string | string[];
 	inputType?: "slider" | "dropdown";
 	options?: string[];
+	disabled?: boolean;
 };
 
 export function getCurveType(numPoints: number): BezierCurveType {

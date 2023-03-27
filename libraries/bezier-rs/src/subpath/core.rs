@@ -88,7 +88,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns the number of segments contained within the `Subpath`.
 	pub fn len_segments(&self) -> usize {
 		let mut number_of_curves = self.len();
-		if !self.closed {
+		if !self.closed && number_of_curves > 0 {
 			number_of_curves -= 1
 		}
 		number_of_curves
@@ -110,6 +110,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns a slice of the [ManipulatorGroup]s in the `Subpath`.
 	pub fn manipulator_groups(&self) -> &[ManipulatorGroup<ManipulatorGroupId>] {
 		&self.manipulator_groups
+	}
+
+	/// Returns if the Subpath is equivalent to a single point.
+	pub fn is_point(&self) -> bool {
+		if self.is_empty() {
+			return false;
+		}
+		let point = self.manipulator_groups[0].anchor;
+		self.manipulator_groups
+			.iter()
+			.all(|manipulator_group| manipulator_group.anchor.abs_diff_eq(point, MAX_ABSOLUTE_DIFFERENCE))
 	}
 
 	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.
