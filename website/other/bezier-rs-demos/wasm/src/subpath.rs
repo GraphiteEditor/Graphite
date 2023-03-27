@@ -443,7 +443,7 @@ impl WasmSubpath {
 
 	pub fn offset(&self, distance: f64, join: i32) -> String {
 		let join = parse_join(join);
-		let offset_subpath = self.0.offset(distance, join);
+		let offset_subpath = self.0.offset(distance, join, None);
 
 		let mut offset_svg = String::new();
 		offset_subpath.to_svg(&mut offset_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
@@ -454,7 +454,7 @@ impl WasmSubpath {
 	pub fn outline(&self, distance: f64, join: i32, cap: i32) -> String {
 		let join = parse_join(join);
 		let cap = parse_cap(cap);
-		let (outline_piece1, outline_piece2) = self.0.outline(distance, join, cap);
+		let (outline_piece1, outline_piece2) = self.0.outline(distance, join, cap, None);
 
 		let mut outline_piece1_svg = String::new();
 		outline_piece1.to_svg(&mut outline_piece1_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());

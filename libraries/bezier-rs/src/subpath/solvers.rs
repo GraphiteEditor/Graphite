@@ -138,7 +138,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns the manipulator point that is needed for a miter join if it is possible.
-	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
+	/// - `miter_limit`: Defines a limit for the ratio between the miter length. When the limit is exceeded, a miter join will not be returned. This value should be greater than 1. If not, the default of 4 will be used.
+	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
+		let mut miter_limit = miter_limit.unwrap_or(4.);
+		if miter_limit < 1. {
+			miter_limit = 4.
+		}
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let out_segment = other.get_segment(0).unwrap();
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
@@ -151,9 +156,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		if !normalized_in_tangent.abs_diff_eq(normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) && !normalized_in_tangent.abs_diff_eq(-normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) {
 			let intersection = line_intersection(in_segment.end(), in_tangent, out_segment.start(), out_tangent);
 
+			let start_to_intersection = intersection - in_segment.end();
+			let intersection_to_end = out_segment.start() - intersection;
+
 			// Draw the miter join if the intersection occurs in the correct direction with respect to the path
-			if (intersection - in_segment.end()).normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
-				&& (out_segment.start() - intersection).normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			if start_to_intersection.normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
+				&& intersection_to_end.normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+				&& miter_limit >= 1. / (start_to_intersection.angle_between(-intersection_to_end).abs() / 2.).sin()
 			{
 				return Some(ManipulatorGroup {
 					anchor: intersection,
@@ -640,7 +649,7 @@ mod tests {
 			false,
 		);
 
-		let offset = subpath.offset(10., utils::Join::Round);
+		let offset = subpath.offset(10., utils::Join::Round, None);
 		let offset_len = offset.len();
 
 		let manipulator_groups = offset.manipulator_groups();
@@ -681,7 +690,7 @@ mod tests {
 			false,
 		);
 
-		let offset = subpath.offset(-15., utils::Join::Round);
+		let offset = subpath.offset(-15., utils::Join::Round, None);
 		let offset_len = offset.len();
 
 		let manipulator_groups = offset.manipulator_groups();

@@ -359,7 +359,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
 	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/offset/solo" title="Offset Demo"></iframe>
-	pub fn offset(&self, distance: f64, join: Join) -> Subpath<ManipulatorGroupId> {
+	pub fn offset(&self, distance: f64, join: Join, miter_limit: Option<f64>) -> Subpath<ManipulatorGroupId> {
 		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
 		// An offset at a distance 0 from the curve is simply the same curve
@@ -412,7 +412,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				match join {
 					Join::Bevel => {}
 					Join::Miter => {
-						let miter_manipulator_group = subpaths[i].miter_line_join(&subpaths[j]);
+						let miter_manipulator_group = subpaths[i].miter_line_join(&subpaths[j], miter_limit);
 						if let Some(miter_manipulator_group) = miter_manipulator_group {
 							subpaths[i].manipulator_groups.push(miter_manipulator_group);
 						}
@@ -450,7 +450,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					Join::Bevel => {}
 					Join::Miter => {
 						let last_subpath_index = subpaths.len() - 1;
-						let miter_manipulator_group = subpaths[last_subpath_index].miter_line_join(&subpaths[0]);
+						let miter_manipulator_group = subpaths[last_subpath_index].miter_line_join(&subpaths[0], miter_limit);
 						if let Some(miter_manipulator_group) = miter_manipulator_group {
 							subpaths[last_subpath_index].manipulator_groups.push(miter_manipulator_group);
 						}
@@ -527,7 +527,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `distance` - The outline's distance from the curve.
 	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
 	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+	pub fn outline(&self, distance: f64, join: Join, cap: Cap, miter_limit: Option<f64>) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
 		let is_point = self.is_point();
 		let (pos_offset, neg_offset) = if is_point {
 			let point = self.manipulator_groups[0].anchor;
@@ -536,7 +536,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::Y * distance)], false),
 			)
 		} else {
-			(self.offset(distance, join), self.reverse().offset(distance, join))
+			(self.offset(distance, join, miter_limit), self.reverse().offset(distance, join, miter_limit))
 		};
 
 		if self.closed && !is_point {
@@ -635,7 +635,7 @@ mod tests {
 			false,
 		);
 
-		let outline = subpath.outline(10., crate::Join::Round, crate::Cap::Round).0;
+		let outline = subpath.outline(10., crate::Join::Round, crate::Cap::Round, None).0;
 		assert!(outline.manipulator_groups.windows(2).all(|pair| !pair[0].anchor.abs_diff_eq(pair[1].anchor, MAX_ABSOLUTE_DIFFERENCE)));
 		assert_eq!(outline.closed(), true);
 	}
@@ -1051,12 +1051,12 @@ mod tests {
 		let p = DVec2::new(25., 25.);
 
 		let subpath: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], false);
-		let outline_open = subpath.outline(25., Join::Bevel, Cap::Round);
+		let outline_open = subpath.outline(25., Join::Bevel, Cap::Round, None);
 		assert_eq!(outline_open.0, ellipse);
 		assert_eq!(outline_open.1, None);
 
 		let subpath_closed: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], true);
-		let outline_closed = subpath_closed.outline(25., Join::Bevel, Cap::Round);
+		let outline_closed = subpath_closed.outline(25., Join::Bevel, Cap::Round, None);
 		assert_eq!(outline_closed.0, ellipse);
 		assert_eq!(outline_closed.1, None);
 	}
@@ -1077,12 +1077,12 @@ mod tests {
 		let p = DVec2::new(25., 25.);
 
 		let subpath: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], false);
-		let outline_open = subpath.outline(25., Join::Bevel, Cap::Square);
+		let outline_open = subpath.outline(25., Join::Bevel, Cap::Square, None);
 		assert_eq!(outline_open.0, square);
 		assert_eq!(outline_open.1, None);
 
 		let subpath_closed: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], true);
-		let outline_closed = subpath_closed.outline(25., Join::Bevel, Cap::Square);
+		let outline_closed = subpath_closed.outline(25., Join::Bevel, Cap::Square, None);
 		assert_eq!(outline_closed.0, square);
 		assert_eq!(outline_closed.1, None);
 	}
