@@ -283,7 +283,7 @@ impl Bezier {
 			let line_directional_vector = other.end - other.start;
 			let angle = line_directional_vector.angle_between(DVec2::new(1., 0.));
 			let rotation_matrix = DMat2::from_angle(angle);
-			let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
+			let rotated_bezier = self.apply_transformation(|point| rotation_matrix.mul_vec2(point));
 			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
 
 			// Translate the bezier such that the line becomes aligned on top of the x-axis
