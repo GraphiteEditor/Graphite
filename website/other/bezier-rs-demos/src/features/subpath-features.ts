@@ -1,5 +1,5 @@
 import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@graphite/utils/options";
-import { InputOption, SubpathCallback, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
+import { SubpathCallback, SubpathInputOption, WasmSubpathInstance, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -131,7 +131,7 @@ const subpathFeatures = {
 				default: 10,
 			},
 			joinOptions,
-			capOptions,
+			{ ...capOptions, isDisabledForClosed: true },
 		],
 	},
 };
@@ -140,7 +140,7 @@ export type SubpathFeatureKey = keyof typeof subpathFeatures;
 export type SubpathFeatureOptions = {
 	name: string;
 	callback: SubpathCallback;
-	inputOptions?: InputOption[];
+	inputOptions?: SubpathInputOption[];
 	triggerOnMouseMove?: boolean;
 };
 export default subpathFeatures as Record<SubpathFeatureKey, SubpathFeatureOptions>;

@@ -214,10 +214,9 @@ impl Bezier {
 
 	/// Returns true if the start, end and handles of the Bezier are all at the same location
 	pub fn is_point(&self) -> bool {
-		let points = self.get_points().collect::<Vec<DVec2>>();
 		let start = self.start();
 
-		points.iter().all(|point| point.abs_diff_eq(start, MAX_ABSOLUTE_DIFFERENCE))
+		self.get_points().all(|point| point.abs_diff_eq(start, MAX_ABSOLUTE_DIFFERENCE))
 	}
 }
 

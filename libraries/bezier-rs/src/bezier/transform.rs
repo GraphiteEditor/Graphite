@@ -426,8 +426,8 @@ impl Bezier {
 	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let (pos_offset, neg_offset) = if self.is_point() {
 			(
-				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance)], false),
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance)], false),
 			)
 		} else {
 			(self.offset(distance), self.reverse().offset(distance))
@@ -452,8 +452,8 @@ impl Bezier {
 	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let (pos_offset, neg_offset) = if self.is_point() {
 			(
-				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance1)], false),
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance1)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance1)], false),
 			)
 		} else {
 			(self.graduated_offset(distance1, distance2), self.reverse().graduated_offset(distance3, distance4))
@@ -915,7 +915,7 @@ mod tests {
 
 	#[test]
 	fn test_outline_single_point_circle() {
-		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(50., 50.), DVec2::new(0., 0.)).reverse();
+		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(0., 0.), DVec2::new(50., 50.)).reverse();
 		let p = DVec2::new(25., 25.);
 
 		let line = Bezier::from_linear_dvec2(p, p);
@@ -931,12 +931,12 @@ mod tests {
 	fn test_outline_single_point_square() {
 		let square: Subpath<EmptyId> = Subpath::from_anchors(
 			[
-				DVec2::new(25., 50.),
-				DVec2::new(50., 50.),
-				DVec2::new(50., 0.),
 				DVec2::new(25., 0.),
 				DVec2::new(0., 0.),
 				DVec2::new(0., 50.),
+				DVec2::new(25., 50.),
+				DVec2::new(50., 50.),
+				DVec2::new(50., 0.),
 			],
 			true,
 		);

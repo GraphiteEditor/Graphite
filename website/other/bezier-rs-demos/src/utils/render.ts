@@ -43,6 +43,10 @@ export function renderDemo(demo: Demo): void {
 				selectInput.append(option);
 			});
 
+			if (inputOption.disabled) {
+				selectInput.disabled = true;
+			}
+
 			selectInput.addEventListener("change", (event: Event): void => {
 				demo.sliderData[inputOption.variable] = Number((event.target as HTMLInputElement).value);
 				demo.drawDemo(figure);

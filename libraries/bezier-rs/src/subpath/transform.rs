@@ -509,8 +509,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let (pos_offset, neg_offset) = if is_point {
 			let point = self.manipulator_groups[0].anchor;
 			(
-				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::Y * distance)], false),
 				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::NEG_Y * distance)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(point + DVec2::Y * distance)], false),
 			)
 		} else {
 			(self.offset(distance, join), self.reverse().offset(distance, join))
@@ -1024,7 +1024,7 @@ mod tests {
 
 	#[test]
 	fn outline_single_point_circle() {
-		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(50., 50.), DVec2::new(0., 0.)).reverse();
+		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(0., 0.), DVec2::new(50., 50.)).reverse();
 		let p = DVec2::new(25., 25.);
 
 		let subpath: Subpath<EmptyId> = Subpath::from_anchors([p, p, p], false);
@@ -1042,12 +1042,12 @@ mod tests {
 	fn outline_single_point_square() {
 		let square: Subpath<EmptyId> = Subpath::from_anchors(
 			[
-				DVec2::new(25., 50.),
-				DVec2::new(50., 50.),
-				DVec2::new(50., 0.),
 				DVec2::new(25., 0.),
 				DVec2::new(0., 0.),
 				DVec2::new(0., 50.),
+				DVec2::new(25., 50.),
+				DVec2::new(50., 50.),
+				DVec2::new(50., 0.),
 			],
 			true,
 		);
