@@ -107,7 +107,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Return the min and max corners that represent the bounding box of the subpath, after a given affine transform.
 	pub fn bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
 		self.iter()
-			.map(|bezier| bezier.apply_transformation(&|v| transform.transform_point2(v)).bounding_box())
+			.map(|bezier| bezier.apply_transformation(|v| transform.transform_point2(v)).bounding_box())
 			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 

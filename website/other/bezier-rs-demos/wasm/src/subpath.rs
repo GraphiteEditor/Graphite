@@ -189,32 +189,18 @@ impl WasmSubpath {
 		let pivot = draw_circle(DVec2::new(pivot_x, pivot_y), 3., GRAY, 1.5, WHITE);
 
 		// Line between pivot and start point on curve
-		let original_dashed_line_start = format!(
+		let original_dashed_line = format!(
 			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
 			self.0.iter().nth(0).unwrap().start().x,
 			self.0.iter().nth(0).unwrap().start().y
 		);
-		let rotated_dashed_line_start = format!(
+		let rotated_dashed_line = format!(
 			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
 			rotated_subpath.iter().nth(0).unwrap().start().x,
 			rotated_subpath.iter().nth(0).unwrap().start().y
 		);
 
-		// Line between pivot and end point on curve
-		let original_dashed_line_end = format!(
-			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
-			self.0.iter().nth(0).unwrap().end().x,
-			self.0.iter().nth(0).unwrap().end().y
-		);
-		let rotated_dashed_line_end = format!(
-			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{PINK}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
-			rotated_subpath.iter().nth(0).unwrap().end().x,
-			rotated_subpath.iter().nth(0).unwrap().end().y
-		);
-
-		wrap_svg_tag(format!(
-			"{subpath_svg}{rotated_subpath_svg}{pivot}{original_dashed_line_start}{rotated_dashed_line_start}{original_dashed_line_end}{rotated_dashed_line_end}"
-		))
+		wrap_svg_tag(format!("{subpath_svg}{rotated_subpath_svg}{pivot}{original_dashed_line}{rotated_dashed_line}"))
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {

@@ -333,7 +333,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Some((clipped_subpath1, clipped_subpath2.unwrap()))
 	}
 
-	/// Returns a subpath that results from rotating the path around the origin by the given angle (in radians).
+	/// Returns a subpath that results from rotating this subpath around the origin by the given angle (in radians).
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Subpath<ManipulatorGroupId> {
 		let mut rotated_subpath = self.clone();
@@ -344,20 +344,15 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		rotated_subpath
 	}
 
-	/// Returns a subpath that results from rotating the path around the provided point by the given angle (in radians).
+	/// Returns a subpath that results from rotating this subpath around the provided point by the given angle (in radians).
 	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Subpath<ManipulatorGroupId> {
-		let mut rotated_subpath = self.clone();
-
 		// Translate before and after the rotation to account for the pivot
-		let translate1: DAffine2 = DAffine2::from_translation(-pivot);
-		rotated_subpath.apply_transform(translate1);
-
+		let translate: DAffine2 = DAffine2::from_translation(pivot);
 		let rotate: DAffine2 = DAffine2::from_angle(angle);
-		rotated_subpath.apply_transform(rotate);
+		let translate_inverse = translate.inverse();
 
-		let translate2: DAffine2 = DAffine2::from_translation(pivot);
-		rotated_subpath.apply_transform(translate2);
-
+		let mut rotated_subpath = self.clone();
+		rotated_subpath.apply_transform(translate * rotate * translate_inverse);
 		rotated_subpath
 	}
 
