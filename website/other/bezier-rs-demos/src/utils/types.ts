@@ -1,4 +1,4 @@
-export type WasmRawInstance = typeof import("@graphite/../wasm/pkg");
+export type WasmRawInstance = typeof import("@/../wasm/pkg");
 export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
 
 export type WasmBezierKey = keyof WasmBezierInstance;
@@ -9,7 +9,7 @@ export type WasmSubpathInstance = InstanceType<WasmRawInstance["WasmSubpath"]>;
 export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_out_handle";
 
 export const BEZIER_CURVE_TYPE = ["Linear", "Quadratic", "Cubic"] as const;
-export type BezierCurveType = typeof BEZIER_CURVE_TYPE[number];
+export type BezierCurveType = (typeof BEZIER_CURVE_TYPE)[number];
 
 export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number]) => string;
 export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number]) => string;
