@@ -1,4 +1,4 @@
-import { BEZIER_T_VALUE_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@graphite/utils/types";
+import { BEZIER_T_VALUE_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
 
 export const tSliderOptions = {
 	min: 0,

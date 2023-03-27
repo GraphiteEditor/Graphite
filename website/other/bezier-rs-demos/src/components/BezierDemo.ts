@@ -1,7 +1,7 @@
-import { WasmBezier } from "@graphite/../wasm/pkg";
-import bezierFeatures, { BezierFeatureKey } from "@graphite/features/bezier-features";
-import { renderDemo } from "@graphite/utils/render";
-import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, InputOption, WasmBezierManipulatorKey, Demo } from "@graphite/utils/types";
+import { WasmBezier } from "@/../wasm/pkg";
+import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
+import { renderDemo } from "@/utils/render";
+import { getConstructorKey, getCurveType, BezierCallback, BezierCurveType, InputOption, WasmBezierManipulatorKey, Demo } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 
@@ -54,7 +54,7 @@ class BezierDemo extends HTMLElement implements Demo {
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
-		const wasm = await import("@graphite/../wasm/pkg");
+		const wasm = await import("@/../wasm/pkg");
 		this.bezier = wasm.WasmBezier[getConstructorKey(curveType)](this.points);
 		this.drawDemo(figure);
 	}
