@@ -205,7 +205,6 @@ fn mask_image(mut image: ImageFrame, mask: ImageFrame) -> ImageFrame {
 	let mask_size = DVec2::new(mask.image.width as f64, mask.image.height as f64);
 
 	if mask_size == DVec2::ZERO {
-		log::debug!("{}", mask.image.data.len());
 		return image;
 	}
 
@@ -221,8 +220,15 @@ fn mask_image(mut image: ImageFrame, mask: ImageFrame) -> ImageFrame {
 			let image_pixel = image.get_mut(x as usize, y as usize);
 			let mask_pixel = mask.sample(mask_point);
 
+			// TODO: Fix crash when `mask_pixel.r()` is negative
+			// TODO: This can be reproduced when a mask Stencil input is given which is fed by a Levels node where the first slider is dragged to the right
 			let alpha = image_pixel.a() * mask_pixel.r();
 
+			// TODO: Remove this if statement after fixing the crash
+			if Color::from_rgbaf32(image_pixel.r(), image_pixel.g(), image_pixel.b(), alpha).is_none() {
+				log::debug!("image_pixel.a(): {}, mask_pixel.r(): {}", image_pixel.a(), mask_pixel.r());
+				log::debug!("r: {}, g: {}, b: {}, a: {}", image_pixel.r(), image_pixel.g(), image_pixel.b(), alpha);
+			}
 			*image_pixel = Color::from_rgbaf32(image_pixel.r(), image_pixel.g(), image_pixel.b(), alpha).unwrap();
 		}
 	}

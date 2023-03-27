@@ -292,7 +292,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Mask", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::mask_properties,

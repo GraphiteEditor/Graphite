@@ -478,7 +478,7 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let mask = color_widget(document_node, node_id, 1, "Backdrop", ColorInput::default(), true);
+	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorInput::default(), true);
 
 	vec![mask]
 }
