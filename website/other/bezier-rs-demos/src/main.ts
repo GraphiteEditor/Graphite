@@ -1,12 +1,12 @@
-import BezierDemo from "@graphite/components/BezierDemo";
-import BezierDemoPane from "@graphite/components/BezierDemoPane";
-import SubpathDemo from "@graphite/components/SubpathDemo";
-import SubpathDemoPane from "@graphite/components/SubpathDemoPane";
+import BezierDemo from "@/components/BezierDemo";
+import BezierDemoPane from "@/components/BezierDemoPane";
+import SubpathDemo from "@/components/SubpathDemo";
+import SubpathDemoPane from "@/components/SubpathDemoPane";
 
-import bezierFeatures, { BezierFeatureKey } from "@graphite/features/bezier-features";
-import subpathFeatures, { SubpathFeatureKey } from "@graphite/features/subpath-features";
+import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
+import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 
-import "@graphite/style.css";
+import "@/style.css";
 
 declare global {
 	interface HTMLElementTagNameMap {
