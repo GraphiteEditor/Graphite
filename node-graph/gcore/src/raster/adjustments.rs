@@ -161,15 +161,15 @@ impl core::fmt::Display for BlendMode {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LuminanceNode<LuminanceCalculation> {
-	luma_calculation: LuminanceCalculation,
+	luminance_calc: LuminanceCalculation,
 }
 
 #[node_macro::node_fn(LuminanceNode)]
-fn luminance_color_node(color: Color, luma_calculation: LuminanceCalculation) -> Color {
+fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> Color {
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	let luminance = match luma_calculation {
+	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
@@ -304,21 +304,21 @@ fn invert_image(color: Color) -> Color {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ThresholdNode<LuminanceCalculation, ThresholdMin, ThresholdMax> {
-	luma_calculation: LuminanceCalculation,
-	threshold_min: ThresholdMin,
-	threshold_max: ThresholdMax,
+pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
+	min_luminance: MinLuminance,
+	max_luminance: MaxLuminance,
+	luminance_calc: LuminanceCalc,
 }
 
 #[node_macro::node_fn(ThresholdNode)]
-fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshold_min: f64, threshold_max: f64) -> Color {
-	let threshold_min = Color::srgb_to_linear(threshold_min as f32 / 100.);
-	let threshold_max = Color::srgb_to_linear(threshold_max as f32 / 100.);
+fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
+	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
+	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	let color = color.to_linear_srgb();
 
-	let luminance = match luma_calculation {
+	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
@@ -326,7 +326,7 @@ fn threshold_node(color: Color, luma_calculation: LuminanceCalculation, threshol
 		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 
-	if luminance >= threshold_min && luminance <= threshold_max {
+	if luminance >= min_luminance && luminance <= max_luminance {
 		Color::WHITE
 	} else {
 		Color::BLACK

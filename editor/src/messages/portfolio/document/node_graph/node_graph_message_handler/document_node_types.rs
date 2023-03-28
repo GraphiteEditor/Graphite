@@ -393,7 +393,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
+				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::luminance_properties,
@@ -593,9 +593,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
-				DocumentInputType::value("Threshold Minimum", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Threshold Maximum", TaggedValue::F64(50.), false),
+				DocumentInputType::value("Min Luminance", TaggedValue::F64(50.), false),
+				DocumentInputType::value("Max Luminance", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_threshold_properties,

@@ -478,9 +478,9 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
-	vec![luma_calculation]
+	vec![luminance_calc]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -510,11 +510,11 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
-	let thereshold_min = number_widget(document_node, node_id, 2, "Threshold Minimum", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let thereshold_max = number_widget(document_node, node_id, 3, "Threshold Maximum", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
 
-	vec![luma_calculation, LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }]
+	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
