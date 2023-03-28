@@ -175,15 +175,15 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap, using_path_tool),
-			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap, using_path_tool),
+			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
+			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 			PointerMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
 
 				let new_snap = ipp.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -196,7 +196,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
 
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
@@ -208,7 +208,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
 
 							//TODO: fix this when we know what to do with rotating 1 point
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -223,7 +223,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
 
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, using_path_tool);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 					};
 				} //TODO: check here
@@ -233,10 +233,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 				self.shape_editor.set_selected_layers(layer_paths);
 			}
-			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap, using_path_tool),
-			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap, using_path_tool),
-			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap, using_path_tool),
-			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap, using_path_tool),
+			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
+			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
+			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap),
+			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap),
 		}
 	}
 

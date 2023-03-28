@@ -666,7 +666,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 
-							selected.update_transforms(delta, false);
+							selected.update_transforms(delta);
 						}
 					}
 					ResizingBounds
@@ -700,7 +700,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 
-						selected.update_transforms(delta, false);
+						selected.update_transforms(delta);
 					}
 
 					RotatingBounds

@@ -182,7 +182,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, tool: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -191,11 +191,11 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation, tool);
+			selected.update_transforms(transformation);
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, tool: bool) {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.constraint.set_or_toggle(axis),
@@ -203,18 +203,18 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping, tool);
+		self.apply_transform_operation(selected, snapping);
 	}
 
-	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, tool: bool) {
+	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
 			TransformOperation::Rotating(rotation) => rotation.typed_angle = typed,
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
-
-		self.apply_transform_operation(selected, snapping, tool);
+		debug!("typed transform {:?}", self);
+		self.apply_transform_operation(selected, snapping);
 	}
 }
 
@@ -301,7 +301,8 @@ impl<'a> Selected<'a> {
 		(min + max) / 2.
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2, tool: bool) {
+	pub fn update_transforms(&mut self, delta: DAffine2) {
+		debug!("update transform {:?}", delta);
 		if !self.selected.is_empty() {
 			let pivot = DAffine2::from_translation(*self.pivot);
 			let transformation = pivot * delta * pivot.inverse();
@@ -309,7 +310,7 @@ impl<'a> Selected<'a> {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
-				if !tool {
+				if *self.tool_type == ToolType::Select {
 					let original_layer_transforms = match self.original_transforms {
 						OriginalTransforms::Layer(layer_map) => *layer_map.get(*layer_path).unwrap(),
 						OriginalTransforms::Path(_path_map) => {
@@ -327,7 +328,7 @@ impl<'a> Selected<'a> {
 						.into(),
 					);
 				}
-				if tool {
+				if *self.tool_type == ToolType::Path {
 					let viewspace = self.document.generate_transform_relative_to_viewport(*layer_path).ok().unwrap_or_default();
 					let layerspace_rotation = viewspace.inverse() * transformation;
 
@@ -355,8 +356,9 @@ impl<'a> Selected<'a> {
 								}
 
 								let viewport_point = viewspace.transform_point2(*point.1);
+								debug!("viewport_point {}", viewport_point);
 								let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-
+								debug!("new_pos_viewport {}", new_pos_viewport);
 								let op = DocumentOperation::MoveManipulatorPoint {
 									layer_path: (*layer_path).to_vec(),
 									id: group_id, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
