@@ -22,7 +22,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
 	/// If the original Subpath was open, two open Subpaths will be returned.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/split/solo" title="Split Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/bezier-rs-demos#subpath/split/solo" title="Split Demo"></iframe>
 	pub fn split(&self, t: SubpathTValue) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		let curve = self.get_segment(segment_index).unwrap();
@@ -126,7 +126,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// The resulting Subpath will wind from the given `t1` to `t2`.
 	/// That means, if the value of `t1` > `t2`, it will cross the break between endpoints from `t1` to `t = 1 = 0` to `t2`.
 	/// If a path winding in the reverse direction is desired, call `trim` on the `Subpath` returned from `Subpath::reverse`.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#subpath/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<ManipulatorGroupId> {
 		// Return a clone of the Subpath if it is not long enough to be a valid Bezier
 		if self.manipulator_groups.is_empty() {
@@ -334,7 +334,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns a subpath that results from rotating this subpath around the origin by the given angle (in radians).
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/rotate/solo" title="Rotate Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Subpath<ManipulatorGroupId> {
 		let mut rotated_subpath = self.clone();
 
@@ -526,7 +526,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// an approximate outline around the subpath at a specified distance from the curve. Outline takes the following parameters:
 	/// - `distance` - The outline's distance from the curve.
 	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="425px" src="https://graphite.rs/bezier-rs-demos#subpath/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
 		let is_point = self.is_point();
 		let (pos_offset, neg_offset) = if is_point {

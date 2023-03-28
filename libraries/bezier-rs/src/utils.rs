@@ -37,7 +37,7 @@ pub enum SubpathTValue {
 
 #[derive(Copy, Clone)]
 /// Enum to represent the join type between subpaths.
-/// As defined in SVG: https://www.w3.org/TR/SVG2/painting.html#LineJoin.
+/// As defined in SVG: <https://www.w3.org/TR/SVG2/painting.html#LineJoin>.
 pub enum Join {
 	Bevel,
 	Miter(Option<f64>),
@@ -46,7 +46,7 @@ pub enum Join {
 
 #[derive(Copy, Clone)]
 /// Enum to represent the cap type at the ends of an outline
-/// As defined in SVG: https://www.w3.org/TR/SVG2/painting.html#LineCaps.
+/// As defined in SVG: <https://www.w3.org/TR/SVG2/painting.html#LineCaps>.
 pub enum Cap {
 	Butt,
 	Round,

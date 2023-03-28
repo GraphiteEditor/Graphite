@@ -14,17 +14,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.closed = new_closed;
 	}
 
-	/// Access a [ManipulatorGroup] from a [ManipulatorGroupId].
+	/// Access a [ManipulatorGroup] from a ManipulatorGroupId.
 	pub fn manipulator_from_id(&self, id: ManipulatorGroupId) -> Option<&ManipulatorGroup<ManipulatorGroupId>> {
 		self.manipulator_groups.iter().find(|manipulator_group| manipulator_group.id == id)
 	}
 
-	/// Access a mutable [ManipulatorGroup] from a [ManipulatorGroupId].
+	/// Access a mutable [ManipulatorGroup] from a ManipulatorGroupId.
 	pub fn manipulator_mut_from_id(&mut self, id: ManipulatorGroupId) -> Option<&mut ManipulatorGroup<ManipulatorGroupId>> {
 		self.manipulator_groups.iter_mut().find(|manipulator_group| manipulator_group.id == id)
 	}
 
-	/// Access the index of a [ManipulatorGroup] from a [ManipulatorGroupId].
+	/// Access the index of a [ManipulatorGroup] from a ManipulatorGroupId.
 	pub fn manipulator_index_from_id(&self, id: ManipulatorGroupId) -> Option<usize> {
 		self.manipulator_groups.iter().position(|manipulator_group| manipulator_group.id == id)
 	}
