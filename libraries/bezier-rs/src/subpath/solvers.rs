@@ -144,14 +144,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// This value should be at least 1. If not, the default of 4 will be used.
 	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
 		let miter_limit = match miter_limit {
-			Some(miter_limit) => {
-				if miter_limit < 1. {
-					4.
-				} else {
-					miter_limit
-				}
-			}
-			None => 4.,
+			Some(miter_limit) if miter_limit >= 1. => miter_limit,
+			_ => 4.,
 		};
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let out_segment = other.get_segment(0).unwrap();
