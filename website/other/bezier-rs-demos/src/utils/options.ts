@@ -1,4 +1,4 @@
-import { BEZIER_T_VALUE_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
+import { BEZIER_T_VALUE_VARIANTS, CAP_VARIANTS, JOIN_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
 
 export const tSliderOptions = {
 	min: 0,
@@ -50,12 +50,12 @@ export const joinOptions = {
 	variable: "join",
 	default: 0,
 	inputType: "dropdown",
-	options: ["Bevel", "Miter", "Round"],
+	options: JOIN_VARIANTS,
 };
 
 export const capOptions = {
 	variable: "cap",
 	default: 0,
 	inputType: "dropdown",
-	options: ["Butt", "Round", "Square"],
+	options: CAP_VARIANTS,
 };
