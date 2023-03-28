@@ -1,7 +1,7 @@
 use crate::svg_drawing::*;
 use crate::utils::{parse_cap, parse_join};
 
-use bezier_rs::{Bezier, ManipulatorGroup, ProjectionOptions, Subpath, SubpathTValue};
+use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
 
 use glam::DVec2;
 use std::fmt::Write;
@@ -97,6 +97,22 @@ impl WasmSubpath {
 
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	}
+
+	pub fn compute_lookup_table(&self, steps: usize, t_variant: String) -> String {
+		let subpath = self.to_default_svg();
+		let tvalue_type = match t_variant.as_str() {
+			"GlobalParametric" => TValueType::Parametric,
+			"GlobalEuclidean" => TValueType::Euclidean,
+			_ => panic!("Unexpected TValue string: '{}'", t_variant),
+		};
+		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));
+		let circles: String = table_values
+			.iter()
+			.map(|point| draw_circle(*point, 3., RED, 1.5, WHITE))
+			.fold("".to_string(), |acc, circle| acc + &circle);
+		let content = format!("{subpath}{circles}");
+		wrap_svg_tag(content)
 	}
 
 	pub fn tangent(&self, t: f64, t_variant: String) -> String {
@@ -204,7 +220,7 @@ impl WasmSubpath {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {
-		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
+		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), None).unwrap();
 		let projected_point = self.0.evaluate(SubpathTValue::Parametric { segment_index, t: projected_t });
 
 		let subpath_svg = self.to_default_svg();
