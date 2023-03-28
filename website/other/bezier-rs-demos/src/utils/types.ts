@@ -95,3 +95,6 @@ export interface DemoPane extends HTMLElement {
 
 export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
 export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;
+
+export const CAP_VARIANTS = ["Butt", "Round", "Square"] as const;
+export const JOIN_VARIANTS = ["Bevel", "Miter", "Round"] as const;

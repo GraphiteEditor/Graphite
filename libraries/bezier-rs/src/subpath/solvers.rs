@@ -138,12 +138,21 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns the manipulator point that is needed for a miter join if it is possible.
-	/// - `miter_limit`: Defines a limit for the ratio between the miter length. When the limit is exceeded, a miter join will not be returned. This value should be greater than 1. If not, the default of 4 will be used.
+	/// - `miter_limit`: Defines a limit for the ratio between the miter length and the stroke width.
+	/// Alternatively, this can be interpreted as limiting the angle that the miter can form.
+	/// When the limit is exceeded, no manipulator group will be returned.
+	/// This value should be at least 1. If not, the default of 4 will be used.
 	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
-		let mut miter_limit = miter_limit.unwrap_or(4.);
-		if miter_limit < 1. {
-			miter_limit = 4.
-		}
+		let miter_limit = match miter_limit {
+			Some(miter_limit) => {
+				if miter_limit < 1. {
+					4.
+				} else {
+					miter_limit
+				}
+			}
+			None => 4.,
+		};
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let out_segment = other.get_segment(0).unwrap();
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
@@ -649,7 +658,7 @@ mod tests {
 			false,
 		);
 
-		let offset = subpath.offset(10., utils::Join::Round, None);
+		let offset = subpath.offset(10., utils::Join::Round);
 		let offset_len = offset.len();
 
 		let manipulator_groups = offset.manipulator_groups();
@@ -690,7 +699,7 @@ mod tests {
 			false,
 		);
 
-		let offset = subpath.offset(-15., utils::Join::Round, None);
+		let offset = subpath.offset(-15., utils::Join::Round);
 		let offset_len = offset.len();
 
 		let manipulator_groups = offset.manipulator_groups();

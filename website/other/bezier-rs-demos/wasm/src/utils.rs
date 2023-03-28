@@ -1,9 +1,9 @@
 use bezier_rs::{Cap, Join};
 
-pub fn parse_join(join: i32) -> Join {
+pub fn parse_join(join: i32, miter_limit: f64) -> Join {
 	match join {
 		0 => Join::Bevel,
-		1 => Join::Miter,
+		1 => Join::Miter(Some(miter_limit)),
 		2 => Join::Round,
 		_ => panic!("Unexpected Join value: '{}'", join),
 	}

@@ -40,7 +40,7 @@ pub enum SubpathTValue {
 /// As defined in SVG: https://www.w3.org/TR/SVG2/painting.html#LineJoin.
 pub enum Join {
 	Bevel,
-	Miter,
+	Miter(Option<f64>),
 	Round,
 }
 
