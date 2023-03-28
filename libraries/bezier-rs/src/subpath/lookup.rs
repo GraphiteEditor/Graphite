@@ -10,20 +10,18 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#subpath/lookup-table/solo" title="Lookup-Table Demo"></iframe>
 	pub fn compute_lookup_table(&self, steps: Option<usize>, tvalue_type: Option<TValueType>) -> Vec<DVec2> {
-		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
-		let tvalue_type_unwrapped = tvalue_type.unwrap_or(TValueType::Parametric);
-		let ratio: f64 = 1. / (steps_unwrapped as f64);
-		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
+		let steps = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
+		let tvalue_type = tvalue_type.unwrap_or(TValueType::Parametric);
 
-		for t in 0..steps_unwrapped + 1 {
-			if tvalue_type_unwrapped == TValueType::Parametric {
-				steps_array.push(self.evaluate(SubpathTValue::GlobalParametric(f64::from(t as i32) * ratio)))
-			} else {
-				steps_array.push(self.evaluate(SubpathTValue::GlobalEuclidean(f64::from(t as i32) * ratio)))
-			}
-		}
-
-		steps_array
+		(0..=steps)
+			.map(|t| {
+				let tvalue = match tvalue_type {
+					TValueType::Parametric => SubpathTValue::GlobalParametric(t as f64 / steps as f64),
+					TValueType::Euclidean => SubpathTValue::GlobalEuclidean(t as f64 / steps as f64),
+				};
+				self.evaluate(tvalue)
+			})
+			.collect()
 	}
 
 	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.

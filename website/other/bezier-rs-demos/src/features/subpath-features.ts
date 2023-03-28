@@ -27,7 +27,7 @@ const subpathFeatures = {
 			subpathTValueVariantOptions,
 			{
 				min: 2,
-				max: 15,
+				max: 30,
 				step: 1,
 				default: 5,
 				variable: "steps",
