@@ -8,7 +8,7 @@ use glam::DVec2;
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
-	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/bezier-rs-demos#subpath/lookup-table/solo" title="Lookup-Table Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/lookup-table/solo" title="Lookup-Table Demo"></iframe>
 	pub fn compute_lookup_table(&self, steps: Option<usize>, tvalue_type: Option<TValueType>) -> Vec<DVec2> {
 		let steps = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
 		let tvalue_type = tvalue_type.unwrap_or(TValueType::Parametric);
@@ -26,7 +26,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/bezier-rs-demos#subpath/length/solo" title="Length Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/length/solo" title="Length Demo"></iframe>
 	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
 		self.iter().fold(0., |accumulator, bezier| accumulator + bezier.length(num_subdivisions))
 	}
@@ -97,7 +97,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns the segment index and `t` value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/bezier-rs-demos#subpath/project/solo" title="Project Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/project/solo" title="Project Demo"></iframe>
 	pub fn project(&self, point: DVec2, options: Option<ProjectionOptions>) -> Option<(usize, f64)> {
 		if self.is_empty() {
 			return None;
