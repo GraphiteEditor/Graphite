@@ -117,9 +117,10 @@ impl Bezier {
 	}
 
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
-	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
+	/// Uses a searching algorithm akin to binary search that can be customized using the optional [ProjectionOptions] struct.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/project/solo" title="Project Demo"></iframe>
-	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
+	pub fn project(&self, point: DVec2, options: Option<ProjectionOptions>) -> f64 {
+		let options = options.unwrap_or_default();
 		let ProjectionOptions {
 			lut_size,
 			convergence_epsilon,
@@ -267,13 +268,11 @@ mod tests {
 
 	#[test]
 	fn test_project() {
-		let project_options = ProjectionOptions::default();
-
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert_eq!(bezier1.project(DVec2::ZERO, project_options), 0.);
-		assert_eq!(bezier1.project(DVec2::new(100., 100.), project_options), 1.);
+		assert_eq!(bezier1.project(DVec2::ZERO, None), 0.);
+		assert_eq!(bezier1.project(DVec2::new(100., 100.), None), 1.);
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert_eq!(bezier2.project(DVec2::new(100., 0.), project_options), 0.);
+		assert_eq!(bezier2.project(DVec2::new(100., 0.), None), 0.);
 	}
 }

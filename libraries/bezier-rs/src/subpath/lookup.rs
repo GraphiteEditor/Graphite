@@ -98,7 +98,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns the segment index and `t` value that corresponds to the closest point on the curve to the provided point.
 	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#subpath/project/solo" title="Project Demo"></iframe>
-	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> Option<(usize, f64)> {
+	pub fn project(&self, point: DVec2, options: Option<ProjectionOptions>) -> Option<(usize, f64)> {
 		if self.is_empty() {
 			return None;
 		}

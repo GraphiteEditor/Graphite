@@ -1,7 +1,7 @@
 use crate::svg_drawing::*;
 use crate::utils::{parse_cap, parse_join};
 
-use bezier_rs::{Bezier, ManipulatorGroup, ProjectionOptions, Subpath, SubpathTValue, TValueType};
+use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
 
 use glam::DVec2;
 use std::fmt::Write;
@@ -220,7 +220,7 @@ impl WasmSubpath {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {
-		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
+		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), None).unwrap();
 		let projected_point = self.0.evaluate(SubpathTValue::Parametric { segment_index, t: projected_t });
 
 		let subpath_svg = self.to_default_svg();

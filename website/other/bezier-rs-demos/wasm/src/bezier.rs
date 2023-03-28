@@ -1,7 +1,7 @@
 use crate::svg_drawing::*;
 use crate::utils::parse_cap;
 
-use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, ProjectionOptions, TValue, TValueType};
+use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, TValue, TValueType};
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -292,7 +292,7 @@ impl WasmBezier {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {
-		let projected_t_value = self.0.project(DVec2::new(x, y), ProjectionOptions::default());
+		let projected_t_value = self.0.project(DVec2::new(x, y), None);
 		let projected_point = self.0.evaluate(TValue::Parametric(projected_t_value));
 
 		let bezier = self.get_bezier_path();
