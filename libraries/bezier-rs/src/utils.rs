@@ -36,17 +36,25 @@ pub enum SubpathTValue {
 }
 
 #[derive(Copy, Clone)]
-/// Enum to represent the join type between subpaths.
-/// As defined in SVG: https://www.w3.org/TR/SVG2/painting.html#LineJoin.
+/// Represents the shape of the join between two segments of a path which meet at an angle.
+/// Bevel provides a flat connection, Miter provides a sharp connection, and Round provides a rounded connection.
+/// As defined in SVG: <https://www.w3.org/TR/SVG2/painting.html#LineJoin>.
 pub enum Join {
+	/// The join is a straight line between the end points of the offset path sides from the two connecting segments.
 	Bevel,
-	Miter,
+	/// Optional f64 is the miter limit, which defaults to 4 if `None` or a value less than 1 is provided.
+	/// The miter limit is used to prevent highly sharp angles from resulting in excessively long miter joins.
+	/// If the miter limit is exceeded, the join will be converted to a bevel join.
+	/// The value is the ratio of the miter length to the stroke width.
+	/// When that ratio is greater than the miter limit, a bevel join is used instead.
+	Miter(Option<f64>),
+	/// The join is a circular arc between the end points of the offset path sides from the two connecting segments.
 	Round,
 }
 
 #[derive(Copy, Clone)]
 /// Enum to represent the cap type at the ends of an outline
-/// As defined in SVG: https://www.w3.org/TR/SVG2/painting.html#LineCaps.
+/// As defined in SVG: <https://www.w3.org/TR/SVG2/painting.html#LineCaps>.
 pub enum Cap {
 	Butt,
 	Round,
