@@ -375,7 +375,7 @@ impl ShapeState {
 
 		for subpath in &vector_data.subpaths {
 			for (manipulator_index, bezier) in subpath.iter().enumerate() {
-				let t = bezier.project(layer_pos, projection_options);
+				let t = bezier.project(layer_pos, Some(projection_options));
 				let layerspace = bezier.evaluate(TValue::Parametric(t));
 
 				let screenspace = transform.transform_point2(layerspace);

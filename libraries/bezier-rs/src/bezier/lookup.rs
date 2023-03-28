@@ -1,4 +1,4 @@
-use crate::utils::{f64_compare, TValue};
+use crate::utils::{f64_compare, TValue, TValueType};
 
 use super::*;
 
@@ -74,16 +74,19 @@ impl Bezier {
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/lookup-table/solo" title="Lookup-Table Demo"></iframe>
-	pub fn compute_lookup_table(&self, steps: Option<usize>) -> Vec<DVec2> {
-		let steps_unwrapped = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
-		let ratio: f64 = 1. / (steps_unwrapped as f64);
-		let mut steps_array = Vec::with_capacity(steps_unwrapped + 1);
+	pub fn compute_lookup_table(&self, steps: Option<usize>, tvalue_type: Option<TValueType>) -> Vec<DVec2> {
+		let steps = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
+		let tvalue_type = tvalue_type.unwrap_or(TValueType::Parametric);
 
-		for t in 0..steps_unwrapped + 1 {
-			steps_array.push(self.evaluate(TValue::Parametric(f64::from(t as i32) * ratio)))
-		}
-
-		steps_array
+		(0..=steps)
+			.map(|t| {
+				let tvalue = match tvalue_type {
+					TValueType::Parametric => TValue::Parametric(t as f64 / steps as f64),
+					TValueType::Euclidean => TValue::Euclidean(t as f64 / steps as f64),
+				};
+				self.evaluate(tvalue)
+			})
+			.collect()
 	}
 
 	/// Return an approximation of the length of the bezier curve.
@@ -97,7 +100,7 @@ impl Bezier {
 
 				// We will use an approximate approach where we split the curve into many subdivisions
 				// and calculate the euclidean distance between the two endpoints of the subdivision
-				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)));
+				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)), Some(TValueType::Parametric));
 				let mut approx_curve_length = 0.;
 				let mut previous_point = lookup_table[0];
 				// Calculate approximate distance between subdivision
@@ -114,9 +117,10 @@ impl Bezier {
 	}
 
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
-	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
+	/// Uses a searching algorithm akin to binary search that can be customized using the optional [ProjectionOptions] struct.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/project/solo" title="Project Demo"></iframe>
-	pub fn project(&self, point: DVec2, options: ProjectionOptions) -> f64 {
+	pub fn project(&self, point: DVec2, options: Option<ProjectionOptions>) -> f64 {
+		let options = options.unwrap_or_default();
 		let ProjectionOptions {
 			lut_size,
 			convergence_epsilon,
@@ -126,7 +130,7 @@ impl Bezier {
 
 		// TODO: Consider optimizations from precomputing useful values, or using the GPU
 		// First find the closest point from the results of a lookup table
-		let lut = self.compute_lookup_table(Some(lut_size));
+		let lut = self.compute_lookup_table(Some(lut_size), Some(TValueType::Parametric));
 		let (minimum_position, minimum_distance) = utils::get_closest_point_in_lut(&lut, point);
 
 		// Get the t values to the left and right of the closest result in the lookup table
@@ -228,11 +232,11 @@ mod tests {
 	#[test]
 	fn test_compute_lookup_table() {
 		let bezier1 = Bezier::from_quadratic_coordinates(10., 10., 30., 30., 50., 10.);
-		let lookup_table1 = bezier1.compute_lookup_table(Some(2));
+		let lookup_table1 = bezier1.compute_lookup_table(Some(2), Some(TValueType::Parametric));
 		assert_eq!(lookup_table1, vec![bezier1.start(), bezier1.evaluate(TValue::Parametric(0.5)), bezier1.end()]);
 
 		let bezier2 = Bezier::from_cubic_coordinates(10., 10., 30., 30., 70., 70., 90., 10.);
-		let lookup_table2 = bezier2.compute_lookup_table(Some(4));
+		let lookup_table2 = bezier2.compute_lookup_table(Some(4), Some(TValueType::Parametric));
 		assert_eq!(
 			lookup_table2,
 			vec![
@@ -264,13 +268,11 @@ mod tests {
 
 	#[test]
 	fn test_project() {
-		let project_options = ProjectionOptions::default();
-
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert_eq!(bezier1.project(DVec2::ZERO, project_options), 0.);
-		assert_eq!(bezier1.project(DVec2::new(100., 100.), project_options), 1.);
+		assert_eq!(bezier1.project(DVec2::ZERO, None), 0.);
+		assert_eq!(bezier1.project(DVec2::new(100., 100.), None), 1.);
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert_eq!(bezier2.project(DVec2::new(100., 0.), project_options), 0.);
+		assert_eq!(bezier2.project(DVec2::new(100., 0.), None), 0.);
 	}
 }
