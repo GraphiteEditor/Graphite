@@ -3,37 +3,30 @@
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {
-		"start": "vue-cli-service serve",
-		"serve": "vue-cli-service serve",
-		"build": "vue-cli-service build",
-		"lint": "vue-cli-service lint"
+		"start": "webpack serve || (npm run print-building-help && exit 1)",
+		"serve": "webpack serve || (npm run print-building-help && exit 1)",
+		"build": "webpack build || (npm run print-building-help && exit 1)",
+		"build-prod-unix": "NODE_ENV=production webpack build || (npm run print-building-help && exit 1)",
+		"build-prod-windows": "set NODE_ENV=production && webpack build || (npm run print-building-help && exit 1)",
+		"print-building-help": "echo 'bezier-rs interactive demos project failed to build. Did you remember to `npm install` the node dependencies?'"
 	},
 	"dependencies": {
 		"core-js": "^3.26.1"
 	},
 	"devDependencies": {
-		"@typescript-eslint/eslint-plugin": "^5.43.0",
-		"@typescript-eslint/parser": "^5.43.0",
-		"@vue/cli-plugin-eslint": "^5.0.8",
-		"@vue/cli-plugin-typescript": "^5.0.8",
-		"@vue/cli-service": "^5.0.8",
-		"@vue/eslint-config-airbnb": "^6.0.0",
-		"@vue/eslint-config-typescript": "^11.0.2",
+		"@types/webpack-dev-server": "^4.7.2",
+		"@types/webpack": "^5.28.0",
 		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
-		"eslint": "^8.27.0",
-		"eslint-config-prettier": "^8.5.0",
-		"eslint-plugin-import": "^2.26.0",
-		"eslint-plugin-prettier-vue": "^4.2.0",
-		"eslint-plugin-vue": "^9.7.0",
-		"typescript": "^4.9.3"
+		"css-loader": "^6.7.3",
+		"sass-loader": "^13.2.0",
+		"sass": "^1.57.1",
+		"ts-loader": "^9.4.2",
+		"typescript": "^4.9.4",
+		"webpack-cli": "^5.0.1",
+		"webpack-dev-server": "^4.11.1",
+		"webpack": "^5.75.0"
 	},
 	"optionalDependencies": {
 		"wasm-pack": "^0.10.3"
-	},
-	"browserslist": [
-		"> 1%",
-		"last 2 versions",
-		"not dead",
-		"not ie 11"
-	]
+	}
 }

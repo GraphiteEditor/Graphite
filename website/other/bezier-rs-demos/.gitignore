@@ -1,5 +1,5 @@
-.DS_Store
 /node_modules
-/public
+!/public
+/public/build
 /dist
 /wasm/pkg
