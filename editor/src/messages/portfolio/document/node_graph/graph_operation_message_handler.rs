@@ -118,7 +118,7 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Viewport => parent_transform,
 			};
 			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * pivot.inverse() * transform * pivot * to * layer_transform;
+			let transform = to.inverse() * transform * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
