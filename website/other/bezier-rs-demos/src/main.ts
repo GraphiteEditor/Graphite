@@ -6,8 +6,6 @@ import SubpathDemoPane from "@/components/SubpathDemoPane";
 import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
 import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
 
-import "@/style.css";
-
 declare global {
 	interface HTMLElementTagNameMap {
 		"bezier-demo": BezierDemo;
@@ -16,14 +14,6 @@ declare global {
 		"subpath-demo-pane": SubpathDemoPane;
 	}
 }
-
-window.document.title = "Bezier-rs Interactive Documentation";
-window.document.head.innerHTML += `
-<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=EB+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
-`.trim();
 
 window.customElements.define("bezier-demo", BezierDemo);
 window.customElements.define("bezier-demo-pane", BezierDemoPane);

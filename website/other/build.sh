@@ -16,6 +16,6 @@ npm ci
 
 echo 👷 Build Bezier-rs Demos
 export NODE_ENV=production
-npm run build
+npm run build-prod-unix
 mkdir ../../public/libraries
-mv dist ../../public/libraries/bezier-rs
+mv public ../../public/libraries/bezier-rs
