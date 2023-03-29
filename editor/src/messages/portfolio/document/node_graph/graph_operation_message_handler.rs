@@ -49,6 +49,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let metadata = output_node.metadata.clone();
 		let new_input = output_node.inputs[0].clone();
 		let node_id = generate_uuid();
+
+		output_node.metadata.position.x += 8;
 		output_node.inputs[0] = NodeInput::node(node_id, 0);
 
 		let Some(node_type) = resolve_document_node_type(name) else {
@@ -62,8 +64,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Changes the inputs of a specific node
 	fn modify_inputs(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
-		let node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
-		if let Some(node_id) = node_id {
+		let existing_node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
+		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
 			self.modify_new_node(name, update_input);
@@ -73,6 +75,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
 		self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+
+		if existing_node_id.is_none() {
+			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+		}
 	}
 
 	fn fill_set(&mut self, fill: Fill) {

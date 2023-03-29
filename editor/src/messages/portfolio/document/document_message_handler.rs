@@ -592,7 +592,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let path = vec![generate_uuid()];
 				let image_node_id = 100;
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(16, image_node_id);
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -619,7 +619,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
-						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
+						graph_craft::document::DocumentNodeMetadata::position((16, 4)),
 					),
 				);
 
