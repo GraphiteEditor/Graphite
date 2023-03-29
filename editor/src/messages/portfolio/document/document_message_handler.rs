@@ -616,7 +616,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					image_node_id,
 					image_node_type.to_document_node(
 						[graph_craft::document::NodeInput::value(
-							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform }),
+							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
 						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
