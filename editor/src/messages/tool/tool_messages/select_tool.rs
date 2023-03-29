@@ -1202,7 +1202,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 }
 
 fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec<u64>, responses: &mut VecDeque<Message>) {
-	match intersect.data {
+	match &intersect.data {
 		LayerDataType::Text(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
 			responses.push_back(TextToolMessage::Interact.into());
