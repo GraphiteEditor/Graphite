@@ -40,9 +40,12 @@ where
 		let rotate = self.rotate.eval(());
 		let scale = self.scale.eval(());
 		let shear = self.shear.eval(());
+		let pivot = self.pivot.eval(());
 
-		let transform = generate_transform(shear, &image_frame.transform, scale, rotate, translate);
-		image_frame.transform = transform * image_frame.transform;
+		let pivot = DAffine2::from_translation(pivot);
+		let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+		image_frame.transform = modification * image_frame.transform;
+
 		image_frame
 	}
 }

@@ -237,17 +237,16 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds);
-				} else {
-					let transform = transform.to_cols_array();
-					responses.add(match transform_in {
-						TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
-						TransformIn::Scope { scope } => {
-							let scope = scope.to_cols_array();
-							Operation::SetLayerTransformInScope { path: layer, transform, scope }
-						}
-						TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
-					});
 				}
+				let transform = transform.to_cols_array();
+				responses.add(match transform_in {
+					TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
+					TransformIn::Scope { scope } => {
+						let scope = scope.to_cols_array();
+						Operation::SetLayerTransformInScope { path: layer, transform, scope }
+					}
+					TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
+				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);

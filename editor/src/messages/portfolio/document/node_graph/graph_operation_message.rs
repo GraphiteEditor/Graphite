@@ -22,7 +22,7 @@ pub enum GraphOperationMessage {
 	Vector { layer: LayerIdentifier, modification: VectorDataModification },
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
 	Local,
 	Scope { scope: DAffine2 },
