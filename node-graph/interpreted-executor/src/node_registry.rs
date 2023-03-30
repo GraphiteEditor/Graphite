@@ -166,8 +166,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let size: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
 				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
 				let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
+				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[4]);
 
-				let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(hardness.eval(())), ClonedNode::new(opacity.eval(())));
+				let brush_texture_node = BrushTextureNode::new(color, ClonedNode::new(hardness.eval(())), ClonedNode::new(opacity.eval(())));
 				let image = brush_texture_node.eval(size.eval(()));
 				let translate_node = TranslateNode::new(ClonedNode::new(image));
 				let frames = MapNode::new(ValueNode::new(translate_node));
@@ -185,7 +186,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 				Box::pin(any)
 			},
-			NodeIOTypes::new(concrete!(()), concrete!(ImageFrame), vec![value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64)]),
+			NodeIOTypes::new(
+				concrete!(()),
+				concrete!(ImageFrame),
+				vec![value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64), value_fn!(Color)],
+			),
 		)],
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::ReduceNode<_, _>"),

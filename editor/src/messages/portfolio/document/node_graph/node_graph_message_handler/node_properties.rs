@@ -519,8 +519,9 @@ pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	let size = number_widget(document_node, node_id, 2, "Size", NumberInput::default().min(0.).max(80.).int(), true);
 	let hardness = number_widget(document_node, node_id, 3, "Hardness", NumberInput::default().min(0.).max(2.), true);
 	let opacity = number_widget(document_node, node_id, 4, "Opacity", NumberInput::default().min(0.).max(1.), true);
+	let color = color_widget(document_node, node_id, 5, "Color", ColorInput::default(), true);
 
-	vec![LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: opacity }]
+	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: opacity }]
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
