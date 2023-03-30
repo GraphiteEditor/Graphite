@@ -5,6 +5,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::{BVec2, DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
 use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
 
@@ -30,6 +31,14 @@ pub struct IntoIterNode<T> {
 #[node_fn(IntoIterNode<_T>)]
 fn into_iter<'i: 'input, _T: Send + Sync>(vec: &'i Vec<_T>) -> Box<dyn Iterator<Item = &'i _T> + Send + Sync + 'i> {
 	Box::new(vec.iter())
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct VectorPointsNode;
+
+#[node_fn(VectorPointsNode)]
+fn vector_points(vector: VectorData) -> Vec<DVec2> {
+	vector.subpaths.iter().flat_map(|subpath| subpath.manipulator_groups().iter().map(|group| group.anchor)).collect()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,11 +116,11 @@ mod test {
 
 	#[test]
 	fn test_brush_texture() {
-		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
+		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(0.0), ClonedNode::new(1.0));
 		let image = brush_texture_node.eval(10.0);
-		assert_eq!(image.image.width, 20);
-		assert_eq!(image.image.height, 20);
-		assert_eq!(image.transform, DAffine2::from_scale(DVec2::splat(20.0)));
+		assert_eq!(image.image.width, 22);
+		assert_eq!(image.image.height, 22);
+		assert_eq!(image.transform, DAffine2::from_scale(DVec2::splat(22.0)));
 		// center pixel should be BLACK
 		assert_eq!(image.image.get(10, 10).unwrap(), &Color::BLACK);
 	}
@@ -126,7 +135,7 @@ mod test {
 		let frames = MapNode::new(ValueNode::new(translate_node));
 		let frames = trace.then(frames).eval(()).collect::<Vec<_>>();
 		assert_eq!(frames.len(), 2);
-		assert_eq!(frames[0].image.width, 20);
+		assert_eq!(frames[0].image.width, 22);
 		let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 		let background_bounds = background_bounds.eval(frames.clone().into_iter());
 		let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
@@ -134,8 +143,8 @@ mod test {
 		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.0));
 		let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 		let final_image = final_image.eval(frames.into_iter());
-		assert_eq!(final_image.image.height, 20);
-		assert_eq!(final_image.image.width, 30);
+		assert_eq!(final_image.image.height, 22);
+		assert_eq!(final_image.image.width, 32);
 		drop(final_image);
 	}
 }

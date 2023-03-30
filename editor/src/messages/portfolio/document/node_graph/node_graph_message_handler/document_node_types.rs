@@ -8,6 +8,7 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
+use graphene_core::vector::VectorData;
 use graphene_core::*;
 
 use once_cell::sync::Lazy;
@@ -465,6 +466,17 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::Raster,
 			}],
 			properties: node_properties::brush_node_properties,
+		},
+		DocumentNodeType {
+			name: "Extract Vector Points",
+			category: "Brush",
+			identifier: NodeImplementation::proto("graphene_std::brush::VectorPointsNode"),
+			inputs: vec![DocumentInputType::value("VectorData", TaggedValue::VectorData(VectorData::empty()), true)],
+			outputs: vec![DocumentOutputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Cache",
