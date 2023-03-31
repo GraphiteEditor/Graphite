@@ -872,8 +872,6 @@ impl Document {
 			} => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
-						debug!("Here1");
-						debug!("control_type {:?}", control_type);
 						manipulator_group.set_point_position(control_type as usize, position.into());
 						self.mark_as_dirty(&layer_path)?;
 					}

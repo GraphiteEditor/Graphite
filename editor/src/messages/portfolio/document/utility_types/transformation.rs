@@ -371,7 +371,6 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn update_transforms(&mut self, delta: DAffine2) {
-		debug!("update transform {:?}", delta);
 		if !self.selected.is_empty() {
 			let pivot = DAffine2::from_translation(*self.pivot);
 			let transformation = pivot * delta * pivot.inverse();
@@ -433,20 +432,6 @@ impl<'a> Selected<'a> {
 									move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
 								}
 
-								// if let Some(manipulator_group) = vector_data.manipulator_groups().find(|group| group.id == p.group) {
-								// 	p.manipulator_type.get_position(manipulator_group).unwrap_or_default();
-								// } else {
-								// 	DVec2::default()
-								// }
-
-								// for man_group in subpath.unwrap().manipulator_groups().enumerate() {
-								// 	let points_in_group = man_group.1.selected_points();
-								// 	for p in points_in_group {
-								// 		if p.position == point.0.position {
-								// 			group_id = *man_group.0;
-								// 		}
-								// 	}
-								// }
 							}
 						}
 						None => warn!("Initial Points empty, it should not be possible to reach here without points"),
