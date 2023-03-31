@@ -14,8 +14,8 @@
 	const PANEL_SIZES = {
 		/**/ root: 100,
 		/*   ├── */ content: 80,
-		/*   │      ├── */ document: 60,
-		/*   │      └── */ graph: 40,
+		/*   │      ├── */ document: 80,
+		/*   │      └── */ graph: 20,
 		/*   └── */ details: 20,
 		/*          ├── */ properties: 45,
 		/*          └── */ layers: 55,
