@@ -118,7 +118,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
