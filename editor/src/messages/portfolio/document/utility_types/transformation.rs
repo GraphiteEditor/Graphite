@@ -431,7 +431,6 @@ impl<'a> Selected<'a> {
 									move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
 									move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
 								}
-
 							}
 						}
 						None => warn!("Initial Points empty, it should not be possible to reach here without points"),
