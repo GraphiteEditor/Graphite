@@ -320,7 +320,7 @@ pub fn register_artwork_layer_properties(
 			]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
-			let mut properties_sections = vec![node_section_transform(layer, persistent_data)];
+			let mut properties_sections = Vec::new();
 
 			let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
 				persistent_data,
