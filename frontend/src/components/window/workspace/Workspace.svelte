@@ -14,8 +14,8 @@
 	const PANEL_SIZES = {
 		/**/ root: 100,
 		/*   ├── */ content: 80,
-		/*   │      ├── */ document: 60,
-		/*   │      └── */ graph: 40,
+		/*   │      ├── */ document: 80,
+		/*   │      └── */ graph: 20,
 		/*   └── */ details: 20,
 		/*          ├── */ properties: 45,
 		/*          └── */ layers: 55,
@@ -111,7 +111,7 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if $workspace.nodeGraphVisible}
+			{#if $portfolio.documents.length > 0}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={resizePanel} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["graph"] }} data-subdivision-name="graph">
 					<Panel panelType="NodeGraph" tabLabels={[{ name: "Node Graph" }]} tabActiveIndex={0} />

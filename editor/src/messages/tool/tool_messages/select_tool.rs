@@ -1202,7 +1202,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 }
 
 fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec<u64>, responses: &mut VecDeque<Message>) {
-	match intersect.data {
+	match &intersect.data {
 		LayerDataType::Text(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
 			responses.push_back(TextToolMessage::Interact.into());
@@ -1210,11 +1210,8 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec
 		LayerDataType::Shape(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
-		LayerDataType::NodeGraphFrame(_) => {
-			let replacement_selected_layers = vec![intersect_layer_path.clone()];
-			let layer_path = intersect_layer_path.clone();
-			responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
-			responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
+		LayerDataType::NodeGraphFrame(frame) if frame.vector_data.is_some() => {
+			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
 		_ => {}
 	}

@@ -49,6 +49,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let metadata = output_node.metadata.clone();
 		let new_input = output_node.inputs[0].clone();
 		let node_id = generate_uuid();
+
+		output_node.metadata.position.x += 8;
 		output_node.inputs[0] = NodeInput::node(node_id, 0);
 
 		let Some(node_type) = resolve_document_node_type(name) else {
@@ -62,8 +64,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Changes the inputs of a specific node
 	fn modify_inputs(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
-		let node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
-		if let Some(node_id) = node_id {
+		let existing_node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
+		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
 			self.modify_new_node(name, update_input);
@@ -73,6 +75,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
 		self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+
+		if existing_node_id.is_none() {
+			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+		}
 	}
 
 	fn fill_set(&mut self, fill: Fill) {
@@ -117,8 +123,8 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * pivot.inverse() * transform * pivot * to * layer_transform;
+			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let transform = to.inverse() * transform * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -130,8 +136,8 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * pivot.inverse() * transform * pivot;
+			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let transform = to.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -141,7 +147,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
@@ -184,7 +190,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
 			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
 
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -231,17 +237,16 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds);
-				} else {
-					let transform = transform.to_cols_array();
-					responses.add(match transform_in {
-						TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
-						TransformIn::Scope { scope } => {
-							let scope = scope.to_cols_array();
-							Operation::SetLayerTransformInScope { path: layer, transform, scope }
-						}
-						TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
-					});
 				}
+				let transform = transform.to_cols_array();
+				responses.add(match transform_in {
+					TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
+					TransformIn::Scope { scope } => {
+						let scope = scope.to_cols_array();
+						Operation::SetLayerTransformInScope { path: layer, transform, scope }
+					}
+					TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
+				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);

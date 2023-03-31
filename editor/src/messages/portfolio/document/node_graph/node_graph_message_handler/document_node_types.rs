@@ -105,7 +105,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeType {
-			name: "Image",
+			name: "Downscale",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
@@ -138,7 +138,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downscale the image to a lower resolution"),
 		},
 		// DocumentNodeType {
 		// 	name: "Input",
@@ -472,6 +472,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
+			name: "Image",
+			category: "Ignore",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {

@@ -236,7 +236,7 @@ impl NodeGraphExecutor {
 		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 
 		// Construct the input image frame
-		let transform = layer.transform;
+		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
 
 		let node_graph_frame = match &layer.data {
