@@ -232,7 +232,7 @@ impl WasmBezier {
 		let intersection_point = self.0.evaluate(t);
 		let normal_point = self.0.normal(t);
 		let curvature = self.0.curvature(t);
-		let content = if curvature < 0.000001 {
+		let content = if curvature.abs() < 0.000001 {
 			// Linear curve segment: the radius is infinite so we don't draw it
 			format!("{bezier}{}", draw_circle(intersection_point, 3., RED, 1., WHITE))
 		} else {

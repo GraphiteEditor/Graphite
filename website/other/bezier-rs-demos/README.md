@@ -1,24 +1,29 @@
-# Bezier-rs interactive docs
+# Bezier-rs interactive documentation
 
-## Project setup
-```
-npm install
-```
+Open these interactive docs: <https://graphite.rs/libraries/bezier-rs/>
 
-### Compiles and hot-reloads for development
-```
-npm start
-```
+This page also serves isolated demos for iframes used in the Rustdoc [crate documentation](https://docs.rs/bezier-rs/latest/bezier_rs/).
 
-### Compiles and minifies for production
-```
-npm run build
-```
+## Building and running
 
-### Lints and fixes files
-```
-npm run lint
-```
+From this directory, first execute `npm install` to install the required Node dependencies. Then...
 
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+- To run the development server with hot reloading:
+  ```
+  npm start
+  ```
+- To compile an unoptimized development build (like above, but it writes the files instead of serving them):
+  ```
+  npm run build
+  ```
+- To compile an optimized production build:
+  
+  ```
+  # WSL/Mac/Linux terminals:
+  npm run build-prod-unix
+
+  # Windows terminals:
+  npm run build-prod-windows
+  ```
+
+When a build is compiled, the entire `./public` folder is the output containing both the static `index.html`, etc., plus the generated `build/` folder.
