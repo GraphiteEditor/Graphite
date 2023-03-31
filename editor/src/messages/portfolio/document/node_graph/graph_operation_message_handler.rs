@@ -123,7 +123,7 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let transform = to.inverse() * transform * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
@@ -136,8 +136,8 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * pivot.inverse() * transform * pivot;
+			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let transform = to.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -147,7 +147,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
@@ -190,7 +190,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
 			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
 
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
