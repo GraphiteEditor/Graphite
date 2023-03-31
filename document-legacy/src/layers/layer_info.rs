@@ -3,7 +3,6 @@ use super::folder_layer::FolderLayer;
 use super::nodegraph_layer::NodeGraphFrameLayer;
 use super::shape_layer::ShapeLayer;
 use super::style::{PathStyle, RenderData};
-use super::text_layer::TextLayer;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
@@ -23,8 +22,6 @@ pub enum LayerDataType {
 	Folder(FolderLayer),
 	/// A layer that wraps a [ShapeLayer] struct.
 	Shape(ShapeLayer),
-	/// A layer that wraps a [TextLayer] struct.
-	Text(TextLayer),
 	/// A layer that wraps an [NodeGraphFrameLayer] struct.
 	NodeGraphFrame(NodeGraphFrameLayer),
 }
@@ -34,7 +31,6 @@ impl LayerDataType {
 		match self {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
-			LayerDataType::Text(t) => t,
 			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
@@ -43,7 +39,6 @@ impl LayerDataType {
 		match self {
 			LayerDataType::Shape(s) => s,
 			LayerDataType::Folder(f) => f,
-			LayerDataType::Text(t) => t,
 			LayerDataType::NodeGraphFrame(n) => n,
 		}
 	}
@@ -77,7 +72,6 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 		match data {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
 			Shape(_) => LayerDataTypeDiscriminant::Shape,
-			Text(_) => LayerDataTypeDiscriminant::Text,
 			NodeGraphFrame(_) => LayerDataTypeDiscriminant::NodeGraphFrame,
 		}
 	}
@@ -461,24 +455,6 @@ impl Layer {
 		}
 	}
 
-	/// Get a mutable reference to the Text element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
-	pub fn as_text_mut(&mut self) -> Result<&mut TextLayer, DocumentError> {
-		match &mut self.data {
-			LayerDataType::Text(t) => Ok(t),
-			_ => Err(DocumentError::NotText),
-		}
-	}
-
-	/// Get a reference to the Text element wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Text`.
-	pub fn as_text(&self) -> Result<&TextLayer, DocumentError> {
-		match &self.data {
-			LayerDataType::Text(t) => Ok(t),
-			_ => Err(DocumentError::NotText),
-		}
-	}
-
 	/// Get a mutable reference to the NodeNetwork
 	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::NodeGraphFrame`.
 	pub fn as_node_graph_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
@@ -507,7 +483,6 @@ impl Layer {
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
-			LayerDataType::Text(t) => Ok(&t.path_style),
 			LayerDataType::NodeGraphFrame(t) => t.vector_data.as_ref().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
 			_ => Err(DocumentError::NotShape),
 		}
@@ -516,7 +491,6 @@ impl Layer {
 	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Shape(s) => Ok(&mut s.style),
-			LayerDataType::Text(t) => Ok(&mut t.path_style),
 			_ => Err(DocumentError::NotShape),
 		}
 	}
@@ -550,12 +524,6 @@ impl From<FolderLayer> for Layer {
 impl From<ShapeLayer> for Layer {
 	fn from(from: ShapeLayer) -> Layer {
 		Layer::new(LayerDataType::Shape(from), DAffine2::IDENTITY.to_cols_array())
-	}
-}
-
-impl From<TextLayer> for Layer {
-	fn from(from: TextLayer) -> Layer {
-		Layer::new(LayerDataType::Text(from), DAffine2::IDENTITY.to_cols_array())
 	}
 }
 

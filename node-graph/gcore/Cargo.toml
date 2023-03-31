@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta"]
+std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta", "rustybuzz"]
 default = ["async", "serde", "kurbo", "log", "std"]
 log = ["dep:log"]
 serde = ["dep:serde", "glam/serde"]
@@ -39,3 +39,5 @@ node-macro = {path = "../node-macro"}
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
+
+rustybuzz = { version = "0.6.0", optional = true }

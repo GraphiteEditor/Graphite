@@ -5,10 +5,10 @@ use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDi
 use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
-use crate::layers::text_layer::{Font, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
+use graphene_core::text::Font;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::cmp::max;
@@ -441,9 +441,10 @@ impl Document {
 		}
 		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
 			root.cache_dirty = true;
-			if let LayerDataType::Text(text) = &mut root.data {
-				text.cached_path = None;
-			}
+			todo!()
+			// if let LayerDataType::Text(text) = &mut root.data {
+			// 	text.cached_path = None;
+			// }
 		}
 
 		root.cache_dirty
@@ -549,13 +550,7 @@ impl Document {
 				font_name,
 				font_style,
 			} => {
-				let font = Font::new(font_name, font_style);
-				let layer_text = TextLayer::new(text, style, size, font, render_data);
-				let layer_data = LayerDataType::Text(layer_text);
-				let layer = Layer::new(layer_data, transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
+				todo!();
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::AddNodeGraphFrame {
@@ -587,7 +582,7 @@ impl Document {
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
 			Operation::SetTextEditability { path, editable } => {
-				self.layer_mut(&path)?.as_text_mut()?.editable = editable;
+				todo!();
 				self.mark_as_dirty(&path)?;
 				Some(vec![DocumentChanged])
 			}
@@ -599,12 +594,13 @@ impl Document {
 				for id in layer_path {
 					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(layer_path.into()))?;
 				}
-				current_folder
-					.as_folder_mut()?
-					.layer_mut(id)
-					.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
-					.as_text_mut()?
-					.update_text(new_text, render_data);
+				// current_folder
+				// 	.as_folder_mut()?
+				// 	.layer_mut(id)
+				// 	.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
+				// 	.as_text_mut()?
+				// 	.update_text(new_text, render_data);
+				todo!();
 
 				self.mark_as_dirty(&path)?;
 
@@ -750,12 +746,12 @@ impl Document {
 					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
 				}
 				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-				let text = layer_mut.as_text_mut()?;
+				todo!();
 
-				text.font = Font::new(font_family, font_style);
-				text.size = size;
-				text.cached_path = Some(text.generate_path(text.load_face(render_data)));
-				self.mark_as_dirty(&path)?;
+				// text.font = Font::new(font_family, font_style);
+				// text.size = size;
+				// text.cached_path = Some(text.generate_path(text.load_face(render_data)));
+				// self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::RenameLayer { layer_path: path, new_name: name } => {
@@ -992,7 +988,6 @@ impl Document {
 				let layer = self.layer_mut(&path)?;
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style = style,
-					LayerDataType::Text(text) => text.path_style = style,
 					_ => return Err(DocumentError::NotShape),
 				}
 				self.mark_as_dirty(&path)?;

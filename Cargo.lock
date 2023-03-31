@@ -1596,6 +1596,7 @@ dependencies = [
  "node-macro",
  "once_cell",
  "rand_chacha 0.3.1",
+ "rustybuzz",
  "serde",
  "specta",
  "spin 0.9.6",

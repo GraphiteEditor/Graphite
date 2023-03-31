@@ -1,7 +1,7 @@
-use graphene_std::vector::consts::ManipulatorType;
-use graphene_std::vector::manipulator_group::ManipulatorGroup;
-use graphene_std::vector::manipulator_point::ManipulatorPoint;
-use graphene_std::vector::subpath::Subpath;
+use crate::vector::consts::ManipulatorType;
+use crate::vector::manipulator_group::ManipulatorGroup;
+use crate::vector::manipulator_point::ManipulatorPoint;
+use crate::vector::subpath::Subpath;
 
 use glam::DVec2;
 use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};

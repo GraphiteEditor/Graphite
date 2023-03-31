@@ -287,86 +287,88 @@ impl Fsm for TextToolFsmState {
 					state
 				}
 				(state, Interact) => {
-					let mouse_pos = input.mouse.position;
-					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+					// let mouse_pos = input.mouse.position;
+					// let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+					// let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					// Check if the user has selected an existing text layer
-					let new_state = if let Some(clicked_text_layer_path) = document
-						.document_legacy
-						.intersects_quad_root(quad, render_data)
-						.last()
-						.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
-					{
-						set_edit_layer(clicked_text_layer_path, state, tool_data, responses);
+					// // Check if the user has selected an existing text layer
+					// let new_state = if let Some(clicked_text_layer_path) = document
+					// 	.document_legacy
+					// 	.intersects_quad_root(quad, render_data)
+					// 	.last()
+					// 	.filter(|l| document.document_legacy.layer(l).map(|l| l.as_text().is_ok()).unwrap_or(false))
+					// {
+					// 	set_edit_layer(clicked_text_layer_path, state, tool_data, responses);
 
-						Editing
-					}
-					// Create new text
-					else if state == TextToolFsmState::Ready {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+					// 	Editing
+					// }
+					// // Create new text
+					// else if state == TextToolFsmState::Ready {
+					// 	responses.push_back(DocumentMessage::StartTransaction.into());
 
-						let transform = DAffine2::from_translation(input.mouse.position);
-						let font_size = tool_options.font_size;
-						let font_name = tool_options.font_name.clone();
-						let font_style = tool_options.font_style.clone();
-						tool_data.layer_path = document.get_path_for_new_layer();
+					// 	let transform = DAffine2::from_translation(input.mouse.position);
+					// 	let font_size = tool_options.font_size;
+					// 	let font_name = tool_options.font_name.clone();
+					// 	let font_style = tool_options.font_style.clone();
+					// 	tool_data.layer_path = document.get_path_for_new_layer();
 
-						responses.push_back(
-							Operation::AddText {
-								path: tool_data.layer_path.clone(),
-								transform: DAffine2::ZERO.to_cols_array(),
-								insert_index: -1,
-								text: String::new(),
-								style: style::PathStyle::new(None, Fill::solid(global_tool_data.primary_color)),
-								size: font_size as f64,
-								font_name,
-								font_style,
-							}
-							.into(),
-						);
-						responses.push_back(
-							GraphOperationMessage::TransformSet {
-								layer: tool_data.layer_path.clone(),
-								transform,
-								transform_in: TransformIn::Viewport,
-							}
-							.into(),
-						);
+					// 	responses.push_back(
+					// 		Operation::AddText {
+					// 			path: tool_data.layer_path.clone(),
+					// 			transform: DAffine2::ZERO.to_cols_array(),
+					// 			insert_index: -1,
+					// 			text: String::new(),
+					// 			style: style::PathStyle::new(None, Fill::solid(global_tool_data.primary_color)),
+					// 			size: font_size as f64,
+					// 			font_name,
+					// 			font_style,
+					// 		}
+					// 		.into(),
+					// 	);
+					// 	responses.push_back(
+					// 		GraphOperationMessage::TransformSet {
+					// 			layer: tool_data.layer_path.clone(),
+					// 			transform,
+					// 			transform_in: TransformIn::Viewport,
+					// 		}
+					// 		.into(),
+					// 	);
 
-						tool_data.set_editing(true, responses);
+					// 	tool_data.set_editing(true, responses);
 
-						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
+					// 	let replacement_selected_layers = vec![tool_data.layer_path.clone()];
 
-						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+					// 	responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
 
-						Editing
-					} else {
-						// Removing old text as editable
-						tool_data.set_editing(false, responses);
+					// 	Editing
+					// } else {
+					// 	// Removing old text as editable
+					// 	tool_data.set_editing(false, responses);
 
-						resize_overlays(&mut tool_data.overlays, responses, 0);
+					// 	resize_overlays(&mut tool_data.overlays, responses, 0);
 
-						Ready
-					};
+					// 	Ready
+					// };
 
-					new_state
+					// new_state
+					todo!();
+					state
 				}
 				(state, EditSelected) => {
-					let mut selected_layers = document.selected_layers();
+					todo!(); // let mut selected_layers = document.selected_layers();
 
-					if let Some(layer_path) = selected_layers.next() {
-						// Check that only one layer is selected
-						if selected_layers.next().is_none() {
-							if let Ok(layer) = document.document_legacy.layer(layer_path) {
-								if let LayerDataType::Text(_) = layer.data {
-									set_edit_layer(layer_path, state, tool_data, responses);
+					// if let Some(layer_path) = selected_layers.next() {
+					// 	// Check that only one layer is selected
+					// 	if selected_layers.next().is_none() {
+					// 		if let Ok(layer) = document.document_legacy.layer(layer_path) {
+					// 			if let LayerDataType::Text(_) = layer.data {
+					// 				set_edit_layer(layer_path, state, tool_data, responses);
 
-									return Editing;
-								}
-							}
-						}
-					}
+					// 				return Editing;
+					// 			}
+					// 		}
+					// 	}
+					// }
 
 					state
 				}
@@ -395,18 +397,18 @@ impl Fsm for TextToolFsmState {
 					Ready
 				}
 				(Editing, UpdateBounds { new_text }) => {
-					resize_overlays(&mut tool_data.overlays, responses, 1);
-					let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
-					let quad = text.bounding_box(&new_text, text.load_face(render_data));
+					todo!(); // resize_overlays(&mut tool_data.overlays, responses, 1);
+		 // let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
+		 // let quad = text.bounding_box(&new_text, text.load_face(render_data));
 
-					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
-					let bounds = transformed_quad.bounding_box();
+					// let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
+					// let bounds = transformed_quad.bounding_box();
 
-					let operation = Operation::SetLayerTransformInViewport {
-						path: tool_data.overlays[0].clone(),
-						transform: transform_from_box(bounds[0], bounds[1]),
-					};
-					responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+					// let operation = Operation::SetLayerTransformInViewport {
+					// 	path: tool_data.overlays[0].clone(),
+					// 	transform: transform_from_box(bounds[0], bounds[1]),
+					// };
+					// responses.push_back(DocumentMessage::Overlays(operation.into()).into());
 
 					Editing
 				}

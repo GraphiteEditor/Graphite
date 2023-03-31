@@ -25,8 +25,6 @@ pub mod layer_info;
 pub mod nodegraph_layer;
 /// Contains the [ShapeLayer](shape_layer::ShapeLayer) type, a generic SVG element defined using Bezier paths.
 pub mod shape_layer;
-/// Contains the [TextLayer](text_layer::TextLayer) type.
-pub mod text_layer;
 
 mod render_data;
 pub use render_data::RenderData;

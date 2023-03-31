@@ -12,6 +12,8 @@ pub mod generic;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]
+pub mod text;
+#[cfg(feature = "std")]
 pub mod uuid;
 pub mod value;
 
