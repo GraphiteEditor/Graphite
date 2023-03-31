@@ -59,6 +59,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
+			selected.original_transforms.clear();
 		};
 
 		#[remain::sorted]
@@ -87,7 +88,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				self.original_transforms.clear();
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -104,7 +104,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				self.original_transforms.clear();
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -119,10 +118,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				self.original_transforms.clear();
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();

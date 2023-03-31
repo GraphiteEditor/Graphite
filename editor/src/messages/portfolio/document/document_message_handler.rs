@@ -589,10 +589,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					warn!("Image node should be in registry");
 					return;
 				};
+				let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+					warn!("Transform node should be in registry");
+					return;
+				};
+				let Some(downscale_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Downscale") else {
+					warn!("Downscale node should be in registry");
+					return;
+				};
 
 				let path = vec![generate_uuid()];
-				let image_node_id = 100;
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
+				let [image_node_id, transform_node_id, downscale_node_id] = [100, 101, 102];
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downscale_node_id);
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -612,15 +620,29 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
+				let mut pos = 8;
+				let mut next_pos = || {
+					pos += 8;
+					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+				};
+
 				network.nodes.insert(
 					image_node_id,
 					image_node_type.to_document_node(
 						[graph_craft::document::NodeInput::value(
-							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform }),
+							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
-						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
+						next_pos(),
 					),
+				);
+				network.nodes.insert(
+					transform_node_id,
+					transform_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(image_node_id, 0))], next_pos()),
+				);
+				network.nodes.insert(
+					downscale_node_id,
+					downscale_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 
 				responses.push_back(

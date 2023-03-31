@@ -44,9 +44,6 @@ export class UpdateNodeGraphSelection extends JsMessage {
 	readonly selected!: bigint[];
 }
 
-export class UpdateNodeGraphVisibility extends JsMessage {
-	readonly visible!: boolean;
-}
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
@@ -1432,7 +1429,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphBarLayout,
 	UpdateNodeGraphSelection,
 	UpdateNodeTypes,
-	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
