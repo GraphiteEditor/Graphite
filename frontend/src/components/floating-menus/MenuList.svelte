@@ -3,15 +3,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
-	import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@/components/widgets/labels/UserInputLabel.svelte";
+	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
@@ -36,6 +36,7 @@
 	// Called only when `open` is changed from outside this component
 	$: watchOpen(open);
 	$: watchRemeasureWidth(entries, drawIcon);
+
 	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
@@ -62,7 +63,10 @@
 		dispatch("activeEntry", menuListEntry);
 
 		// Close the containing menu
-		if (menuListEntry.ref) menuListEntry.ref.open = false;
+		if (menuListEntry.ref) {
+			menuListEntry.ref.open = false;
+			entries = entries;
+		}
 		dispatch("open", false);
 		open = false;
 	}
@@ -70,15 +74,19 @@
 	function onEntryPointerEnter(menuListEntry: MenuListEntry): void {
 		if (!menuListEntry.children?.length) return;
 
-		if (menuListEntry.ref) menuListEntry.ref.open = true;
-		else dispatch("open", true);
+		if (menuListEntry.ref) {
+			menuListEntry.ref.open = true;
+			entries = entries;
+		} else dispatch("open", true);
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry): void {
 		if (!menuListEntry.children?.length) return;
 
-		if (menuListEntry.ref) menuListEntry.ref.open = false;
-		else dispatch("open", false);
+		if (menuListEntry.ref) {
+			menuListEntry.ref.open = false;
+			entries = entries;
+		} else dispatch("open", false);
 	}
 
 	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
@@ -96,12 +104,15 @@
 		const flatEntries = entries.flat().filter((entry) => !entry.disabled);
 		const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.open);
 
-		const openSubmenu = (highlighted: MenuListEntry): void => {
-			if (highlighted.ref && highlighted.children?.length) {
-				highlighted.ref.open = true;
+		const openSubmenu = (highlightedEntry: MenuListEntry): void => {
+			if (highlightedEntry.ref && highlightedEntry.children?.length) {
+				highlightedEntry.ref.open = true;
+				// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
+				// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
+				highlighted = highlighted;
 
 				// Highlight first item
-				highlighted.ref.setHighlighted(highlighted.children[0][0]);
+				highlightedEntry.ref.setHighlighted(highlightedEntry.children[0][0]);
 			}
 		};
 

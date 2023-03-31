@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import { platformIsMac } from "@/utility-functions/platform";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@/wasm-communication/messages";
+	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/wasm-communication/messages";
 
-	import MenuList from "@/components/floating-menus/MenuList.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
 	const accelKey = platformIsMac() ? "Command" : "Control";
@@ -95,7 +95,10 @@
 			{#if entry.children && entry.children.length > 0}
 				<MenuList
 					on:open={({ detail }) => {
-						if (entry.ref) entry.ref.open = detail;
+						if (entry.ref) {
+							entry.ref.open = detail;
+							entries = entries;
+						}
 					}}
 					open={entry.ref?.open || false}
 					entries={entry.children || []}

@@ -6,9 +6,11 @@ use crate::messages::prelude::*;
 
 use document_legacy::{document::pick_safe_imaginate_resolution, layers::layer_info::LayerDataType};
 use document_legacy::{LayerId, Operation};
+use dyn_any::DynAny;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
 use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::vector::VectorData;
 use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
@@ -20,20 +22,17 @@ pub struct NodeGraphExecutor {
 }
 
 impl NodeGraphExecutor {
-	/// Execute the network by flattening it and creating a borrow stack. Casts the output to the generic `T`.
-	fn execute_network<T: dyn_any::StaticType>(&mut self, network: NodeNetwork, image_frame: ImageFrame) -> Result<T, String> {
+	/// Execute the network by flattening it and creating a borrow stack.
+	fn execute_network<'a>(&'a mut self, network: NodeNetwork, image_frame: ImageFrame) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
 		let mut scoped_network = wrap_network_in_scope(network);
 
 		scoped_network.duplicate_outputs(&mut generate_uuid);
 		scoped_network.remove_dead_nodes();
 
-		//debug!("Execute document network:\n{scoped_network:#?}");
-
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
 		let proto_network = c.compile_single(scoped_network, true)?;
-		//debug!("Execute proto network:\n{proto_network}");
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
 			error!("Failed to update executor:\n{}", e);
@@ -43,9 +42,7 @@ impl NodeGraphExecutor {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		let boxed = self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string())?;
-
-		dyn_any::downcast::<T>(boxed).map(|v| *v)
+		self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string())
 	}
 
 	/// Computes an input for a node in the graph
@@ -85,7 +82,9 @@ impl NodeGraphExecutor {
 			}
 		}
 
-		self.execute_network(network, image_frame.into_owned())
+		let boxed = self.execute_network(network, image_frame.into_owned())?;
+
+		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
 
 	/// Encodes an image into a format using the image crate
@@ -246,11 +245,24 @@ impl NodeGraphExecutor {
 		}?;
 		let network = node_graph_frame.network.clone();
 
-		// Execute the node graph
+		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
 		if let Some(imaginate_node) = imaginate_node {
 			responses.push_back(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, image_frame, persistent_data)?);
+			return Ok(());
+		}
+		// Execute the node graph
+		let boxed_node_graph_output = self.execute_network(network, image_frame)?;
+
+		// Check if the output is vector data
+		if core::any::TypeId::of::<VectorData>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
+			// Update the cached vector data on the layer
+			let vector_data: VectorData = dyn_any::downcast(boxed_node_graph_output).map(|v| *v)?;
+			let transform = vector_data.transform.to_cols_array();
+			responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
+			responses.push_back(Operation::SetVectorData { path: layer_path, vector_data }.into());
 		} else {
-			let ImageFrame { image, transform } = self.execute_network(network, image_frame)?;
+			// Attempt to downcast to an image frame
+			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
 
 			// If no image was generated, clear the frame
 			if image.width == 0 || image.height == 0 {

@@ -1,12 +1,14 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
 use graphene_core::vector::consts::ManipulatorType;
+use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
@@ -182,7 +184,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -192,6 +194,7 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
+			self.hints(snapping, axis_constraint, selected.responses);
 		}
 	}
 
@@ -203,7 +206,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, axis);
 	}
 
 	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
@@ -213,8 +216,52 @@ impl TransformOperation {
 			TransformOperation::Rotating(rotation) => rotation.typed_angle = typed,
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
-		debug!("typed transform {:?}", self);
-		self.apply_transform_operation(selected, snapping);
+
+		let axis_constraint = match self {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
+		};
+
+		self.apply_transform_operation(selected, snapping, axis_constraint);
+	}
+
+	pub fn hints(&self, snapping: bool, axis_constraint: Axis, responses: &mut VecDeque<Message>) {
+		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+
+		let mut hints = Vec::new();
+
+		let axis_str = |vector: DVec2, separate: bool| match axis_constraint {
+			Axis::Both => {
+				if separate {
+					format!("X: {}, Y: {}", vector.x, vector.y)
+				} else {
+					vector.x.to_string()
+				}
+			}
+			Axis::X => format!("X: {}", vector.x),
+			Axis::Y => format!("Y: {}", vector.y),
+		};
+
+		let value_str = match self {
+			TransformOperation::None => String::new(),
+			TransformOperation::Grabbing(translation) => format!("Translate {}", axis_str(translation.to_dvec(), true)),
+			TransformOperation::Rotating(rotation) => format!("Rotate {}°", rotation.to_f64(snapping) * 360. / std::f64::consts::TAU),
+			TransformOperation::Scaling(scale) => format!("Scale {}", axis_str(scale.to_dvec(snapping), false)),
+		};
+		hints.push(HintInfo::label(value_str));
+		hints.push(HintInfo::keys([Key::Shift], "Precision Mode"));
+		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
+			hints.push(HintInfo::keys([Key::Control], "Snap"));
+		}
+		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
+			hints.push(HintInfo::keys([Key::KeyX], "X Axis"));
+			hints.push(HintInfo::keys([Key::KeyY], "Y Axis"));
+		}
+
+		let hint_data = HintData(vec![HintGroup(hints)]);
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
 
@@ -224,7 +271,7 @@ pub struct Selected<'a> {
 	pub document: &'a Document,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
-	pub shape_editor: Option<&'a ShapeEditor>,
+	pub shape_editor: Option<&'a ShapeState>,
 	pub tool_type: &'a ToolType,
 }
 
@@ -235,7 +282,7 @@ impl<'a> Selected<'a> {
 		selected: &'a [&'a Vec<LayerId>],
 		responses: &'a mut VecDeque<Message>,
 		document: &'a Document,
-		shape_editor: Option<&'a ShapeEditor>,
+		shape_editor: Option<&'a ShapeState>,
 		tool_type: &'a ToolType,
 	) -> Self {
 		//if its select tool and og transform was the default new path map
@@ -260,9 +307,31 @@ impl<'a> Selected<'a> {
 				for path in selected {
 					match shape_editor {
 						Some(shape_editor) => {
-							let points = shape_editor.selected_points(document);
+							let points = shape_editor.selected_points();
 							if !path_map.contains_key(&(path[0], ManipulatorType::Anchor)) {
-								path_map.insert((path[0], ManipulatorType::Anchor), points.map(|p| p.position).collect());
+								if let Ok(layer) = document.layer(path) {
+									if let Some(vector_data) = layer.as_vector_data() {
+										path_map.insert(
+											(path[0], ManipulatorType::Anchor),
+											points
+												.map(|p| {
+													if let Some(manipulator_group) = vector_data.manipulator_groups().find(|group| group.id == p.group) {
+														p.manipulator_type.get_position(manipulator_group).unwrap_or_default()
+													} else {
+														DVec2::default()
+													}
+												})
+												.collect(),
+										);
+									} else {
+										warn!("Didn't find a vectordata for {:?}", layer);
+									}
+								} else {
+									warn!("Didn't find a layer for {:?}", path);
+								}
+
+								// let manipulator_group = vector_data.manipulator_groups().find(|group| group.id == manipulator_point_id.group)?;
+								// let point_position = manipulator_point_id.manipulator_type.get_position(manipulator_group)?;
 							}
 						}
 						None => warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType"),
@@ -340,33 +409,44 @@ impl<'a> Selected<'a> {
 						OriginalTransforms::Path(path_map) => path_map.get(&(layer_path[0], ManipulatorType::Anchor)),
 					};
 
-					let points = self.shape_editor.unwrap().selected_points(&self.document);
-					let subpath = self.document.layer(&layer_path).ok().and_then(|layer| layer.as_subpath());
+					let points = self.shape_editor.unwrap().selected_points();
 					match initial_points {
 						Some(original) => {
-							for point in points.zip(original) {
-								let mut group_id = 0;
-								for man_group in subpath.unwrap().manipulator_groups().enumerate() {
-									let points_in_group = man_group.1.selected_points();
-									for p in points_in_group {
-										if p.position == point.0.position {
-											group_id = *man_group.0;
-										}
-									}
+							for p in points.zip(original) {
+								let viewport_point = viewspace.transform_point2(*p.1);
+								let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+								let point = *p.0;
+								let position = new_pos_viewport;
+
+								let mut move_point = |point: ManipulatorPointId| {
+									let op = GraphOperationMessage::Vector {
+										layer: (*layer_path).to_vec(),
+										modification: VectorDataModification::SetManipulatorPosition { point, position },
+									};
+									self.responses.push_back(op.into());
+								};
+
+								move_point(point);
+
+								if point.manipulator_type == SelectedType::Anchor {
+									move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+									move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
 								}
 
-								let viewport_point = viewspace.transform_point2(*point.1);
-								debug!("viewport_point {}", viewport_point);
-								let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-								debug!("new_pos_viewport {}", new_pos_viewport);
-								let op = DocumentOperation::MoveManipulatorPoint {
-									layer_path: (*layer_path).to_vec(),
-									id: group_id, //the +1 is to compensate for the enumerate() starting at 0 and group ids starting at 1
-									manipulator_type: point.0.manipulator_type,
-									position: new_pos_viewport.into(),
-								}
-								.into();
-								self.responses.push_back(op);
+								// if let Some(manipulator_group) = vector_data.manipulator_groups().find(|group| group.id == p.group) {
+								// 	p.manipulator_type.get_position(manipulator_group).unwrap_or_default();
+								// } else {
+								// 	DVec2::default()
+								// }
+
+								// for man_group in subpath.unwrap().manipulator_groups().enumerate() {
+								// 	let points_in_group = man_group.1.selected_points();
+								// 	for p in points_in_group {
+								// 		if p.position == point.0.position {
+								// 			group_id = *man_group.0;
+								// 		}
+								// 	}
+								// }
 							}
 						}
 						None => warn!("Initial Points empty, it should not be possible to reach here without points"),

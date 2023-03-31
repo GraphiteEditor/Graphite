@@ -398,18 +398,24 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Color(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
-			color_props
-				.value(Some(x as Color))
-				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
-				.widget_holder(),
-		])
+	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
+		if let &TaggedValue::Color(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(Some(x as Color))
+					.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+					.widget_holder(),
+			])
+		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(x)
+					.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value), node_id, index))
+					.widget_holder(),
+			])
+		}
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -472,9 +478,9 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
-	vec![luma_calculation]
+	vec![luminance_calc]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -504,10 +510,11 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
-	let thereshold = number_widget(document_node, node_id, 2, "Threshold", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
 
-	vec![luma_calculation, LayoutGroup::Row { widgets: thereshold }]
+	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -574,7 +581,23 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let translation = {
 		let index = 1;
 
-		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, true);
+		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, false);
+
+		let pivot_index = 5;
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::DVec2(pivot),
+			exposed: false,
+		} = document_node.inputs[pivot_index]
+		{
+			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(
+				PivotAssist::new(pivot.into())
+					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.widget_holder(),
+			);
+		} else {
+			add_blank_assist(&mut widgets);
+		}
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(vec2),
@@ -691,20 +714,43 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateServerStatus::Connected => "Connected",
 		};
 		let widgets = vec![
-			WidgetHolder::text_widget("Server"),
-			WidgetHolder::unrelated_separator(),
-			IconButton::new("Settings", 24)
-				.tooltip("Preferences: Imaginate")
-				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
-				.widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status),
-			WidgetHolder::related_separator(),
-			IconButton::new("Reload", 24)
-				.tooltip("Refresh connection status")
-				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
-				.widget_holder(),
-		];
+			vec![
+				WidgetHolder::text_widget("Server"),
+				WidgetHolder::unrelated_separator(),
+				IconButton::new("Settings", 24)
+					.tooltip("Preferences: Imaginate")
+					.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
+					.widget_holder(),
+				WidgetHolder::unrelated_separator(),
+				WidgetHolder::bold_text(status),
+			],
+			if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
+				vec![
+					WidgetHolder::unrelated_separator(),
+					TextButton::new("Help")
+						.tooltip("Learn how to connect Imaginate to an image generation server")
+						.on_update(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://github.com/GraphiteEditor/Graphite/discussions/1089".to_string(),
+							}
+							.into()
+						})
+						.widget_holder(),
+				]
+			} else {
+				vec![]
+			},
+			vec![
+				WidgetHolder::related_separator(),
+				IconButton::new("Reload", 24)
+					.tooltip("Refresh connection status")
+					.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
+					.widget_holder(),
+			],
+		]
+		.into_iter()
+		.flatten()
+		.collect();
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
@@ -1266,7 +1312,8 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	if fill_type.is_none() || solid {
+	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
+	if fill_type.is_none() || solid || empty {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
 	}
@@ -1277,7 +1324,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
 	}
 
-	if gradient || solid {
+	if gradient || solid || empty {
 		let new_fill_type = if gradient { FillType::Solid } else { FillType::Gradient };
 		let switch_button = TextButton::new(if gradient { "Use Solid Color" } else { "Use Gradient" })
 			.tooltip(if gradient {

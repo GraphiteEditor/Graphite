@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { platformIsMac } from "@/utility-functions/platform";
+	import { platformIsMac } from "@graphite/utility-functions/platform";
 
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
 	// emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],
 	const dispatch = createEventDispatcher<{
@@ -33,6 +33,7 @@
 	let macKeyboardLayout = platformIsMac();
 
 	$: inputValue = value;
+
 	$: dispatch("value", inputValue);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.

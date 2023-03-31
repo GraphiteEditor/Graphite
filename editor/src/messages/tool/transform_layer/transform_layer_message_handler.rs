@@ -2,17 +2,15 @@ use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shape_editor::ShapeEditor;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use document_legacy::layers::style::RenderData;
-use TransformLayerMessage::*;
-
 use glam::DVec2;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
-	transform_operation: TransformOperation,
+	pub transform_operation: TransformOperation,
 
 	slow: bool,
 	snap: bool,
@@ -23,15 +21,30 @@ pub struct TransformLayerMessageHandler {
 
 	original_transforms: OriginalTransforms,
 	pivot: DVec2,
-	shape_editor: ShapeEditor,
+}
+impl TransformLayerMessageHandler {
+	pub fn is_transforming(&self) -> bool {
+		self.transform_operation != TransformOperation::None
+	}
+	pub fn hints(&self, responses: &mut VecDeque<Message>) {
+		let axis_constraint = match self.transform_operation {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
+		};
+		self.transform_operation.hints(self.snap, axis_constraint, responses);
+	}
 }
 
-type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>, &'a ToolData);
+type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>, &'a ToolData, &'a mut ShapeState);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data): TransformData) {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data, shape_editor): TransformData) {
+		use TransformLayerMessage::*;
+
+		// TODO: Transform individual points when using the path tool.
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
-		let shape_editor = &self.shape_editor;
+
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
 
 		// set og to default whenevever we being an op with path tool
@@ -51,19 +64,29 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				selected.revert_operation();
 				typing.clear();
 			}
+
 			let mut point_count: usize = 0;
 			if using_path_tool {
-				*selected.original_transforms = OriginalTransforms::default();
-				let path = shape_editor.selected_layers_ref();
-				let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(path[0]).ok().unwrap_or_default();
-				let points = shape_editor.selected_points(&document.document_legacy);
+				if let Ok(layer) = document.document_legacy.layer(&selected_layers[0]) {
+					if let Some(vector_data) = layer.as_vector_data() {
+						*selected.original_transforms = OriginalTransforms::default();
+						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(&selected_layers[0]).ok().unwrap_or_default();
 
-				*selected.pivot = points
-					.map(|point| {
-						point_count += 1;
-						viewspace.transform_point2(point.position)
-					})
-					.sum::<DVec2>() / point_count as f64;
+						let points = shape_editor.selected_points();
+
+						*selected.pivot = points
+							.map(|point| {
+								point_count += 1;
+								if let Some(manipulator_group) = vector_data.manipulator_groups().find(|group| group.id == point.group) {
+									let position = point.manipulator_type.get_position(manipulator_group).unwrap_or_default();
+									viewspace.transform_point2(position)
+								} else {
+									DVec2::default()
+								}
+							})
+							.sum::<DVec2>() / point_count as f64;
+					}
+				}
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
@@ -87,7 +110,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -173,7 +197,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
@@ -183,7 +208,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let new_snap = ipp.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+					let axis_constraint = match self.transform_operation {
+						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+						TransformOperation::Scaling(scaling) => scaling.constraint,
+						_ => Axis::Both,
+					};
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -193,10 +223,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::None => unreachable!(),
 						TransformOperation::Grabbing(translation) => {
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
-
+							let axis_constraint = translation.constraint;
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
@@ -206,9 +235,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-
-							//TODO: fix this when we know what to do with rotating 1 point
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -220,10 +247,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							};
 
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
-
+							let axis_constraint = scale.constraint;
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 						}
 					};
 				} //TODO: check here
@@ -231,7 +257,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 			SelectionChanged => {
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
-				self.shape_editor.set_selected_layers(layer_paths);
+				shape_editor.set_selected_layers(layer_paths);
 			}
 			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),

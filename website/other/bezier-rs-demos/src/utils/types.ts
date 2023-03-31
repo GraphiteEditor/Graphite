@@ -11,26 +11,31 @@ export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_ou
 export const BEZIER_CURVE_TYPE = ["Linear", "Quadratic", "Cubic"] as const;
 export type BezierCurveType = typeof BEZIER_CURVE_TYPE[number];
 
-export type TVariant = "Euclidean" | "Parametric";
-
-export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number], tVariant?: TVariant) => string;
-export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number], tVariant?: TVariant) => string;
+export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number]) => string;
+export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number]) => string;
 
 export type BezierDemoOptions = {
 	[key in BezierCurveType]: {
 		disabled?: boolean;
-		sliderOptions?: SliderOption[];
+		inputOptions?: InputOption[];
 		customPoints?: number[][];
 	};
 };
 
-export type SliderOption = {
-	min: number;
-	max: number;
-	step: number;
-	default: number;
+export type SubpathInputOption = InputOption & {
+	isDisabledForClosed?: boolean;
+};
+
+export type InputOption = {
 	variable: string;
+	min?: number;
+	max?: number;
+	step?: number;
+	default?: number;
 	unit?: string | string[];
+	inputType?: "slider" | "dropdown";
+	options?: string[];
+	disabled?: boolean;
 };
 
 export function getCurveType(numPoints: number): BezierCurveType {
@@ -61,7 +66,7 @@ export interface DemoArgs {
 
 export interface BezierDemoArgs extends DemoArgs {
 	points: number[][];
-	sliderOptions: SliderOption[];
+	inputOptions: InputOption[];
 }
 
 export interface SubpathDemoArgs extends DemoArgs {
@@ -70,7 +75,7 @@ export interface SubpathDemoArgs extends DemoArgs {
 }
 
 export interface Demo extends HTMLElement {
-	sliderOptions: SliderOption[];
+	inputOptions: InputOption[];
 	sliderData: Record<string, number>;
 	sliderUnits: Record<string, string | string[]>;
 
@@ -85,7 +90,11 @@ export interface DemoPane extends HTMLElement {
 	name: string;
 	demos: DemoArgs[];
 	id: string;
-	chooseTVariant: boolean;
-	tVariant: TVariant;
 	buildDemo(demo: DemoArgs): Demo;
 }
+
+export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
+export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;
+
+export const CAP_VARIANTS = ["Butt", "Round", "Square"] as const;
+export const JOIN_VARIANTS = ["Bevel", "Miter", "Round"] as const;

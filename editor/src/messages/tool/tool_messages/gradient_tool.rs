@@ -75,8 +75,8 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for GradientTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for GradientTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message {
 			match action {
 				GradientOptionsUpdate::Type(gradient_type) => {
@@ -353,8 +353,8 @@ impl SelectedGradient {
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
 		let fill = Fill::Gradient(self.gradient.clone());
-		let path = self.path.clone();
-		responses.push_back(Operation::SetLayerFill { path, fill }.into());
+		let layer = self.path.clone();
+		responses.add(GraphOperationMessage::FillSet { layer, fill });
 	}
 }
 
@@ -396,7 +396,13 @@ impl Fsm for GradientToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document,
+			global_tool_data,
+			input,
+			render_data,
+			..
+		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -450,8 +456,8 @@ impl Fsm for GradientToolFsmState {
 					// The gradient has only one point and so should become a fill
 					if selected_gradient.gradient.positions.len() == 1 {
 						let fill = Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK));
-						let path = selected_gradient.path.clone();
-						responses.push_back(Operation::SetLayerFill { path, fill }.into());
+						let layer = selected_gradient.path.clone();
+						responses.add(GraphOperationMessage::FillSet { layer, fill });
 						return self;
 					}
 

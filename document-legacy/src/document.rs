@@ -8,8 +8,6 @@ use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
-use graphene_std::vector::subpath::Subpath;
-
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -175,43 +173,6 @@ impl Document {
 			}
 		}
 		Ok(shapes)
-	}
-
-	/// Return a copy of all [Subpath]s currently in the document.
-	pub fn all_subpaths(&self) -> Vec<Subpath> {
-		self.root.iter().flat_map(|layer| layer.as_subpath_copy()).collect::<Vec<Subpath>>()
-	}
-
-	/// Returns references to all [Subpath]s currently in the document.
-	pub fn all_subpaths_ref(&self) -> Vec<&Subpath> {
-		self.root.iter().flat_map(|layer| layer.as_subpath()).collect::<Vec<&Subpath>>()
-	}
-
-	/// Returns a reference to the requested [Subpath] by providing a path to its owner layer.
-	pub fn subpath_ref<'a>(&'a self, path: &[LayerId]) -> Option<&'a Subpath> {
-		self.layer(path).ok()?.as_subpath()
-	}
-
-	/// Returns a mutable reference of the requested [Subpath] by providing a path to its owner layer.
-	pub fn subpath_mut<'a>(&'a mut self, path: &'a [LayerId]) -> Option<&'a mut Subpath> {
-		self.layer_mut(path).ok()?.as_subpath_mut()
-	}
-
-	/// Set a [Subpath] at the specified path.
-	pub fn set_subpath(&mut self, path: &[LayerId], shape: Subpath) {
-		let layer = self.layer_mut(path);
-		if let Ok(layer) = layer {
-			if let LayerDataType::Shape(shape_layer) = &mut layer.data {
-				shape_layer.shape = shape;
-				// Is this needed?
-				layer.cache_dirty = true;
-			}
-		}
-	}
-
-	/// Set [Subpath]s for multiple paths at once.
-	pub fn set_subpaths<'a>(&'a mut self, paths: impl Iterator<Item = &'a [LayerId]>, shapes: Vec<Subpath>) {
-		paths.zip(shapes).for_each(|(path, shape)| self.set_subpath(path, shape));
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
@@ -865,6 +826,12 @@ impl Document {
 				}
 				Some(vec![DocumentChanged, LayerChanged { path }])
 			}
+			Operation::SetVectorData { path, vector_data } => {
+				if let LayerDataType::NodeGraphFrame(graph) = &mut self.layer_mut(&path)?.data {
+					graph.vector_data = Some(vector_data);
+				}
+				Some(Vec::new())
+			}
 			Operation::InsertManipulatorGroup {
 				layer_path,
 				manipulator_group,
@@ -905,6 +872,8 @@ impl Document {
 			} => {
 				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
 					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
+						debug!("Here1");
+						debug!("control_type {:?}", control_type);
 						manipulator_group.set_point_position(control_type as usize, position.into());
 						self.mark_as_dirty(&layer_path)?;
 					}

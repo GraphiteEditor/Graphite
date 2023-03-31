@@ -9,6 +9,36 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.closed
 	}
 
+	/// Set whether the subpath is closed.
+	pub fn set_closed(&mut self, new_closed: bool) {
+		self.closed = new_closed;
+	}
+
+	/// Access a [ManipulatorGroup] from a ManipulatorGroupId.
+	pub fn manipulator_from_id(&self, id: ManipulatorGroupId) -> Option<&ManipulatorGroup<ManipulatorGroupId>> {
+		self.manipulator_groups.iter().find(|manipulator_group| manipulator_group.id == id)
+	}
+
+	/// Access a mutable [ManipulatorGroup] from a ManipulatorGroupId.
+	pub fn manipulator_mut_from_id(&mut self, id: ManipulatorGroupId) -> Option<&mut ManipulatorGroup<ManipulatorGroupId>> {
+		self.manipulator_groups.iter_mut().find(|manipulator_group| manipulator_group.id == id)
+	}
+
+	/// Access the index of a [ManipulatorGroup] from a ManipulatorGroupId.
+	pub fn manipulator_index_from_id(&self, id: ManipulatorGroupId) -> Option<usize> {
+		self.manipulator_groups.iter().position(|manipulator_group| manipulator_group.id == id)
+	}
+
+	/// Insert a manipulator group at an index.
+	pub fn insert_manipulator_group(&mut self, index: usize, group: ManipulatorGroup<ManipulatorGroupId>) {
+		self.manipulator_groups.insert(index, group)
+	}
+
+	/// Remove a manipulator group at an index.
+	pub fn remove_manipulator_group(&mut self, index: usize) -> ManipulatorGroup<ManipulatorGroupId> {
+		self.manipulator_groups.remove(index)
+	}
+
 	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn insert(&mut self, t: SubpathTValue) {

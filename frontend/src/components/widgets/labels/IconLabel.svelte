@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@/utility-functions/icons";
+	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@graphite/utility-functions/icons";
 
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
 	let className = "";
 	export { className as class };

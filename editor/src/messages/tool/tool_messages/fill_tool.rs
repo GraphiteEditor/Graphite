@@ -8,7 +8,6 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
 use document_legacy::layers::style::Fill;
-use document_legacy::Operation;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -46,8 +45,8 @@ impl ToolMetadata for FillTool {
 
 impl PropertyHolder for FillTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FillTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
 	}
 
@@ -84,7 +83,13 @@ impl Fsm for FillToolFsmState {
 		self,
 		event: ToolMessage,
 		_tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document,
+			global_tool_data,
+			input,
+			render_data,
+			..
+		}: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -106,9 +111,12 @@ impl Fsm for FillToolFsmState {
 						};
 						let fill = Fill::Solid(color);
 
-						responses.push_back(DocumentMessage::StartTransaction.into());
-						responses.push_back(Operation::SetLayerFill { path: path.to_vec(), fill }.into());
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
+						responses.add(DocumentMessage::SetSelectedLayers {
+							replacement_selected_layers: vec![path.to_vec()],
+						});
+						responses.add(GraphOperationMessage::FillSet { layer: path.to_vec(), fill });
+						responses.add(DocumentMessage::CommitTransaction);
 					}
 
 					Ready

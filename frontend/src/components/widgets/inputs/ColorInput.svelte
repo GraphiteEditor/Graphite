@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { Color } from "@/wasm-communication/messages";
+	import type { Color } from "@graphite/wasm-communication/messages";
 
-	import ColorPicker from "@/components/floating-menus/ColorPicker.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: Color }>();

@@ -12,7 +12,7 @@ The current version of Graphite provides tools for designing vector art with Bez
 
 The present priority is building the node graph system and integrating it with the existing vector editing toolset. Once ready, work will shift to building a raster-based render engine. More advanced features will build off those core capabilities.
 
-Short-term feature development at a granular level is tracked in the [Task Board](https://github.com/GraphiteEditor/Graphite/projects/1) on GitHub. Check that out to see what's coming down the pipeline during monthly sprints. Graphite does not use formal version numbers because of the constant rate of feature development and continuous release cycle. Changes can be tracked by [commit hash](https://github.com/GraphiteEditor/Graphite/commits/master) and progress divided into [monthly sprints](https://github.com/GraphiteEditor/Graphite/milestones). The hosted web app deploys a [recent commit](https://github.com/GraphiteEditor/Graphite/releases/tag/latest-stable) from the past week or two.
+Short-term feature development at a granular level is tracked in the [Task Board](https://github.com/orgs/GraphiteEditor/projects/1/views/1) on GitHub. Check that out to see what's coming down the pipeline during monthly sprints. Graphite does not use formal version numbers because of the constant rate of feature development and continuous release cycle. Changes can be tracked by [commit hash](https://github.com/GraphiteEditor/Graphite/commits/master) and progress divided into [monthly sprints](https://github.com/GraphiteEditor/Graphite/milestones). The hosted web app deploys a [recent commit](https://github.com/GraphiteEditor/Graphite/releases/tag/latest-stable) from the past week or two.
 
 ## Milestones
 

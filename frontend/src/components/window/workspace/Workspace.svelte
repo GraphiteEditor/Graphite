@@ -1,14 +1,14 @@
 <script lang="ts">
-	import DialogModal from "@/components/floating-menus/DialogModal.svelte";
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import Panel from "@/components/window/workspace/Panel.svelte";
+	import DialogModal from "@graphite/components/floating-menus/DialogModal.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import Panel from "@graphite/components/window/workspace/Panel.svelte";
 	import { getContext } from "svelte";
-	import type { Editor } from "@/wasm-communication/editor";
-	import type { WorkspaceState } from "@/state-providers/workspace";
-	import type { PortfolioState } from "@/state-providers/portfolio";
-	import type { DialogState } from "@/state-providers/dialog";
-	import type { FrontendDocumentDetails } from "@/wasm-communication/messages";
+	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { WorkspaceState } from "@graphite/state-providers/workspace";
+	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+	import type { DialogState } from "@graphite/state-providers/dialog";
+	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -24,8 +24,8 @@
 	let panelSizes = PANEL_SIZES;
 	let documentPanel: Panel | undefined;
 
-	$: activeDocumentIndex = $portfolio.activeDocumentIndex;
-	$: nodeGraphVisible = $workspace.nodeGraphVisible;
+	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
+
 	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
 		const name = doc.displayName;
 
@@ -34,12 +34,6 @@
 		const tooltip = `Document ID ${doc.id}`;
 		return { name, tooltip };
 	});
-	$: {
-		scrollIntoView(activeDocumentIndex);
-	}
-	function scrollIntoView(activeDocumentIndex: number) {
-		documentPanel?.scrollTabIntoView(activeDocumentIndex);
-	}
 
 	const editor = getContext<Editor>("editor");
 	const workspace = getContext<WorkspaceState>("workspace");
@@ -117,7 +111,7 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if nodeGraphVisible}
+			{#if $workspace.nodeGraphVisible}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={resizePanel} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["graph"] }} data-subdivision-name="graph">
 					<Panel panelType="NodeGraph" tabLabels={[{ name: "Node Graph" }]} tabActiveIndex={0} />

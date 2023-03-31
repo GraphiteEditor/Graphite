@@ -6,10 +6,10 @@ use crate::consts::{
 };
 use crate::messages::prelude::*;
 
-use document_legacy::layers::layer_info::{Layer, LayerDataType};
+use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Stroke};
 use document_legacy::{LayerId, Operation};
-use graphene_std::vector::consts::ManipulatorType;
+use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
@@ -260,35 +260,26 @@ impl SnapManager {
 		include_handles: bool,
 		ignore_points: &[ManipulatorPointInfo],
 	) {
-		if let LayerDataType::Shape(shape_layer) = &layer.data {
-			let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
-			let snap_points = shape_layer
-				.shape
-				.manipulator_groups()
-				.enumerate()
-				.flat_map(|(id, shape)| {
-					if include_handles {
-						[
-							(*id, &shape.points[ManipulatorType::Anchor]),
-							(*id, &shape.points[ManipulatorType::InHandle]),
-							(*id, &shape.points[ManipulatorType::OutHandle]),
-						]
-					} else {
-						[(*id, &shape.points[ManipulatorType::Anchor]), (0, &None), (0, &None)]
-					}
-				})
-				.filter_map(|(id, point)| point.as_ref().map(|val| (id, val)))
-				.filter(|(id, point)| {
-					!ignore_points.contains(&ManipulatorPointInfo {
-						shape_layer_path: path,
-						manipulator_group_id: *id,
-						manipulator_type: point.manipulator_type,
-					})
-				})
-				.map(|(_id, point)| DVec2::new(point.position.x, point.position.y))
-				.map(|pos| transform.transform_point2(pos));
-			self.add_snap_points(document_message_handler, input, snap_points);
-		}
+		let Some(vector_data) = &layer.as_vector_data() else { return };
+
+		let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
+		let snap_points = vector_data
+			.manipulator_groups()
+			.flat_map(|group| {
+				if include_handles {
+					[
+						Some((ManipulatorPointId::new(group.id, SelectedType::Anchor), group.anchor)),
+						group.in_handle.map(|pos| (ManipulatorPointId::new(group.id, SelectedType::InHandle), pos)),
+						group.out_handle.map(|pos| (ManipulatorPointId::new(group.id, SelectedType::OutHandle), pos)),
+					]
+				} else {
+					[Some((ManipulatorPointId::new(group.id, SelectedType::Anchor), group.anchor)), None, None]
+				}
+			})
+			.flatten()
+			.filter(|&(point_id, _)| !ignore_points.contains(&ManipulatorPointInfo { shape_layer_path: path, point_id }))
+			.map(|(_, pos)| transform.transform_point2(pos));
+		self.add_snap_points(document_message_handler, input, snap_points);
 	}
 
 	/// Adds all of the shape handles in the document, including bézier handles of the points specified

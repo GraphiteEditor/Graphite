@@ -14,7 +14,7 @@ impl Bezier {
 	}
 
 	/// Create a quadratic bezier using the provided DVec2s as the start, handle, and end points.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/constructor/solo" title="Constructor Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/constructor/solo" title="Constructor Demo"></iframe>
 	pub fn from_linear_dvec2(p1: DVec2, p2: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -69,7 +69,7 @@ impl Bezier {
 	/// - `t` - A representation of how far along the curve the provided point should occur at. The default value is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/bezier-through-points/solo" title="Through Points Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#bezier/bezier-through-points/solo" title="Through Points Demo"></iframe>
 	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>) -> Self {
 		let t = t.unwrap_or(DEFAULT_T_VALUE);
 		if t == 0. {
@@ -121,6 +121,16 @@ impl Bezier {
 			}
 		};
 		format!("{handle_args} {} {}", self.end.x, self.end.y)
+	}
+
+	/// Write the curve argument to the string
+	pub fn write_curve_argument(&self, svg: &mut String) -> std::fmt::Result {
+		match self.handles {
+			BezierHandles::Linear => svg.push_str(SVG_ARG_LINEAR),
+			BezierHandles::Quadratic { handle } => write!(svg, "{SVG_ARG_QUADRATIC}{},{}", handle.x, handle.y)?,
+			BezierHandles::Cubic { handle_start, handle_end } => write!(svg, "{SVG_ARG_CUBIC}{},{} {},{}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)?,
+		}
+		write!(svg, " {},{}", self.end.x, self.end.y)
 	}
 
 	/// Return the string argument used to create the lines connecting handles to endpoints in an SVG `path`
@@ -200,6 +210,13 @@ impl Bezier {
 		let other_points = other.get_points().collect::<Vec<DVec2>>();
 
 		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points.into_iter()).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
+	}
+
+	/// Returns true if the start, end and handles of the Bezier are all at the same location
+	pub fn is_point(&self) -> bool {
+		let start = self.start();
+
+		self.get_points().all(|point| point.abs_diff_eq(start, MAX_ABSOLUTE_DIFFERENCE))
 	}
 }
 

@@ -1,4 +1,5 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+use crate::ManipulatorGroup;
 
 use glam::{BVec2, DMat2, DVec2};
 use std::f64::consts::PI;
@@ -19,6 +20,12 @@ pub enum TValue {
 }
 
 #[derive(Copy, Clone, PartialEq)]
+pub enum TValueType {
+	Parametric,
+	Euclidean,
+}
+
+#[derive(Copy, Clone, PartialEq)]
 pub enum SubpathTValue {
 	Parametric { segment_index: usize, t: f64 },
 	GlobalParametric(f64),
@@ -29,10 +36,29 @@ pub enum SubpathTValue {
 }
 
 #[derive(Copy, Clone)]
-pub enum Joint {
-	Miter,
+/// Represents the shape of the join between two segments of a path which meet at an angle.
+/// Bevel provides a flat connection, Miter provides a sharp connection, and Round provides a rounded connection.
+/// As defined in SVG: <https://www.w3.org/TR/SVG2/painting.html#LineJoin>.
+pub enum Join {
+	/// The join is a straight line between the end points of the offset path sides from the two connecting segments.
 	Bevel,
+	/// Optional f64 is the miter limit, which defaults to 4 if `None` or a value less than 1 is provided.
+	/// The miter limit is used to prevent highly sharp angles from resulting in excessively long miter joins.
+	/// If the miter limit is exceeded, the join will be converted to a bevel join.
+	/// The value is the ratio of the miter length to the stroke width.
+	/// When that ratio is greater than the miter limit, a bevel join is used instead.
+	Miter(Option<f64>),
+	/// The join is a circular arc between the end points of the offset path sides from the two connecting segments.
 	Round,
+}
+
+#[derive(Copy, Clone)]
+/// Enum to represent the cap type at the ends of an outline
+/// As defined in SVG: <https://www.w3.org/TR/SVG2/painting.html#LineCaps>.
+pub enum Cap {
+	Butt,
+	Round,
+	Square,
 }
 
 /// Helper to perform the computation of a and c, where b is the provided point on the curve.
@@ -264,6 +290,31 @@ pub fn scale_point_from_direction_vector(point: DVec2, direction_unit_vector: DV
 /// Scale a point by a given distance with respect to the provided origin.
 pub fn scale_point_from_origin(point: DVec2, origin: DVec2, should_flip_direction: bool, distance: f64) -> DVec2 {
 	scale_point_from_direction_vector(point, (origin - point).normalize(), should_flip_direction, distance)
+}
+
+/// Computes the necessary details to form a circular join from `left` to `right`, along a circle around `center`.
+/// By default, the angle is assumed to be 180 degrees.
+pub fn compute_circular_subpath_details<ManipulatorGroupId: crate::Identifier>(
+	left: DVec2,
+	arc_point: DVec2,
+	right: DVec2,
+	center: DVec2,
+	angle: Option<f64>,
+) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+	let center_to_arc_point = arc_point - center;
+
+	// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+	let handle_offset_factor = if let Some(angle) = angle { 4. / 3. * (angle / 4.).tan() } else { 0.551784777779014 };
+
+	(
+		left - (left - center).perp() * handle_offset_factor,
+		ManipulatorGroup::new(
+			arc_point,
+			Some(arc_point + center_to_arc_point.perp() * handle_offset_factor),
+			Some(arc_point - center_to_arc_point.perp() * handle_offset_factor),
+		),
+		right + (right - center).perp() * handle_offset_factor,
+	)
 }
 
 #[cfg(test)]

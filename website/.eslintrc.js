@@ -46,7 +46,7 @@ module.exports = {
 		"no-bitwise": "off",
 		"no-shadow": "off",
 		"no-use-before-define": "off",
-		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
+		"no-restricted-imports": ["error", { patterns: [".*", "!@graphite/*"] }],
 
 		// Import plugin config (used to intelligently validate module import statements)
 		"import/prefer-default-export": "off",

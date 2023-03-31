@@ -10,14 +10,12 @@ pub fn block_on<F: Future + 'static>(future: F) -> F::Output {
 		let result = executor::spawn(async move {
 			let result = executor::yield_async(future).await;
 			*move_val.lock().unwrap() = Some(result);
-			log::info!("Finished");
 		});
 		executor::run(Some(result.task()));
 		loop {
 			if let Some(result) = val.lock().unwrap().take() {
 				return result;
 			}
-			log::info!("Waiting");
 		}
 	}
 
