@@ -15,7 +15,6 @@ impl MessageHandler<WorkspaceMessage, ()> for WorkspaceMessageHandler {
 			// Messages
 			NodeGraphToggleVisibility => {
 				self.node_graph_visible = !self.node_graph_visible;
-				responses.push_back(FrontendMessage::UpdateNodeGraphVisibility { visible: self.node_graph_visible }.into());
 			}
 		}
 	}

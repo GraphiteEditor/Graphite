@@ -131,8 +131,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
 
-				// Ensure the node graph drawing state is reset
-				responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 			}
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;

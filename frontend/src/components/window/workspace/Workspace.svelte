@@ -111,12 +111,11 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if $workspace.nodeGraphVisible}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={resizePanel} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["graph"] }} data-subdivision-name="graph">
 					<Panel panelType="NodeGraph" tabLabels={[{ name: "Node Graph" }]} tabActiveIndex={0} />
 				</LayoutRow>
-			{/if}
+			
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">

@@ -114,7 +114,6 @@ impl Fsm for NodeGraphToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: true }.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
@@ -141,14 +140,12 @@ impl Fsm for NodeGraphToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 					shape_data.cleanup(responses);
 
 					Ready
 				}
 				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 
 					shape_data.cleanup(responses);
 
