@@ -61,9 +61,9 @@ pub enum ToolMessage {
 	#[child]
 	Text(TextToolMessage),
 
-	// #[remain::unsorted]
-	// #[child]
-	// Brush(BrushToolMessage),
+	#[remain::unsorted]
+	#[child]
+	Brush(BrushToolMessage),
 	// #[remain::unsorted]
 	// #[child]
 	// Heal(HealToolMessage),

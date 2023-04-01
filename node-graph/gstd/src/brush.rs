@@ -48,6 +48,18 @@ pub struct BrushTextureNode<ColorNode, Hardness, Opacity> {
 	pub opacity: Opacity,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct EraseNode<Opacity> {
+	opacity: Opacity,
+}
+
+#[node_fn(EraseNode)]
+fn erase(input: (Color, Color), opacity: f64) -> Color {
+	let (input, brush) = input;
+	let alpha = input.a() * (1.0 - opacity as f32 * brush.a());
+	Color::from_rgbaf32_unchecked(input.r(), input.g(), input.b(), alpha as f32)
+}
+
 #[node_fn(BrushTextureNode)]
 fn brush_texture(radius: f64, color: Color, hardness: f64, opacity: f64) -> ImageFrame {
 	let radius = radius.ceil() as u32;
