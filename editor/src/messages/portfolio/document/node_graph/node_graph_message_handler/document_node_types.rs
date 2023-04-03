@@ -879,8 +879,18 @@ impl DocumentNodeType {
 }
 
 pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
+	// if the network has no inputs, it doesn't need to be wrapped in a scope
+	if network.inputs.is_empty() {
+		return network;
+	}
+
 	assert_eq!(network.inputs.len(), 1, "Networks wrapped in scope must have exactly one input");
-	let input_type = network.nodes[&network.inputs[0]].inputs.iter().find(|&i| matches!(i, NodeInput::Network(_))).unwrap().clone();
+	let input = network.nodes[&network.inputs[0]].inputs.iter().find(|&i| matches!(i, NodeInput::Network(_))).cloned();
+
+	// if the network has no network inputs, it doesn't need to be wrapped in a scope either
+	let Some(input_type) = input else {
+            return network;
+    };
 
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
@@ -888,6 +898,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 		inputs: vec![NodeInput::node(0, 1)],
 		metadata: DocumentNodeMetadata::default(),
 	};
+
 	// wrap the inner network in a scope
 	let nodes = vec![
 		resolve_document_node_type("Begin Scope")
@@ -928,7 +939,6 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 }
 
 pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let input = resolve_document_node_type("Input Frame").expect("Input Frame node does not exist");
 	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -943,15 +953,14 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	};
 
 	NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(5, 0)],
+		inputs: vec![],
+		outputs: vec![NodeOutput::new(4, 0)],
 		nodes: [
-			input.to_document_node_default_inputs([], next_pos()),
 			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], next_pos()),
-			transform.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
-			fill.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
-			stroke.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
-			output.to_document_node_default_inputs([Some(NodeInput::node(4, 0))], next_pos()),
+			transform.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()),
+			fill.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
+			stroke.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
+			output.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
 		]
 		.into_iter()
 		.enumerate()

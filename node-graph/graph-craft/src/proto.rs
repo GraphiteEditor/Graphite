@@ -403,6 +403,11 @@ impl TypingContext {
 		self.constructor.get(&node_id).copied()
 	}
 
+	/// Returns the type of a given node id if it exists
+	pub fn type_of(&self, node_id: NodeId) -> Option<&NodeIOTypes> {
+		self.inferred.get(&node_id)
+	}
+
 	/// Returns the inferred types for a given node id.
 	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, String> {
 		let identifier = node.identifier.name.clone();
@@ -416,7 +421,7 @@ impl TypingContext {
 			// If the node has a value parameter we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None));
-                // TODO: This should return a reference to the value
+				// TODO: This should return a reference to the value
 				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![v.ty()]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
@@ -464,7 +469,7 @@ impl TypingContext {
 				// TODO: relax this requirement when allowing generic types as inputs
 				(Type::Generic(_), _) => false,
 				(_, Type::Generic(_)) => true,
-                _ => false,
+				_ => false,
 			}
 		}
 
@@ -539,7 +544,7 @@ fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic
 		.into_iter()
 		.chain(types.parameters.iter().map(|x| x.second()).zip(parameters.iter().map(|x| x.second())));
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
-    let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
+	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs
 		.next()
 		.ok_or_else(|| format!("Generic output type {generic} is not dependent on input {input:?} or parameters {parameters:?}",))?;

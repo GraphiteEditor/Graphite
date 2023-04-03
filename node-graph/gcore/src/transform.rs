@@ -74,7 +74,7 @@ pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
 pub(crate) fn transform_vector_data<Data: TransformMut>(mut data: Data, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2, pivot: DVec2) -> Data {
 	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
 
-	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+	let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 	data

@@ -9,7 +9,11 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use document_legacy::Operation;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::vector::style::Stroke;
+use graphene_core::Cow;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -61,7 +65,7 @@ enum BrushToolFsmState {
 
 impl ToolMetadata for BrushTool {
 	fn icon_name(&self) -> String {
-		"VectorBrushTool".into()
+		"RasterBrushTool".into()
 	}
 	fn tooltip(&self) -> String {
 		"Brush Tool".into()
@@ -178,9 +182,9 @@ impl Fsm for BrushToolFsmState {
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
-					if tool_data.points.len() >= 2 {
+					if !tool_data.points.is_empty() {
 						responses.push_back(remove_preview(tool_data));
-						add_polyline(tool_data, global_tool_data, responses);
+						add_brush_render(tool_data, global_tool_data, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -225,4 +229,28 @@ fn add_polyline(data: &BrushToolData, tool_data: &DocumentToolData, responses: &
 		layer: layer_path,
 		stroke: Stroke::new(tool_data.primary_color, data.weight),
 	});
+}
+
+fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	let layer_path = data.path.clone().unwrap();
+	log::debug!("Points: {:?}", data.points);
+	let brush_node = DocumentNode {
+		name: "Brush".to_string(),
+		inputs: vec![
+			NodeInput::ShortCircut(concrete!(())),
+			NodeInput::value(TaggedValue::VecDVec2(data.points.clone()), false),
+			// Size
+			NodeInput::value(TaggedValue::F64(data.weight), false),
+			// Hardness
+			NodeInput::value(TaggedValue::F64(0.0), false),
+			// Opacity
+			NodeInput::value(TaggedValue::F64(1.0), false),
+			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
+		],
+		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
+		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
+	};
+	let mut network = NodeNetwork::value_network(brush_node);
+	network.push_output_node();
+	graph_modification_utils::new_custom_layer(network, layer_path.clone(), responses);
 }

@@ -120,6 +120,8 @@ pub enum ToolMessage {
 	ActivateToolShape,
 
 	#[remain::unsorted]
+	ActivateToolBrush,
+	#[remain::unsorted]
 	ActivateToolImaginate,
 	#[remain::unsorted]
 	ActivateToolNodeGraphFrame,
