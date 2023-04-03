@@ -93,9 +93,8 @@ pub struct TranslateNode<Translatable> {
 }
 
 #[node_fn(TranslateNode)]
-fn translate_node<Data: TransformMut + core::fmt::Debug>(offset: DVec2, mut translatable: Data) -> Data {
+fn translate_node<Data: TransformMut>(offset: DVec2, mut translatable: Data) -> Data {
 	translatable.translate(offset);
-	log::debug!("translate_node: {:?}", translatable);
 	translatable
 }
 
