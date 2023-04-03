@@ -149,33 +149,33 @@ impl NodeGraphMessageHandler {
 
 	/// Collect the addresses of the currently viewed nested node e.g. Root -> MyFunFilter -> Exposure
 	fn collect_nested_addresses(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
-		// Build path list
-		let mut path = vec!["Root".to_string()];
-		let mut network = self.get_root_network(document);
-		for node_id in &self.nested_path {
-			let node = network.and_then(|network| network.nodes.get(node_id));
-			if let Some(DocumentNode { name, .. }) = node {
-				path.push(name.clone());
-			}
-			network = node.and_then(|node| node.implementation.get_network());
-		}
-		let nesting = path.len();
+		// // Build path list
+		// let mut path = vec!["Root".to_string()];
+		// let mut network = self.get_root_network(document);
+		// for node_id in &self.nested_path {
+		// 	let node = network.and_then(|network| network.nodes.get(node_id));
+		// 	if let Some(DocumentNode { name, .. }) = node {
+		// 		path.push(name.clone());
+		// 	}
+		// 	network = node.and_then(|node| node.implementation.get_network());
+		// }
+		// let nesting = path.len();
 
-		// Update UI
-		self.widgets[0] = LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
-				labels: path.clone(),
-				on_update: WidgetCallback::new(move |input: &u64| {
-					NodeGraphMessage::ExitNestedNetwork {
-						depth_of_nesting: nesting - (*input as usize) - 1,
-					}
-					.into()
-				}),
-				..Default::default()
-			}))],
-		};
+		// // Update UI
+		// self.widgets[0] = LayoutGroup::Row {
+		// 	widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
+		// 		labels: path.clone(),
+		// 		on_update: WidgetCallback::new(move |input: &u64| {
+		// 			NodeGraphMessage::ExitNestedNetwork {
+		// 				depth_of_nesting: nesting - (*input as usize) - 1,
+		// 			}
+		// 			.into()
+		// 		}),
+		// 		..Default::default()
+		// 	}))],
+		// };
 
-		self.send_node_bar_layout(responses);
+		// self.send_node_bar_layout(responses);
 	}
 
 	/// Updates the buttons for disable and preview

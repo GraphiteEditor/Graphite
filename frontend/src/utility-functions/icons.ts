@@ -95,19 +95,19 @@ import BooleanUnion from "@graphite/../assets/icon-16px-solid/boolean-union.svg"
 import CheckboxChecked from "@graphite/../assets/icon-16px-solid/checkbox-checked.svg";
 import CheckboxUnchecked from "@graphite/../assets/icon-16px-solid/checkbox-unchecked.svg";
 import Copy from "@graphite/../assets/icon-16px-solid/copy.svg";
+import Eyedropper from "@graphite/../assets/icon-16px-solid/eyedropper.svg";
 import EyeHidden from "@graphite/../assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@graphite/../assets/icon-16px-solid/eye-visible.svg";
-import Eyedropper from "@graphite/../assets/icon-16px-solid/eyedropper.svg";
 import File from "@graphite/../assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@graphite/../assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@graphite/../assets/icon-16px-solid/flip-vertical.svg";
 import Folder from "@graphite/../assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@graphite/../assets/icon-16px-solid/graphite-logo.svg";
+import Layer from "@graphite/../assets/icon-16px-solid/layer.svg";
 import NodeArtboard from "@graphite/../assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@graphite/../assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@graphite/../assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@graphite/../assets/icon-16px-solid/node-color-correction.svg";
-import NodeFolder from "@graphite/../assets/icon-16px-solid/node-folder.svg";
 import NodeGradient from "@graphite/../assets/icon-16px-solid/node-gradient.svg";
 import NodeImage from "@graphite/../assets/icon-16px-solid/node-image.svg";
 import NodeImaginate from "@graphite/../assets/icon-16px-solid/node-imaginate.svg";
@@ -160,11 +160,11 @@ const SOLID_16PX = {
 	FlipVertical: { svg: FlipVertical, size: 16 },
 	Folder: { svg: Folder, size: 16 },
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
+	Layer: { svg: Layer, size: 16 },
 	NodeArtboard: { svg: NodeArtboard, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
-	NodeFolder: { svg: NodeFolder, size: 16 },
 	NodeGradient: { svg: NodeGradient, size: 16 },
 	NodeImage: { svg: NodeImage, size: 16 },
 	NodeImaginate: { svg: NodeImaginate, size: 16 },

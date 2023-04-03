@@ -77,7 +77,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				tooltip: "Artboard".into(),
 				..Default::default()
 			})),
-			WidgetHolder::related_separator(),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Artboard".into(),
 				..TextLabel::default()
@@ -256,7 +256,7 @@ pub fn register_artwork_layer_properties(
 		widgets: vec![
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeFolder".into(),
+					icon: "Folder".into(),
 					tooltip: "Folder".into(),
 					..Default::default()
 				})),
@@ -271,12 +271,12 @@ pub fn register_artwork_layer_properties(
 					..Default::default()
 				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeNodes".into(),
+					icon: "Layer".into(),
 					tooltip: "Node Graph Frame".into(),
 					..Default::default()
 				})),
 			},
-			WidgetHolder::related_separator(),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: match &layer.data {
 					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
