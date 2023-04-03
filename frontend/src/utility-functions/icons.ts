@@ -232,9 +232,9 @@ import GeneralSelectTool from "@graphite/../assets/icon-24px-two-tone/general-se
 import RasterBrushTool from "@graphite/../assets/icon-24px-two-tone/raster-brush-tool.svg";
 import RasterCloneTool from "@graphite/../assets/icon-24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@graphite/../assets/icon-24px-two-tone/raster-detail-tool.svg";
+import RasterFrameTool from "@graphite/../assets/icon-24px-two-tone/raster-frame-tool.svg";
 import RasterHealTool from "@graphite/../assets/icon-24px-two-tone/raster-heal-tool.svg";
 import RasterImaginateTool from "@graphite/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
-import RasterNodesTool from "@graphite/../assets/icon-24px-two-tone/raster-nodes-tool.svg";
 import RasterPatchTool from "@graphite/../assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@graphite/../assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@graphite/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -254,12 +254,12 @@ const TWO_TONE_24PX = {
 	GeneralGradientTool: { svg: GeneralGradientTool, size: 24 },
 	GeneralNavigateTool: { svg: GeneralNavigateTool, size: 24 },
 	GeneralSelectTool: { svg: GeneralSelectTool, size: 24 },
-	RasterImaginateTool: { svg: RasterImaginateTool, size: 24 },
-	RasterNodesTool: { svg: RasterNodesTool, size: 24 },
 	RasterBrushTool: { svg: RasterBrushTool, size: 24 },
 	RasterCloneTool: { svg: RasterCloneTool, size: 24 },
 	RasterDetailTool: { svg: RasterDetailTool, size: 24 },
+	RasterFrameTool: { svg: RasterFrameTool, size: 24 },
 	RasterHealTool: { svg: RasterHealTool, size: 24 },
+	RasterImaginateTool: { svg: RasterImaginateTool, size: 24 },
 	RasterPatchTool: { svg: RasterPatchTool, size: 24 },
 	RasterRelightTool: { svg: RasterRelightTool, size: 24 },
 	VectorEllipseTool: { svg: VectorEllipseTool, size: 24 },
