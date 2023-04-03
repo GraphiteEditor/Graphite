@@ -421,10 +421,10 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 }
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
+	let information = WidgetHolder::text_widget("The graph's input frame is the rasterized artwork under the layer");
 	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
-		.tooltip("Refresh the artwork under the frame")
+		.tooltip("Refresh the artwork under the layer")
 		.on_update(move |_| DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() }.into())
 		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
@@ -936,8 +936,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	// Get the existing layer transform
-	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 	// Create the input to the graph using an empty image
 	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
 		image: graphene_core::raster::Image::empty(),
@@ -976,7 +974,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Rescale", 24)
-					.tooltip("Set the Node Graph Frame layer dimensions to this resolution")
+					.tooltip("Set the layer dimensions to this resolution")
 					.on_update(move |_| {
 						Operation::SetLayerScaleAroundPivot {
 							path: layer_path.clone(),

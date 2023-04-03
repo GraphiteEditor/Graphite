@@ -54,7 +54,6 @@ pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 	Text,
-	Image,
 	NodeGraphFrame,
 }
 
@@ -64,8 +63,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => write!(f, "Folder"),
 			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
 			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
-			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
-			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "Node Graph Frame"),
+			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "Layer"),
 		}
 	}
 }

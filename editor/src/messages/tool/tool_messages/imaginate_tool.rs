@@ -119,18 +119,36 @@ impl Fsm for ImaginateToolFsmState {
 
 					use graph_craft::document::*;
 
+					// Utility function to offset the position of each consecutive node
+					let mut pos = 8;
+					let mut next_pos = || {
+						pos += 8;
+						graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+					};
+
+					// Get the node type for the Transform and Imaginate nodes
+					let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+						warn!("Transform node should be in registry");
+						return Drawing;
+					};
 					let imaginate_node_type = &*IMAGINATE_NODE;
 
-					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
-					imaginate_inputs[0] = NodeInput::node(0, 0);
+					// Give them a unique ID
+					let [transform_node_id, imaginate_node_id] = [100, 101];
 
-					let imaginate_node_id = 100;
+					// Create the network based on the Input -> Output passthrough default network
 					let mut network = node_graph::new_image_network(16, imaginate_node_id);
+
+					// Insert the nodes into the default network
+					network
+						.nodes
+						.insert(transform_node_id, transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()));
 					network.nodes.insert(
 						imaginate_node_id,
-						imaginate_node_type.to_document_node(imaginate_inputs, graph_craft::document::DocumentNodeMetadata::position((16, 4))),
+						imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 					);
 
+					// Add the node graph frame layer to the document
 					responses.push_back(
 						Operation::AddNodeGraphFrame {
 							path: shape_data.path.clone().unwrap(),
@@ -140,6 +158,7 @@ impl Fsm for ImaginateToolFsmState {
 						}
 						.into(),
 					);
+					responses.push_back(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id }.into());
 
 					Drawing
 				}
