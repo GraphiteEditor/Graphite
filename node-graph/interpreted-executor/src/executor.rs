@@ -42,7 +42,10 @@ impl DynamicExecutor {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
 		trace!("setting output to {}", self.output);
-		self.tree.update(proto_network, &self.typing_context)?;
+		let orphans = self.tree.update(proto_network, &self.typing_context)?;
+		for node_id in orphans {
+			self.tree.free_node(node_id)
+		}
 		Ok(())
 	}
 }
@@ -104,8 +107,8 @@ impl BorrowTree {
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context)?;
-				old_nodes.remove(&id);
 			}
+			old_nodes.remove(&id);
 		}
 		Ok(old_nodes.into_iter().collect())
 	}

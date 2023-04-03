@@ -120,7 +120,15 @@ export function createPortfolioState(editor: Editor) {
 		const { documentId, layerPath, svg, size, imaginateNode } = triggerNodeGraphFrameGenerate;
 
 		// Rasterize the SVG to an image file
-		const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
+		let imageData;
+		try {
+			// getImageData may throw an exception if the resolution is too high
+			if (size[0] >= 1 && size[1] >= 1) {
+				imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
+			}
+		} catch (e) {
+			console.error("Failed to rasterize the SVG canvas in JS to be sent back to Rust:", e);
+		}
 
 		if (imageData) editor.instance.processNodeGraphFrame(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height, imaginateNode);
 	});
