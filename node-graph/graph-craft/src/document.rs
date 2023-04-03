@@ -124,7 +124,7 @@ impl DocumentNode {
 
 /// Represents the possible inputs to a node.
 ///
-/// # Short circuting
+/// # More about short circuting
 ///
 /// In Graphite nodes are functions and by default, these are composed into a single function
 /// by inserting Compose nodes.

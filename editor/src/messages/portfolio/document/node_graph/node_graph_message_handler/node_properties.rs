@@ -976,7 +976,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Rescale", 24)
-					.tooltip("Set the Node Graph Frame layer dimensions to this resolution")
+					.tooltip("Set the layer dimensions to this resolution")
 					.on_update(move |_| {
 						Operation::SetLayerScaleAroundPivot {
 							path: layer_path.clone(),

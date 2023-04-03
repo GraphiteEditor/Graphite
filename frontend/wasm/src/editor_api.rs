@@ -588,7 +588,7 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Shifts the node and its children to stop nodes going ontop of each other
+	/// Shifts the node and its children to stop nodes going on top of each other
 	#[wasm_bindgen(js_name = shiftNode)]
 	pub fn shift_node(&self, node_id: u64) {
 		let message = NodeGraphMessage::ShiftNode { node_id };

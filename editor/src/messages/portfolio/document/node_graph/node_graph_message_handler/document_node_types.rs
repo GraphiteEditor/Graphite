@@ -260,8 +260,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Output",
@@ -273,7 +272,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Image Frame",
