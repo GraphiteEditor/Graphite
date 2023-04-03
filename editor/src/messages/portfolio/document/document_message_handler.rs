@@ -1941,7 +1941,7 @@ impl DocumentMessageHandler {
 					direction: SeparatorDirection::Horizontal,
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "NodeFolder".into(),
+					icon: "Folder".into(),
 					tooltip: "New Folder".into(),
 					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
 					size: 24,

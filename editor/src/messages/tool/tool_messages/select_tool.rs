@@ -472,7 +472,7 @@ impl Fsm for SelectToolFsmState {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							match tool_data.nested_selection_behavior {
 								NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect_layer_path, tool_data, responses),
-								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, intersect_layer_path, responses),
+								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, responses),
 							}
 						}
 					}
@@ -1201,7 +1201,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 	}
 }
 
-fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec<u64>, responses: &mut VecDeque<Message>) {
+fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<Message>) {
 	match &intersect.data {
 		LayerDataType::Text(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());

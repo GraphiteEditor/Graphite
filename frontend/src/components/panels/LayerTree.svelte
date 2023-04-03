@@ -359,15 +359,16 @@
 						on:dragstart={(e) => draggable && dragStart(e, listing)}
 						on:click={(e) => selectLayerWithModifiers(e, listing)}
 					>
+						{@const layerType = getLayerTypeData(listing.entry.layerType)}
 						<LayoutRow class="layer-type-icon">
-							<IconLabel icon={getLayerTypeData(listing.entry.layerType).icon} tooltip={getLayerTypeData(listing.entry.layerType).name} />
+							<IconLabel icon={layerType.icon} />
 						</LayoutRow>
 						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 							<input
 								data-text-input
 								type="text"
 								value={listing.entry.name}
-								placeholder={getLayerTypeData(listing.entry.layerType).name}
+								placeholder={"Untitled " + layerType.name}
 								disabled={!listing.editingName}
 								on:blur={() => onEditLayerNameDeselect(listing)}
 								on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

@@ -141,7 +141,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downscale the image to a lower resolution"),
 		},
 		// DocumentNodeType {
-		// 	name: "Input",
+		// 	name: "Input Frame",
 		// 	category: "Ignore",
 		// 	identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 		// 	inputs: vec![DocumentInputType {
@@ -153,7 +153,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		// 	properties: node_properties::input_properties,
 		// },
 		DocumentNodeType {
-			name: "Input",
+			name: "Input Frame",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 1],
@@ -260,8 +260,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Output",
@@ -273,7 +272,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Image Frame",
@@ -865,8 +864,8 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
-			resolve_document_node_type("Input")
-				.expect("Input node does not exist")
+			resolve_document_node_type("Input Frame")
+				.expect("Input Frame node does not exist")
 				.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
@@ -881,7 +880,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 }
 
 pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let input = resolve_document_node_type("Input").expect("Input node does not exist");
+	let input = resolve_document_node_type("Input Frame").expect("Input Frame node does not exist");
 	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
