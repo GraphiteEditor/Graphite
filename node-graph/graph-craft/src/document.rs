@@ -493,7 +493,7 @@ impl NodeNetwork {
 				(
 					0,
 					DocumentNode {
-						name: "Input".into(),
+						name: "Input Frame".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 						metadata: DocumentNodeMetadata { position: (8, 4).into() },

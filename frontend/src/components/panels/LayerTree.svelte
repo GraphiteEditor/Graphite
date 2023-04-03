@@ -368,7 +368,7 @@
 								data-text-input
 								type="text"
 								value={listing.entry.name}
-								placeholder={layerType.icon === "Folder" ? "Untitled Folder" : layerType.icon === "NodeText" ? "Untitled Text" : "Untitled Layer"}
+								placeholder={"Untitled " + layerType.name}
 								disabled={!listing.editingName}
 								on:blur={() => onEditLayerNameDeselect(listing)}
 								on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

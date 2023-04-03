@@ -272,14 +272,14 @@ pub fn register_artwork_layer_properties(
 				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "Layer".into(),
-					tooltip: "Node Graph Frame".into(),
+					tooltip: "Layer".into(),
 					..Default::default()
 				})),
 			},
 			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: match &layer.data {
-					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
+					LayerDataType::NodeGraphFrame(_) => "Layer".into(),
 					other => LayerDataTypeDiscriminant::from(other).to_string(),
 				},
 				..TextLabel::default()

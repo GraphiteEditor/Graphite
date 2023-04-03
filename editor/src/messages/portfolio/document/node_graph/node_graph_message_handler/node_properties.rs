@@ -421,7 +421,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 }
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let information = WidgetHolder::text_widget("The graph's input is the rasterized artwork under the layer");
+	let information = WidgetHolder::text_widget("The graph's input frame is the rasterized artwork under the layer");
 	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
 		.tooltip("Refresh the artwork under the layer")

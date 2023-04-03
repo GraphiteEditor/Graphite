@@ -754,7 +754,7 @@ export type LayerTypeData = {
 
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
-		NodeGraphFrame: { name: "Node Graph Frame", icon: "Layer" },
+		NodeGraphFrame: { name: "Layer", icon: "Layer" },
 		Folder: { name: "Folder", icon: "Folder" },
 		Text: { name: "Text", icon: "NodeText" },
 	};

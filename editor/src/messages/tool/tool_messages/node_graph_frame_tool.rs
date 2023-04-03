@@ -63,7 +63,7 @@ impl ToolMetadata for NodeGraphFrameTool {
 		"RasterNodesTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Node Graph Frame Tool".into()
+		"Frame Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::NodeGraphFrame
