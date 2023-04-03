@@ -117,7 +117,7 @@ impl Fsm for NodeGraphToolFsmState {
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					let network = node_graph::new_image_network(20, 0);
+					let network = node_graph::new_image_network(8, 0);
 
 					responses.push_back(
 						Operation::AddNodeGraphFrame {

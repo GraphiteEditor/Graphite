@@ -936,8 +936,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	// Get the existing layer transform
-	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 	// Create the input to the graph using an empty image
 	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
 		image: graphene_core::raster::Image::empty(),
