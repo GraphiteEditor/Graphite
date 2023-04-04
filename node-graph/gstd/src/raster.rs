@@ -170,7 +170,7 @@ impl AxisAlignedBbox {
 	}
 
 	pub fn to_transform(&self) -> DAffine2 {
-		DAffine2::from_scale(self.size()) * DAffine2::from_translation(self.start)
+		DAffine2::from_translation(self.start) * DAffine2::from_scale(self.size())
 	}
 
 	pub fn contains(&self, point: DVec2) -> bool {

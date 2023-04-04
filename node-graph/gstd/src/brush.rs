@@ -83,7 +83,7 @@ fn brush_texture(radius: f64, color: Color, hardness: f64, opacity: f64) -> Imag
 
 	ImageFrame {
 		image,
-		transform: DAffine2::from_scale(DVec2::splat(diameter as f64)),
+		transform: DAffine2::from_scale_angle_translation(DVec2::splat(diameter as f64), 0., -DVec2::splat(radius as f64)),
 	}
 }
 
