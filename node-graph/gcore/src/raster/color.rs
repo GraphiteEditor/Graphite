@@ -83,6 +83,11 @@ impl Color {
 		Color { red, green, blue, alpha }
 	}
 
+	/// Return an opaque `Color` from given `f32` RGB channels.
+	pub fn from_unassociated_alpha(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
+		Color::from_rgbaf32_unchecked(red * alpha, green * alpha, blue * alpha, alpha)
+	}
+
 	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`.
 	///
 	/// # Examples

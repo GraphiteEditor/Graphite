@@ -77,7 +77,7 @@ fn brush_texture(radius: f64, color: Color, hardness: f64, opacity: f64) -> Imag
 				0.0
 			};
 			let pixel = image.get_mut(x, y).unwrap();
-			*pixel = Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), alpha as f32 * color.a());
+			*pixel = Color::from_unassociated_alpha(color.r(), color.g(), color.b(), alpha as f32 * color.a());
 		}
 	}
 
