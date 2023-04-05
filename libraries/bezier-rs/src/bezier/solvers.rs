@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::TValue;
+use crate::utils::{solve_cubic, solve_quadratic, TValue};
 
 use glam::DMat2;
 use std::ops::Range;
@@ -9,7 +9,7 @@ impl Bezier {
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `t` along the curve using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/de-casteljau-points/solo" title="De Casteljau Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/de-casteljau-points/solo" title="De Casteljau Demo"></iframe>
 	pub fn de_casteljau_points(&self, t: TValue) -> Vec<Vec<DVec2>> {
 		let t = self.t_value_to_parametric(t);
 		let bezier_points = match self.handles {
@@ -34,7 +34,7 @@ impl Bezier {
 
 	/// Returns a [Bezier] representing the derivative of the original curve.
 	/// - This function returns `None` for a linear segment.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/derivative/solo" title="Derivative Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/derivative/solo" title="Derivative Demo"></iframe>
 	pub fn derivative(&self) -> Option<Bezier> {
 		match self.handles {
 			BezierHandles::Linear => None,
@@ -61,21 +61,26 @@ impl Bezier {
 	}
 
 	/// Returns a normalized unit vector representing the tangent at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/tangent/solo" title="Tangent Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/tangent/solo" title="Tangent Demo"></iframe>
 	pub fn tangent(&self, t: TValue) -> DVec2 {
 		let t = self.t_value_to_parametric(t);
-		self.non_normalized_tangent(t).normalize()
+		let tangent = self.non_normalized_tangent(t);
+		if tangent.length() > 0. {
+			tangent.normalize()
+		} else {
+			tangent
+		}
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/normal/solo" title="Normal Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: TValue) -> DVec2 {
 		self.tangent(t).perp()
 	}
 
 	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
 	/// Curvature is 1 over the radius of a circle with an equivalent derivative.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/curvature/solo" title="Curvature Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/curvature/solo" title="Curvature Demo"></iframe>
 	pub fn curvature(&self, t: TValue) -> f64 {
 		let t = self.t_value_to_parametric(t);
 		let (d, dd) = match &self.derivative() {
@@ -88,7 +93,7 @@ impl Bezier {
 
 		let numerator = d.x * dd.y - d.y * dd.x;
 		let denominator = (d.x.powf(2.) + d.y.powf(2.)).powf(1.5);
-		if denominator == 0. {
+		if denominator.abs() < MAX_ABSOLUTE_DIFFERENCE {
 			0.
 		} else {
 			numerator / denominator
@@ -122,7 +127,7 @@ impl Bezier {
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/local-extrema/solo" title="Local Extrema Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/local-extrema/solo" title="Local Extrema Demo"></iframe>
 	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
 		self.unrestricted_local_extrema()
 			.into_iter()
@@ -133,7 +138,7 @@ impl Bezier {
 	}
 
 	/// Return the min and max corners that represent the bounding box of the curve.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/bounding-box/solo" title="Bounding Box Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> [DVec2; 2] {
 		// Start by taking min/max of endpoints.
 		let mut endpoints_min = self.start.min(self.end);
@@ -194,7 +199,7 @@ impl Bezier {
 
 	/// Returns list of parametric `t`-values representing the inflection points of the curve.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/inflections/solo" title="Inflections Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/inflections/solo" title="Inflections Demo"></iframe>
 	pub fn inflections(&self) -> Vec<f64> {
 		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
 	}
@@ -250,16 +255,16 @@ impl Bezier {
 	/// The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	/// - `minimum_seperation` - The minimum difference between adjacent `t` values in sorted order
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/intersect-cubic/solo" title="Intersections Demo"></iframe>
-	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_seperation: Option<f64>) -> Vec<f64> {
+	/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-cubic/solo" title="Intersections Demo"></iframe>
+	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<f64> {
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
 		let mut intersection_t_values = self.unfiltered_intersections(other, error);
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
 		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_seperation.unwrap_or(MIN_SEPARATION_VALUE) {
+			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE) {
 				accumulator.pop();
 			}
 			accumulator.push(*t);
@@ -278,7 +283,7 @@ impl Bezier {
 			let line_directional_vector = other.end - other.start;
 			let angle = line_directional_vector.angle_between(DVec2::new(1., 0.));
 			let rotation_matrix = DMat2::from_angle(angle);
-			let rotated_bezier = self.apply_transformation(&|point| rotation_matrix.mul_vec2(point));
+			let rotated_bezier = self.apply_transformation(|point| rotation_matrix.mul_vec2(point));
 			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
 
 			// Translate the bezier such that the line becomes aligned on top of the x-axis
@@ -350,7 +355,7 @@ impl Bezier {
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/intersect-self/solo" title="Self Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-self/solo" title="Self Intersection Demo"></iframe>
 	pub fn self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
 		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
 			return vec![];
@@ -369,9 +374,9 @@ impl Bezier {
 		}
 
 		// Create iterators that combine a subcurve with the `t` value pair that it was trimmed with
-		let combined_iterator1 = self1.into_iter().zip(self1_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
+		let combined_iterator1 = self1.into_iter().zip(self1_t_values.iter().map(|t_pair| Range { start: t_pair[0], end: t_pair[1] }));
 		// Second one needs to be a list because Iterator does not implement copy
-		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.windows(2).map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
+		let combined_list2: Vec<(Bezier, Range<f64>)> = self2.into_iter().zip(self2_t_values.iter().map(|t_pair| Range { start: t_pair[0], end: t_pair[1] })).collect();
 
 		// For each curve, look for intersections with every curve that is at least 2 indices away
 		combined_iterator1
@@ -382,7 +387,7 @@ impl Bezier {
 	}
 
 	/// Returns a list of parametric `t` values that correspond to the intersection points between the curve and a rectangle defined by opposite corners.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/intersect-rectangle/solo" title="Intersection (Rectangle) Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-rectangle/solo" title="Intersection (Rectangle) Demo"></iframe>
 	pub fn rectangle_intersections(&self, corner1: DVec2, corner2: DVec2) -> Vec<f64> {
 		[
 			Bezier::from_linear_coordinates(corner1.x, corner1.y, corner2.x, corner1.y),
@@ -397,11 +402,110 @@ impl Bezier {
 
 	/// Returns a cubic bezier which joins this with the provided bezier curve.
 	/// The resulting path formed by the Bezier curves is continuous up to the first derivative.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/join/solo" title="Join Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/join/solo" title="Join Demo"></iframe>
 	pub fn join(&self, other: &Bezier) -> Bezier {
 		let handle1 = self.non_normalized_tangent(1.) / 3. + self.end;
 		let handle2 = other.start - other.non_normalized_tangent(0.) / 3.;
 		Bezier::from_cubic_dvec2(self.end, handle1, handle2, other.start)
+	}
+
+	/// Compute the winding order (number of times crossing an infinate line to the left of the point)
+	///
+	/// Assumes curve is split at the extrema.
+	fn pre_split_winding_number(&self, target_point: DVec2) -> i32 {
+		// Clockwise is -1, anticlockwise is +1 (with +y as up)
+		// Looking only to the left (-x) of the target_point
+		let resulting_sign = if self.end.y > self.start.y {
+			if target_point.y < self.start.y || target_point.y >= self.end.y {
+				return 0;
+			}
+			-1
+		} else if self.end.y < self.start.y {
+			if target_point.y < self.end.y || target_point.y >= self.start.y {
+				return 0;
+			}
+			1
+		} else {
+			return 0;
+		};
+		match &self.handles {
+			BezierHandles::Linear => {
+				if target_point.x < self.start.x.min(self.end.x) {
+					return 0;
+				}
+				if target_point.x >= self.start.x.max(self.end.x) {
+					return resulting_sign;
+				}
+				// line equation ax + by = c
+				let a = self.end.y - self.start.y;
+				let b = self.start.x - self.end.x;
+				let c = a * self.start.x + b * self.start.y;
+				if (a * target_point.x + b * target_point.y - c) * (resulting_sign as f64) <= 0. {
+					resulting_sign
+				} else {
+					0
+				}
+			}
+			BezierHandles::Quadratic { handle: p1 } => {
+				if target_point.x < self.start.x.min(self.end.x).min(p1.x) {
+					return 0;
+				}
+				if target_point.x >= self.start.x.max(self.end.x).max(p1.x) {
+					return resulting_sign;
+				}
+				let a = self.end.y - 2. * p1.y + self.start.y;
+				let b = 2. * (p1.y - self.start.y);
+				let c = self.start.y - target_point.y;
+
+				let discriminant = b * b - 4. * a * c;
+				let two_times_a = 2. * a;
+				for t in solve_quadratic(discriminant, two_times_a, b, c) {
+					if (0.0..=1.).contains(&t) {
+						let x = self.evaluate(TValue::Parametric(t)).x;
+						if target_point.x >= x {
+							return resulting_sign;
+						} else {
+							return 0;
+						}
+					}
+				}
+				0
+			}
+			BezierHandles::Cubic { handle_start: p1, handle_end: p2 } => {
+				if target_point.x < self.start.x.min(self.end.x).min(p1.x).min(p2.x) {
+					return 0;
+				}
+				if target_point.x >= self.start.x.max(self.end.x).max(p1.x).max(p2.x) {
+					return resulting_sign;
+				}
+				let a = self.end.y - 3. * p2.y + 3. * p1.y - self.start.y;
+				let b = 3. * (p2.y - 2. * p1.y + self.start.y);
+				let c = 3. * (p1.y - self.start.y);
+				let d = self.start.y - target_point.y;
+				for t in solve_cubic(a, b, c, d) {
+					if (0.0..=1.).contains(&t) {
+						let x = self.evaluate(TValue::Parametric(t)).x;
+						if target_point.x >= x {
+							return resulting_sign;
+						} else {
+							return 0;
+						}
+					}
+				}
+				0
+			}
+		}
+	}
+
+	/// Compute the winding number contribution of a single segment.
+	///
+	/// Cast a ray to the left and count intersections.
+	pub fn winding(&self, target_point: DVec2) -> i32 {
+		let extrema = self.get_extrema_t_list();
+		extrema
+			.windows(2)
+			.map(|t| self.trim(TValue::Parametric(t[0]), TValue::Parametric(t[1])).pre_split_winding_number(target_point))
+			.sum()
 	}
 }
 

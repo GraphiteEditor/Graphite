@@ -36,6 +36,9 @@ pub enum DocumentMessage {
 	#[remain::unsorted]
 	#[child]
 	NodeGraph(NodeGraphMessage),
+	#[remain::unsorted]
+	#[child]
+	GraphOperation(GraphOperationMessage),
 
 	// Messages
 	AbortTransaction,
@@ -62,9 +65,7 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	DeleteSelectedLayers,
-	DeleteSelectedManipulatorPoints,
 	DeselectAllLayers,
-	DeselectAllManipulatorPoints,
 	DirtyRenderDocument,
 	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
@@ -93,16 +94,20 @@ pub enum DocumentMessage {
 		insert_index: isize,
 		reverse_index: bool,
 	},
-	MoveSelectedManipulatorPoints {
+	NodeGraphFrameClear {
 		layer_path: Vec<LayerId>,
-		delta: (f64, f64),
-		mirror_distance: bool,
+		node_id: NodeId,
+		cached_index: usize,
 	},
-	NodeGraphFrameGenerate,
+	NodeGraphFrameGenerate {
+		layer_path: Vec<LayerId>,
+	},
 	NodeGraphFrameImaginate {
+		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 	},
 	NodeGraphFrameImaginateRandom {
+		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
 	},
@@ -183,10 +188,6 @@ pub enum DocumentMessage {
 	},
 	ToggleLayerVisibility {
 		layer_path: Vec<LayerId>,
-	},
-	ToggleSelectedHandleMirroring {
-		layer_path: Vec<LayerId>,
-		toggle_angle: bool,
 	},
 	Undo,
 	UndoFinished,

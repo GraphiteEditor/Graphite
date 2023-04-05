@@ -230,9 +230,6 @@ pub enum FrontendMessage {
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
 	},
-	UpdateNodeGraphVisibility {
-		visible: bool,
-	},
 	UpdateNodeTypes {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,

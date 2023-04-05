@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { onDestroy, createEventDispatcher, getContext } from "svelte";
 
-	import { clamp } from "@/utility-functions/math";
-	import { type HSV, type RGB } from "@/wasm-communication/messages";
-	import { Color } from "@/wasm-communication/messages";
+	import { clamp } from "@graphite/utility-functions/math";
+	import { type HSV, type RGB } from "@graphite/wasm-communication/messages";
+	import { Color } from "@graphite/wasm-communication/messages";
 
-	import FloatingMenu, { type MenuDirection } from "@/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
-	import DropdownInput from "@/components/widgets/inputs/DropdownInput.svelte";
-	import NumberInput from "@/components/widgets/inputs/NumberInput.svelte";
-	import TextInput from "@/components/widgets/inputs/TextInput.svelte";
-	import Separator from "@/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
+	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
+	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 
@@ -62,19 +62,17 @@
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
 
-	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
-	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
-	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
-	$: newColor = isNone ? new Color("none") : new Color({ h: hue, s: saturation, v: value, a: alpha });
-	$: initialColor = updateInitialColor(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone, open);
-
 	$: watchOpen(open);
 	$: watchColor(color);
 
-	// Taking `_open` is necessary to make Svelte order the reactive processing queue so this works as required, see:
-	// https://stackoverflow.com/questions/63934543/svelte-reactivity-not-triggering-when-variable-changed-in-a-function
-	function updateInitialColor(h: number, s: number, v: number, a: number, initialIsNone: boolean, _open: boolean) {
-		if (initialIsNone) return new Color("none");
+	$: initialColor = generateColor(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone);
+	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
+	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
+	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
+	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
+
+	function generateColor(h: number, s: number, v: number, a: number, none: boolean, ..._: any[]) {
+		if (none) return new Color("none");
 		return new Color({ h, s, v, a });
 	}
 
@@ -96,7 +94,7 @@
 		// - ...reset the hue to 0° if the color's value is black, where all hues are equivalent
 		if (!(hsva.h === 0 && hue === 1) && hsva.s > 0 && hsva.v > 0) hue = hsva.h;
 		// Update the saturation, but only if it is necessary so we don't:
-		// - ...reset the saturation to the left is the color's value is black along the bottom edge, where all saturations are equivalent
+		// - ...reset the saturation to the left if the color's value is black along the bottom edge, where all saturations are equivalent
 		if (hsva.v !== 0) saturation = hsva.s;
 		// Update the value
 		value = hsva.v;

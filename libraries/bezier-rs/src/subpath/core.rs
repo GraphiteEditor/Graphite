@@ -88,7 +88,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Returns the number of segments contained within the `Subpath`.
 	pub fn len_segments(&self) -> usize {
 		let mut number_of_curves = self.len();
-		if !self.closed {
+		if !self.closed && number_of_curves > 0 {
 			number_of_curves -= 1
 		}
 		number_of_curves
@@ -112,6 +112,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		&self.manipulator_groups
 	}
 
+	/// Returns if the Subpath is equivalent to a single point.
+	pub fn is_point(&self) -> bool {
+		if self.is_empty() {
+			return false;
+		}
+		let point = self.manipulator_groups[0].anchor;
+		self.manipulator_groups
+			.iter()
+			.all(|manipulator_group| manipulator_group.anchor.abs_diff_eq(point, MAX_ABSOLUTE_DIFFERENCE))
+	}
+
 	/// Appends to the `svg` mutable string with an SVG shape representation of the curve.
 	pub fn curve_to_svg(&self, svg: &mut String, attributes: String) {
 		let curve_start_argument = format!("{SVG_ARG_MOVE}{} {}", self[0].anchor.x, self[0].anchor.y);
@@ -121,6 +132,20 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		}
 
 		let _ = write!(svg, r#"<path d="{} {}" {attributes}/>"#, curve_start_argument, curve_arguments.join(" "));
+	}
+
+	/// Write the curve argument to the string (the d="..." part)
+	pub fn subpath_to_svg(&self, svg: &mut String, transform: glam::DAffine2) -> std::fmt::Result {
+		let start = transform.transform_point2(self[0].anchor);
+		write!(svg, "{SVG_ARG_MOVE}{},{}", start.x, start.y)?;
+		for bezier in self.iter() {
+			bezier.apply_transformation(|pos| transform.transform_point2(pos)).write_curve_argument(svg)?;
+			svg.push(' ');
+		}
+		if self.closed {
+			svg.push_str(SVG_ARG_CLOSED);
+		}
+		Ok(())
 	}
 
 	/// Appends to the `svg` mutable string with an SVG shape representation of the handle lines.
@@ -178,7 +203,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
 	}
 
-	/// Constructs an elipse with `corner1` and `corner2` as the two corners of the bounding box.
+	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.
 	pub fn new_ellipse(corner1: DVec2, corner2: DVec2) -> Self {
 		let size = (corner1 - corner2).abs();
 		let center = (corner1 + corner2) / 2.;
@@ -192,10 +217,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
 
 		let manipulator_groups = vec![
-			ManipulatorGroup::new(top, Some(top + handle_offset * DVec2::X), Some(top - handle_offset * DVec2::X)),
-			ManipulatorGroup::new(right, Some(right + handle_offset * DVec2::Y), Some(right - handle_offset * DVec2::Y)),
-			ManipulatorGroup::new(bottom, Some(bottom - handle_offset * DVec2::X), Some(bottom + handle_offset * DVec2::X)),
-			ManipulatorGroup::new(left, Some(left - handle_offset * DVec2::Y), Some(left + handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(top, Some(top - handle_offset * DVec2::X), Some(top + handle_offset * DVec2::X)),
+			ManipulatorGroup::new(right, Some(right - handle_offset * DVec2::Y), Some(right + handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(bottom, Some(bottom + handle_offset * DVec2::X), Some(bottom - handle_offset * DVec2::X)),
+			ManipulatorGroup::new(left, Some(left + handle_offset * DVec2::Y), Some(left - handle_offset * DVec2::Y)),
 		];
 		Self::new(manipulator_groups, true)
 	}
@@ -216,7 +241,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Construct a cubic spline from a list of points.
-	/// Based on https://mathworld.wolfram.com/CubicSpline.html
+	/// Based on <https://mathworld.wolfram.com/CubicSpline.html>.
 	pub fn new_cubic_spline(points: Vec<DVec2>) -> Self {
 		// Number of points = number of points to find handles for
 		let len_points = points.len();

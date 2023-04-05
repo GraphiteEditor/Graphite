@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { IconName } from "@/utility-functions/icons";
+	import type { IconName } from "@graphite/utility-functions/icons";
 
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import CheckboxInput from "@/components/widgets/inputs/CheckboxInput.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
 
 	export let checked: boolean;
 	export let disabled = false;

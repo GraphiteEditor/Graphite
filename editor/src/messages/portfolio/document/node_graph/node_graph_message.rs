@@ -65,9 +65,6 @@ pub enum NodeGraphMessage {
 	SendGraph {
 		should_rerender: bool,
 	},
-	SetDrawing {
-		new_drawing: bool,
-	},
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,

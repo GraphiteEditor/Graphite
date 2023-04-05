@@ -30,7 +30,7 @@ pub fn set_random_seed(seed: u64) {
 
 /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
 /// This avoids creating a json with a list millions of numbers long.
-#[wasm_bindgen(module = "@/wasm-communication/editor")]
+#[wasm_bindgen(module = "@graphite/wasm-communication/editor")]
 extern "C" {
 	fn updateImage(path: Vec<u64>, mime: String, imageData: &[u8], document_id: u64);
 	fn fetchImage(path: Vec<u64>, mime: String, document_id: u64, identifier: String);
@@ -588,7 +588,7 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Shifts the node and its children to stop nodes going ontop of each other
+	/// Shifts the node and its children to stop nodes going on top of each other
 	#[wasm_bindgen(js_name = shiftNode)]
 	pub fn shift_node(&self, node_id: u64) {
 		let message = NodeGraphMessage::ShiftNode { node_id };

@@ -4,7 +4,6 @@ use crate::messages::prelude::*;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
-use document_legacy::Operation as DocumentOperation;
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
@@ -142,7 +141,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -152,6 +151,7 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
+			self.hints(snapping, axis_constraint, selected.responses);
 		}
 	}
 
@@ -163,7 +163,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, axis);
 	}
 
 	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
@@ -174,7 +174,51 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		let axis_constraint = match self {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
+		};
+
+		self.apply_transform_operation(selected, snapping, axis_constraint);
+	}
+
+	pub fn hints(&self, snapping: bool, axis_constraint: Axis, responses: &mut VecDeque<Message>) {
+		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+
+		let mut hints = Vec::new();
+
+		let axis_str = |vector: DVec2, separate: bool| match axis_constraint {
+			Axis::Both => {
+				if separate {
+					format!("X: {}, Y: {}", vector.x, vector.y)
+				} else {
+					vector.x.to_string()
+				}
+			}
+			Axis::X => format!("X: {}", vector.x),
+			Axis::Y => format!("Y: {}", vector.y),
+		};
+
+		let value_str = match self {
+			TransformOperation::None => String::new(),
+			TransformOperation::Grabbing(translation) => format!("Translate {}", axis_str(translation.to_dvec(), true)),
+			TransformOperation::Rotating(rotation) => format!("Rotate {}°", rotation.to_f64(snapping) * 360. / std::f64::consts::TAU),
+			TransformOperation::Scaling(scale) => format!("Scale {}", axis_str(scale.to_dvec(snapping), false)),
+		};
+		hints.push(HintInfo::label(value_str));
+		hints.push(HintInfo::keys([Key::Shift], "Precision Mode"));
+		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
+			hints.push(HintInfo::keys([Key::Control], "Snap"));
+		}
+		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
+			hints.push(HintInfo::keys([Key::KeyX], "X Axis"));
+			hints.push(HintInfo::keys([Key::KeyY], "Y Axis"));
+		}
+
+		let hint_data = HintData(vec![HintGroup(hints)]);
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
 
@@ -239,13 +283,11 @@ impl<'a> Selected<'a> {
 				let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 				let new = to.inverse() * transformation * to * original_layer_transforms;
 
-				self.responses.push_back(
-					DocumentOperation::SetLayerTransform {
-						path: layer_path.to_vec(),
-						transform: new.to_cols_array(),
-					}
-					.into(),
-				);
+				self.responses.add(GraphOperationMessage::TransformSet {
+					layer: layer_path.to_vec(),
+					transform: new,
+					transform_in: TransformIn::Local,
+				});
 			}
 
 			self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -253,16 +295,14 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn revert_operation(&mut self) {
-		for path in self.selected {
-			if let Some(transform) = self.original_transforms.get(*path) {
+		for layer in self.selected {
+			if let Some(&transform) = self.original_transforms.get(*layer) {
 				// Push front to stop document switching before sending the transform
-				self.responses.push_front(
-					DocumentOperation::SetLayerTransform {
-						path: path.to_vec(),
-						transform: transform.to_cols_array(),
-					}
-					.into(),
-				);
+				self.responses.add(GraphOperationMessage::TransformSet {
+					layer: layer.to_vec(),
+					transform,
+					transform_in: TransformIn::Local,
+				});
 			}
 		}
 	}

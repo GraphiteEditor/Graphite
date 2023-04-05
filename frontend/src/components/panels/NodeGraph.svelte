@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { IconName } from "@/utility-functions/icons";
+	import type { IconName } from "@graphite/utility-functions/icons";
 
-	import { UpdateNodeGraphSelection, type FrontendNodeLink, type FrontendNodeType, type FrontendNode } from "@/wasm-communication/messages";
+	import { UpdateNodeGraphSelection, type FrontendNodeLink, type FrontendNodeType, type FrontendNode } from "@graphite/wasm-communication/messages";
 
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import TextButton from "@/components/widgets/buttons/TextButton.svelte";
-	import TextInput from "@/components/widgets/inputs/TextInput.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
-	import type { NodeGraphState } from "@/state-providers/node-graph";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
@@ -38,6 +38,8 @@
 	let searchTerm = "";
 	let nodeListLocation: { x: number; y: number } | undefined = undefined;
 
+	$: watchNodes($nodeGraph.nodes);
+
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
 	$: nodeGraphBarLayout = $nodeGraph.nodeGraphBarLayout;
@@ -46,8 +48,6 @@
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
 	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
-
-	$: watchNodes($nodeGraph.nodes);
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;

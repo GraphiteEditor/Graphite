@@ -129,12 +129,12 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				self.create_document_operation(Operation::SetTextContent { path, new_text }, true, responses);
 			}
 			SetPivot { new_position } => {
-				let (layer_path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
+				let (layer, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let position: Option<glam::DVec2> = new_position.into();
-				let pivot = position.unwrap().into();
+				let pivot = position.unwrap();
 
-				responses.push_back(DocumentMessage::StartTransaction.into());
-				responses.push_back(Operation::SetPivot { layer_path, pivot }.into());
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::TransformSetPivot { layer, pivot });
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {

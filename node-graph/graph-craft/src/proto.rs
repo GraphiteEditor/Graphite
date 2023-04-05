@@ -44,6 +44,7 @@ impl core::fmt::Display for ProtoNetwork {
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
 				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
+				ProtoNodeInput::ShortCircut(ty) => f.write_fmt(format_args!("Lambda (type = {:?})", ty))?,
 				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
@@ -116,11 +117,19 @@ pub struct ProtoNode {
 	pub identifier: NodeIdentifier,
 }
 
+/// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
+/// For documentation on the meaning of the variants, see the documentation of the `NodeInput` enum
+/// in the `document` module
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ProtoNodeInput {
 	None,
 	Network(Type),
-	// the bool indicates whether to treat the node as lambda node
+	/// A ShortCircut input represents an input that is not resolved through function composition but
+	/// actually consuming the provided input instead of passing it to its predecessor
+	ShortCircut(Type),
+	/// the bool indicates whether to treat the node as lambda node.
+	/// When treating it as a lambda, only the node that is connected itself is fed as input.
+	/// Otherwise, the the entire network of which the node is the output is fed as input.
 	Node(NodeId, bool),
 }
 
@@ -142,6 +151,10 @@ impl ProtoNode {
 		self.construction_args.hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => "none".hash(&mut hasher),
+			ProtoNodeInput::ShortCircut(ref ty) => {
+				"lambda".hash(&mut hasher);
+				ty.hash(&mut hasher);
+			}
 			ProtoNodeInput::Network(ref ty) => {
 				"network".hash(&mut hasher);
 				ty.hash(&mut hasher);
@@ -329,7 +342,7 @@ impl ProtoNetwork {
 				}
 			}
 		}
-		info!("Sorted order {sorted:?}");
+		debug!("Sorted order {sorted:?}");
 		sorted
 	}*/
 
@@ -422,6 +435,7 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
+			ProtoNodeInput::ShortCircut(ref ty) => ty.clone(),
 			ProtoNodeInput::Network(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id, _) => {
 				let input = self
@@ -595,12 +609,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				7332206428857154453,
-				946497269036214321,
-				3038115864048241698,
-				1932610308557160863,
-				2105748431407297710,
-				8596220090685862327
+				10739226043134366700,
+				17332796976541881019,
+				7897288931440576543,
+				7388412494950743023,
+				359700384277940942,
+				12822947441562012352
 			]
 		);
 	}

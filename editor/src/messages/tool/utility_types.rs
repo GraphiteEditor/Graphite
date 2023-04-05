@@ -1,3 +1,5 @@
+use super::common_functionality::overlay_renderer::OverlayRenderer;
+use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -15,10 +17,39 @@ use graphene_core::raster::color::Color;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-pub type ToolActionHandlerData<'a> = (&'a DocumentMessageHandler, u64, &'a DocumentToolData, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>);
+pub struct ToolActionHandlerData<'a> {
+	pub document: &'a DocumentMessageHandler,
+	pub document_id: u64,
+	pub global_tool_data: &'a DocumentToolData,
+	pub input: &'a InputPreprocessorMessageHandler,
+	pub render_data: &'a RenderData<'a>,
+	pub shape_overlay: &'a mut OverlayRenderer,
+	pub shape_editor: &'a mut ShapeState,
+}
+impl<'a> ToolActionHandlerData<'a> {
+	pub fn new(
+		document: &'a DocumentMessageHandler,
+		document_id: u64,
+		global_tool_data: &'a DocumentToolData,
+		input: &'a InputPreprocessorMessageHandler,
+		render_data: &'a RenderData<'a>,
+		shape_overlay: &'a mut OverlayRenderer,
+		shape_editor: &'a mut ShapeState,
+	) -> Self {
+		Self {
+			document,
+			document_id,
+			global_tool_data,
+			input,
+			render_data,
+			shape_overlay,
+			shape_editor,
+		}
+	}
+}
 
-pub trait ToolCommon: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
@@ -41,7 +72,7 @@ pub trait Fsm {
 	/// For example, if the tool's FSM is in a `Ready` state and receives a `DragStart` message as its event, it may decide to send some messages,
 	/// update some internal tool variables, and end by transitioning to a `Drawing` state.
 	#[must_use]
-	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
+	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
@@ -70,7 +101,7 @@ pub trait Fsm {
 		&mut self,
 		message: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		transition_data: ToolActionHandlerData,
+		transition_data: &mut ToolActionHandlerData,
 		options: &Self::ToolOptions,
 		messages: &mut VecDeque<Message>,
 		update_cursor_on_transition: bool,
@@ -377,7 +408,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<node_graph_frame_tool::NodeGraphFrameTool>::default()),
+			ToolAvailability::Available(Box::<frame_tool::NodeGraphFrameTool>::default()),
 			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry {
 				tool_type: ToolType::Brush,
@@ -534,6 +565,16 @@ impl HintInfo {
 			key_groups: vec![],
 			key_groups_mac: None,
 			mouse: Some(mouse_motion),
+			label: label.into(),
+			plus: false,
+		}
+	}
+
+	pub fn label(label: impl Into<String>) -> Self {
+		Self {
+			key_groups: vec![],
+			key_groups_mac: None,
+			mouse: None,
 			label: label.into(),
 			plus: false,
 		}

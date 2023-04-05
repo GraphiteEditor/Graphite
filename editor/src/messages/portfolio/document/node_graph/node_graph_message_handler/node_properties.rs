@@ -398,27 +398,34 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Color(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
-			color_props
-				.value(Some(x as Color))
-				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
-				.widget_holder(),
-		])
+	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
+		if let &TaggedValue::Color(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(Some(x as Color))
+					.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+					.widget_holder(),
+			])
+		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
+			widgets.extend_from_slice(&[
+				WidgetHolder::unrelated_separator(),
+				color_props
+					.value(x)
+					.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value), node_id, index))
+					.widget_holder(),
+			])
+		}
 	}
 	LayoutGroup::Row { widgets }
 }
 /// Properties for the input node, with information describing how frames work and a refresh button
-pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
+pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let information = WidgetHolder::text_widget("The graph's input frame is the rasterized artwork under the layer");
+	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
-		.tooltip("Refresh the artwork under the frame")
-		.on_update(|_| DocumentMessage::NodeGraphFrameGenerate.into())
+		.tooltip("Refresh the artwork under the layer")
+		.on_update(move |_| DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() }.into())
 		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
@@ -471,9 +478,9 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
+	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
-	vec![luma_calculation]
+	vec![luminance_calc]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -503,10 +510,11 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luma_calculation = luminance_calculation(document_node, node_id, 1, "Luma Calculation", true);
-	let thereshold = number_widget(document_node, node_id, 2, "Threshold", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
 
-	vec![luma_calculation, LayoutGroup::Row { widgets: thereshold }]
+	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -573,7 +581,23 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let translation = {
 		let index = 1;
 
-		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, true);
+		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, false);
+
+		let pivot_index = 5;
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::DVec2(pivot),
+			exposed: false,
+		} = document_node.inputs[pivot_index]
+		{
+			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(
+				PivotAssist::new(pivot.into())
+					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.widget_holder(),
+			);
+		} else {
+			add_blank_assist(&mut widgets);
+		}
 
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(vec2),
@@ -689,7 +713,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateServerStatus::Unavailable => "Unavailable",
 			ImaginateServerStatus::Connected => "Connected",
 		};
-		let widgets = vec![
+		let mut widgets = vec![
 			WidgetHolder::text_widget("Server"),
 			WidgetHolder::unrelated_separator(),
 			IconButton::new("Settings", 24)
@@ -704,6 +728,20 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
 				.widget_holder(),
 		];
+		if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
+			widgets.extend([
+				WidgetHolder::unrelated_separator(),
+				TextButton::new("Server Help")
+					.tooltip("Learn how to connect Imaginate to an image generation server")
+					.on_update(|_| {
+						FrontendMessage::TriggerVisitLink {
+							url: "https://github.com/GraphiteEditor/Graphite/discussions/1089".to_string(),
+						}
+						.into()
+					})
+					.widget_holder(),
+			]);
+		}
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
@@ -711,7 +749,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		panic!("Invalid status input")
 	};
 	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
-		panic!("Invalid cached image input, recieved {:?}, index: {}", cached_value, cached_index)
+		panic!("Invalid cached image input, received {:?}, index: {}", cached_value, cached_index)
 	};
 	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
@@ -804,8 +842,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Generate with a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
+						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginateRandom {
+								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: true,
 							}
@@ -818,8 +858,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
+						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginate {
+								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 							}
 							.into()
@@ -830,7 +872,17 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
 					.disabled(cached_data.is_none())
-					.on_update(update_value(|_| TaggedValue::RcImage(None), node_id, cached_index))
+					.on_update({
+						let layer_path = context.layer_path.to_vec();
+						move |_| {
+							DocumentMessage::NodeGraphFrameClear {
+								node_id,
+								layer_path: layer_path.clone(),
+								cached_index,
+							}
+							.into()
+						}
+					})
 					.widget_holder(),
 			]),
 		}
@@ -852,8 +904,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Set a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
+						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::NodeGraphFrameImaginateRandom {
+								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: false,
 							}
@@ -873,15 +927,14 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	// Get the existing layer transform
-	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 	// Create the input to the graph using an empty image
 	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
 		image: graphene_core::raster::Image::empty(),
-		transform,
+		transform: glam::DAffine2::IDENTITY,
 	});
 	// Compute the transform input to the node graph frame
-	let transform: glam::DAffine2 = context.executor.compute_input(context.network, &imaginate_node, 1, image_frame).unwrap_or_default();
+	let image_frame: graphene_core::raster::ImageFrame = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
+	let transform = image_frame.transform;
 
 	let resolution = {
 		use document_legacy::document::pick_safe_imaginate_resolution;
@@ -912,7 +965,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Rescale", 24)
-					.tooltip("Set the Node Graph Frame layer dimensions to this resolution")
+					.tooltip("Set the layer dimensions to this resolution")
 					.on_update(move |_| {
 						Operation::SetLayerScaleAroundPivot {
 							path: layer_path.clone(),
@@ -925,8 +978,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit")
 					.tooltip({
-						let message = "Set a custom resolution instead of using the frame's rounded dimensions";
-						let manual_message = "Set a custom resolution instead of using the frame's rounded dimensions.\n\
+						let message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64)";
+						let manual_message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64).\n\
 							\n\
 							(Resolution must be set manually while the 'Transform' input is disconnected.)";
 
@@ -1248,7 +1301,8 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	if fill_type.is_none() || solid {
+	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
+	if fill_type.is_none() || solid || empty {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
 	}
@@ -1259,7 +1313,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
 	}
 
-	if gradient || solid {
+	if gradient || solid || empty {
 		let new_fill_type = if gradient { FillType::Solid } else { FillType::Gradient };
 		let switch_button = TextButton::new(if gradient { "Use Solid Color" } else { "Use Gradient" })
 			.tooltip(if gradient {

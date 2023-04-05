@@ -19,7 +19,6 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::boolean_ops::BooleanOperation;
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::{Layer, LayerDataType};
@@ -219,24 +218,24 @@ impl PropertyHolder for SelectTool {
 				})),
 				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
 				IconButton::new("BooleanUnion", 24)
-					.tooltip("Boolean Union")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Union).into())
+					.tooltip("Boolean Union (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractFront", 24)
-					.tooltip("Boolean Subtract Front")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractFront).into())
+					.tooltip("Boolean Subtract Front (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractBack", 24)
-					.tooltip("Boolean Subtract Back")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::SubtractBack).into())
+					.tooltip("Boolean Subtract Back (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanIntersect", 24)
-					.tooltip("Boolean Intersect")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Intersection).into())
+					.tooltip("Boolean Intersect (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanDifference", 24)
-					.tooltip("Boolean Difference")
-					.on_update(|_| DocumentMessage::BooleanOperation(BooleanOperation::Difference).into())
+					.tooltip("Boolean Difference (coming soon)")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				WidgetHolder::related_separator(),
 				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
@@ -245,8 +244,8 @@ impl PropertyHolder for SelectTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for SelectTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
 			self.tool_data.nested_selection_behavior = nested_selection_behavior;
 			responses.push_back(ToolMessage::UpdateHints.into());
@@ -345,9 +344,10 @@ impl SelectToolData {
 		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter_mut()) {
 			// Moves the original back to its starting position.
 			responses.push_front(
-				Operation::TransformLayerInViewport {
-					path: layer_path.clone(),
-					transform: DAffine2::from_translation(self.drag_start - self.drag_current).to_cols_array(),
+				GraphOperationMessage::TransformChange {
+					layer: layer_path.clone(),
+					transform: DAffine2::from_translation(self.drag_start - self.drag_current),
+					transform_in: TransformIn::Viewport,
 				}
 				.into(),
 			);
@@ -401,9 +401,10 @@ impl SelectToolData {
 		// Move the original to under the mouse
 		for layer_path in Document::shallowest_unique_layers(originals.iter()) {
 			responses.push_front(
-				Operation::TransformLayerInViewport {
-					path: layer_path.clone(),
-					transform: DAffine2::from_translation(self.drag_current - self.drag_start).to_cols_array(),
+				GraphOperationMessage::TransformChange {
+					layer: layer_path.clone(),
+					transform: DAffine2::from_translation(self.drag_current - self.drag_start),
+					transform_in: TransformIn::Viewport,
 				}
 				.into(),
 			);
@@ -429,7 +430,7 @@ impl Fsm for SelectToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData { document, input, render_data, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -471,7 +472,7 @@ impl Fsm for SelectToolFsmState {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							match tool_data.nested_selection_behavior {
 								NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect_layer_path, tool_data, responses),
-								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, intersect_layer_path, responses),
+								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, responses),
 							}
 						}
 					}
@@ -619,9 +620,10 @@ impl Fsm for SelectToolFsmState {
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
 						responses.push_front(
-							Operation::TransformLayerInViewport {
-								path: path.to_vec(),
-								transform: DAffine2::from_translation(mouse_delta + closest_move).to_cols_array(),
+							GraphOperationMessage::TransformChange {
+								layer: path.to_vec(),
+								transform: DAffine2::from_translation(mouse_delta + closest_move),
+								transform_in: TransformIn::Viewport,
 							}
 							.into(),
 						);
@@ -1199,8 +1201,8 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 	}
 }
 
-fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec<u64>, responses: &mut VecDeque<Message>) {
-	match intersect.data {
+fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<Message>) {
+	match &intersect.data {
 		LayerDataType::Text(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
 			responses.push_back(TextToolMessage::Interact.into());
@@ -1208,11 +1210,8 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec
 		LayerDataType::Shape(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
-		LayerDataType::NodeGraphFrame(_) => {
-			let replacement_selected_layers = vec![intersect_layer_path.clone()];
-			let layer_path = intersect_layer_path.clone();
-			responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
-			responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path }.into());
+		LayerDataType::NodeGraphFrame(frame) if frame.vector_data.is_some() => {
+			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
 		_ => {}
 	}

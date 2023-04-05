@@ -3,12 +3,13 @@ use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::layers::style;
 use document_legacy::LayerId;
 use document_legacy::Operation;
+use graphene_core::vector::style::Stroke;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -82,8 +83,8 @@ impl PropertyHolder for FreehandTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for FreehandTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FreehandTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message {
 			match action {
 				FreehandToolMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -137,7 +138,9 @@ impl Fsm for FreehandToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, _render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document, global_tool_data, input, ..
+		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -159,7 +162,7 @@ impl Fsm for FreehandToolFsmState {
 
 					tool_data.weight = tool_options.line_weight;
 
-					responses.push_back(add_polyline(tool_data, global_tool_data));
+					add_polyline(tool_data, global_tool_data, responses);
 
 					Drawing
 				}
@@ -170,15 +173,14 @@ impl Fsm for FreehandToolFsmState {
 						tool_data.points.push(pos);
 					}
 
-					responses.push_back(remove_preview(tool_data));
-					responses.push_back(add_polyline(tool_data, global_tool_data));
+					add_polyline(tool_data, global_tool_data, responses);
 
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
 						responses.push_back(remove_preview(tool_data));
-						responses.push_back(add_polyline(tool_data, global_tool_data));
+						add_polyline(tool_data, global_tool_data, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -214,15 +216,19 @@ fn remove_preview(data: &FreehandToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
-fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData) -> Message {
-	let points: Vec<(f64, f64)> = data.points.iter().map(|p| (p.x, p.y)).collect();
+fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+	let layer_path = data.path.clone().unwrap();
+	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
+	let position = subpath.bounding_box().unwrap_or_default().into_iter().sum::<DVec2>() / 2.;
+	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 
-	Operation::AddPolyline {
-		path: data.path.clone().unwrap(),
-		insert_index: -1,
-		transform: DAffine2::IDENTITY.to_cols_array(),
-		points,
-		style: style::PathStyle::new(Some(style::Stroke::new(tool_data.primary_color, data.weight)), style::Fill::None),
-	}
-	.into()
+	responses.add(GraphOperationMessage::StrokeSet {
+		layer: layer_path.clone(),
+		stroke: Stroke::new(tool_data.primary_color, data.weight),
+	});
+	responses.add(GraphOperationMessage::TransformSet {
+		layer: layer_path,
+		transform: DAffine2::from_translation(position),
+		transform_in: TransformIn::Local,
+	});
 }

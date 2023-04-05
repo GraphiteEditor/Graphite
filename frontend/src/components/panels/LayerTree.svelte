@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import { beginDraggingElement } from "@/io-managers/drag";
-	import { platformIsMac } from "@/utility-functions/platform";
+	import { beginDraggingElement } from "@graphite/io-managers/drag";
+	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import {
 		type LayerType,
 		type LayerTypeData,
@@ -13,14 +13,14 @@
 		UpdateDocumentLayerTreeStructureJs,
 		UpdateLayerTreeOptionsLayout,
 		layerTypeData,
-	} from "@/wasm-communication/messages";
+	} from "@graphite/wasm-communication/messages";
 
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconButton from "@/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -100,8 +100,9 @@
 	async function onEditLayerName(listing: LayerListingInfo) {
 		if (listing.editingName) return;
 
-		listing.editingName = true;
 		draggable = false;
+		listing.editingName = true;
+		layers = layers;
 
 		await tick();
 
@@ -117,6 +118,7 @@
 
 		const name = (e.target as HTMLInputElement | undefined)?.value;
 		listing.editingName = false;
+		layers = layers;
 		if (name) editor.instance.setLayerName(listing.entry.path, name);
 	}
 
@@ -124,6 +126,7 @@
 		draggable = true;
 
 		listing.editingName = false;
+		layers = layers;
 
 		await tick();
 		window.getSelection()?.removeAllRanges();
@@ -211,7 +214,7 @@
 			});
 		}
 
-		markerHeight -= (treeOffset || 0);
+		markerHeight -= treeOffset || 0;
 
 		return {
 			select,
@@ -356,15 +359,16 @@
 						on:dragstart={(e) => draggable && dragStart(e, listing)}
 						on:click={(e) => selectLayerWithModifiers(e, listing)}
 					>
+						{@const layerType = getLayerTypeData(listing.entry.layerType)}
 						<LayoutRow class="layer-type-icon">
-							<IconLabel icon={getLayerTypeData(listing.entry.layerType).icon} tooltip={getLayerTypeData(listing.entry.layerType).name} />
+							<IconLabel icon={layerType.icon} />
 						</LayoutRow>
 						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 							<input
 								data-text-input
 								type="text"
 								value={listing.entry.name}
-								placeholder={getLayerTypeData(listing.entry.layerType).name}
+								placeholder={"Untitled " + layerType.name}
 								disabled={!listing.editingName}
 								on:blur={() => onEditLayerNameDeselect(listing)}
 								on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

@@ -127,8 +127,8 @@ impl PropertyHolder for TextTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message {
 			match action {
 				TextOptionsUpdate::Font { family, style } => {
@@ -266,7 +266,13 @@ impl Fsm for TextToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData {
+			document,
+			global_tool_data,
+			input,
+			render_data,
+			..
+		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -300,7 +306,7 @@ impl Fsm for TextToolFsmState {
 					else if state == TextToolFsmState::Ready {
 						responses.push_back(DocumentMessage::StartTransaction.into());
 
-						let transform = DAffine2::from_translation(input.mouse.position).to_cols_array();
+						let transform = DAffine2::from_translation(input.mouse.position);
 						let font_size = tool_options.font_size;
 						let font_name = tool_options.font_name.clone();
 						let font_style = tool_options.font_style.clone();
@@ -320,9 +326,10 @@ impl Fsm for TextToolFsmState {
 							.into(),
 						);
 						responses.push_back(
-							Operation::SetLayerTransformInViewport {
-								path: tool_data.layer_path.clone(),
+							GraphOperationMessage::TransformSet {
+								layer: tool_data.layer_path.clone(),
 								transform,
+								transform_in: TransformIn::Viewport,
 							}
 							.into(),
 						);

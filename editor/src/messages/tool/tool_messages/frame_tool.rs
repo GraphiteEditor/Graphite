@@ -37,8 +37,8 @@ pub enum NodeGraphFrameToolMessage {
 
 impl PropertyHolder for NodeGraphFrameTool {}
 
-impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NodeGraphFrameTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NodeGraphFrameTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
@@ -60,10 +60,10 @@ impl<'a> MessageHandler<ToolMessage, ToolActionHandlerData<'a>> for NodeGraphFra
 
 impl ToolMetadata for NodeGraphFrameTool {
 	fn icon_name(&self) -> String {
-		"RasterNodesTool".into()
+		"RasterFrameTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Node Graph Frame Tool".into()
+		"Frame Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::NodeGraphFrame
@@ -100,7 +100,7 @@ impl Fsm for NodeGraphToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		(document, _document_id, _global_tool_data, input, render_data): ToolActionHandlerData,
+		ToolActionHandlerData { document, input, render_data, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -114,11 +114,10 @@ impl Fsm for NodeGraphToolFsmState {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: true }.into());
 					shape_data.path = Some(document.get_path_for_new_layer());
 					responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
-					let network = node_graph::new_image_network(20, 0);
+					let network = node_graph::new_image_network(8, 0);
 
 					responses.push_back(
 						Operation::AddNodeGraphFrame {
@@ -141,14 +140,12 @@ impl Fsm for NodeGraphToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 					shape_data.cleanup(responses);
 
 					Ready
 				}
 				(Drawing, Abort) => {
 					responses.push_back(DocumentMessage::AbortTransaction.into());
-					responses.push_back(NodeGraphMessage::SetDrawing { new_drawing: false }.into());
 
 					shape_data.cleanup(responses);
 

@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::compare::compare_points;
-use crate::utils::{f64_compare, TValue};
+use crate::utils::{f64_compare, Cap, TValue};
 use crate::{AppendType, ManipulatorGroup, Subpath};
 
 use glam::DMat2;
@@ -37,7 +37,7 @@ impl Bezier {
 	}
 
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/split/solo" title="Split Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/split/solo" title="Split Demo"></iframe>
 	pub fn split(&self, t: TValue) -> [Bezier; 2] {
 		let t = self.t_value_to_parametric(t);
 		let split_point = self.evaluate(TValue::Parametric(t));
@@ -83,7 +83,7 @@ impl Bezier {
 
 	/// Returns the Bezier curve representing the sub-curve between the two provided points.
 	/// It will start at the point corresponding to the smaller of `t1` and `t2`, and end at the point corresponding to the larger of `t1` and `t2`.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/trim/solo" title="Trim Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: TValue, t2: TValue) -> Bezier {
 		let (mut t1, mut t2) = (self.t_value_to_parametric(t1), self.t_value_to_parametric(t2));
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
@@ -104,7 +104,7 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
-	pub fn apply_transformation(&self, transformation_function: &dyn Fn(DVec2) -> DVec2) -> Bezier {
+	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Bezier {
 		let transformed_start = transformation_function(self.start);
 		let transformed_end = transformation_function(self.end);
 		match self.handles {
@@ -122,21 +122,21 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier curve that results from rotating the curve around the origin by the given angle (in radians).
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/rotate/solo" title="Rotate Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
-		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point))
+		self.apply_transformation(|point| rotation_matrix.mul_vec2(point))
 	}
 
 	/// Returns a Bezier curve that results from rotating the curve around the provided point by the given angle (in radians).
 	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
-		self.apply_transformation(&|point| rotation_matrix.mul_vec2(point - pivot) + pivot)
+		self.apply_transformation(|point| rotation_matrix.mul_vec2(point - pivot) + pivot)
 	}
 
 	/// Returns a Bezier curve that results from translating the curve by the given `DVec2`.
 	pub fn translate(&self, translation: DVec2) -> Bezier {
-		self.apply_transformation(&|point| point + translation)
+		self.apply_transformation(|point| point + translation)
 	}
 
 	/// Determine if it is possible to scale the given curve, using the following conditions:
@@ -158,16 +158,16 @@ impl Bezier {
 		// Verify the angle formed by the endpoint normals is sufficiently small, ensuring the on-curve point for `t = 0.5` occurs roughly in the center of the polygon.
 		let normal_0 = self.normal(TValue::Parametric(0.));
 		let normal_1 = self.normal(TValue::Parametric(1.));
-		let endpoint_normal_angle = (normal_0.x * normal_1.x + normal_0.y * normal_1.y).acos();
+		let endpoint_normal_angle = (normal_0.x * normal_1.x + normal_0.y * normal_1.y).min(1.).acos();
 		endpoint_normal_angle < SCALABLE_CURVE_MAX_ENDPOINT_NORMAL_ANGLE
 	}
 
 	/// Add the bezier endpoints if not already present, and combine and sort the dimensional extrema.
-	fn get_extrema_t_list(&self) -> Vec<f64> {
+	pub(crate) fn get_extrema_t_list(&self) -> Vec<f64> {
 		let mut extrema = self.local_extrema().into_iter().flatten().collect::<Vec<f64>>();
 		extrema.append(&mut vec![0., 1.]);
-		extrema.dedup();
 		extrema.sort_by(|ex1, ex2| ex1.partial_cmp(ex2).unwrap());
+		extrema.dedup();
 		extrema
 	}
 
@@ -176,10 +176,10 @@ impl Bezier {
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	pub(crate) fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<f64>) {
+	pub(crate) fn reduced_curves_and_t_values(&self, step_size: Option<f64>) -> (Vec<Bezier>, Vec<[f64; 2]>) {
 		// A linear segment is scalable, so return itself
 		if let BezierHandles::Linear = self.handles {
-			return (vec![*self], vec![0., 1.]);
+			return (vec![*self], vec![[0., 1.]]);
 		}
 
 		let step_size = step_size.unwrap_or(DEFAULT_REDUCE_STEP_SIZE);
@@ -192,7 +192,7 @@ impl Bezier {
 
 		// Split each subcurve such that each resulting segment is scalable.
 		let mut result_beziers: Vec<Bezier> = Vec::new();
-		let mut result_t_values: Vec<f64> = vec![extrema[0]];
+		let mut result_t_values: Vec<[f64; 2]> = vec![];
 
 		extrema.windows(2).for_each(|t_pair| {
 			let t_subcurve_start = t_pair[0];
@@ -201,7 +201,7 @@ impl Bezier {
 			// Perform no processing on the subcurve if it's already scalable.
 			if subcurve.is_scalable() {
 				result_beziers.push(subcurve);
-				result_t_values.push(t_subcurve_end);
+				result_t_values.push([t_subcurve_start, t_subcurve_end]);
 				return;
 			}
 
@@ -209,6 +209,7 @@ impl Bezier {
 			let mut segment: Bezier;
 			let mut t1 = 0.;
 			let mut t2 = step_size;
+			let mut is_prev_valid = false;
 			while t2 <= 1. + step_size {
 				segment = subcurve.trim(TValue::Parametric(t1), TValue::Parametric(f64::min(t2, 1.)));
 				if !segment.is_scalable() {
@@ -216,14 +217,21 @@ impl Bezier {
 
 					// If the previous step does not exist, the start of the subcurve is irreducible.
 					// Otherwise, add the valid segment from the previous step to the result.
-					if f64::abs(t1 - t2) >= step_size {
+					if is_prev_valid {
 						segment = subcurve.trim(TValue::Parametric(t1), TValue::Parametric(t2));
-						result_beziers.push(segment);
-						result_t_values.push(t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start));
+						if segment.is_scalable() {
+							result_beziers.push(segment);
+							result_t_values.push([t_subcurve_start + t1 * (t_subcurve_end - t_subcurve_start), t_subcurve_start + t2 * (t_subcurve_end - t_subcurve_start)]);
+						} else {
+							t2 = t1 + step_size;
+						}
 					} else {
-						return;
+						t2 = t1 + step_size;
 					}
 					t1 = t2;
+					is_prev_valid = false;
+				} else {
+					is_prev_valid = true;
 				}
 				t2 += step_size;
 			}
@@ -232,7 +240,7 @@ impl Bezier {
 				segment = subcurve.trim(TValue::Parametric(t1), TValue::Parametric(1.));
 				if segment.is_scalable() {
 					result_beziers.push(segment);
-					result_t_values.push(t_subcurve_end);
+					result_t_values.push([t_subcurve_start + t1 * (t_subcurve_end - t_subcurve_start), t_subcurve_end]);
 				}
 			}
 		});
@@ -243,7 +251,7 @@ impl Bezier {
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/reduce/solo" title="Reduce Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/reduce/solo" title="Reduce Demo"></iframe>
 	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
 		self.reduced_curves_and_t_values(step_size).0
 	}
@@ -274,7 +282,7 @@ impl Bezier {
 		};
 
 		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
-		intermediate.apply_transformation(&|point| {
+		intermediate.apply_transformation(|point| {
 			let mut direction_unit_vector = (intersection - point).normalize();
 			if should_flip_direction {
 				direction_unit_vector *= -1.;
@@ -307,12 +315,12 @@ impl Bezier {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle: _ } => unreachable!(),
 				BezierHandles::Cubic { handle_start, handle_end } => {
-					let handle_start_closest_t = intermediate.project(handle_start, ProjectionOptions::default());
+					let handle_start_closest_t = intermediate.project(handle_start, None);
 					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
 					let transformed_handle_start =
 						utils::scale_point_from_direction_vector(handle_start, intermediate.normal(TValue::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
 
-					let handle_end_closest_t = intermediate.project(handle_start, ProjectionOptions::default());
+					let handle_end_closest_t = intermediate.project(handle_start, None);
 					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
 					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, intermediate.normal(TValue::Parametric(handle_end_closest_t)), false, handle_end_scale_distance);
 					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
@@ -347,16 +355,21 @@ impl Bezier {
 	/// Offset takes the following parameter:
 	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
+		if self.is_point() {
+			return Subpath::from_bezier(self);
+		}
 		let reduced = self.reduce(None);
 		let mut scaled = Subpath::new(vec![], false);
 		reduced.iter().enumerate().for_each(|(index, bezier)| {
 			let scaled_bezier = bezier.scale(distance);
-			if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
-				scaled.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
-			} else {
-				scaled.append_bezier(&scaled_bezier, AppendType::IgnoreStart);
+			if !bezier.is_point() {
+				if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
+					scaled.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
+				} else {
+					scaled.append_bezier(&scaled_bezier, AppendType::IgnoreStart);
+				}
 			}
 		});
 
@@ -376,19 +389,24 @@ impl Bezier {
 		let mut next_start_distance = start_distance;
 		let distance_difference = end_distance - start_distance;
 		let total_length = self.length(None);
+		if total_length < MAX_ABSOLUTE_DIFFERENCE {
+			return Subpath::new(vec![], false);
+		}
 
 		let mut result = Subpath::new(vec![], false);
 		reduced.iter().enumerate().for_each(|(index, bezier)| {
-			let current_length = bezier.length(None);
-			let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
-			let scaled_bezier = bezier.graduated_scale(next_start_distance, next_end_distance);
+			if !bezier.is_point() {
+				let current_length = bezier.length(None);
+				let next_end_distance = next_start_distance + (current_length / total_length) * distance_difference;
+				let scaled_bezier = bezier.graduated_scale(next_start_distance, next_end_distance);
 
-			if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
-				result.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
-			} else {
-				result.append_bezier(&scaled_bezier, AppendType::IgnoreStart);
+				if index > 0 && !compare_points(bezier.start(), reduced[index - 1].end()) {
+					result.append_bezier(&scaled_bezier, AppendType::SmoothJoin(MAX_ABSOLUTE_DIFFERENCE));
+				} else {
+					result.append_bezier(&scaled_bezier, AppendType::IgnoreStart);
+				}
+				next_start_distance = next_end_distance;
 			}
-			next_start_distance = next_end_distance;
 		});
 
 		// If the curve is not linear, smooth the handles. All segments produced by bezier::scale will be cubic.
@@ -404,49 +422,53 @@ impl Bezier {
 	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
-		let first_segment = self.offset(distance);
-		let third_segment = self.reverse().offset(distance);
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/outline/solo" title="Outline Demo"></iframe>
+	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+		let (pos_offset, neg_offset) = if self.is_point() {
+			(
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance)], false),
+			)
+		} else {
+			(self.offset(distance), self.reverse().offset(distance))
+		};
 
-		if first_segment.is_empty() || third_segment.is_empty() {
+		if pos_offset.is_empty() || neg_offset.is_empty() {
 			return Subpath::new(vec![], false);
 		}
 
-		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
-		result_manipulator_groups.extend_from_slice(first_segment.manipulator_groups());
-		// TODO: Handle other caps here
-		result_manipulator_groups.extend_from_slice(third_segment.manipulator_groups());
-		Subpath::new(result_manipulator_groups, true)
+		pos_offset.combine_outline(&neg_offset, cap)
 	}
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
-	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<ManipulatorGroupId> {
-		self.skewed_outline(start_distance, end_distance, end_distance, start_distance)
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
+	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, cap)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
-	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
-	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64) -> Subpath<ManipulatorGroupId> {
-		let first_segment = self.graduated_offset(distance1, distance2);
-		let third_segment = self.reverse().graduated_offset(distance3, distance4);
+	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/libraries/bezier-rs#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
+	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+		let (pos_offset, neg_offset) = if self.is_point() {
+			(
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance1)], false),
+				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::Y * distance1)], false),
+			)
+		} else {
+			(self.graduated_offset(distance1, distance2), self.reverse().graduated_offset(distance3, distance4))
+		};
 
-		if first_segment.is_empty() || third_segment.is_empty() {
+		if pos_offset.is_empty() || neg_offset.is_empty() {
 			return Subpath::new(vec![], false);
 		}
 
-		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
-		result_manipulator_groups.extend_from_slice(first_segment.manipulator_groups());
-		// TODO: Handle other caps here
-		result_manipulator_groups.extend_from_slice(third_segment.manipulator_groups());
-		Subpath::new(result_manipulator_groups, true)
+		pos_offset.combine_outline(&neg_offset, cap)
 	}
 
 	/// Approximate a bezier curve with circular arcs.
 	/// The algorithm can be customized using the [ArcsOptions] structure.
-	/// <iframe frameBorder="0" width="100%" height="450px" src="https://graphite.rs/bezier-rs-demos#bezier/arcs/solo" title="Arcs Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/arcs/solo" title="Arcs Demo"></iframe>
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
 		let ArcsOptions {
 			strategy: maximize_arcs,
@@ -596,8 +618,8 @@ impl Bezier {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::compare::{compare_arcs, compare_points, compare_vec_of_points};
-	use crate::utils::TValue;
+	use crate::compare::{compare_arcs, compare_points};
+	use crate::utils::{Cap, TValue};
 	use crate::EmptyId;
 
 	#[test]
@@ -748,17 +770,8 @@ mod tests {
 		let p3 = DVec2::new(0., 0.);
 		let bezier = Bezier::from_quadratic_dvec2(p1, p2, p3);
 
-		let expected_bezier_points = vec![
-			vec![DVec2::new(0., 0.), DVec2::new(0.5, 0.5), DVec2::new(0.989, 0.989)],
-			vec![DVec2::new(0.989, 0.989), DVec2::new(2.705, 2.705), DVec2::new(4.2975, 4.2975)],
-			vec![DVec2::new(4.2975, 4.2975), DVec2::new(5.6625, 5.6625), DVec2::new(6.9375, 6.9375)],
-		];
 		let reduced_curves = bezier.reduce(None);
-		assert!(reduced_curves.iter().zip(expected_bezier_points.into_iter()).all(|(bezier, points)| compare_vec_of_points(
-			bezier.get_points().collect::<Vec<DVec2>>(),
-			points,
-			MAX_ABSOLUTE_DIFFERENCE
-		)));
+		assert!(reduced_curves.iter().all(|bezier| bezier.is_scalable()));
 
 		// Check that the reduce helper is correct
 		let (helper_curves, helper_t_values) = bezier.reduced_curves_and_t_values(None);
@@ -768,7 +781,7 @@ mod tests {
 			.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(bezier2, MAX_ABSOLUTE_DIFFERENCE)));
 		assert!(reduced_curves
 			.iter()
-			.zip(helper_t_values.windows(2))
+			.zip(helper_t_values.iter())
 			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 
@@ -797,7 +810,7 @@ mod tests {
 					.iter()
 					.map(|t| {
 						let offset_point = offset_segment.evaluate(TValue::Parametric(*t));
-						let closest_point_t = bezier.project(offset_point, ProjectionOptions::default());
+						let closest_point_t = bezier.project(offset_point, None);
 						let closest_point = bezier.evaluate(TValue::Parametric(closest_point_t));
 						let actual_distance = offset_point.distance(closest_point);
 
@@ -854,11 +867,28 @@ mod tests {
 	}
 
 	#[test]
+	fn test_offset_curve_that_has_a_single_point_after_reduce() {
+		let p1 = DVec2::new(30., 30.);
+		let p2 = DVec2::new(150., 29.);
+		let p3 = DVec2::new(150., 30.);
+		let p4 = DVec2::new(160., 160.);
+
+		let bezier = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+
+		let reduce = bezier.reduce(None);
+		let offset = bezier.offset::<EmptyId>(15.);
+		assert!(reduce.last().is_some());
+		assert!(reduce.last().unwrap().is_point());
+		// Expect the single point bezier to be dropped in the offset
+		assert_eq!(reduce.len(), offset.len_segments() + 1);
+	}
+
+	#[test]
 	fn test_outline() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let line = Bezier::from_linear_dvec2(p1, p2);
-		let outline = line.outline::<EmptyId>(10.);
+		let outline = line.outline::<EmptyId>(10., Cap::Butt);
 
 		assert_eq!(outline.len(), 4);
 
@@ -881,6 +911,44 @@ mod tests {
 
 		// Assert the second cap touches the line start point at the halfway point
 		assert!(outline.iter().nth(3).unwrap().evaluate(TValue::Parametric(0.5)).abs_diff_eq(line.start(), MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
+	fn test_outline_single_point_circle() {
+		let ellipse: Subpath<EmptyId> = Subpath::new_ellipse(DVec2::new(0., 0.), DVec2::new(50., 50.)).reverse();
+		let p = DVec2::new(25., 25.);
+
+		let line = Bezier::from_linear_dvec2(p, p);
+		let outline = line.outline::<EmptyId>(25., Cap::Round);
+		assert_eq!(outline, ellipse);
+
+		let cubic = Bezier::from_cubic_dvec2(p, p, p, p);
+		let outline_cubic = cubic.outline::<EmptyId>(25., Cap::Round);
+		assert_eq!(outline_cubic, ellipse);
+	}
+
+	#[test]
+	fn test_outline_single_point_square() {
+		let square: Subpath<EmptyId> = Subpath::from_anchors(
+			[
+				DVec2::new(25., 0.),
+				DVec2::new(0., 0.),
+				DVec2::new(0., 50.),
+				DVec2::new(25., 50.),
+				DVec2::new(50., 50.),
+				DVec2::new(50., 0.),
+			],
+			true,
+		);
+		let p = DVec2::new(25., 25.);
+
+		let line = Bezier::from_linear_dvec2(p, p);
+		let outline = line.outline::<EmptyId>(25., Cap::Square);
+		assert_eq!(outline, square);
+
+		let cubic = Bezier::from_cubic_dvec2(p, p, p, p);
+		let outline_cubic = cubic.outline::<EmptyId>(25., Cap::Square);
+		assert_eq!(outline_cubic, square);
 	}
 
 	#[test]

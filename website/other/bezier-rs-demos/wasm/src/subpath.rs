@@ -1,6 +1,7 @@
 use crate::svg_drawing::*;
+use crate::utils::{parse_cap, parse_join};
 
-use bezier_rs::{Bezier, ManipulatorGroup, ProjectionOptions, Subpath, SubpathTValue};
+use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
 
 use glam::DVec2;
 use std::fmt::Write;
@@ -23,8 +24,8 @@ const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 
 fn parse_t_variant(t_variant: &String, t: f64) -> SubpathTValue {
 	match t_variant.as_str() {
-		"Parametric" => SubpathTValue::GlobalParametric(t),
-		"Euclidean" => SubpathTValue::GlobalEuclidean(t),
+		"GlobalParametric" => SubpathTValue::GlobalParametric(t),
+		"GlobalEuclidean" => SubpathTValue::GlobalEuclidean(t),
 		_ => panic!("Unexpected TValue string: '{}'", t_variant),
 	}
 }
@@ -96,6 +97,22 @@ impl WasmSubpath {
 
 		let point_text = draw_circle(point, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	}
+
+	pub fn compute_lookup_table(&self, steps: usize, t_variant: String) -> String {
+		let subpath = self.to_default_svg();
+		let tvalue_type = match t_variant.as_str() {
+			"GlobalParametric" => TValueType::Parametric,
+			"GlobalEuclidean" => TValueType::Euclidean,
+			_ => panic!("Unexpected TValue string: '{}'", t_variant),
+		};
+		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));
+		let circles: String = table_values
+			.iter()
+			.map(|point| draw_circle(*point, 3., RED, 1.5, WHITE))
+			.fold("".to_string(), |acc, circle| acc + &circle);
+		let content = format!("{subpath}{circles}");
+		wrap_svg_tag(content)
 	}
 
 	pub fn tangent(&self, t: f64, t_variant: String) -> String {
@@ -180,8 +197,30 @@ impl WasmSubpath {
 		wrap_svg_tag(content)
 	}
 
+	pub fn rotate(&self, angle: f64, pivot_x: f64, pivot_y: f64) -> String {
+		let subpath_svg = self.to_default_svg();
+		let rotated_subpath = self.0.rotate_about_point(angle, DVec2::new(pivot_x, pivot_y));
+		let mut rotated_subpath_svg = String::new();
+		rotated_subpath.to_svg(&mut rotated_subpath_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+		let pivot = draw_circle(DVec2::new(pivot_x, pivot_y), 3., GRAY, 1.5, WHITE);
+
+		// Line between pivot and start point on curve
+		let original_dashed_line = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			self.0.iter().nth(0).unwrap().start().x,
+			self.0.iter().nth(0).unwrap().start().y
+		);
+		let rotated_dashed_line = format!(
+			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
+			rotated_subpath.iter().nth(0).unwrap().start().x,
+			rotated_subpath.iter().nth(0).unwrap().start().y
+		);
+
+		wrap_svg_tag(format!("{subpath_svg}{rotated_subpath_svg}{pivot}{original_dashed_line}{rotated_dashed_line}"))
+	}
+
 	pub fn project(&self, x: f64, y: f64) -> String {
-		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), ProjectionOptions::default()).unwrap();
+		let (segment_index, projected_t) = self.0.project(DVec2::new(x, y), None).unwrap();
 		let projected_point = self.0.evaluate(SubpathTValue::Parametric { segment_index, t: projected_t });
 
 		let subpath_svg = self.to_default_svg();
@@ -303,6 +342,31 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{self_intersections_svg}"))
 	}
 
+	pub fn curvature(&self, t: f64, t_variant: String) -> String {
+		let subpath = self.to_default_svg();
+		let t = parse_t_variant(&t_variant, t);
+
+		let intersection_point = self.0.evaluate(t);
+		let normal_point = self.0.normal(t);
+		let curvature = self.0.curvature(t);
+		let content = if curvature.abs() < 0.000001 {
+			// Linear curve segment: the radius is infinite so we don't draw it
+			format!("{subpath}{}", draw_circle(intersection_point, 3., RED, 1., WHITE))
+		} else {
+			let radius = 1. / curvature;
+			let curvature_center = intersection_point + normal_point * radius;
+
+			format!(
+				"{subpath}{}{}{}{}",
+				draw_circle(curvature_center, radius.abs(), RED, 1., NONE),
+				draw_line(intersection_point.x, intersection_point.y, curvature_center.x, curvature_center.y, RED, 1.),
+				draw_circle(intersection_point, 3., RED, 1., WHITE),
+				draw_circle(curvature_center, 3., RED, 1., WHITE),
+			)
+		};
+		wrap_svg_tag(content)
+	}
+
 	pub fn split(&self, t: f64, t_variant: String) -> String {
 		let t = parse_t_variant(&t_variant, t);
 		let (main_subpath, optional_subpath) = self.0.split(t);
@@ -377,8 +441,9 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), trimmed_subpath_svg))
 	}
 
-	pub fn offset(&self, distance: f64) -> String {
-		let offset_subpath = self.0.offset(distance, bezier_rs::Joint::Bevel);
+	pub fn offset(&self, distance: f64, join: i32, miter_limit: f64) -> String {
+		let join = parse_join(join, miter_limit);
+		let offset_subpath = self.0.offset(distance, join);
 
 		let mut offset_svg = String::new();
 		offset_subpath.to_svg(&mut offset_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
@@ -386,8 +451,10 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{offset_svg}", self.to_default_svg()))
 	}
 
-	pub fn outline(&self, distance: f64) -> String {
-		let (outline_piece1, outline_piece2) = self.0.outline(distance, bezier_rs::Joint::Bevel);
+	pub fn outline(&self, distance: f64, join: i32, cap: i32, miter_limit: f64) -> String {
+		let join = parse_join(join, miter_limit);
+		let cap = parse_cap(cap);
+		let (outline_piece1, outline_piece2) = self.0.outline(distance, join, cap);
 
 		let mut outline_piece1_svg = String::new();
 		outline_piece1.to_svg(&mut outline_piece1_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());

@@ -105,15 +105,43 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeType {
-			name: "Image",
+			name: "Downscale",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Downscale".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownscaleNode")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "Clone".to_string(),
+						inputs: vec![NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
+						metadata: Default::default(),
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downscale the image to a lower resolution"),
 		},
 		// DocumentNodeType {
-		// 	name: "Input",
+		// 	name: "Input Frame",
 		// 	category: "Ignore",
 		// 	identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 		// 	inputs: vec![DocumentInputType {
@@ -125,7 +153,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		// 	properties: node_properties::input_properties,
 		// },
 		DocumentNodeType {
-			name: "Input",
+			name: "Input Frame",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 1],
@@ -232,8 +260,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Output",
@@ -245,7 +272,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Image Frame",
@@ -365,7 +392,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
+				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::luminance_properties,
@@ -422,7 +449,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::Network(concrete!(Image))],
+							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(concrete!(ImageFrame))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},
@@ -444,6 +471,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
+			name: "Image",
+			category: "Ignore",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -562,11 +597,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Threshold",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Luma Calculation", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
-				DocumentInputType::value("Threshold", TaggedValue::F64(50.), false),
+				DocumentInputType::value("Min Luminance", TaggedValue::F64(50.), false),
+				DocumentInputType::value("Max Luminance", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_threshold_properties,
@@ -640,25 +676,25 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Path Generator",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator"),
-			inputs: vec![DocumentInputType {
-				name: "Path Data",
-				data_type: FrontendGraphDataType::Subpath,
-				default: NodeInput::value(TaggedValue::Subpath(bezier_rs::Subpath::new(Vec::new(), false)), false),
-			}],
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
+			inputs: vec![
+				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
+				DocumentInputType::value("Mirror", TaggedValue::ManipulatorGroupIds(vec![]), false),
+			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Transform",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::TransformNode<_, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::transform_properties,
@@ -669,8 +705,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Fill Type", TaggedValue::FillType(vector::style::FillType::Solid), false),
-				DocumentInputType::value("Solid Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Fill Type", TaggedValue::FillType(vector::style::FillType::None), false),
+				DocumentInputType::value("Solid Color", TaggedValue::OptionalColor(None), false),
 				DocumentInputType::value("Gradient Type", TaggedValue::GradientType(vector::style::GradientType::Linear), false),
 				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 0.5)), false),
 				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(1., 0.5)), false),
@@ -828,8 +864,8 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
-			resolve_document_node_type("Input")
-				.expect("Input node does not exist")
+			resolve_document_node_type("Input Frame")
+				.expect("Input Frame node does not exist")
 				.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
@@ -843,8 +879,8 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 	}
 }
 
-pub fn new_vector_network(subpath: bezier_rs::Subpath<uuid::ManipulatorGroupId>) -> NodeNetwork {
-	let input = resolve_document_node_type("Input").expect("Input node does not exist");
+pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
+	let input = resolve_document_node_type("Input Frame").expect("Input Frame node does not exist");
 	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -863,7 +899,7 @@ pub fn new_vector_network(subpath: bezier_rs::Subpath<uuid::ManipulatorGroupId>)
 		outputs: vec![NodeOutput::new(5, 0)],
 		nodes: [
 			input.to_document_node_default_inputs([], next_pos()),
-			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpath(subpath), false))], next_pos()),
+			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], next_pos()),
 			transform.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
 			fill.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
 			stroke.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),

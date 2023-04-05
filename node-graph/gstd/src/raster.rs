@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 
-use glam::DAffine2;
+use glam::{BVec2, DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
 use graphene_core::Node;
 
@@ -90,6 +90,33 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 }
 */
 
+pub struct DownscaleNode;
+
+#[node_macro::node_fn(DownscaleNode)]
+fn downscale(image_frame: ImageFrame) -> ImageFrame {
+	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
+	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
+
+	let mut image = Image {
+		width: target_width as u32,
+		height: target_height as u32,
+		data: Vec::with_capacity(target_width * target_height),
+	};
+
+	let scale_factor = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64) / DVec2::new(target_width as f64, target_height as f64);
+	for y in 0..target_height {
+		for x in 0..target_width {
+			let pixel = image_frame.sample(DVec2::new(x as f64, y as f64) * scale_factor);
+			image.data.push(pixel);
+		}
+	}
+
+	ImageFrame {
+		image,
+		transform: image_frame.transform,
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MapImageNode<MapFn> {
 	map_fn: MapFn,
@@ -124,23 +151,90 @@ where
 	image_frame
 }
 
+#[derive(Debug, Clone)]
+struct AxisAlignedBbox {
+	start: DVec2,
+	end: DVec2,
+}
+
+#[derive(Debug, Clone)]
+struct Bbox {
+	top_left: DVec2,
+	top_right: DVec2,
+	bottom_left: DVec2,
+	bottom_right: DVec2,
+}
+
+impl Bbox {
+	fn axis_aligned_bbox(&self) -> AxisAlignedBbox {
+		let start_x = self.top_left.x.min(self.top_right.x).min(self.bottom_left.x).min(self.bottom_right.x);
+		let start_y = self.top_left.y.min(self.top_right.y).min(self.bottom_left.y).min(self.bottom_right.y);
+		let end_x = self.top_left.x.max(self.top_right.x).max(self.bottom_left.x).max(self.bottom_right.x);
+		let end_y = self.top_left.y.max(self.top_right.y).max(self.bottom_left.y).max(self.bottom_right.y);
+
+		AxisAlignedBbox {
+			start: DVec2::new(start_x, start_y),
+			end: DVec2::new(end_x, end_y),
+		}
+	}
+}
+
+fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
+	let top_left = DVec2::new(0., 1.);
+	let top_right = DVec2::new(1., 1.);
+	let bottom_left = DVec2::new(0., 0.);
+	let bottom_right = DVec2::new(1., 0.);
+	let transform = |p| transform.transform_point2(p);
+
+	Bbox {
+		top_left: transform(top_left),
+		top_right: transform(top_right),
+		bottom_left: transform(bottom_left),
+		bottom_right: transform(bottom_right),
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
-pub struct BlendImageNode<Second, MapFn> {
-	second: Second,
+pub struct BlendImageNode<Background, MapFn> {
+	background: Background,
 	map_fn: MapFn,
 }
 
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
-fn blend_image<MapFn>(image: ImageFrame, second: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
+fn blend_image<MapFn>(foreground: ImageFrame, mut background: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
-	let mut image = image;
-	for (pixel, sec_pixel) in &mut image.image.data.iter_mut().zip(second.image.data.iter()) {
-		*pixel = map_fn.eval((*pixel, *sec_pixel));
+	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
+	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
+
+	// Transforms a point from the background image to the forground image
+	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
+
+	// Footprint of the foreground image (0,0) (1, 1) in the background image space
+	let bg_aabb = compute_transformed_bounding_box(background.transform.inverse() * foreground.transform).axis_aligned_bbox();
+
+	// Clamp the foreground image to the background image
+	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
+	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
+
+	for y in start.y..end.y {
+		for x in start.x..end.x {
+			let bg_point = DVec2::new(x as f64, y as f64);
+			let fg_point = bg_to_fg.transform_point2(bg_point);
+			if !((fg_point.cmpge(DVec2::ZERO) & fg_point.cmple(foreground_size)) == BVec2::new(true, true)) {
+				continue;
+			}
+
+			let dst_pixel = background.get_mut(x as usize, y as usize);
+			let src_pixel = foreground.sample(fg_point);
+
+			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
+		}
 	}
-	image
+
+	background
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -150,7 +244,6 @@ pub struct ImaginateNode<E> {
 
 #[node_macro::node_fn(ImaginateNode)]
 fn imaginate(image_frame: ImageFrame, cached: Option<std::sync::Arc<graphene_core::raster::Image>>) -> ImageFrame {
-	info!("Imaginating image with {} pixels", image_frame.image.data.len());
 	let cached_image = cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image_frame.image);
 	ImageFrame {
 		image: cached_image,

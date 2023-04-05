@@ -1,47 +1,47 @@
 /* eslint-disable import/first */
 
 // Graphics
-import GraphiteLogotypeSolid from "@/../assets/graphics/graphite-logotype-solid.svg";
+import GraphiteLogotypeSolid from "@graphite/../assets/graphics/graphite-logotype-solid.svg";
 
 const GRAPHICS = {
 	GraphiteLogotypeSolid: { svg: GraphiteLogotypeSolid, size: undefined },
 } as const;
 
 // 12px Solid
-import Add from "@/../assets/icon-12px-solid/add.svg";
-import Checkmark from "@/../assets/icon-12px-solid/checkmark.svg";
-import CloseX from "@/../assets/icon-12px-solid/close-x.svg";
-import DropdownArrow from "@/../assets/icon-12px-solid/dropdown-arrow.svg";
-import Edit from "@/../assets/icon-12px-solid/edit.svg";
-import Empty12px from "@/../assets/icon-12px-solid/empty-12px.svg";
-import FullscreenEnter from "@/../assets/icon-12px-solid/fullscreen-enter.svg";
-import FullscreenExit from "@/../assets/icon-12px-solid/fullscreen-exit.svg";
-import Grid from "@/../assets/icon-12px-solid/grid.svg";
-import Info from "@/../assets/icon-12px-solid/info.svg";
-import KeyboardArrowDown from "@/../assets/icon-12px-solid/keyboard-arrow-down.svg";
-import KeyboardArrowLeft from "@/../assets/icon-12px-solid/keyboard-arrow-left.svg";
-import KeyboardArrowRight from "@/../assets/icon-12px-solid/keyboard-arrow-right.svg";
-import KeyboardArrowUp from "@/../assets/icon-12px-solid/keyboard-arrow-up.svg";
-import KeyboardBackspace from "@/../assets/icon-12px-solid/keyboard-backspace.svg";
-import KeyboardCommand from "@/../assets/icon-12px-solid/keyboard-command.svg";
-import KeyboardControl from "@/../assets/icon-12px-solid/keyboard-control.svg";
-import KeyboardEnter from "@/../assets/icon-12px-solid/keyboard-enter.svg";
-import KeyboardOption from "@/../assets/icon-12px-solid/keyboard-option.svg";
-import KeyboardShift from "@/../assets/icon-12px-solid/keyboard-shift.svg";
-import KeyboardSpace from "@/../assets/icon-12px-solid/keyboard-space.svg";
-import KeyboardTab from "@/../assets/icon-12px-solid/keyboard-tab.svg";
-import Link from "@/../assets/icon-12px-solid/link.svg";
-import Overlays from "@/../assets/icon-12px-solid/overlays.svg";
-import Remove from "@/../assets/icon-12px-solid/remove.svg";
-import ResetColors from "@/../assets/icon-12px-solid/reset-colors.svg";
-import Snapping from "@/../assets/icon-12px-solid/snapping.svg";
-import Swap from "@/../assets/icon-12px-solid/swap.svg";
-import VerticalEllipsis from "@/../assets/icon-12px-solid/vertical-ellipsis.svg";
-import Warning from "@/../assets/icon-12px-solid/warning.svg";
-import WindowButtonWinClose from "@/../assets/icon-12px-solid/window-button-win-close.svg";
-import WindowButtonWinMaximize from "@/../assets/icon-12px-solid/window-button-win-maximize.svg";
-import WindowButtonWinMinimize from "@/../assets/icon-12px-solid/window-button-win-minimize.svg";
-import WindowButtonWinRestoreDown from "@/../assets/icon-12px-solid/window-button-win-restore-down.svg";
+import Add from "@graphite/../assets/icon-12px-solid/add.svg";
+import Checkmark from "@graphite/../assets/icon-12px-solid/checkmark.svg";
+import CloseX from "@graphite/../assets/icon-12px-solid/close-x.svg";
+import DropdownArrow from "@graphite/../assets/icon-12px-solid/dropdown-arrow.svg";
+import Edit from "@graphite/../assets/icon-12px-solid/edit.svg";
+import Empty12px from "@graphite/../assets/icon-12px-solid/empty-12px.svg";
+import FullscreenEnter from "@graphite/../assets/icon-12px-solid/fullscreen-enter.svg";
+import FullscreenExit from "@graphite/../assets/icon-12px-solid/fullscreen-exit.svg";
+import Grid from "@graphite/../assets/icon-12px-solid/grid.svg";
+import Info from "@graphite/../assets/icon-12px-solid/info.svg";
+import KeyboardArrowDown from "@graphite/../assets/icon-12px-solid/keyboard-arrow-down.svg";
+import KeyboardArrowLeft from "@graphite/../assets/icon-12px-solid/keyboard-arrow-left.svg";
+import KeyboardArrowRight from "@graphite/../assets/icon-12px-solid/keyboard-arrow-right.svg";
+import KeyboardArrowUp from "@graphite/../assets/icon-12px-solid/keyboard-arrow-up.svg";
+import KeyboardBackspace from "@graphite/../assets/icon-12px-solid/keyboard-backspace.svg";
+import KeyboardCommand from "@graphite/../assets/icon-12px-solid/keyboard-command.svg";
+import KeyboardControl from "@graphite/../assets/icon-12px-solid/keyboard-control.svg";
+import KeyboardEnter from "@graphite/../assets/icon-12px-solid/keyboard-enter.svg";
+import KeyboardOption from "@graphite/../assets/icon-12px-solid/keyboard-option.svg";
+import KeyboardShift from "@graphite/../assets/icon-12px-solid/keyboard-shift.svg";
+import KeyboardSpace from "@graphite/../assets/icon-12px-solid/keyboard-space.svg";
+import KeyboardTab from "@graphite/../assets/icon-12px-solid/keyboard-tab.svg";
+import Link from "@graphite/../assets/icon-12px-solid/link.svg";
+import Overlays from "@graphite/../assets/icon-12px-solid/overlays.svg";
+import Remove from "@graphite/../assets/icon-12px-solid/remove.svg";
+import ResetColors from "@graphite/../assets/icon-12px-solid/reset-colors.svg";
+import Snapping from "@graphite/../assets/icon-12px-solid/snapping.svg";
+import Swap from "@graphite/../assets/icon-12px-solid/swap.svg";
+import VerticalEllipsis from "@graphite/../assets/icon-12px-solid/vertical-ellipsis.svg";
+import Warning from "@graphite/../assets/icon-12px-solid/warning.svg";
+import WindowButtonWinClose from "@graphite/../assets/icon-12px-solid/window-button-win-close.svg";
+import WindowButtonWinMaximize from "@graphite/../assets/icon-12px-solid/window-button-win-maximize.svg";
+import WindowButtonWinMinimize from "@graphite/../assets/icon-12px-solid/window-button-win-minimize.svg";
+import WindowButtonWinRestoreDown from "@graphite/../assets/icon-12px-solid/window-button-win-restore-down.svg";
 
 const SOLID_12PX = {
 	Add: { svg: Add, size: 12 },
@@ -81,61 +81,61 @@ const SOLID_12PX = {
 } as const;
 
 // 16px Solid
-import AlignBottom from "@/../assets/icon-16px-solid/align-bottom.svg";
-import AlignHorizontalCenter from "@/../assets/icon-16px-solid/align-horizontal-center.svg";
-import AlignLeft from "@/../assets/icon-16px-solid/align-left.svg";
-import AlignRight from "@/../assets/icon-16px-solid/align-right.svg";
-import AlignTop from "@/../assets/icon-16px-solid/align-top.svg";
-import AlignVerticalCenter from "@/../assets/icon-16px-solid/align-vertical-center.svg";
-import BooleanDifference from "@/../assets/icon-16px-solid/boolean-difference.svg";
-import BooleanIntersect from "@/../assets/icon-16px-solid/boolean-intersect.svg";
-import BooleanSubtractBack from "@/../assets/icon-16px-solid/boolean-subtract-back.svg";
-import BooleanSubtractFront from "@/../assets/icon-16px-solid/boolean-subtract-front.svg";
-import BooleanUnion from "@/../assets/icon-16px-solid/boolean-union.svg";
-import CheckboxChecked from "@/../assets/icon-16px-solid/checkbox-checked.svg";
-import CheckboxUnchecked from "@/../assets/icon-16px-solid/checkbox-unchecked.svg";
-import Copy from "@/../assets/icon-16px-solid/copy.svg";
-import EyeHidden from "@/../assets/icon-16px-solid/eye-hidden.svg";
-import EyeVisible from "@/../assets/icon-16px-solid/eye-visible.svg";
-import Eyedropper from "@/../assets/icon-16px-solid/eyedropper.svg";
-import File from "@/../assets/icon-16px-solid/file.svg";
-import FlipHorizontal from "@/../assets/icon-16px-solid/flip-horizontal.svg";
-import FlipVertical from "@/../assets/icon-16px-solid/flip-vertical.svg";
-import Folder from "@/../assets/icon-16px-solid/folder.svg";
-import GraphiteLogo from "@/../assets/icon-16px-solid/graphite-logo.svg";
-import NodeArtboard from "@/../assets/icon-16px-solid/node-artboard.svg";
-import NodeBlur from "@/../assets/icon-16px-solid/node-blur.svg";
-import NodeBrushwork from "@/../assets/icon-16px-solid/node-brushwork.svg";
-import NodeColorCorrection from "@/../assets/icon-16px-solid/node-color-correction.svg";
-import NodeFolder from "@/../assets/icon-16px-solid/node-folder.svg";
-import NodeGradient from "@/../assets/icon-16px-solid/node-gradient.svg";
-import NodeImage from "@/../assets/icon-16px-solid/node-image.svg";
-import NodeImaginate from "@/../assets/icon-16px-solid/node-imaginate.svg";
-import NodeMagicWand from "@/../assets/icon-16px-solid/node-magic-wand.svg";
-import NodeMask from "@/../assets/icon-16px-solid/node-mask.svg";
-import NodeMotionBlur from "@/../assets/icon-16px-solid/node-motion-blur.svg";
-import NodeNodes from "@/../assets/icon-16px-solid/node-nodes.svg";
-import NodeOutput from "@/../assets/icon-16px-solid/node-output.svg";
-import NodeShape from "@/../assets/icon-16px-solid/node-shape.svg";
-import NodeText from "@/../assets/icon-16px-solid/node-text.svg";
-import NodeTransform from "@/../assets/icon-16px-solid/node-transform.svg";
-import Paste from "@/../assets/icon-16px-solid/paste.svg";
-import Random from "@/../assets/icon-16px-solid/random.svg";
-import Regenerate from "@/../assets/icon-16px-solid/regenerate.svg";
-import Reload from "@/../assets/icon-16px-solid/reload.svg";
-import Rescale from "@/../assets/icon-16px-solid/rescale.svg";
-import Reset from "@/../assets/icon-16px-solid/reset.svg";
-import Settings from "@/../assets/icon-16px-solid/settings.svg";
-import Trash from "@/../assets/icon-16px-solid/trash.svg";
-import ViewModeNormal from "@/../assets/icon-16px-solid/view-mode-normal.svg";
-import ViewModeOutline from "@/../assets/icon-16px-solid/view-mode-outline.svg";
-import ViewModePixels from "@/../assets/icon-16px-solid/view-mode-pixels.svg";
-import ViewportDesignMode from "@/../assets/icon-16px-solid/viewport-design-mode.svg";
-import ViewportGuideMode from "@/../assets/icon-16px-solid/viewport-guide-mode.svg";
-import ViewportSelectMode from "@/../assets/icon-16px-solid/viewport-select-mode.svg";
-import ZoomIn from "@/../assets/icon-16px-solid/zoom-in.svg";
-import ZoomOut from "@/../assets/icon-16px-solid/zoom-out.svg";
-import ZoomReset from "@/../assets/icon-16px-solid/zoom-reset.svg";
+import AlignBottom from "@graphite/../assets/icon-16px-solid/align-bottom.svg";
+import AlignHorizontalCenter from "@graphite/../assets/icon-16px-solid/align-horizontal-center.svg";
+import AlignLeft from "@graphite/../assets/icon-16px-solid/align-left.svg";
+import AlignRight from "@graphite/../assets/icon-16px-solid/align-right.svg";
+import AlignTop from "@graphite/../assets/icon-16px-solid/align-top.svg";
+import AlignVerticalCenter from "@graphite/../assets/icon-16px-solid/align-vertical-center.svg";
+import BooleanDifference from "@graphite/../assets/icon-16px-solid/boolean-difference.svg";
+import BooleanIntersect from "@graphite/../assets/icon-16px-solid/boolean-intersect.svg";
+import BooleanSubtractBack from "@graphite/../assets/icon-16px-solid/boolean-subtract-back.svg";
+import BooleanSubtractFront from "@graphite/../assets/icon-16px-solid/boolean-subtract-front.svg";
+import BooleanUnion from "@graphite/../assets/icon-16px-solid/boolean-union.svg";
+import CheckboxChecked from "@graphite/../assets/icon-16px-solid/checkbox-checked.svg";
+import CheckboxUnchecked from "@graphite/../assets/icon-16px-solid/checkbox-unchecked.svg";
+import Copy from "@graphite/../assets/icon-16px-solid/copy.svg";
+import Eyedropper from "@graphite/../assets/icon-16px-solid/eyedropper.svg";
+import EyeHidden from "@graphite/../assets/icon-16px-solid/eye-hidden.svg";
+import EyeVisible from "@graphite/../assets/icon-16px-solid/eye-visible.svg";
+import File from "@graphite/../assets/icon-16px-solid/file.svg";
+import FlipHorizontal from "@graphite/../assets/icon-16px-solid/flip-horizontal.svg";
+import FlipVertical from "@graphite/../assets/icon-16px-solid/flip-vertical.svg";
+import Folder from "@graphite/../assets/icon-16px-solid/folder.svg";
+import GraphiteLogo from "@graphite/../assets/icon-16px-solid/graphite-logo.svg";
+import Layer from "@graphite/../assets/icon-16px-solid/layer.svg";
+import NodeArtboard from "@graphite/../assets/icon-16px-solid/node-artboard.svg";
+import NodeBlur from "@graphite/../assets/icon-16px-solid/node-blur.svg";
+import NodeBrushwork from "@graphite/../assets/icon-16px-solid/node-brushwork.svg";
+import NodeColorCorrection from "@graphite/../assets/icon-16px-solid/node-color-correction.svg";
+import NodeGradient from "@graphite/../assets/icon-16px-solid/node-gradient.svg";
+import NodeImage from "@graphite/../assets/icon-16px-solid/node-image.svg";
+import NodeImaginate from "@graphite/../assets/icon-16px-solid/node-imaginate.svg";
+import NodeMagicWand from "@graphite/../assets/icon-16px-solid/node-magic-wand.svg";
+import NodeMask from "@graphite/../assets/icon-16px-solid/node-mask.svg";
+import NodeMotionBlur from "@graphite/../assets/icon-16px-solid/node-motion-blur.svg";
+import NodeNodes from "@graphite/../assets/icon-16px-solid/node-nodes.svg";
+import NodeOutput from "@graphite/../assets/icon-16px-solid/node-output.svg";
+import NodeShape from "@graphite/../assets/icon-16px-solid/node-shape.svg";
+import NodeText from "@graphite/../assets/icon-16px-solid/node-text.svg";
+import NodeTransform from "@graphite/../assets/icon-16px-solid/node-transform.svg";
+import Paste from "@graphite/../assets/icon-16px-solid/paste.svg";
+import Random from "@graphite/../assets/icon-16px-solid/random.svg";
+import Regenerate from "@graphite/../assets/icon-16px-solid/regenerate.svg";
+import Reload from "@graphite/../assets/icon-16px-solid/reload.svg";
+import Rescale from "@graphite/../assets/icon-16px-solid/rescale.svg";
+import Reset from "@graphite/../assets/icon-16px-solid/reset.svg";
+import Settings from "@graphite/../assets/icon-16px-solid/settings.svg";
+import Trash from "@graphite/../assets/icon-16px-solid/trash.svg";
+import ViewModeNormal from "@graphite/../assets/icon-16px-solid/view-mode-normal.svg";
+import ViewModeOutline from "@graphite/../assets/icon-16px-solid/view-mode-outline.svg";
+import ViewModePixels from "@graphite/../assets/icon-16px-solid/view-mode-pixels.svg";
+import ViewportDesignMode from "@graphite/../assets/icon-16px-solid/viewport-design-mode.svg";
+import ViewportGuideMode from "@graphite/../assets/icon-16px-solid/viewport-guide-mode.svg";
+import ViewportSelectMode from "@graphite/../assets/icon-16px-solid/viewport-select-mode.svg";
+import ZoomIn from "@graphite/../assets/icon-16px-solid/zoom-in.svg";
+import ZoomOut from "@graphite/../assets/icon-16px-solid/zoom-out.svg";
+import ZoomReset from "@graphite/../assets/icon-16px-solid/zoom-reset.svg";
 
 const SOLID_16PX = {
 	AlignBottom: { svg: AlignBottom, size: 16 },
@@ -160,11 +160,11 @@ const SOLID_16PX = {
 	FlipVertical: { svg: FlipVertical, size: 16 },
 	Folder: { svg: Folder, size: 16 },
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
+	Layer: { svg: Layer, size: 16 },
 	NodeArtboard: { svg: NodeArtboard, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
-	NodeFolder: { svg: NodeFolder, size: 16 },
 	NodeGradient: { svg: NodeGradient, size: 16 },
 	NodeImage: { svg: NodeImage, size: 16 },
 	NodeImaginate: { svg: NodeImaginate, size: 16 },
@@ -196,17 +196,17 @@ const SOLID_16PX = {
 } as const;
 
 // 16px Two-Tone
-import MouseHintDrag from "@/../assets/icon-16px-two-tone/mouse-hint-drag.svg";
-import MouseHintLmbDouble from "@/../assets/icon-16px-two-tone/mouse-hint-lmb-double.svg";
-import MouseHintLmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-lmb-drag.svg";
-import MouseHintLmb from "@/../assets/icon-16px-two-tone/mouse-hint-lmb.svg";
-import MouseHintMmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-mmb-drag.svg";
-import MouseHintMmb from "@/../assets/icon-16px-two-tone/mouse-hint-mmb.svg";
-import MouseHintNone from "@/../assets/icon-16px-two-tone/mouse-hint-none.svg";
-import MouseHintRmbDrag from "@/../assets/icon-16px-two-tone/mouse-hint-rmb-drag.svg";
-import MouseHintRmb from "@/../assets/icon-16px-two-tone/mouse-hint-rmb.svg";
-import MouseHintScrollDown from "@/../assets/icon-16px-two-tone/mouse-hint-scroll-down.svg";
-import MouseHintScrollUp from "@/../assets/icon-16px-two-tone/mouse-hint-scroll-up.svg";
+import MouseHintDrag from "@graphite/../assets/icon-16px-two-tone/mouse-hint-drag.svg";
+import MouseHintLmbDouble from "@graphite/../assets/icon-16px-two-tone/mouse-hint-lmb-double.svg";
+import MouseHintLmbDrag from "@graphite/../assets/icon-16px-two-tone/mouse-hint-lmb-drag.svg";
+import MouseHintLmb from "@graphite/../assets/icon-16px-two-tone/mouse-hint-lmb.svg";
+import MouseHintMmbDrag from "@graphite/../assets/icon-16px-two-tone/mouse-hint-mmb-drag.svg";
+import MouseHintMmb from "@graphite/../assets/icon-16px-two-tone/mouse-hint-mmb.svg";
+import MouseHintNone from "@graphite/../assets/icon-16px-two-tone/mouse-hint-none.svg";
+import MouseHintRmbDrag from "@graphite/../assets/icon-16px-two-tone/mouse-hint-rmb-drag.svg";
+import MouseHintRmb from "@graphite/../assets/icon-16px-two-tone/mouse-hint-rmb.svg";
+import MouseHintScrollDown from "@graphite/../assets/icon-16px-two-tone/mouse-hint-scroll-down.svg";
+import MouseHintScrollUp from "@graphite/../assets/icon-16px-two-tone/mouse-hint-scroll-up.svg";
 
 const TWO_TONE_16PX = {
 	MouseHintDrag: { svg: MouseHintDrag, size: 16 },
@@ -223,29 +223,29 @@ const TWO_TONE_16PX = {
 } as const;
 
 // 24px Two-Tone
-import GeneralArtboardTool from "@/../assets/icon-24px-two-tone/general-artboard-tool.svg";
-import GeneralEyedropperTool from "@/../assets/icon-24px-two-tone/general-eyedropper-tool.svg";
-import GeneralFillTool from "@/../assets/icon-24px-two-tone/general-fill-tool.svg";
-import GeneralGradientTool from "@/../assets/icon-24px-two-tone/general-gradient-tool.svg";
-import GeneralNavigateTool from "@/../assets/icon-24px-two-tone/general-navigate-tool.svg";
-import GeneralSelectTool from "@/../assets/icon-24px-two-tone/general-select-tool.svg";
-import RasterBrushTool from "@/../assets/icon-24px-two-tone/raster-brush-tool.svg";
-import RasterCloneTool from "@/../assets/icon-24px-two-tone/raster-clone-tool.svg";
-import RasterDetailTool from "@/../assets/icon-24px-two-tone/raster-detail-tool.svg";
-import RasterHealTool from "@/../assets/icon-24px-two-tone/raster-heal-tool.svg";
-import RasterImaginateTool from "@/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
-import RasterNodesTool from "@/../assets/icon-24px-two-tone/raster-nodes-tool.svg";
-import RasterPatchTool from "@/../assets/icon-24px-two-tone/raster-patch-tool.svg";
-import RasterRelightTool from "@/../assets/icon-24px-two-tone/raster-relight-tool.svg";
-import VectorEllipseTool from "@/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
-import VectorFreehandTool from "@/../assets/icon-24px-two-tone/vector-freehand-tool.svg";
-import VectorLineTool from "@/../assets/icon-24px-two-tone/vector-line-tool.svg";
-import VectorPathTool from "@/../assets/icon-24px-two-tone/vector-path-tool.svg";
-import VectorPenTool from "@/../assets/icon-24px-two-tone/vector-pen-tool.svg";
-import VectorRectangleTool from "@/../assets/icon-24px-two-tone/vector-rectangle-tool.svg";
-import VectorShapeTool from "@/../assets/icon-24px-two-tone/vector-shape-tool.svg";
-import VectorSplineTool from "@/../assets/icon-24px-two-tone/vector-spline-tool.svg";
-import VectorTextTool from "@/../assets/icon-24px-two-tone/vector-text-tool.svg";
+import GeneralArtboardTool from "@graphite/../assets/icon-24px-two-tone/general-artboard-tool.svg";
+import GeneralEyedropperTool from "@graphite/../assets/icon-24px-two-tone/general-eyedropper-tool.svg";
+import GeneralFillTool from "@graphite/../assets/icon-24px-two-tone/general-fill-tool.svg";
+import GeneralGradientTool from "@graphite/../assets/icon-24px-two-tone/general-gradient-tool.svg";
+import GeneralNavigateTool from "@graphite/../assets/icon-24px-two-tone/general-navigate-tool.svg";
+import GeneralSelectTool from "@graphite/../assets/icon-24px-two-tone/general-select-tool.svg";
+import RasterBrushTool from "@graphite/../assets/icon-24px-two-tone/raster-brush-tool.svg";
+import RasterCloneTool from "@graphite/../assets/icon-24px-two-tone/raster-clone-tool.svg";
+import RasterDetailTool from "@graphite/../assets/icon-24px-two-tone/raster-detail-tool.svg";
+import RasterFrameTool from "@graphite/../assets/icon-24px-two-tone/raster-frame-tool.svg";
+import RasterHealTool from "@graphite/../assets/icon-24px-two-tone/raster-heal-tool.svg";
+import RasterImaginateTool from "@graphite/../assets/icon-24px-two-tone/raster-imaginate-tool.svg";
+import RasterPatchTool from "@graphite/../assets/icon-24px-two-tone/raster-patch-tool.svg";
+import RasterRelightTool from "@graphite/../assets/icon-24px-two-tone/raster-relight-tool.svg";
+import VectorEllipseTool from "@graphite/../assets/icon-24px-two-tone/vector-ellipse-tool.svg";
+import VectorFreehandTool from "@graphite/../assets/icon-24px-two-tone/vector-freehand-tool.svg";
+import VectorLineTool from "@graphite/../assets/icon-24px-two-tone/vector-line-tool.svg";
+import VectorPathTool from "@graphite/../assets/icon-24px-two-tone/vector-path-tool.svg";
+import VectorPenTool from "@graphite/../assets/icon-24px-two-tone/vector-pen-tool.svg";
+import VectorRectangleTool from "@graphite/../assets/icon-24px-two-tone/vector-rectangle-tool.svg";
+import VectorShapeTool from "@graphite/../assets/icon-24px-two-tone/vector-shape-tool.svg";
+import VectorSplineTool from "@graphite/../assets/icon-24px-two-tone/vector-spline-tool.svg";
+import VectorTextTool from "@graphite/../assets/icon-24px-two-tone/vector-text-tool.svg";
 
 const TWO_TONE_24PX = {
 	GeneralArtboardTool: { svg: GeneralArtboardTool, size: 24 },
@@ -254,12 +254,12 @@ const TWO_TONE_24PX = {
 	GeneralGradientTool: { svg: GeneralGradientTool, size: 24 },
 	GeneralNavigateTool: { svg: GeneralNavigateTool, size: 24 },
 	GeneralSelectTool: { svg: GeneralSelectTool, size: 24 },
-	RasterImaginateTool: { svg: RasterImaginateTool, size: 24 },
-	RasterNodesTool: { svg: RasterNodesTool, size: 24 },
 	RasterBrushTool: { svg: RasterBrushTool, size: 24 },
 	RasterCloneTool: { svg: RasterCloneTool, size: 24 },
 	RasterDetailTool: { svg: RasterDetailTool, size: 24 },
+	RasterFrameTool: { svg: RasterFrameTool, size: 24 },
 	RasterHealTool: { svg: RasterHealTool, size: 24 },
+	RasterImaginateTool: { svg: RasterImaginateTool, size: 24 },
 	RasterPatchTool: { svg: RasterPatchTool, size: 24 },
 	RasterRelightTool: { svg: RasterRelightTool, size: 24 },
 	VectorEllipseTool: { svg: VectorEllipseTool, size: 24 },

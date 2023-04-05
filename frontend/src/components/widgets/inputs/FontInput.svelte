@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
-	import type { MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
-	import MenuList from "@/components/floating-menus/MenuList.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
-	import type { FontsState } from "@/state-providers/fonts";
+	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { FontsState } from "@graphite/state-providers/fonts";
 
 	const fonts = getContext<FontsState>("fonts");
 
@@ -32,9 +32,9 @@
 	let activeEntry: MenuListEntry | undefined = undefined;
 	let minWidth = isStyle ? 0 : 300;
 
-	$: fontFamily, fontStyle, watchFont();
+	$: watchFont(fontFamily, fontStyle);
 
-	async function watchFont(): Promise<void> {
+	async function watchFont(..._: string[]): Promise<void> {
 		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop
 		const newEntries = await getEntries();
 		entries = newEntries;

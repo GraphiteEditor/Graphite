@@ -1,4 +1,4 @@
-import { TVariant, Demo, DemoPane, SliderOption } from "@/utils/types";
+import { Demo, DemoPane, InputOption } from "@/utils/types";
 
 export function renderDemo(demo: Demo): void {
 	const header = document.createElement("h4");
@@ -14,28 +14,76 @@ export function renderDemo(demo: Demo): void {
 	demo.append(header);
 	demo.append(figure);
 
-	demo.sliderOptions.forEach((sliderOption: SliderOption) => {
-		const sliderLabel = document.createElement("div");
-		const sliderData = demo.sliderData[sliderOption.variable];
-		const sliderUnit = demo.getSliderUnit(sliderData, sliderOption.variable);
-		sliderLabel.className = "slider-label";
-		sliderLabel.innerText = `${sliderOption.variable} = ${sliderData}${sliderUnit}`;
-		demo.append(sliderLabel);
+	const parentSliderContainer = document.createElement("div");
+	parentSliderContainer.className = "parent-slider-container";
 
-		const sliderInput = document.createElement("input");
-		sliderInput.className = "slider-input";
-		sliderInput.type = "range";
-		sliderInput.max = String(sliderOption.max);
-		sliderInput.min = String(sliderOption.min);
-		sliderInput.step = String(sliderOption.step);
-		sliderInput.value = String(sliderOption.default);
-		sliderInput.addEventListener("input", (event: Event): void => {
-			demo.sliderData[sliderOption.variable] = Number((event.target as HTMLInputElement).value);
-			sliderLabel.innerText = `${sliderOption.variable} = ${demo.sliderData[sliderOption.variable]}${sliderUnit}`;
-			demo.drawDemo(figure);
-		});
-		demo.append(sliderInput);
+	demo.inputOptions.forEach((inputOption: InputOption) => {
+		const isDropdown = inputOption.inputType === "dropdown";
+
+		const sliderContainer = document.createElement("div");
+		sliderContainer.className = isDropdown ? "select-container" : "slider-container";
+
+		const sliderLabel = document.createElement("div");
+		const sliderData = demo.sliderData[inputOption.variable];
+		const sliderUnit = demo.getSliderUnit(sliderData, inputOption.variable);
+		sliderLabel.className = "slider-label";
+		sliderLabel.innerText = `${inputOption.variable}: ${isDropdown ? "" : sliderData}${sliderUnit}`;
+		sliderContainer.appendChild(sliderLabel);
+
+		if (isDropdown) {
+			const selectInput = document.createElement("select");
+			selectInput.className = "select-input";
+			selectInput.value = String(inputOption.default);
+			inputOption.options?.forEach((value, idx) => {
+				const id = `${idx}-${value}`;
+				const option = document.createElement("option");
+				option.value = String(idx);
+				option.id = id;
+				option.text = value;
+				selectInput.append(option);
+			});
+
+			if (inputOption.disabled) {
+				selectInput.disabled = true;
+			}
+
+			selectInput.addEventListener("change", (event: Event): void => {
+				demo.sliderData[inputOption.variable] = Number((event.target as HTMLInputElement).value);
+				demo.drawDemo(figure);
+			});
+			sliderContainer.appendChild(selectInput);
+		} else {
+			const sliderInput = document.createElement("input");
+			sliderInput.className = "slider-input";
+			sliderInput.type = "range";
+			sliderInput.max = String(inputOption.max);
+			sliderInput.min = String(inputOption.min);
+			sliderInput.step = String(inputOption.step);
+			sliderInput.value = String(inputOption.default);
+			const range = Number(inputOption.max) - Number(inputOption.min);
+
+			const ratio = (Number(inputOption.default) - Number(inputOption.min)) / range;
+			sliderInput.style.setProperty("--range-ratio", String(ratio));
+
+			sliderInput.addEventListener("input", (event: Event): void => {
+				const target = event.target as HTMLInputElement;
+				demo.sliderData[inputOption.variable] = Number(target.value);
+				const data = demo.sliderData[inputOption.variable];
+				const unit = demo.getSliderUnit(demo.sliderData[inputOption.variable], inputOption.variable);
+				sliderLabel.innerText = `${inputOption.variable}: ${data}${unit}`;
+
+				const ratio = (Number(target.value) - Number(inputOption.min)) / range;
+				sliderInput.style.setProperty("--range-ratio", String(ratio));
+
+				demo.drawDemo(figure);
+			});
+			sliderContainer.appendChild(sliderInput);
+		}
+
+		parentSliderContainer.append(sliderContainer);
 	});
+
+	demo.append(parentSliderContainer);
 }
 
 export function renderDemoPane(demoPane: DemoPane): void {
@@ -55,30 +103,6 @@ export function renderDemoPane(demoPane: DemoPane): void {
 		container.append(header);
 	}
 
-	const tVariantContainer = document.createElement("div");
-	tVariantContainer.className = "t-variant-choice";
-
-	const tVariantLabel = document.createElement("strong");
-	tVariantLabel.innerText = "TValue Variant:";
-	tVariantContainer.append(tVariantLabel);
-
-	const radioInputs = ["Parametric", "Euclidean"].map((tVariant) => {
-		const id = `${demoPane.id}-${tVariant}`;
-		const radioInput = document.createElement("input");
-		radioInput.type = "radio";
-		radioInput.id = id;
-		radioInput.value = tVariant;
-		radioInput.name = `TVariant - ${demoPane.id}`;
-		radioInput.checked = tVariant === "Parametric";
-		tVariantContainer.append(radioInput);
-
-		const label = document.createElement("label");
-		label.htmlFor = id;
-		label.innerText = tVariant;
-		tVariantContainer.append(label);
-		return radioInput;
-	});
-
 	const demoRow = document.createElement("div");
 	demoRow.className = "demo-row";
 
@@ -87,21 +111,9 @@ export function renderDemoPane(demoPane: DemoPane): void {
 			return;
 		}
 		const demoComponent = demoPane.buildDemo(demo);
-
-		radioInputs.forEach((radioInput: HTMLElement) => {
-			radioInput.addEventListener("input", (event: Event): void => {
-				demoPane.tVariant = (event.target as HTMLInputElement).value as TVariant;
-				demoComponent.setAttribute("tvariant", demoPane.tVariant);
-			});
-		});
 		demoRow.append(demoComponent);
 	});
 
 	container.append(demoRow);
-
-	if (demoPane.chooseTVariant) {
-		container.append(tVariantContainer);
-	}
-
 	demoPane.append(container);
 }

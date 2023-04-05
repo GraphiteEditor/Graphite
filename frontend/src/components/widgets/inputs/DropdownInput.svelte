@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry } from "@/wasm-communication/messages";
+	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
-	import MenuList from "@/components/floating-menus/MenuList.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import IconLabel from "@/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@/components/widgets/labels/TextLabel.svelte";
+	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const DASH_ENTRY = { label: "-" };
 
@@ -29,11 +29,11 @@
 	let open = false;
 	let minWidth = 0;
 
-	$: selectedIndex, watchSelectedIndex();
+	$: watchSelectedIndex(selectedIndex);
 	$: watchActiveEntry(activeEntry);
 
 	// Called only when `selectedIndex` is changed from outside this component
-	function watchSelectedIndex() {
+	function watchSelectedIndex(_?: number) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}

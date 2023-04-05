@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import { textInputCleanup } from "@/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@/utility-functions/rasterization";
+	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -17,16 +17,16 @@
 		UpdateDocumentScrollbars,
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
-	} from "@/wasm-communication/messages";
+	} from "@graphite/wasm-communication/messages";
 
-	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@/components/floating-menus/EyedropperPreview.svelte";
-	import LayoutCol from "@/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@/components/layout/LayoutRow.svelte";
-	import CanvasRuler from "@/components/widgets/metrics/CanvasRuler.svelte";
-	import PersistentScrollbar from "@/components/widgets/metrics/PersistentScrollbar.svelte";
-	import WidgetLayout from "@/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@/wasm-communication/editor";
-	import type { DocumentState } from "@/state-providers/document";
+	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import CanvasRuler from "@graphite/components/widgets/metrics/CanvasRuler.svelte";
+	import PersistentScrollbar from "@graphite/components/widgets/metrics/PersistentScrollbar.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { DocumentState } from "@graphite/state-providers/document";
 
 	let rulerHorizontal: CanvasRuler | undefined;
 	let rulerVertical: CanvasRuler | undefined;

@@ -69,6 +69,7 @@ impl DocumentNode {
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
+				NodeInput::ShortCircut(ty) => (ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
 			assert!(
@@ -121,12 +122,56 @@ impl DocumentNode {
 	}
 }
 
+/// Represents the possible inputs to a node.
+///
+/// # More about short circuting
+///
+/// In Graphite nodes are functions and by default, these are composed into a single function
+/// by inserting Compose nodes.
+///
+/// ```text
+/// ┌─────────────────┐               ┌──────────────────┐                ┌──────────────────┐
+/// │                 │◄──────────────┤                  │◄───────────────┤                  │
+/// │        A        │               │        B         │                │        C         │
+/// │                 ├──────────────►│                  ├───────────────►│                  │
+/// └─────────────────┘               └──────────────────┘                └──────────────────┘
+/// ```
+///
+/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`).
+/// But sometimes we might want to have a little more control over the order of execution.
+/// This is why we allow nodes to opt out of the input forwarding by consuming the input directly.
+///
+/// ```text
+///                                    ┌─────────────────────┐                ┌─────────────┐
+///                                    │                     │◄───────────────┤             │
+///                                    │     Cache Node      │                │      C      │
+///                                    │                     ├───────────────►│             │
+/// ┌──────────────────┐               ├─────────────────────┤                └─────────────┘
+/// │                  │◄──────────────┤                     │
+/// │        A         │               │ * Cached Node       │
+/// │                  ├──────────────►│                     │
+/// └──────────────────┘               └─────────────────────┘
+/// ```
+///
+/// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
+/// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
 #[derive(Debug, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
-	Node { node_id: NodeId, output_index: usize, lambda: bool },
-	Value { tagged_value: crate::document::value::TaggedValue, exposed: bool },
+	Node {
+		node_id: NodeId,
+		output_index: usize,
+		lambda: bool,
+	},
+	Value {
+		tagged_value: crate::document::value::TaggedValue,
+		exposed: bool,
+	},
 	Network(Type),
+	/// A short circuting input represents an input that is not resolved through function composition
+	/// but actually consuming the provided input instead of passing it to its predecessor.
+	/// See [NodeInput] docs for more explanation.
+	ShortCircut(Type),
 }
 
 impl NodeInput {
@@ -153,6 +198,7 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network(_) => false,
+			NodeInput::ShortCircut(_) => false,
 		}
 	}
 	pub fn ty(&self) -> Type {
@@ -160,6 +206,7 @@ impl NodeInput {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			NodeInput::Network(ty) => ty.clone(),
+			NodeInput::ShortCircut(ty) => ty.clone(),
 		}
 	}
 }
@@ -250,7 +297,7 @@ impl NodeNetwork {
 		let mut duplicating_nodes = HashMap::new();
 		// Find the nodes where the inputs require duplicating
 		for node in &mut self.nodes.values_mut() {
-			// Recursivly duplicate children
+			// Recursively duplicate children
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
 				network.duplicate_outputs(gen_id);
 			}
@@ -377,7 +424,6 @@ impl NodeNetwork {
 							network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 						}
 						NodeInput::Value { tagged_value, exposed } => {
-							// Skip formatting very large values for seconds in performance speedup
 							let name = "Value".to_string();
 							let new_id = map_ids(id, gen_id());
 							let value_node = DocumentNode {
@@ -397,6 +443,7 @@ impl NodeNetwork {
 								self.inputs[index] = *network_input;
 							}
 						}
+						NodeInput::ShortCircut(_) => (),
 					}
 				}
 				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
@@ -446,7 +493,7 @@ impl NodeNetwork {
 				(
 					0,
 					DocumentNode {
-						name: "Input".into(),
+						name: "Input Frame".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 						metadata: DocumentNodeMetadata { position: (8, 4).into() },
@@ -489,7 +536,7 @@ impl NodeNetwork {
 	}
 
 	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
+	pub fn connected_to_output(&self, target_node_id: NodeId, ignore_imaginate: bool) -> bool {
 		// If the node is the output then return true
 		if self.outputs.iter().any(|&NodeOutput { node_id, .. }| node_id == target_node_id) {
 			return true;
@@ -502,6 +549,11 @@ impl NodeNetwork {
 		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
 
 		while let Some(node) = stack.pop() {
+			// Skip the imaginate node inputs
+			if ignore_imaginate && node.name == "Imaginate" {
+				continue;
+			}
+
 			for input in &node.inputs {
 				if let &NodeInput::Node { node_id: ref_id, .. } = input {
 					// Skip if already viewed
@@ -538,6 +590,38 @@ impl NodeNetwork {
 	/// Is the node being used directly as a previous output?
 	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
+	}
+
+	/// A iterator of all nodes connected by primary inputs.
+	///
+	/// Used for the properties panel and tools.
+	pub fn primary_flow(&self) -> impl Iterator<Item = (&DocumentNode, u64)> {
+		struct FlowIter<'a> {
+			stack: Vec<NodeId>,
+			network: &'a NodeNetwork,
+		}
+		impl<'a> Iterator for FlowIter<'a> {
+			type Item = (&'a DocumentNode, NodeId);
+			fn next(&mut self) -> Option<Self::Item> {
+				loop {
+					let node_id = self.stack.pop()?;
+					if let Some(document_node) = self.network.nodes.get(&node_id) {
+						self.stack.extend(
+							document_node
+						.inputs
+						.iter()
+						.take(1) // Only show the primary input
+						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
+						);
+						return Some((document_node, node_id));
+					};
+				}
+			}
+		}
+		FlowIter {
+			stack: self.outputs.iter().map(|output| output.node_id).collect(),
+			network: &self,
+		}
 	}
 }
 

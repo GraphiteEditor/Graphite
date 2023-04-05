@@ -48,6 +48,9 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 
 	// Find the delta transform
 	let mut delta = layer.transform.inverse() * transform;
+	if !delta.is_finite() {
+		return layer.transform.to_cols_array();
+	}
 
 	// Preserve aspect ratio
 	if matches!(transform_op, TransformOp::ScaleX | TransformOp::Width) && layer.preserve_aspect {
@@ -74,7 +77,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				tooltip: "Artboard".into(),
 				..Default::default()
 			})),
-			WidgetHolder::related_separator(),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Artboard".into(),
 				..TextLabel::default()
@@ -253,7 +256,7 @@ pub fn register_artwork_layer_properties(
 		widgets: vec![
 			match &layer.data {
 				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeFolder".into(),
+					icon: "Folder".into(),
 					tooltip: "Folder".into(),
 					..Default::default()
 				})),
@@ -268,15 +271,15 @@ pub fn register_artwork_layer_properties(
 					..Default::default()
 				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeNodes".into(),
-					tooltip: "Node Graph Frame".into(),
+					icon: "Layer".into(),
+					tooltip: "Layer".into(),
 					..Default::default()
 				})),
 			},
-			WidgetHolder::related_separator(),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: match &layer.data {
-					LayerDataType::NodeGraphFrame(_) => "Node Graph Frame".into(),
+					LayerDataType::NodeGraphFrame(_) => "Layer".into(),
 					other => LayerDataTypeDiscriminant::from(other).to_string(),
 				},
 				..TextLabel::default()
@@ -317,7 +320,7 @@ pub fn register_artwork_layer_properties(
 			]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
-			let mut properties_sections = vec![node_section_transform(layer, persistent_data)];
+			let mut properties_sections = Vec::new();
 
 			let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
 				persistent_data,

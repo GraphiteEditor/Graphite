@@ -33,7 +33,6 @@ use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
 use graphene_core::raster::{Color, ImageFrame};
-use graphene_std::vector::subpath::Subpath;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -207,6 +206,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let selected_layers = &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()));
 				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, selected_layers));
 			}
+			#[remain::unsorted]
+			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
 
 			// Messages
 			AbortTransaction => {
@@ -252,13 +253,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							_ => lerp(&bbox),
 						};
 						let translation = (aggregated - center) * axis;
-						responses.push_back(
-							DocumentOperation::TransformLayerInViewport {
-								path: path.to_vec(),
-								transform: DAffine2::from_translation(translation).to_cols_array(),
-							}
-							.into(),
-						);
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: path.to_vec(),
+							transform: DAffine2::from_translation(translation),
+							transform_in: TransformIn::Viewport,
+						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
@@ -323,24 +322,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_front(BroadcastEvent::SelectionChanged.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			DeleteSelectedManipulatorPoints => {
-				responses.push_back(StartTransaction.into());
-
-				responses.push_front(
-					DocumentOperation::DeleteSelectedManipulatorPoints {
-						layer_paths: self.selected_layers_without_children().iter().map(|path| path.to_vec()).collect(),
-					}
-					.into(),
-				);
-			}
 			DeselectAllLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
-			}
-			DeselectAllManipulatorPoints => {
-				for layer_path in self.selected_layers_without_children() {
-					responses.push_back(DocumentOperation::DeselectAllManipulatorPoints { layer_path: layer_path.to_vec() }.into());
-				}
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
@@ -409,14 +393,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for path in self.selected_layers() {
-						responses.push_back(
-							DocumentOperation::TransformLayerInScope {
-								path: path.to_vec(),
-								transform: DAffine2::from_scale(scale).to_cols_array(),
-								scope: bbox_trans.to_cols_array(),
-							}
-							.into(),
-						);
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: path.to_vec(),
+							transform: DAffine2::from_scale(scale),
+							transform_in: TransformIn::Scope { scope: bbox_trans },
+						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
@@ -507,28 +488,36 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 			}
-			MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
-				if let Ok(_layer) = self.document_legacy.layer(&layer_path) {
-					responses.push_back(DocumentOperation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance }.into());
-				}
+			NodeGraphFrameClear {
+				layer_path,
+				node_id,
+				cached_index: input_index,
+			} => {
+				let value = graph_craft::document::value::TaggedValue::RcImage(None);
+				responses.push_back(NodeGraphMessage::SetInputValue { node_id, input_index, value }.into());
+				responses.push_back(NodeGraphFrameGenerate { layer_path }.into());
 			}
-			NodeGraphFrameGenerate => {
-				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, None) {
+			NodeGraphFrameGenerate { layer_path } => {
+				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, None) {
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameImaginate { imaginate_node } => {
-				if let Some(message) = self.call_node_graph_frame(document_id, preferences, persistent_data, Some(imaginate_node)) {
+			NodeGraphFrameImaginate { layer_path, imaginate_node } => {
+				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
 					responses.push_back(message);
 				}
 			}
-			NodeGraphFrameImaginateRandom { imaginate_node, then_generate } => {
+			NodeGraphFrameImaginateRandom {
+				layer_path,
+				imaginate_node,
+				then_generate,
+			} => {
 				// Set a random seed input
 				responses.push_back(
 					NodeGraphMessage::SetInputValue {
 						node_id: *imaginate_node.last().unwrap(),
 						// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-						input_index: 2,
+						input_index: 1,
 						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
 					}
 					.into(),
@@ -536,7 +525,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Generate the image
 				if then_generate {
-					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { imaginate_node }.into());
+					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { layer_path, imaginate_node }.into());
 				}
 			}
 			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
@@ -564,7 +553,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					// Nudge translation
 					let transform = if !ipp.keyboard.key(resize) {
-						Some(DAffine2::from_translation((delta_x, delta_y).into()).to_cols_array())
+						Some(DAffine2::from_translation((delta_x, delta_y).into()))
 					}
 					// Nudge resize
 					else {
@@ -582,12 +571,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 								let offset = DAffine2::from_translation(if opposite_corner { -existing_bottom_right } else { -existing_top_left });
 								let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
 
-								(offset.inverse() * scale * offset).to_cols_array()
+								offset.inverse() * scale * offset
 							})
 					};
 
 					if let Some(transform) = transform {
-						responses.push_back(DocumentOperation::TransformLayerInViewport { path, transform }.into());
+						let transform_in = TransformIn::Viewport;
+						responses.add(GraphOperationMessage::TransformChange { layer: path, transform, transform_in });
 					}
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -599,10 +589,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					warn!("Image node should be in registry");
 					return;
 				};
+				let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+					warn!("Transform node should be in registry");
+					return;
+				};
+				let Some(downscale_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Downscale") else {
+					warn!("Downscale node should be in registry");
+					return;
+				};
 
 				let path = vec![generate_uuid()];
-				let image_node_id = 100;
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
+				let [image_node_id, transform_node_id, downscale_node_id] = [100, 101, 102];
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downscale_node_id);
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -612,6 +610,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
 				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
 
+				// Scale the image to fit into a 512x512 box
+				let image_size = image_size / DVec2::splat((image_size.max_element() / 512.).max(1.));
+
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
 
@@ -619,15 +620,29 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
+				let mut pos = 8;
+				let mut next_pos = || {
+					pos += 8;
+					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+				};
+
 				network.nodes.insert(
 					image_node_id,
 					image_node_type.to_document_node(
 						[graph_craft::document::NodeInput::value(
-							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform }),
+							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
-						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
+						next_pos(),
 					),
+				);
+				network.nodes.insert(
+					transform_node_id,
+					transform_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(image_node_id, 0))], next_pos()),
+				);
+				network.nodes.insert(
+					downscale_node_id,
+					downscale_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 
 				responses.push_back(
@@ -646,15 +661,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.into(),
 				);
 
-				responses.push_back(
-					DocumentOperation::SetLayerTransform {
-						path,
-						transform: transform.to_cols_array(),
-					}
-					.into(),
-				);
+				responses.add(GraphOperationMessage::TransformSet {
+					layer: path.clone(),
+					transform,
+					transform_in: TransformIn::Local,
+				});
 
-				responses.push_back(DocumentMessage::NodeGraphFrameGenerate.into());
+				responses.push_back(DocumentMessage::NodeGraphFrameGenerate { layer_path: path }.into());
 
 				// Force chosen tool to be Select Tool after importing image.
 				responses.push_back(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into());
@@ -904,9 +917,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-			ToggleSelectedHandleMirroring { layer_path, toggle_angle } => {
-				responses.push_back(DocumentOperation::SetSelectedHandleMirroring { layer_path, toggle_angle }.into());
-			}
 			Undo => {
 				self.undo_in_progress = true;
 				responses.push_back(BroadcastEvent::ToolAbort.into());
@@ -1012,18 +1022,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_node_graph_frame(&mut self, document_id: u64, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData, imaginate_node: Option<Vec<NodeId>>) -> Option<Message> {
-		let layer_path = {
-			let mut selected_nodegraph_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
-
-			// Get what is hopefully the only selected nodegraph layer
-			match selected_nodegraph_layers.next() {
-				// Continue only if there are no additional nodegraph layers also selected
-				Some(layer_path) if selected_nodegraph_layers.next().is_none() => layer_path.to_owned(),
-				_ => return None,
-			}
-		};
-
+	pub fn call_node_graph_frame(
+		&mut self,
+		document_id: u64,
+		layer_path: Vec<LayerId>,
+		_preferences: &PreferencesMessageHandler,
+		persistent_data: &PersistentData,
+		imaginate_node: Option<Vec<NodeId>>,
+	) -> Option<Message> {
 		// Prepare the node graph input image
 
 		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_graph().ok()) else {
@@ -1031,7 +1037,7 @@ impl DocumentMessageHandler {
 		};
 
 		// Skip processing under node graph frame input if not connected
-		if !node_network.connected_to_output(node_network.inputs[0]) {
+		if !node_network.connected_to_output(node_network.inputs[0], false) {
 			return Some(
 				PortfolioMessage::ProcessNodeGraphFrame {
 					document_id,
@@ -1236,22 +1242,6 @@ impl DocumentMessageHandler {
 			Ok(layer) => layer.visible,
 			Err(_) => false,
 		})
-	}
-
-	/// Returns a copy of all the currently selected [Subpath]s.
-	pub fn selected_subpaths(&self) -> Vec<Subpath> {
-		self.selected_visible_layers()
-			.flat_map(|layer| self.document_legacy.layer(layer))
-			.flat_map(|layer| layer.as_subpath_copy())
-			.collect::<Vec<Subpath>>()
-	}
-
-	/// Returns references to all the currently selected [Subpath]s.
-	pub fn selected_subpaths_ref(&self) -> Vec<&Subpath> {
-		self.selected_visible_layers()
-			.flat_map(|layer| self.document_legacy.layer(layer))
-			.flat_map(|layer| layer.as_subpath())
-			.collect::<Vec<&Subpath>>()
 	}
 
 	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
@@ -1951,7 +1941,7 @@ impl DocumentMessageHandler {
 					direction: SeparatorDirection::Horizontal,
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "NodeFolder".into(),
+					icon: "Folder".into(),
 					tooltip: "New Folder".into(),
 					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
 					size: 24,

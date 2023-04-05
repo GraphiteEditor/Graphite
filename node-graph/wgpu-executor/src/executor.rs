@@ -17,7 +17,6 @@ pub struct GpuExecutor<'a, I: StaticTypeSized, O> {
 
 impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
 	pub fn new(context: Context, shader: Cow<'a, [u32]>, entry_point: String) -> anyhow::Result<Self> {
-		log::info!("Creating executor");
 		Ok(Self {
 			context,
 			entry_point,
@@ -29,7 +28,6 @@ impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
 
 impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> Executor for GpuExecutor<'a, I, O> {
 	fn execute<'i, 's: 'i>(&'s self, input: Any<'i>) -> Result<Any<'i>, Box<dyn std::error::Error>> {
-		log::info!("Executing shader");
 		let input = dyn_any::downcast::<Vec<I>>(input).expect("Wrong input type");
 		let context = &self.context;
 		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec(), *input, self.entry_point.clone());
