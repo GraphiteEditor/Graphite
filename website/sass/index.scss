@@ -231,12 +231,17 @@
 	}
 }
 
-#upcoming-tech {
-	background-color: var(--color-navy);
-	color: var(--color-fog);
+#demo-video {
+	max-width: 1000px;
+}
 
-	a {
-		color: var(--color-mustard);
+#disciplines {
+	.informational-group {
+		margin-top: 0;
+
+		.informational {
+			margin-top: 40px;
+		}
 	}
 }
 
@@ -385,6 +390,16 @@
 		}
 	}
 }
+
+#upcoming-tech {
+	background-color: var(--color-navy);
+	color: var(--color-fog);
+
+	a {
+		color: var(--color-mustard);
+	}
+}
+
 
 #recent-news {
 	background-color: var(--color-mustard);
