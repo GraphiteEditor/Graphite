@@ -12,7 +12,6 @@ use document_legacy::intersection::Quad;
 use document_legacy::LayerId;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
-use graphene_std::vector::consts::ManipulatorType;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
