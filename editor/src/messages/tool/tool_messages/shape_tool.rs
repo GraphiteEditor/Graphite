@@ -172,7 +172,7 @@ impl Fsm for ShapeToolFsmState {
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, document, center, lock_ratio, input) {
+					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
 						responses.push_back(message);
 					}
 

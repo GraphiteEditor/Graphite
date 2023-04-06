@@ -230,5 +230,6 @@ fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses
 		layer: layer_path,
 		transform: DAffine2::from_translation(position),
 		transform_in: TransformIn::Local,
+		skip_rerender: false,
 	});
 }

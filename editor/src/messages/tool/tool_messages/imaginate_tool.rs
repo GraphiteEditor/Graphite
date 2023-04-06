@@ -113,9 +113,9 @@ impl Fsm for ImaginateToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					shape_data.path = Some(document.get_path_for_new_layer());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					responses.add(DocumentMessage::DeselectAllLayers);
 
 					use graph_craft::document::*;
 
@@ -149,34 +149,34 @@ impl Fsm for ImaginateToolFsmState {
 					);
 
 					// Add the node graph frame layer to the document
-					responses.push_back(
-						Operation::AddNodeGraphFrame {
-							path: shape_data.path.clone().unwrap(),
-							insert_index: -1,
-							transform: DAffine2::ZERO.to_cols_array(),
-							network,
-						}
-						.into(),
-					);
-					responses.push_back(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id }.into());
+					responses.add(Operation::AddNodeGraphFrame {
+						path: shape_data.path.clone().unwrap(),
+						insert_index: -1,
+						transform: DAffine2::ZERO.to_cols_array(),
+						network,
+					});
+					responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
 
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, document, center, lock_ratio, input) {
-						responses.push_back(message);
-					}
+					let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
+					responses.try_add(message);
 
 					state
 				}
 				(Drawing, DragStop) => {
+					if let Some(layer_path) = &shape_data.path {
+						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+					}
+
 					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 					shape_data.cleanup(responses);
 
 					Ready
 				}
 				(Drawing, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					responses.add(DocumentMessage::AbortTransaction);
 
 					shape_data.cleanup(responses);
 
@@ -199,10 +199,10 @@ impl Fsm for ImaginateToolFsmState {
 			ImaginateToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
 }
