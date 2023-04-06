@@ -34,35 +34,36 @@ impl Resize {
 		&mut self,
 		responses: &mut VecDeque<Message>,
 		document: &DocumentMessageHandler,
+		ipp: &InputPreprocessorMessageHandler,
 		center: Key,
 		lock_ratio: Key,
-		ipp: &InputPreprocessorMessageHandler,
+		skip_rerender: bool,
 	) -> Option<Message> {
-		if let Some(path) = &self.path {
-			let mut start = self.viewport_drag_start(document);
+		let Some(path) = &self.path else {
+			return None;
+		};
 
-			let stop = self.snap_manager.snap_position(responses, document, ipp.mouse.position);
+		let mut start = self.viewport_drag_start(document);
+		let stop = self.snap_manager.snap_position(responses, document, ipp.mouse.position);
 
-			let mut size = stop - start;
-			if ipp.keyboard.get(lock_ratio as usize) {
-				size = size.abs().max(size.abs().yx()) * size.signum();
-			}
-			if ipp.keyboard.get(center as usize) {
-				start -= size;
-				size *= 2.;
-			}
-
-			Some(
-				GraphOperationMessage::TransformSet {
-					layer: path.to_vec(),
-					transform: DAffine2::from_scale_angle_translation(size, 0., start),
-					transform_in: TransformIn::Viewport,
-				}
-				.into(),
-			)
-		} else {
-			None
+		let mut size = stop - start;
+		if ipp.keyboard.get(lock_ratio as usize) {
+			size = size.abs().max(size.abs().yx()) * size.signum();
 		}
+		if ipp.keyboard.get(center as usize) {
+			start -= size;
+			size *= 2.;
+		}
+
+		Some(
+			GraphOperationMessage::TransformSet {
+				layer: path.to_vec(),
+				transform: DAffine2::from_scale_angle_translation(size, 0., start),
+				transform_in: TransformIn::Viewport,
+				skip_rerender,
+			}
+			.into(),
+		)
 	}
 
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {

@@ -257,6 +257,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							layer: path.to_vec(),
 							transform: DAffine2::from_translation(translation),
 							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
 						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -397,6 +398,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							layer: path.to_vec(),
 							transform: DAffine2::from_scale(scale),
 							transform_in: TransformIn::Scope { scope: bbox_trans },
+							skip_rerender: false,
 						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -577,7 +579,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 					if let Some(transform) = transform {
 						let transform_in = TransformIn::Viewport;
-						responses.add(GraphOperationMessage::TransformChange { layer: path, transform, transform_in });
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: path,
+							transform,
+							transform_in,
+							skip_rerender: false,
+						});
 					}
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -665,6 +672,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					layer: path.clone(),
 					transform,
 					transform_in: TransformIn::Local,
+					skip_rerender: false,
 				});
 
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate { layer_path: path }.into());
@@ -821,7 +829,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				resolution,
 				document_id,
 			} => {
-				let layer = self.document_legacy.layer(&layer_path).expect("Setting blob URL for invalid layer");
+				let Ok(layer) = self.document_legacy.layer(&layer_path) else {
+					warn!("Setting blob URL for invalid layer");
+					return;
+				};
 
 				// Revoke the old blob URL
 				match &layer.data {
@@ -830,10 +841,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 					}
-					other => panic!(
-						"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
-						other
-					),
+					other => {
+						warn!(
+							"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
+							other
+						);
+						return;
+					}
 				}
 
 				responses.push_back(

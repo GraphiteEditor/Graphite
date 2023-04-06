@@ -63,7 +63,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Changes the inputs of a specific node
-	fn modify_inputs(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
+	fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
 		let existing_node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
 		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
@@ -74,15 +74,19 @@ impl<'a> ModifyInputsContext<'a> {
 		self.node_graph.nested_path.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
-		self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
 
+		if !skip_rerender {
+			self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+		} else {
+			self.responses.add(DocumentMessage::FrameClear);
+		}
 		if existing_node_id.is_none() {
 			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 		}
 	}
 
 	fn fill_set(&mut self, fill: Fill) {
-		self.modify_inputs("Fill", |inputs| {
+		self.modify_inputs("Fill", false, |inputs| {
 			let fill_type = match fill {
 				Fill::None => FillType::None,
 				Fill::Solid(_) => FillType::Solid,
@@ -104,7 +108,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn stroke_set(&mut self, stroke: Stroke) {
-		self.modify_inputs("Stroke", |inputs| {
+		self.modify_inputs("Stroke", false, |inputs| {
 			inputs[1] = NodeInput::value(TaggedValue::Color(stroke.color.unwrap_or_default()), false);
 			inputs[2] = NodeInput::value(TaggedValue::F64(stroke.weight), false);
 			inputs[3] = NodeInput::value(TaggedValue::VecF32(stroke.dash_lengths), false);
@@ -115,8 +119,8 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2) {
-		self.modify_inputs("Transform", |inputs| {
+	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
+		self.modify_inputs("Transform", skip_rerender, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
@@ -128,8 +132,8 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", |inputs| {
+	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
+		self.modify_inputs("Transform", skip_rerender, |inputs| {
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
@@ -142,7 +146,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", |inputs| {
+		self.modify_inputs("Transform", false, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
@@ -156,7 +160,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 
-		self.modify_inputs("Path Generator", |inputs| {
+		self.modify_inputs("Path Generator", false, |inputs| {
 			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
 				panic!("Path generator does not have subpath and mirror angle inputs");
 			};
@@ -180,7 +184,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
-		self.modify_inputs("Transform", |inputs| {
+		self.modify_inputs("Transform", false, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
 
@@ -214,27 +218,37 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				}
 			}
 
-			GraphOperationMessage::TransformChange { layer, transform, transform_in } => {
+			GraphOperationMessage::TransformChange {
+				layer,
+				transform,
+				transform_in,
+				skip_rerender,
+			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_change(transform, transform_in, parent_transform);
-				} else {
-					let transform = transform.to_cols_array();
-					responses.add(match transform_in {
-						TransformIn::Local => Operation::TransformLayer { path: layer, transform },
-						TransformIn::Scope { scope } => {
-							let scope = scope.to_cols_array();
-							Operation::TransformLayerInScope { path: layer, transform, scope }
-						}
-						TransformIn::Viewport => Operation::TransformLayerInViewport { path: layer, transform },
-					});
+					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
 				}
+
+				let transform = transform.to_cols_array();
+				responses.add(match transform_in {
+					TransformIn::Local => Operation::TransformLayer { path: layer, transform },
+					TransformIn::Scope { scope } => {
+						let scope = scope.to_cols_array();
+						Operation::TransformLayerInScope { path: layer, transform, scope }
+					}
+					TransformIn::Viewport => Operation::TransformLayerInViewport { path: layer, transform },
+				});
 			}
-			GraphOperationMessage::TransformSet { layer, transform, transform_in } => {
+			GraphOperationMessage::TransformSet {
+				layer,
+				transform,
+				transform_in,
+				skip_rerender,
+			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds);
+					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 				let transform = transform.to_cols_array();
 				responses.add(match transform_in {

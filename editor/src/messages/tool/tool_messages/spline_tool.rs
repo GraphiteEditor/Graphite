@@ -274,5 +274,6 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 		layer: layer_path,
 		transform: glam::DAffine2::from_translation(position),
 		transform_in: TransformIn::Local,
+		skip_rerender: false,
 	})
 }
