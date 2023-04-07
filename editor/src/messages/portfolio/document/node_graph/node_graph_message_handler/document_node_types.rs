@@ -722,7 +722,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
 				DocumentInputType::value("Weight", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Dash Lengths", TaggedValue::VecF32(Vec::new()), false),
 				DocumentInputType::value("Dash Offset", TaggedValue::F64(0.), false),

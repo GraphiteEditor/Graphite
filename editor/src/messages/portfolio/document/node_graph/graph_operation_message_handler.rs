@@ -109,7 +109,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	fn stroke_set(&mut self, stroke: Stroke) {
 		self.modify_inputs("Stroke", false, |inputs| {
-			inputs[1] = NodeInput::value(TaggedValue::Color(stroke.color.unwrap_or_default()), false);
+			inputs[1] = NodeInput::value(TaggedValue::OptionalColor(stroke.color), false);
 			inputs[2] = NodeInput::value(TaggedValue::F64(stroke.weight), false);
 			inputs[3] = NodeInput::value(TaggedValue::VecF32(stroke.dash_lengths), false);
 			inputs[4] = NodeInput::value(TaggedValue::F64(stroke.dash_offset), false);
