@@ -143,7 +143,7 @@ impl SelectedType {
 			.unwrap_or((Self::Anchor, manipulator_group.anchor.distance_squared(target)))
 	}
 
-	/// Opposite handle
+	/// Gives the opposite handle (in/out becomes out/in). An anchor stays an anchor.
 	pub fn opposite(&self) -> Self {
 		match self {
 			SelectedType::Anchor => SelectedType::Anchor,

@@ -200,17 +200,21 @@ impl ShapeState {
 		}
 	}
 
-	/// Mirror the opposing handles. We return the opposing handle lengths.
+	/// Mirror the lengths of the opposing handles. We return the opposing handle lengths.
 	///
 	/// toggle_angle_mirroring decides whether the current angle mirroring will be toggled.
 	/// It is required as messages don't immediately change the manipulator groups.
-	pub fn mirror_opposing_handles(&self, document: &Document, toggle_angle_mirroring: bool, responses: &mut VecDeque<Message>) -> OpposingHandleLengths {
+	pub fn mirror_opposing_handle_lengths(&self, document: &Document, toggle_angle_mirroring: bool, responses: &mut VecDeque<Message>) -> OpposingHandleLengths {
 		self.selected_shape_state
 			.iter()
 			.filter_map(|(path, state)| {
+				// Get the layer's vector data.
 				let layer = document.layer(path).ok()?;
 				let vector_data = layer.as_vector_data()?;
+
+				// Prepare a hashmap of the opposing handle lengths, from the manipulator group id to the optional length.
 				let mut opposing_handle_lengths = HashMap::new();
+
 				vector_data.subpaths.iter().for_each(|subpath| {
 					subpath.manipulator_groups().iter().for_each(|manipulator_group| {
 						let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
@@ -229,43 +233,28 @@ impl ShapeState {
 
 						let mirror_angle = vector_data.mirror_angle.contains(&manipulator_group.id) ^ toggle_angle_mirroring;
 
-						if let Some(opposing_handle_position) = single_selected_handle.opposite().get_position(manipulator_group) {
-							let opposing_handle_length = opposing_handle_position.distance(manipulator_group.anchor);
+						match single_selected_handle.opposite().get_position(manipulator_group) {
+							// If there is an opposing handle to the one selected, mirror it if the user has chosen to mirror the angle.
+							Some(opposing_handle_position) => {
+								// Get the existing length of the opposing handle to that which the user is dragging.
+								let opposing_handle_length = opposing_handle_position.distance(manipulator_group.anchor);
 
-							if opposing_handle_length > f64::EPSILON {
-								if mirror_angle {
-									opposing_handle_lengths.insert(manipulator_group.id, Some(opposing_handle_length));
+								// If the opposing handle's existing length is nonzero, we mark it to have its length mirrored if length mirroring is active by the user, then exit either way.
+								if opposing_handle_length > f64::EPSILON {
+									if mirror_angle {
+										opposing_handle_lengths.insert(manipulator_group.id, Some(opposing_handle_length));
+									}
+									return;
 								}
-							} else {
-								// The opposing handle is really close to the anchor, so we mirror.
+
+								// If the opposing handle is really close to the anchor, we mark it to have its length mirrored.
 								opposing_handle_lengths.insert(manipulator_group.id, Some(opposing_handle_length));
-
-								if !mirror_angle {
-									// If mirror_angle is false, we set mirroring to true and set the opposing handle length to the selected handles length.
-									responses.add(GraphOperationMessage::Vector {
-										layer: path.to_vec(),
-										modification: VectorDataModification::SetManipulatorHandleMirroring {
-											id: manipulator_group.id,
-											mirror_angle: true,
-										},
-									});
-
-									let Some(selected_handle_postion) = single_selected_handle.get_position(manipulator_group) else { return };
-									let new_opposing_handle_position = 2.0 * manipulator_group.anchor - selected_handle_postion;
-									assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
-									let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
-									responses.add(GraphOperationMessage::Vector {
-										layer: path.to_vec(),
-										modification: VectorDataModification::SetManipulatorPosition {
-											point,
-											position: new_opposing_handle_position.into(),
-										},
-									});
+								// Skip perform the following extra logic of dispatching messages if the user has chosen to not mirror the angle.
+								if mirror_angle {
+									return;
 								}
-							}
-						} else {
-							if !mirror_angle {
-								// Since we create a new opposing handle to mirror, we set manipulator's angle mirroring to true.
+
+								// If mirror_angle is false, we set mirroring to true and set the opposing handle length to the selected handle's length.
 								responses.add(GraphOperationMessage::Vector {
 									layer: path.to_vec(),
 									modification: VectorDataModification::SetManipulatorHandleMirroring {
@@ -273,24 +262,60 @@ impl ShapeState {
 										mirror_angle: true,
 									},
 								});
-							}
 
-							// We create a new opposing handle.
-							let Some(selected_handle_postion) = single_selected_handle.get_position(manipulator_group) else { return };
-							let new_opposing_handle_position = 2.0 * manipulator_group.anchor - selected_handle_postion;
-							assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
-							let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
-							responses.add(GraphOperationMessage::Vector {
-								layer: path.to_vec(),
-								modification: VectorDataModification::SetManipulatorPosition {
-									point,
-									position: new_opposing_handle_position.into(),
-								},
-							});
-							opposing_handle_lengths.insert(manipulator_group.id, None);
+								// Calculate the new opposing handle position.
+								let Some(selected_handle_postion) = single_selected_handle.get_position(manipulator_group) else { return };
+								let new_opposing_handle_position = 2. * manipulator_group.anchor - selected_handle_postion;
+								assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
+
+								// Get an ID for the new opposing handle.
+								let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
+
+								// Set the new opposing handle position.
+								responses.add(GraphOperationMessage::Vector {
+									layer: path.to_vec(),
+									modification: VectorDataModification::SetManipulatorPosition {
+										point,
+										position: new_opposing_handle_position,
+									},
+								});
+							}
+							// If there is no opposing handle to the one selected, create it.
+							None => {
+								if !mirror_angle {
+									// Since we create a new opposing handle to mirror, we set the manipulator's angle mirroring to true.
+									responses.add(GraphOperationMessage::Vector {
+										layer: path.to_vec(),
+										modification: VectorDataModification::SetManipulatorHandleMirroring {
+											id: manipulator_group.id,
+											mirror_angle: true,
+										},
+									});
+								}
+
+								// Calculate the a new opposing handle position.
+								let Some(selected_handle_postion) = single_selected_handle.get_position(manipulator_group) else { return };
+								let new_opposing_handle_position = 2. * manipulator_group.anchor - selected_handle_postion;
+								assert!(new_opposing_handle_position.is_finite(), "Opposing handle not finite!");
+
+								// Get an ID for the new opposing handle.
+								let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
+
+								// Set the new opposing handle position.
+								responses.add(GraphOperationMessage::Vector {
+									layer: path.to_vec(),
+									modification: VectorDataModification::SetManipulatorPosition {
+										point,
+										position: new_opposing_handle_position,
+									},
+								});
+
+								opposing_handle_lengths.insert(manipulator_group.id, None);
+							}
 						}
 					});
 				});
+
 				Some((path.clone(), opposing_handle_lengths))
 			})
 			.collect::<HashMap<_, _>>()

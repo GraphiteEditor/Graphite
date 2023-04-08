@@ -267,7 +267,7 @@ impl Fsm for PathToolFsmState {
 
 					if shift_pressed {
 						if tool_data.opposing_handle_lengths.is_none() {
-							tool_data.opposing_handle_lengths = Some(shape_editor.mirror_opposing_handles(&document.document_legacy, alt_pressed, responses));
+							tool_data.opposing_handle_lengths = Some(shape_editor.mirror_opposing_handle_lengths(&document.document_legacy, alt_pressed, responses));
 						}
 					} else if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
 						shape_editor.reset_mirrored_opposing_handles(&document.document_legacy, opposing_handle_lengths, responses);
