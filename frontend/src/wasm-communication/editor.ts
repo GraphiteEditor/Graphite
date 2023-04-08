@@ -58,7 +58,7 @@ export async function initWasm(): Promise<void> {
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
 	// eslint-disable-next-line import/no-cycle
-	wasmImport = await import("@graphite/../wasm/pkg").then(panicProxy);
+	wasmImport = await import("@graphite/../wasm/pkg");
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);

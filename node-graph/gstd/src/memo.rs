@@ -1,8 +1,8 @@
+use graphene_core::Node;
+
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use xxhash_rust::xxh3::Xxh3;
-
-use graphene_core::Node;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]

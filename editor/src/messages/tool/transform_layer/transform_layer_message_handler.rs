@@ -59,6 +59,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
+			selected.original_transforms.clear();
 		};
 
 		#[remain::sorted]
@@ -71,6 +72,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(BroadcastEvent::DocumentIsDirty);
+				for layer_path in document.selected_layers() {
+					responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+				}
 			}
 			BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -87,7 +91,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				self.original_transforms.clear();
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -104,7 +107,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				self.original_transforms.clear();
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -119,10 +121,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				self.original_transforms.clear();
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();
@@ -197,10 +197,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 				shape_editor.set_selected_layers(layer_paths);
 			}
-			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
-			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
-			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap),
-			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap),
+			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
+			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
+			TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
+			TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap),
 		}
 	}
 

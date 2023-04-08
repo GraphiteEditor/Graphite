@@ -14,7 +14,7 @@ impl Bezier {
 	}
 
 	/// Create a quadratic bezier using the provided DVec2s as the start, handle, and end points.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/bezier-rs-demos#bezier/constructor/solo" title="Constructor Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/constructor/solo" title="Constructor Demo"></iframe>
 	pub fn from_linear_dvec2(p1: DVec2, p2: DVec2) -> Self {
 		Bezier {
 			start: p1,
@@ -69,7 +69,7 @@ impl Bezier {
 	/// - `t` - A representation of how far along the curve the provided point should occur at. The default value is 0.5.
 	/// Note that when `t = 0` or `t = 1`, the expectation is that the `point_on_curve` should be equal to `start` and `end` respectively.
 	/// In these cases, if the provided values are not equal, this function will use the `point_on_curve` as the `start`/`end` instead.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/bezier-rs-demos#bezier/bezier-through-points/solo" title="Through Points Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#bezier/bezier-through-points/solo" title="Through Points Demo"></iframe>
 	pub fn quadratic_through_points(start: DVec2, point_on_curve: DVec2, end: DVec2, t: Option<f64>) -> Self {
 		let t = t.unwrap_or(DEFAULT_T_VALUE);
 		if t == 0. {

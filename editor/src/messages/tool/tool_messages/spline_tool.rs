@@ -262,6 +262,7 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 	}
 
 	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
+	let position = subpath.bounding_box().unwrap_or_default().into_iter().sum::<DVec2>() / 2.;
 
 	let layer_path = tool_data.path.clone().unwrap();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
@@ -269,4 +270,10 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 		layer: layer_path.clone(),
 		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
 	});
+	responses.add(GraphOperationMessage::TransformSet {
+		layer: layer_path,
+		transform: glam::DAffine2::from_translation(position),
+		transform_in: TransformIn::Local,
+		skip_rerender: false,
+	})
 }

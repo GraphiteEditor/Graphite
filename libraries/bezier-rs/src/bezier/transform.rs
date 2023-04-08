@@ -37,7 +37,7 @@ impl Bezier {
 	}
 
 	/// Returns the pair of Bezier curves that result from splitting the original curve at the point `t` along the curve.
-	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/bezier-rs-demos#bezier/split/solo" title="Split Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/split/solo" title="Split Demo"></iframe>
 	pub fn split(&self, t: TValue) -> [Bezier; 2] {
 		let t = self.t_value_to_parametric(t);
 		let split_point = self.evaluate(TValue::Parametric(t));
@@ -83,7 +83,7 @@ impl Bezier {
 
 	/// Returns the Bezier curve representing the sub-curve between the two provided points.
 	/// It will start at the point corresponding to the smaller of `t1` and `t2`, and end at the point corresponding to the larger of `t1` and `t2`.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/trim/solo" title="Trim Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/trim/solo" title="Trim Demo"></iframe>
 	pub fn trim(&self, t1: TValue, t2: TValue) -> Bezier {
 		let (mut t1, mut t2) = (self.t_value_to_parametric(t1), self.t_value_to_parametric(t2));
 		// If t1 is equal to t2, return a bezier comprised entirely of the same point
@@ -122,7 +122,7 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier curve that results from rotating the curve around the origin by the given angle (in radians).
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/rotate/solo" title="Rotate Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Bezier {
 		let rotation_matrix = DMat2::from_angle(angle);
 		self.apply_transformation(|point| rotation_matrix.mul_vec2(point))
@@ -251,7 +251,7 @@ impl Bezier {
 	/// The function takes the following parameter:
 	/// - `step_size` - Dictates the granularity at which the function searches for reducible subcurves. The default value is `0.01`.
 	///   A small granularity may increase the chance the function does not introduce gaps, but will increase computation time.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/bezier-rs-demos#bezier/reduce/solo" title="Reduce Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/reduce/solo" title="Reduce Demo"></iframe>
 	pub fn reduce(&self, step_size: Option<f64>) -> Vec<Bezier> {
 		self.reduced_curves_and_t_values(step_size).0
 	}
@@ -355,7 +355,7 @@ impl Bezier {
 	/// Offset takes the following parameter:
 	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/bezier-rs-demos#bezier/offset/solo" title="Offset Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
 		if self.is_point() {
 			return Subpath::from_bezier(self);
@@ -422,7 +422,7 @@ impl Bezier {
 	/// The 'caps', the linear segments at opposite ends of the outline, intersect the original curve at the midpoint of the cap.
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
-	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/bezier-rs-demos#bezier/outline/solo" title="Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/outline/solo" title="Outline Demo"></iframe>
 	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let (pos_offset, neg_offset) = if self.is_point() {
 			(
@@ -442,13 +442,13 @@ impl Bezier {
 
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
 	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, cap)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
-	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/bezier-rs-demos#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/libraries/bezier-rs#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
 	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
 		let (pos_offset, neg_offset) = if self.is_point() {
 			(
@@ -468,7 +468,7 @@ impl Bezier {
 
 	/// Approximate a bezier curve with circular arcs.
 	/// The algorithm can be customized using the [ArcsOptions] structure.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/bezier-rs-demos#bezier/arcs/solo" title="Arcs Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/arcs/solo" title="Arcs Demo"></iframe>
 	pub fn arcs(&self, arcs_options: ArcsOptions) -> Vec<CircleArc> {
 		let ArcsOptions {
 			strategy: maximize_arcs,

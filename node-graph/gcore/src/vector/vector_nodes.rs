@@ -52,7 +52,7 @@ pub struct SetStrokeNode<Color, Weight, DashLengths, DashOffset, LineCap, LineJo
 #[node_macro::node_fn(SetStrokeNode)]
 fn set_vector_data_stroke(
 	mut vector_data: VectorData,
-	color: crate::Color,
+	color: Option<Color>,
 	weight: f64,
 	dash_lengths: Vec<f32>,
 	dash_offset: f64,
@@ -61,7 +61,7 @@ fn set_vector_data_stroke(
 	miter_limit: f64,
 ) -> VectorData {
 	vector_data.style.set_stroke(Stroke {
-		color: Some(color),
+		color,
 		weight,
 		dash_lengths,
 		dash_offset,
