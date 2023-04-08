@@ -124,7 +124,7 @@ impl DocumentNode {
 
 /// Represents the possible inputs to a node.
 ///
-/// # Short circuting
+/// # More about short circuting
 ///
 /// In Graphite nodes are functions and by default, these are composed into a single function
 /// by inserting Compose nodes.
@@ -493,7 +493,7 @@ impl NodeNetwork {
 				(
 					0,
 					DocumentNode {
-						name: "Input".into(),
+						name: "Input Frame".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 						metadata: DocumentNodeMetadata { position: (8, 4).into() },

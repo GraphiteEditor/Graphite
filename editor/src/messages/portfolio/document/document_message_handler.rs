@@ -257,6 +257,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							layer: path.to_vec(),
 							transform: DAffine2::from_translation(translation),
 							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
 						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -397,6 +398,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							layer: path.to_vec(),
 							transform: DAffine2::from_scale(scale),
 							transform_in: TransformIn::Scope { scope: bbox_trans },
+							skip_rerender: false,
 						});
 					}
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -577,7 +579,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 					if let Some(transform) = transform {
 						let transform_in = TransformIn::Viewport;
-						responses.add(GraphOperationMessage::TransformChange { layer: path, transform, transform_in });
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: path,
+							transform,
+							transform_in,
+							skip_rerender: false,
+						});
 					}
 				}
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -589,10 +596,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					warn!("Image node should be in registry");
 					return;
 				};
+				let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+					warn!("Transform node should be in registry");
+					return;
+				};
+				let Some(downscale_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Downscale") else {
+					warn!("Downscale node should be in registry");
+					return;
+				};
 
 				let path = vec![generate_uuid()];
-				let image_node_id = 100;
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, image_node_id);
+				let [image_node_id, transform_node_id, downscale_node_id] = [100, 101, 102];
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downscale_node_id);
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -612,15 +627,29 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.push_back(DocumentMessage::StartTransaction.into());
 
+				let mut pos = 8;
+				let mut next_pos = || {
+					pos += 8;
+					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+				};
+
 				network.nodes.insert(
 					image_node_id,
 					image_node_type.to_document_node(
 						[graph_craft::document::NodeInput::value(
-							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform }),
+							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
-						graph_craft::document::DocumentNodeMetadata::position((20, 4)),
+						next_pos(),
 					),
+				);
+				network.nodes.insert(
+					transform_node_id,
+					transform_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(image_node_id, 0))], next_pos()),
+				);
+				network.nodes.insert(
+					downscale_node_id,
+					downscale_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 
 				responses.push_back(
@@ -643,6 +672,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					layer: path.clone(),
 					transform,
 					transform_in: TransformIn::Local,
+					skip_rerender: false,
 				});
 
 				responses.push_back(DocumentMessage::NodeGraphFrameGenerate { layer_path: path }.into());
@@ -799,7 +829,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				resolution,
 				document_id,
 			} => {
-				let layer = self.document_legacy.layer(&layer_path).expect("Setting blob URL for invalid layer");
+				let Ok(layer) = self.document_legacy.layer(&layer_path) else {
+					warn!("Setting blob URL for invalid layer");
+					return;
+				};
 
 				// Revoke the old blob URL
 				match &layer.data {
@@ -808,10 +841,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 					}
-					other => panic!(
-						"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
-						other
-					),
+					other => {
+						warn!(
+							"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
+							other
+						);
+						return;
+					}
 				}
 
 				responses.push_back(
@@ -1919,7 +1955,7 @@ impl DocumentMessageHandler {
 					direction: SeparatorDirection::Horizontal,
 				})),
 				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "NodeFolder".into(),
+					icon: "Folder".into(),
 					tooltip: "New Folder".into(),
 					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
 					size: 24,

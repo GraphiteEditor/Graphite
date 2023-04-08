@@ -19,7 +19,7 @@ pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
 pub(crate) fn transform_vector_data(mut vector_data: VectorData, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2, pivot: DVec2) -> VectorData {
 	let pivot = DAffine2::from_translation(vector_data.local_pivot(pivot));
 
-	let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
 	vector_data.transform = modification * vector_data.transform;
 
 	vector_data
@@ -40,18 +40,12 @@ where
 		let rotate = self.rotate.eval(());
 		let scale = self.scale.eval(());
 		let shear = self.shear.eval(());
+		let pivot = self.pivot.eval(());
 
-		let transform = generate_transform(shear, &image_frame.transform, scale, rotate, translate);
-		image_frame.transform = transform * image_frame.transform;
+		let pivot = DAffine2::from_translation(pivot);
+		let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+		image_frame.transform = modification * image_frame.transform;
+
 		image_frame
 	}
-}
-
-// Generates a transform matrix that rotates around the center of the image
-fn generate_transform(shear: DVec2, transform: &DAffine2, scale: DVec2, rotate: f64, translate: DVec2) -> DAffine2 {
-	let shear_matrix = DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let pivot = transform.transform_point2(DVec2::splat(0.5));
-	let translate_to_center = DAffine2::from_translation(-pivot);
-
-	translate_to_center.inverse() * DAffine2::from_scale_angle_translation(scale, rotate, translate) * shear_matrix * translate_to_center
 }

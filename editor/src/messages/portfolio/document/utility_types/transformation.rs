@@ -6,7 +6,6 @@ use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
-use document_legacy::Operation as DocumentOperation;
 use graphene_core::vector::consts::ManipulatorType;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -209,7 +208,7 @@ impl TransformOperation {
 		self.apply_transform_operation(selected, snapping, axis);
 	}
 
-	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -388,13 +387,12 @@ impl<'a> Selected<'a> {
 					};
 					let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 					let new = to.inverse() * transformation * to * original_layer_transforms;
-					self.responses.push_back(
-						DocumentOperation::SetLayerTransform {
-							path: layer_path.to_vec(),
-							transform: new.to_cols_array(),
-						}
-						.into(),
-					);
+					self.responses.add(GraphOperationMessage::TransformSet {
+						layer: layer_path.to_vec(),
+						transform: new,
+						transform_in: TransformIn::Local,
+						skip_rerender: true,
+					});
 				}
 				if *self.tool_type == ToolType::Path {
 					let viewspace = self.document.generate_transform_relative_to_viewport(*layer_path).ok().unwrap_or_default();
@@ -436,25 +434,34 @@ impl<'a> Selected<'a> {
 						None => warn!("Initial Points empty, it should not be possible to reach here without points"),
 					}
 				}
-
 				self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 		}
 	}
+	// for layer in self.selected {
+	// 		if let Some(&transform) = self.original_transforms.get(*layer) {
+	// 			// Push front to stop document switching before sending the transform
+	// 			self.responses.add(GraphOperationMessage::TransformSet {
+	// 				layer: layer.to_vec(),
+	// 				transform,
+	// 				transform_in: TransformIn::Local,
+	// 			});
+	// 		}
+	// 	}
 	pub fn revert_operation(&mut self) {
 		for path in self.selected.iter().copied() {
 			let original_transform = &self.original_transforms;
 			match original_transform {
-				OriginalTransforms::Layer(transform) => {
-					if let Some(original_transform) = transform.get(path) {
+				OriginalTransforms::Layer(hash) => {
+					if let Some(matrix) = hash.get(path) {
 						// Push front to stop document switching before sending the transform
-						self.responses.push_front(
-							DocumentOperation::SetLayerTransform {
-								path: path.to_vec(),
-								transform: original_transform.to_cols_array(),
-							}
-							.into(),
-						);
+						let transform = *matrix;
+						self.responses.add(GraphOperationMessage::TransformSet {
+							layer: path.to_vec(),
+							transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
 					}
 				}
 				OriginalTransforms::Path(_) => {}

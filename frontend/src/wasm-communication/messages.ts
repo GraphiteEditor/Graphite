@@ -44,9 +44,6 @@ export class UpdateNodeGraphSelection extends JsMessage {
 	readonly selected!: bigint[];
 }
 
-export class UpdateNodeGraphVisibility extends JsMessage {
-	readonly visible!: boolean;
-}
 
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
@@ -748,7 +745,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Imaginate" | "NodeGraphFrame" | "Folder" | "Image" | "Shape" | "Text";
+export type LayerType = "Folder" | "NodeGraphFrame" | "Text";
 
 export type LayerTypeData = {
 	name: string;
@@ -757,11 +754,8 @@ export type LayerTypeData = {
 
 export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
 	const entries: Record<string, LayerTypeData> = {
-		Imaginate: { name: "Imaginate", icon: "NodeImaginate" },
-		NodeGraphFrame: { name: "Node Graph Frame", icon: "NodeNodes" },
-		Folder: { name: "Folder", icon: "NodeFolder" },
-		Image: { name: "Image", icon: "NodeImage" },
-		Shape: { name: "Shape", icon: "NodeShape" },
+		NodeGraphFrame: { name: "Layer", icon: "Layer" },
+		Folder: { name: "Folder", icon: "Folder" },
 		Text: { name: "Text", icon: "NodeText" },
 	};
 
@@ -1432,7 +1426,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphBarLayout,
 	UpdateNodeGraphSelection,
 	UpdateNodeTypes,
-	UpdateNodeGraphVisibility,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,

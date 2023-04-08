@@ -485,14 +485,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				size,
 				imaginate_node,
 			} => {
-				if let Err(description) = self.executor.evaluate_node_graph(
+				let result = self.executor.evaluate_node_graph(
 					(document_id, &mut self.documents),
 					layer_path,
 					(image_data, size),
 					imaginate_node,
 					(preferences, &self.persistent_data),
 					responses,
-				) {
+				);
+
+				if let Err(description) = result {
 					responses.push_back(
 						DialogMessage::DisplayDialogError {
 							title: "Unable to update node graph".to_string(),

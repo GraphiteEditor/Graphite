@@ -92,6 +92,14 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
+			match &mut selected.original_transforms {
+				OriginalTransforms::Layer(layer_map) => {
+					layer_map.clear();
+				}
+				OriginalTransforms::Path(path_map) => {
+					path_map.clear();
+				}
+			}
 		};
 
 		#[remain::sorted]
@@ -112,6 +120,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(BroadcastEvent::DocumentIsDirty);
+				for layer_path in document.selected_layers() {
+					responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+				}
 			}
 			BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -259,10 +270,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 				shape_editor.set_selected_layers(layer_paths);
 			}
-			TypeBackspace => self.transform_operation.handle_typed(self.typing.type_backspace(), &mut selected, self.snap),
-			TypeDecimalPoint => self.transform_operation.handle_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
-			TypeDigit { digit } => self.transform_operation.handle_typed(self.typing.type_number(digit), &mut selected, self.snap),
-			TypeNegate => self.transform_operation.handle_typed(self.typing.type_negate(), &mut selected, self.snap),
+			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
+			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
+			TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
+			TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap),
 		}
 	}
 

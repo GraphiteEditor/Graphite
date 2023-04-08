@@ -11,18 +11,40 @@ pub type LayerIdentifier = Vec<document_legacy::LayerId>;
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
-	FillSet { layer: LayerIdentifier, fill: Fill },
+	FillSet {
+		layer: LayerIdentifier,
+		fill: Fill,
+	},
 
-	StrokeSet { layer: LayerIdentifier, stroke: Stroke },
+	StrokeSet {
+		layer: LayerIdentifier,
+		stroke: Stroke,
+	},
 
-	TransformChange { layer: LayerIdentifier, transform: DAffine2, transform_in: TransformIn },
-	TransformSet { layer: LayerIdentifier, transform: DAffine2, transform_in: TransformIn },
-	TransformSetPivot { layer: LayerIdentifier, pivot: DVec2 },
+	TransformChange {
+		layer: LayerIdentifier,
+		transform: DAffine2,
+		transform_in: TransformIn,
+		skip_rerender: bool,
+	},
+	TransformSet {
+		layer: LayerIdentifier,
+		transform: DAffine2,
+		transform_in: TransformIn,
+		skip_rerender: bool,
+	},
+	TransformSetPivot {
+		layer: LayerIdentifier,
+		pivot: DVec2,
+	},
 
-	Vector { layer: LayerIdentifier, modification: VectorDataModification },
+	Vector {
+		layer: LayerIdentifier,
+		modification: VectorDataModification,
+	},
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
 	Local,
 	Scope { scope: DAffine2 },

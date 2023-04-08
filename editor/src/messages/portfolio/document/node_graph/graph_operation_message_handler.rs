@@ -49,6 +49,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let metadata = output_node.metadata.clone();
 		let new_input = output_node.inputs[0].clone();
 		let node_id = generate_uuid();
+
+		output_node.metadata.position.x += 8;
 		output_node.inputs[0] = NodeInput::node(node_id, 0);
 
 		let Some(node_type) = resolve_document_node_type(name) else {
@@ -61,9 +63,9 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Changes the inputs of a specific node
-	fn modify_inputs(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
-		let node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
-		if let Some(node_id) = node_id {
+	fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
+		let existing_node_id = self.network.primary_flow().find(|(node, _)| node.name == name).map(|(_, id)| id);
+		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
 			self.modify_new_node(name, update_input);
@@ -72,11 +74,19 @@ impl<'a> ModifyInputsContext<'a> {
 		self.node_graph.nested_path.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
-		self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+
+		if !skip_rerender {
+			self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+		} else {
+			self.responses.add(DocumentMessage::FrameClear);
+		}
+		if existing_node_id.is_none() {
+			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+		}
 	}
 
 	fn fill_set(&mut self, fill: Fill) {
-		self.modify_inputs("Fill", |inputs| {
+		self.modify_inputs("Fill", false, |inputs| {
 			let fill_type = match fill {
 				Fill::None => FillType::None,
 				Fill::Solid(_) => FillType::Solid,
@@ -98,8 +108,8 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn stroke_set(&mut self, stroke: Stroke) {
-		self.modify_inputs("Stroke", |inputs| {
-			inputs[1] = NodeInput::value(TaggedValue::Color(stroke.color.unwrap_or_default()), false);
+		self.modify_inputs("Stroke", false, |inputs| {
+			inputs[1] = NodeInput::value(TaggedValue::OptionalColor(stroke.color), false);
 			inputs[2] = NodeInput::value(TaggedValue::F64(stroke.weight), false);
 			inputs[3] = NodeInput::value(TaggedValue::VecF32(stroke.dash_lengths), false);
 			inputs[4] = NodeInput::value(TaggedValue::F64(stroke.dash_offset), false);
@@ -109,39 +119,38 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", |inputs| {
+	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
+		self.modify_inputs("Transform", skip_rerender, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * pivot.inverse() * transform * pivot * to * layer_transform;
+			let transform = to.inverse() * transform * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
 
-	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", |inputs| {
+	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
+		self.modify_inputs("Transform", skip_rerender, |inputs| {
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * pivot.inverse() * transform * pivot;
+			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let transform = to.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
 
 	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", |inputs| {
+		self.modify_inputs("Transform", false, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
 			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
@@ -151,7 +160,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 
-		self.modify_inputs("Path Generator", |inputs| {
+		self.modify_inputs("Path Generator", false, |inputs| {
 			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
 				panic!("Path generator does not have subpath and mirror angle inputs");
 			};
@@ -175,7 +184,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
-		self.modify_inputs("Transform", |inputs| {
+		self.modify_inputs("Transform", false, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
 
@@ -184,7 +193,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
 			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
 
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -209,39 +218,47 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				}
 			}
 
-			GraphOperationMessage::TransformChange { layer, transform, transform_in } => {
+			GraphOperationMessage::TransformChange {
+				layer,
+				transform,
+				transform_in,
+				skip_rerender,
+			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
-				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds);
-				} else {
-					let transform = transform.to_cols_array();
-					responses.add(match transform_in {
-						TransformIn::Local => Operation::TransformLayer { path: layer, transform },
-						TransformIn::Scope { scope } => {
-							let scope = scope.to_cols_array();
-							Operation::TransformLayerInScope { path: layer, transform, scope }
-						}
-						TransformIn::Viewport => Operation::TransformLayerInViewport { path: layer, transform },
-					});
+					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
 				}
+
+				let transform = transform.to_cols_array();
+				responses.add(match transform_in {
+					TransformIn::Local => Operation::TransformLayer { path: layer, transform },
+					TransformIn::Scope { scope } => {
+						let scope = scope.to_cols_array();
+						Operation::TransformLayerInScope { path: layer, transform, scope }
+					}
+					TransformIn::Viewport => Operation::TransformLayerInViewport { path: layer, transform },
+				});
 			}
-			GraphOperationMessage::TransformSet { layer, transform, transform_in } => {
+			GraphOperationMessage::TransformSet {
+				layer,
+				transform,
+				transform_in,
+				skip_rerender,
+			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds);
-				} else {
-					let transform = transform.to_cols_array();
-					responses.add(match transform_in {
-						TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
-						TransformIn::Scope { scope } => {
-							let scope = scope.to_cols_array();
-							Operation::SetLayerTransformInScope { path: layer, transform, scope }
-						}
-						TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
-					});
+					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
+				let transform = transform.to_cols_array();
+				responses.add(match transform_in {
+					TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
+					TransformIn::Scope { scope } => {
+						let scope = scope.to_cols_array();
+						Operation::SetLayerTransformInScope { path: layer, transform, scope }
+					}
+					TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
+				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);
