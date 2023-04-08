@@ -341,11 +341,12 @@ mod image {
 
 	impl Hash for Image {
 		fn hash<H: Hasher>(&self, state: &mut H) {
-			const HASH_SAMPLES: usize = 1000;
+			const HASH_SAMPLES: u64 = 1000;
+			let data_length = self.data.len() as u64;
 			self.width.hash(state);
 			self.height.hash(state);
-			for i in 0..HASH_SAMPLES.min(self.data.len()) {
-				self.data[i * self.data.len() / HASH_SAMPLES].hash(state);
+			for i in 0..HASH_SAMPLES.min(data_length) {
+				self.data[(i * data_length / HASH_SAMPLES) as usize].hash(state);
 			}
 		}
 	}
