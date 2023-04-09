@@ -286,7 +286,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeType {
-			name: "Mask Node",
+			name: "Mask",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_>"),
 			inputs: vec![
@@ -297,7 +297,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::mask_properties,
 		},
 		DocumentNodeType {
-			name: "Blend Node",
+			name: "Blend",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
 			inputs: vec![
