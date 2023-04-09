@@ -1,13 +1,45 @@
 use std::marker::PhantomData;
 
-use dyn_any::{DynAny, StaticType};
-
-use glam::{BVec2, DAffine2, DVec2};
+use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
-use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::transform::TransformMut;
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
+
+// Spacing is a consistent 0.2 apart, even when tiled across pixels (from 0.9 to the neighboring 0.1), to avoid bias
+const MULTISAMPLE_GRID: [(f64, f64); 25] = [
+	// Row 1
+	(0.1, 0.1),
+	(0.1, 0.3),
+	(0.1, 0.5),
+	(0.1, 0.7),
+	(0.1, 0.9),
+	// Row 2
+	(0.3, 0.1),
+	(0.3, 0.3),
+	(0.3, 0.5),
+	(0.3, 0.7),
+	(0.3, 0.9),
+	// Row 3
+	(0.5, 0.1),
+	(0.5, 0.3),
+	(0.5, 0.5),
+	(0.5, 0.7),
+	(0.5, 0.9),
+	// Row 4
+	(0.7, 0.1),
+	(0.7, 0.3),
+	(0.7, 0.5),
+	(0.7, 0.7),
+	(0.7, 0.9),
+	// Row 5
+	(0.9, 0.1),
+	(0.9, 0.3),
+	(0.9, 0.5),
+	(0.9, 0.7),
+	(0.9, 0.9),
+];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReduceNode<Initial, Lambda> {
@@ -57,33 +89,52 @@ pub struct EraseNode<Opacity> {
 fn erase(input: (Color, Color), opacity: f64) -> Color {
 	let (input, brush) = input;
 	let alpha = input.a() * (1.0 - opacity as f32 * brush.a());
-	Color::from_rgbaf32_unchecked(input.r(), input.g(), input.b(), alpha as f32)
+	Color::from_rgbaf32_unchecked(input.r(), input.g(), input.b(), alpha)
 }
 
 #[node_fn(BrushTextureNode)]
-fn brush_texture(radius: f64, color: Color, hardness: f64, opacity: f64) -> ImageFrame {
-	let radius = radius.ceil() as u32;
-	let diameter = radius * 2 + 2;
-	let mut image = Image::new(diameter, diameter, Color::TRANSPARENT);
-	let center = DVec2::new(radius as f64 + 0.5, radius as f64 + 0.5);
-	for y in 0..diameter {
-		for x in 0..diameter {
-			let pos = DVec2::new(x as f64, y as f64);
-			let dist = (pos - center).length();
-			let alpha = if dist < radius as f64 {
-				let alpha = (dist / radius as f64).powf(1.0 / hardness);
-				(1.0 - alpha) * opacity
-			} else {
-				0.0
-			};
+fn brush_texture(diameter: f64, color: Color, hardness: f64, opacity: f64) -> ImageFrame {
+	// Diameter
+	let radius = diameter / 2.;
+	// TODO: Remove the 4px padding after figuring out why the brush stamp gets randomly offset by 1px up/down/left/right when clicking with the Brush tool
+	let dimension = diameter.ceil() as u32 + 4;
+	let center = DVec2::splat(radius + (dimension as f64 - diameter) / 2.);
+
+	// Color
+	let (r, g, b, a) = (color.r(), color.g(), color.b(), color.a());
+
+	// Hardness
+	let hardness = hardness / 100.;
+
+	// Opacity
+	let opacity = opacity / 100.;
+
+	// Initial transparent image
+	let mut image = Image::new(dimension, dimension, Color::TRANSPARENT);
+
+	for y in 0..dimension {
+		for x in 0..dimension {
+			let summation = MULTISAMPLE_GRID.iter().fold(0., |acc, (offset_x, offset_y)| {
+				let position = DVec2::new(x as f64 + offset_x, y as f64 + offset_y);
+				let distance = (position - center).length();
+
+				if distance < radius {
+					acc + (1. - (distance / radius).powf(2. / (1. - hardness))).clamp(0., 1.)
+				} else {
+					acc
+				}
+			});
+
+			let pixel_fill = summation / MULTISAMPLE_GRID.len() as f64;
+
 			let pixel = image.get_mut(x, y).unwrap();
-			*pixel = Color::from_unassociated_alpha(color.r(), color.g(), color.b(), alpha as f32 * color.a());
+			*pixel = Color::from_unassociated_alpha(r, g, b, a * opacity as f32 * pixel_fill as f32);
 		}
 	}
 
 	ImageFrame {
 		image,
-		transform: DAffine2::from_scale_angle_translation(DVec2::splat(diameter as f64), 0., -DVec2::splat(radius as f64)),
+		transform: DAffine2::from_scale_angle_translation(DVec2::splat(dimension as f64), 0., -DVec2::splat(radius)),
 	}
 }
 
@@ -129,7 +180,7 @@ mod test {
 	#[test]
 	fn test_brush_texture() {
 		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(0.0), ClonedNode::new(1.0));
-		let image = brush_texture_node.eval(10.0);
+		let image = brush_texture_node.eval(20.0);
 		assert_eq!(image.image.width, 22);
 		assert_eq!(image.image.height, 22);
 		assert_eq!(image.transform, DAffine2::from_scale(DVec2::splat(22.0)));
@@ -140,7 +191,7 @@ mod test {
 	#[test]
 	fn test_brush() {
 		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
-		let image = brush_texture_node.eval(10.);
+		let image = brush_texture_node.eval(20.);
 		let trace = vec![DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0)];
 		let trace = ClonedNode::new(trace.into_iter());
 		let translate_node = TranslateNode::new(ClonedNode::new(image));

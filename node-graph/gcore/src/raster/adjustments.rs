@@ -345,43 +345,49 @@ impl<Opacity: dyn_any::StaticTypeSized, Blend: dyn_any::StaticTypeSized> StaticT
 
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	let (source_color, backdrop) = input;
-	let actual_opacity = (opacity / 100.) as f32;
+	let opacity = opacity / 100.;
+
+	let (foreground, background) = input;
+	let foreground = foreground.to_linear_srgb();
+	let background = background.to_linear_srgb();
+
 	let target_color = match blend_mode {
-		BlendMode::Normal => backdrop.blend_rgb(source_color, Color::blend_normal),
-		BlendMode::Multiply => backdrop.blend_rgb(source_color, Color::blend_multiply),
-		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
-		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, Color::blend_color_burn),
-		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, Color::blend_linear_burn),
-		BlendMode::DarkerColor => backdrop.blend_darker_color(source_color),
+		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
+		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
+		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
+		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
+		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
+		BlendMode::DarkerColor => background.blend_darker_color(foreground),
 
-		BlendMode::Screen => backdrop.blend_rgb(source_color, Color::blend_screen),
-		BlendMode::Lighten => backdrop.blend_rgb(source_color, Color::blend_lighten),
-		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, Color::blend_color_dodge),
-		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, Color::blend_linear_dodge),
-		BlendMode::LighterColor => backdrop.blend_lighter_color(source_color),
+		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
+		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
+		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
+		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
+		BlendMode::LighterColor => background.blend_lighter_color(foreground),
 
-		BlendMode::Overlay => source_color.blend_rgb(backdrop, Color::blend_hardlight),
-		BlendMode::SoftLight => backdrop.blend_rgb(source_color, Color::blend_softlight),
-		BlendMode::HardLight => backdrop.blend_rgb(source_color, Color::blend_hardlight),
-		BlendMode::VividLight => backdrop.blend_rgb(source_color, Color::blend_vivid_light),
-		BlendMode::LinearLight => backdrop.blend_rgb(source_color, Color::blend_linear_light),
-		BlendMode::PinLight => backdrop.blend_rgb(source_color, Color::blend_pin_light),
-		BlendMode::HardMix => backdrop.blend_rgb(source_color, Color::blend_hard_mix),
+		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
+		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
+		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
+		BlendMode::VividLight => background.blend_rgb(foreground, Color::blend_vivid_light),
+		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
+		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
+		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
 
-		BlendMode::Difference => backdrop.blend_rgb(source_color, Color::blend_exclusion),
-		BlendMode::Exclusion => backdrop.blend_rgb(source_color, Color::blend_exclusion),
-		BlendMode::Subtract => backdrop.blend_rgb(source_color, Color::blend_subtract),
-		BlendMode::Divide => backdrop.blend_rgb(source_color, Color::blend_divide),
+		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_exclusion),
+		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
+		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
+		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
 
-		BlendMode::Hue => backdrop.blend_hue(source_color),
-		BlendMode::Saturation => backdrop.blend_saturation(source_color),
-		BlendMode::Color => backdrop.blend_color(source_color),
-		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
+		BlendMode::Hue => background.blend_hue(foreground),
+		BlendMode::Saturation => background.blend_saturation(foreground),
+		BlendMode::Color => background.blend_color(foreground),
+		BlendMode::Luminosity => background.blend_luminosity(foreground),
 	};
-	let multiplied_target_color = target_color.multiply_alpha(actual_opacity);
-	let out = backdrop.alpha_blend(multiplied_target_color);
-	out
+
+	let multiplied_target_color = target_color.to_associated_alpha(opacity as f32);
+	let blended = background.alpha_blend(multiplied_target_color);
+
+	blended.to_gamma_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]

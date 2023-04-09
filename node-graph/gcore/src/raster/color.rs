@@ -608,12 +608,25 @@ impl Color {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
 	}
 
-	pub fn to_unassociated_alpha(&self) -> Self {
-		let factor = 1. / self.alpha;
+	pub fn apply_opacity(&self, opacity: f32) -> Self {
+		Self::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), self.a() * opacity)
+	}
+
+	pub fn to_associated_alpha(&self, alpha: f32) -> Self {
 		Self {
-			red: self.red * factor,
-			green: self.green * factor,
-			blue: self.blue * factor,
+			red: self.red * alpha,
+			green: self.green * alpha,
+			blue: self.blue * alpha,
+			alpha: self.alpha * alpha,
+		}
+	}
+
+	pub fn to_unassociated_alpha(&self) -> Self {
+		let unmultiply = 1. / self.alpha;
+		Self {
+			red: self.red * unmultiply,
+			green: self.green * unmultiply,
+			blue: self.blue * unmultiply,
 			alpha: self.alpha,
 		}
 	}
@@ -625,15 +638,6 @@ impl Color {
 			green: f(background.green, other.green).clamp(0., 1.),
 			blue: f(background.blue, other.blue).clamp(0., 1.),
 			alpha: other.alpha,
-		}
-	}
-
-	pub fn multiply_alpha(&self, alpha: f32) -> Self {
-		Self {
-			red: self.red * alpha,
-			green: self.green * alpha,
-			blue: self.blue * alpha,
-			alpha: self.alpha * alpha,
 		}
 	}
 

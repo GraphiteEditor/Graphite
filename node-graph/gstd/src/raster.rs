@@ -334,8 +334,10 @@ pub struct MergeBoundingBoxNode<Data> {
 
 #[node_macro::node_fn(MergeBoundingBoxNode<_Data>)]
 fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _Data)) -> Option<AxisAlignedBbox> {
-	let (initial_aabb, mut data) = input;
+	let (initial_aabb, data) = input;
+
 	let snd_aabb = compute_transformed_bounding_box(data.transform()).axis_aligned_bbox();
+
 	if let Some(fst_aabb) = initial_aabb {
 		Some(fst_aabb.union(&snd_aabb))
 	} else {

@@ -1,6 +1,7 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -26,12 +27,18 @@ pub struct BrushTool {
 }
 
 pub struct BrushOptions {
-	line_weight: f64,
+	diameter: f64,
+	hardness: f64,
+	opacity: f64,
 }
 
 impl Default for BrushOptions {
 	fn default() -> Self {
-		Self { line_weight: 5. }
+		Self {
+			diameter: 40.,
+			hardness: 50.,
+			opacity: 100.,
+		}
 	}
 }
 
@@ -53,7 +60,9 @@ pub enum BrushToolMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
-	LineWeight(f64),
+	Diameter(f64),
+	Hardness(f64),
+	Opacity(f64),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -77,13 +86,32 @@ impl ToolMetadata for BrushTool {
 
 impl PropertyHolder for BrushTool {
 	fn properties(&self) -> Layout {
-		let weight = NumberInput::new(Some(self.options.line_weight))
-			.unit(" px")
-			.label("Weight")
+		let diameter = NumberInput::new(Some(self.options.diameter))
+			.label("Diameter")
 			.min(1.)
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+			.unit(" px")
+			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
 			.widget_holder();
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
+		let hardness = NumberInput::new(Some(self.options.hardness))
+			.label("Hardness")
+			.min(0.)
+			.max(100.)
+			.unit("%")
+			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
+			.widget_holder();
+		let opacity = NumberInput::new(Some(self.options.opacity))
+			.label("Opacity")
+			.min(0.)
+			.max(100.)
+			.unit("%")
+			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Opacity(number_input.value.unwrap())).into())
+			.widget_holder();
+
+		let separator = Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder();
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+			widgets: vec![diameter, separator.clone(), hardness, separator, opacity],
+		}]))
 	}
 }
 
@@ -91,7 +119,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message {
 			match action {
-				BrushToolMessageOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
+				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
+				BrushToolMessageOptionsUpdate::Opacity(opacity) => self.options.opacity = opacity,
 			}
 			return;
 		}
@@ -130,7 +160,9 @@ impl ToolTransition for BrushTool {
 #[derive(Clone, Debug, Default)]
 struct BrushToolData {
 	points: Vec<DVec2>,
-	weight: f64,
+	diameter: f64,
+	hardness: f64,
+	opacity: f64,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -164,7 +196,9 @@ impl Fsm for BrushToolFsmState {
 
 					tool_data.points.push(pos);
 
-					tool_data.weight = tool_options.line_weight;
+					tool_data.diameter = tool_options.diameter;
+					tool_data.hardness = tool_options.hardness;
+					tool_data.opacity = tool_options.opacity;
 
 					add_polyline(tool_data, global_tool_data, responses);
 
@@ -227,24 +261,24 @@ fn add_polyline(data: &BrushToolData, tool_data: &DocumentToolData, responses: &
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path,
-		stroke: Stroke::new(tool_data.primary_color, data.weight),
+		stroke: Stroke::new(tool_data.primary_color.apply_opacity(data.opacity as f32 / 100.), data.diameter),
 	});
 }
 
 fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
-	log::debug!("Points: {:?}", data.points);
 	let brush_node = DocumentNode {
 		name: "Brush".to_string(),
 		inputs: vec![
 			NodeInput::ShortCircut(concrete!(())),
 			NodeInput::value(TaggedValue::VecDVec2(data.points.clone()), false),
-			// Size
-			NodeInput::value(TaggedValue::F64(data.weight), false),
+			// Diameter
+			NodeInput::value(TaggedValue::F64(data.diameter), false),
 			// Hardness
-			NodeInput::value(TaggedValue::F64(0.0), false),
+			NodeInput::value(TaggedValue::F64(data.hardness), false),
 			// Opacity
-			NodeInput::value(TaggedValue::F64(1.0), false),
+			NodeInput::value(TaggedValue::F64(data.opacity), false),
+			// Color
 			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),

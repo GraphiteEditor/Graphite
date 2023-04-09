@@ -516,9 +516,9 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let size = number_widget(document_node, node_id, 2, "Size", NumberInput::default().min(0.).max(80.).int(), true);
-	let hardness = number_widget(document_node, node_id, 3, "Hardness", NumberInput::default().min(0.).max(2.), true);
-	let opacity = number_widget(document_node, node_id, 4, "Opacity", NumberInput::default().min(0.).max(1.), true);
+	let size = number_widget(document_node, node_id, 2, "Diameter", NumberInput::default().min(0.).max(100.).unit(" px"), true);
+	let hardness = number_widget(document_node, node_id, 3, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let opacity = number_widget(document_node, node_id, 4, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
 	let color = color_widget(document_node, node_id, 5, "Color", ColorInput::default(), true);
 
 	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: opacity }]
