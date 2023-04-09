@@ -34,6 +34,7 @@ pub use raster::Color;
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
+	fn reset(self: Pin<&mut Self>) {}
 }
 
 #[cfg(feature = "alloc")]

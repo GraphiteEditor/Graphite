@@ -2,6 +2,8 @@ use graphene_core::Node;
 
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
 use xxhash_rust::xxh3::Xxh3;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -9,7 +11,7 @@ use xxhash_rust::xxh3::Xxh3;
 pub struct CacheNode<T, CachedNode> {
 	// We have to use an append only data structure to make sure the references
 	// to the cache entries are always valid
-	cache: boxcar::Vec<(u64, T)>,
+	cache: boxcar::Vec<(u64, T, AtomicBool)>,
 	node: CachedNode,
 }
 impl<'i, T: 'i, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for CacheNode<T, CachedNode>
@@ -22,16 +24,24 @@ where
 		input.hash(&mut hasher);
 		let hash = hasher.finish();
 
-		if let Some((_, cached_value)) = self.cache.iter().find(|(h, _)| *h == hash) {
+		if let Some((_, cached_value, keep)) = self.cache.iter().find(|(h, _, _)| *h == hash) {
+			keep.store(true, std::sync::atomic::Ordering::Relaxed);
 			return cached_value;
 		} else {
 			trace!("Cache miss");
 			let output = self.node.eval(input);
-			let index = self.cache.push((hash, output));
+			let index = self.cache.push((hash, output, AtomicBool::new(true)));
 			return &self.cache[index].1;
 		}
 	}
+
+	fn reset(mut self: Pin<&mut Self>) {
+		let old_cache = std::mem::take(&mut self.cache);
+		self.cache = old_cache.into_iter().filter(|(_, _, keep)| keep.swap(false, std::sync::atomic::Ordering::Relaxed)).collect();
+	}
 }
+
+impl<T, CachedNode> std::marker::Unpin for CacheNode<T, CachedNode> {}
 
 impl<T, CachedNode> CacheNode<T, CachedNode> {
 	pub fn new(node: CachedNode) -> CacheNode<T, CachedNode> {
@@ -72,7 +82,15 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 			None => &self.cache.iter().last().expect("Let node was not initialized").1,
 		}
 	}
+
+	fn reset(mut self: Pin<&mut Self>) {
+		if let Some(last) = std::mem::take(&mut self.cache).into_iter().last() {
+			self.cache = boxcar::vec![last];
+		}
+	}
 }
+
+impl<T> std::marker::Unpin for LetNode<T> {}
 
 impl<T> LetNode<T> {
 	pub fn new() -> LetNode<T> {

@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::{Arc, RwLock};
 
 use dyn_any::StaticType;
 use graph_craft::document::value::UpcastNode;
@@ -59,7 +59,7 @@ impl Executor for DynamicExecutor {
 pub struct NodeContainer<'n> {
 	pub node: TypeErasedPinned<'n>,
 	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
-	_dependencies: Vec<Arc<NodeContainer<'static>>>,
+	_dependencies: Vec<Arc<RwLock<NodeContainer<'static>>>>,
 }
 
 impl<'a> core::fmt::Debug for NodeContainer<'a> {
@@ -69,7 +69,7 @@ impl<'a> core::fmt::Debug for NodeContainer<'a> {
 }
 
 impl<'a> NodeContainer<'a> {
-	pub fn new(node: TypeErasedPinned<'a>, _dependencies: Vec<Arc<NodeContainer<'static>>>) -> Self {
+	pub fn new(node: TypeErasedPinned<'a>, _dependencies: Vec<Arc<RwLock<NodeContainer<'static>>>>) -> Self {
 		Self { node, _dependencies }
 	}
 
@@ -89,7 +89,7 @@ impl NodeContainer<'static> {
 
 #[derive(Default, Debug, Clone)]
 pub struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<NodeContainer<'static>>>,
+	nodes: HashMap<NodeId, Arc<RwLock<NodeContainer<'static>>>>,
 }
 
 impl BorrowTree {
@@ -107,6 +107,11 @@ impl BorrowTree {
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context)?;
+			} else {
+				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
+				let mut node_container_writer = node_container.write().unwrap();
+				let node = node_container_writer.node.as_mut();
+				node.reset();
 			}
 			old_nodes.remove(&id);
 		}
@@ -114,29 +119,33 @@ impl BorrowTree {
 	}
 
 	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef<'static>> {
-		self.node_deps(nodes).into_iter().map(|node| unsafe { node.as_ref().static_ref() }).collect()
+		self.node_deps(nodes).into_iter().map(|node| unsafe { node.read().unwrap().static_ref() }).collect()
 	}
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer<'static>>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<RwLock<NodeContainer<'static>>>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: Arc<NodeContainer<'static>>, id: NodeId) -> Arc<NodeContainer<'static>> {
+	fn store_node(&mut self, node: Arc<RwLock<NodeContainer<'static>>>, id: NodeId) -> Arc<RwLock<NodeContainer<'static>>> {
 		self.nodes.insert(id, node.clone());
 		node
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer<'static>>> {
+	pub fn get(&self, id: NodeId) -> Option<Arc<RwLock<NodeContainer<'static>>>> {
 		self.nodes.get(&id).cloned()
 	}
 
-	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&self, id: NodeId, input: I) -> Option<O> {
+	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
-		let output = node.node.eval(Box::new(input));
+		let reader = node.read().unwrap();
+		let output = reader.node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output).ok().map(|o| *o)
 	}
-	pub fn eval_any<'i, 's: 'i>(&'s self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
+	pub fn eval_any<'i>(&'i self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
 		let node = self.nodes.get(&id)?;
-		Some(node.node.eval(input))
+		// TODO: Comments by @TrueDoctor before this was merged:
+		// TODO: Oof I dislike the evaluation being an unsafe operation but I guess its fine because it only is a lifetime extension
+		// TODO: We should ideally let miri run on a test that evaluates the nodegraph multiple times to check if this contains any subtle UB but this looks fine for now
+		Some(unsafe { (*((&*node.read().unwrap()) as *const NodeContainer)).node.eval(input) })
 	}
 
 	pub fn free_node(&mut self, id: NodeId) {
@@ -152,7 +161,7 @@ impl BorrowTree {
 				let node = Box::pin(upcasted) as TypeErasedPinned<'_>;
 				let node = NodeContainer { node, _dependencies: vec![] };
 				let node = unsafe { node.erase_lifetime() };
-				self.store_node(Arc::new(node), id);
+				self.store_node(Arc::new(node.into()), id);
 			}
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
@@ -164,7 +173,7 @@ impl BorrowTree {
 					_dependencies: self.node_deps(&ids),
 				};
 				let node = unsafe { node.erase_lifetime() };
-				self.store_node(Arc::new(node), id);
+				self.store_node(Arc::new(node.into()), id);
 			}
 		};
 		Ok(())
