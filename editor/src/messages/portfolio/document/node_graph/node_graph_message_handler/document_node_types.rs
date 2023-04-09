@@ -1,17 +1,16 @@
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::node_graph_executor::NodeGraphExecutor;
-use once_cell::sync::Lazy;
 
+use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
-
-use graph_craft::concrete;
 use graph_craft::NodeIdentifier;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
 use graphene_core::*;
 
+use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -105,16 +104,16 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeType {
-			name: "Downscale",
+			name: "Downres",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Downscale".to_string(),
+						name: "Downres".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownscaleNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
@@ -138,7 +137,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downscale the image to a lower resolution"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
 		},
 		// DocumentNodeType {
 		// 	name: "Input Frame",

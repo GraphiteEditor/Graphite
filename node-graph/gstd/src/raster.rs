@@ -90,10 +90,10 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 }
 */
 
-pub struct DownscaleNode;
+pub struct DownresNode;
 
-#[node_macro::node_fn(DownscaleNode)]
-fn downscale(image_frame: ImageFrame) -> ImageFrame {
+#[node_macro::node_fn(DownresNode)]
+fn downres(image_frame: ImageFrame) -> ImageFrame {
 	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
 	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
 
