@@ -300,7 +300,7 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(color: Color) -> Color {
-	color.map_rgb(|c| 1. - c)
+	color.map_rgb(|c| color.a() - c)
 }
 
 #[derive(Debug, Clone, Copy)]
