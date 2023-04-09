@@ -639,6 +639,7 @@ impl NodeNetwork {
 			std::mem::swap(&mut dummy_input, input);
 			if let NodeInput::Value { tagged_value, exposed } = dummy_input {
 				let value_node_id = gen_id();
+				let value_node_id = map_ids(id, value_node_id);
 				self.nodes.insert(
 					value_node_id,
 					DocumentNode {

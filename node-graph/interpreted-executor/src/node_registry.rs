@@ -214,32 +214,35 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
-		vec![(
-			NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
-			|args| {
-				let image: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
-				let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
-				let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
-				let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(blend_mode.eval(())), ClonedNode::new(opacity.eval(())));
-				let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
-				let _ = &node as &dyn for<'i> Node<'i, ImageFrame, Output = ImageFrame>;
-				let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-				any.into_type_erased()
-			},
-			NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(ImageFrame), value_fn!(BlendMode), value_fn!(f64)]),
-		),(
-			NodeIdentifier::new("graphene_core::raster::EraseNode<_, _>"),
-			|args| {
-				let image: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
-				let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
-				let blend_node = graphene_std::brush::EraseNode::new(ClonedNode::new(opacity.eval(())));
-				let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
-				let _ = &node as &dyn for<'i> Node<'i, ImageFrame, Output = ImageFrame>;
-				let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-				any.into_type_erased()
-			},
-			NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(ImageFrame), value_fn!(f64)]),
-		)],
+		vec![
+			(
+				NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
+				|args| {
+					let image: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
+					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
+					let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(blend_mode.eval(())), ClonedNode::new(opacity.eval(())));
+					let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
+					let _ = &node as &dyn for<'i> Node<'i, ImageFrame, Output = ImageFrame>;
+					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(ImageFrame), value_fn!(BlendMode), value_fn!(f64)]),
+			),
+			(
+				NodeIdentifier::new("graphene_core::raster::EraseNode<_, _>"),
+				|args| {
+					let image: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
+					let blend_node = graphene_std::brush::EraseNode::new(ClonedNode::new(opacity.eval(())));
+					let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
+					let _ = &node as &dyn for<'i> Node<'i, ImageFrame, Output = ImageFrame>;
+					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(ImageFrame), value_fn!(f64)]),
+			),
+		],
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
