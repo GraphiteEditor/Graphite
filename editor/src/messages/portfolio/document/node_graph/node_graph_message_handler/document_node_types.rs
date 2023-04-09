@@ -286,7 +286,18 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeType {
-			name: "Blend Node",
+			name: "Mask",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::mask_properties,
+		},
+		DocumentNodeType {
+			name: "Blend",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
 			inputs: vec![
