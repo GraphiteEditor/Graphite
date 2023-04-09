@@ -280,6 +280,8 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 			NodeInput::value(TaggedValue::F64(data.flow), false),
 			// Color
 			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
+			// Erase
+			NodeInput::value(TaggedValue::Bool(false), false),
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
