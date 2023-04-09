@@ -477,6 +477,12 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
+pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorInput::default(), true);
+
+	vec![mask]
+}
+
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 

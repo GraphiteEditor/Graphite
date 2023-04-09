@@ -16,7 +16,7 @@ fn main() {
 		nodes: [(
 			0,
 			DocumentNode {
-				name: "Inc Node".into(),
+				name: "Inc".into(),
 				inputs: vec![NodeInput::Network(concrete!(u32))],
 				implementation: DocumentNodeImplementation::Network(add_network()),
 				metadata: DocumentNodeMetadata::default(),
