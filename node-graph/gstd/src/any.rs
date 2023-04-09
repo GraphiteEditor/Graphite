@@ -34,7 +34,12 @@ where
 			Box::new(self.node.eval(*input))
 		}
 	}
+	fn reset(self: std::pin::Pin<&mut Self>) {
+		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
+		Node::reset(wrapped_node);
+	}
 }
+
 impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 	pub const fn new(node: S0) -> Self {
 		Self { node, _i: core::marker::PhantomData }
