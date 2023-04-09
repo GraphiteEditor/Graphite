@@ -29,7 +29,7 @@ pub struct BrushTool {
 pub struct BrushOptions {
 	diameter: f64,
 	hardness: f64,
-	opacity: f64,
+	flow: f64,
 }
 
 impl Default for BrushOptions {
@@ -37,7 +37,7 @@ impl Default for BrushOptions {
 		Self {
 			diameter: 40.,
 			hardness: 50.,
-			opacity: 100.,
+			flow: 100.,
 		}
 	}
 }
@@ -61,8 +61,8 @@ pub enum BrushToolMessage {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
 	Diameter(f64),
+	Flow(f64),
 	Hardness(f64),
-	Opacity(f64),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -99,18 +99,18 @@ impl PropertyHolder for BrushTool {
 			.unit("%")
 			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
 			.widget_holder();
-		let opacity = NumberInput::new(Some(self.options.opacity))
-			.label("Opacity")
-			.min(0.)
+		let flow = NumberInput::new(Some(self.options.flow))
+			.label("Flow")
+			.min(1.)
 			.max(100.)
 			.unit("%")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Opacity(number_input.value.unwrap())).into())
+			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 			.widget_holder();
 
 		let separator = Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![diameter, separator.clone(), hardness, separator, opacity],
+			widgets: vec![diameter, separator.clone(), hardness, separator, flow],
 		}]))
 	}
 }
@@ -121,7 +121,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 			match action {
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
-				BrushToolMessageOptionsUpdate::Opacity(opacity) => self.options.opacity = opacity,
+				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
 			}
 			return;
 		}
@@ -162,7 +162,7 @@ struct BrushToolData {
 	points: Vec<DVec2>,
 	diameter: f64,
 	hardness: f64,
-	opacity: f64,
+	flow: f64,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -198,7 +198,7 @@ impl Fsm for BrushToolFsmState {
 
 					tool_data.diameter = tool_options.diameter;
 					tool_data.hardness = tool_options.hardness;
-					tool_data.opacity = tool_options.opacity;
+					tool_data.flow = tool_options.flow;
 
 					add_polyline(tool_data, global_tool_data, responses);
 
@@ -261,7 +261,7 @@ fn add_polyline(data: &BrushToolData, tool_data: &DocumentToolData, responses: &
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path,
-		stroke: Stroke::new(tool_data.primary_color.apply_opacity(data.opacity as f32 / 100.), data.diameter),
+		stroke: Stroke::new(tool_data.primary_color.apply_opacity(data.flow as f32 / 100.), data.diameter),
 	});
 }
 
@@ -276,8 +276,8 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 			NodeInput::value(TaggedValue::F64(data.diameter), false),
 			// Hardness
 			NodeInput::value(TaggedValue::F64(data.hardness), false),
-			// Opacity
-			NodeInput::value(TaggedValue::F64(data.opacity), false),
+			// Flow
+			NodeInput::value(TaggedValue::F64(data.flow), false),
 			// Color
 			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
 		],

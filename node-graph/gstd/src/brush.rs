@@ -74,40 +74,41 @@ fn vector_points(vector: VectorData) -> Vec<DVec2> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BrushTextureNode<ColorNode, Hardness, Opacity> {
+pub struct BrushTextureNode<ColorNode, Hardness, Flow> {
 	pub color: ColorNode,
 	pub hardness: Hardness,
-	pub opacity: Opacity,
+	pub flow: Flow,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct EraseNode<Opacity> {
-	opacity: Opacity,
+pub struct EraseNode<Flow> {
+	flow: Flow,
 }
 
 #[node_fn(EraseNode)]
-fn erase(input: (Color, Color), opacity: f64) -> Color {
+fn erase(input: (Color, Color), flow: f64) -> Color {
 	let (input, brush) = input;
-	let alpha = input.a() * (1.0 - opacity as f32 * brush.a());
+	let alpha = input.a() * (1.0 - flow as f32 * brush.a());
 	Color::from_rgbaf32_unchecked(input.r(), input.g(), input.b(), alpha)
 }
 
 #[node_fn(BrushTextureNode)]
-fn brush_texture(diameter: f64, color: Color, hardness: f64, opacity: f64) -> ImageFrame {
+fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> ImageFrame {
 	// Diameter
 	let radius = diameter / 2.;
 	// TODO: Remove the 4px padding after figuring out why the brush stamp gets randomly offset by 1px up/down/left/right when clicking with the Brush tool
 	let dimension = diameter.ceil() as u32 + 4;
 	let center = DVec2::splat(radius + (dimension as f64 - diameter) / 2.);
 
-	// Color
-	let (r, g, b, a) = (color.r(), color.g(), color.b(), color.a());
-
 	// Hardness
 	let hardness = hardness / 100.;
+	let feather_exponent = 1. / (1. - hardness);
 
-	// Opacity
-	let opacity = opacity / 100.;
+	// Flow
+	let flow = flow / 100.;
+
+	// Color
+	let color = color.apply_opacity(flow as f32);
 
 	// Initial transparent image
 	let mut image = Image::new(dimension, dimension, Color::TRANSPARENT);
@@ -119,7 +120,7 @@ fn brush_texture(diameter: f64, color: Color, hardness: f64, opacity: f64) -> Im
 				let distance = (position - center).length();
 
 				if distance < radius {
-					acc + (1. - (distance / radius).powf(2. / (1. - hardness))).clamp(0., 1.)
+					acc + (1. - (distance / radius).powf(feather_exponent)).clamp(0., 1.)
 				} else {
 					acc
 				}
@@ -128,7 +129,7 @@ fn brush_texture(diameter: f64, color: Color, hardness: f64, opacity: f64) -> Im
 			let pixel_fill = summation / MULTISAMPLE_GRID.len() as f64;
 
 			let pixel = image.get_mut(x, y).unwrap();
-			*pixel = Color::from_unassociated_alpha(r, g, b, a * opacity as f32 * pixel_fill as f32);
+			*pixel = color.apply_opacity(pixel_fill as f32);
 		}
 	}
 

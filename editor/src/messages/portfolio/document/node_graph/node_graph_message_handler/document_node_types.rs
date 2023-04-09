@@ -458,7 +458,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Trace", TaggedValue::VecDVec2((0..2).map(|x| DVec2::new(x as f64 * 10., 0.)).collect()), true),
 				DocumentInputType::value("Diameter", TaggedValue::F64(40.), false),
 				DocumentInputType::value("Hardness", TaggedValue::F64(50.), false),
-				DocumentInputType::value("Opacity", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Flow", TaggedValue::F64(100.), false),
 				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
 			],
 			outputs: vec![DocumentOutputType {

@@ -166,10 +166,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[0]);
 				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
 				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
-				let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
+				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
 				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[4]);
 
-				let stamp = BrushTextureNode::new(color, ClonedNode::new(hardness.eval(())), ClonedNode::new(opacity.eval(())));
+				let stamp = BrushTextureNode::new(color, ClonedNode::new(hardness.eval(())), ClonedNode::new(flow.eval(())));
 				let stamp = stamp.eval(diameter.eval(()));
 
 				let frames = TranslateNode::new(ClonedNode::new(stamp));
