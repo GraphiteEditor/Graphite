@@ -108,7 +108,7 @@ impl BorrowTree {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context)?;
 			} else {
-				let Some(node_container) = self.nodes.get_mut(&id) else {continue};
+				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
 				let mut node_container_writer = node_container.write().unwrap();
 				let node = node_container_writer.node.as_mut();
 				node.reset();
@@ -142,6 +142,9 @@ impl BorrowTree {
 	}
 	pub fn eval_any<'i>(&'i self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
 		let node = self.nodes.get(&id)?;
+		// TODO: Comments by @TrueDoctor before this was merged:
+		// TODO: Oof I dislike the evaluation being an unsafe operation but I guess its fine because it only is a lifetime extension
+		// TODO: We should ideally let miri run on a test that evaluates the nodegraph multiple times to check if this contains any subtle UB but this looks fine for now
 		Some(unsafe { (*((&*node.read().unwrap()) as *const NodeContainer)).node.eval(input) })
 	}
 
