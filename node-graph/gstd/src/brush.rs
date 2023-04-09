@@ -89,7 +89,7 @@ pub struct EraseNode<Flow> {
 fn erase(input: (Color, Color), flow: f64) -> Color {
 	let (input, brush) = input;
 	let alpha = input.a() * (1.0 - flow as f32 * brush.a());
-	Color::from_rgbaf32_unchecked(input.r(), input.g(), input.b(), alpha)
+	Color::from_unassociated_alpha(input.r(), input.g(), input.b(), alpha)
 }
 
 #[node_fn(BrushTextureNode)]

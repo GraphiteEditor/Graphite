@@ -460,6 +460,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Hardness", TaggedValue::F64(50.), false),
 				DocumentInputType::value("Flow", TaggedValue::F64(100.), false),
 				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Erase", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Erase", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Erase", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType {
 				name: "Image",
