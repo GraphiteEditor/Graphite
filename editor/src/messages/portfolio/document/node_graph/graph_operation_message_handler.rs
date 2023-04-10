@@ -119,7 +119,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
+	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
 		self.modify_inputs("Transform", skip_rerender, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let to = match transform_in {
@@ -127,7 +127,8 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let transform = to.inverse() * transform * to * layer_transform;
+			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let transform = pivot.inverse() * to.inverse() * transform * to * pivot * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -140,18 +141,13 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Viewport => parent_transform,
 			};
 			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = to.inverse() * transform * pivot;
+			let transform = pivot.inverse() * to.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
 
-	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
+	fn pivot_set(&mut self, new_pivot: DVec2) {
 		self.modify_inputs("Transform", false, |inputs| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
-			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}
@@ -184,18 +180,6 @@ impl<'a> ModifyInputsContext<'a> {
 
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
-		self.modify_inputs("Transform", false, |inputs| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
-
-			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
-			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
-			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
-			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
-
-			let transform = layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
-		});
 	}
 }
 
@@ -225,8 +209,9 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
+					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 
 				let transform = transform.to_cols_array();
@@ -261,9 +246,8 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.pivot_set(pivot, bounds);
+					modify_inputs.pivot_set(pivot);
 				}
 
 				let pivot = pivot.into();
