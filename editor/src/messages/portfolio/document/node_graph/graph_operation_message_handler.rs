@@ -146,8 +146,13 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn pivot_set(&mut self, new_pivot: DVec2) {
+	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
 		self.modify_inputs("Transform", false, |inputs| {
+			let layer_transform = transform_utils::get_current_transform(inputs);
+			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
+			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}
@@ -246,8 +251,9 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
+				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.pivot_set(pivot);
+					modify_inputs.pivot_set(pivot, bounds);
 				}
 
 				let pivot = pivot.into();
