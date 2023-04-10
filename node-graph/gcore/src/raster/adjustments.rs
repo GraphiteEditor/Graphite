@@ -500,15 +500,20 @@ pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
 	gamma_correction: GammaCorrection,
 }
 
-// Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
+// Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node_fn(ExposureNode)]
 fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
-	let multiplier = 2_f32.powf(exposure as f32);
-	color
-		// TODO: Fix incorrect behavior of offset
-		.map_rgb(|channel: f32| channel + offset as f32)
-		// TODO: Fix incorrect behavior of exposure
-		.map_rgb(|channel: f32| channel * multiplier)
-		// TODO: While gamma correction is correct on its own, determine and implement the correct order of these three operations
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let color = color.to_linear_srgb();
+
+	let result = color
+		// Exposure
+		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
+		// Offset
+		.map_rgb(|c: f32| c + offset as f32)
+		// Gamma correction
 		.gamma(gamma_correction as f32)
+		.map_rgb(|c: f32| c.clamp(0., 1.));
+
+	result.to_gamma_srgb()
 }
