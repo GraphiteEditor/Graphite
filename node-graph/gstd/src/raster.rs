@@ -90,10 +90,10 @@ pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Ou
 }
 */
 
-pub struct DownscaleNode;
+pub struct DownresNode;
 
-#[node_macro::node_fn(DownscaleNode)]
-fn downscale(image_frame: ImageFrame) -> ImageFrame {
+#[node_macro::node_fn(DownresNode)]
+fn downres(image_frame: ImageFrame) -> ImageFrame {
 	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
 	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
 
@@ -192,6 +192,40 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 		bottom_left: transform(bottom_left),
 		bottom_right: transform(bottom_right),
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MaskImageNode<Mask> {
+	mask: Mask,
+}
+
+#[node_macro::node_fn(MaskImageNode)]
+fn mask_image(mut image: ImageFrame, mask: ImageFrame) -> ImageFrame {
+	let image_size = DVec2::new(image.image.width as f64, image.image.height as f64);
+	let mask_size = DVec2::new(mask.image.width as f64, mask.image.height as f64);
+
+	if mask_size == DVec2::ZERO {
+		return image;
+	}
+
+	// Transforms a point from the background image to the forground image
+	let bg_to_fg = DAffine2::from_scale(mask_size) * mask.transform.inverse() * image.transform * DAffine2::from_scale(1. / image_size);
+
+	for y in 0..image.image.height {
+		for x in 0..image.image.width {
+			let image_point = DVec2::new(x as f64, y as f64);
+			let mut mask_point = bg_to_fg.transform_point2(image_point);
+			mask_point = mask_point.clamp(DVec2::ZERO, mask_size);
+
+			let image_pixel = image.get_mut(x as usize, y as usize);
+			let mask_pixel = mask.sample(mask_point);
+			let alpha = image_pixel.a() * mask_pixel.r();
+
+			*image_pixel = Color::from_rgbaf32(image_pixel.r(), image_pixel.g(), image_pixel.b(), alpha).unwrap();
+		}
+	}
+
+	image
 }
 
 #[derive(Debug, Clone, Copy)]

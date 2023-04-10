@@ -600,14 +600,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					warn!("Transform node should be in registry");
 					return;
 				};
-				let Some(downscale_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Downscale") else {
-					warn!("Downscale node should be in registry");
+				let Some(downres_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Downres") else {
+					warn!("Downres node should be in registry");
 					return;
 				};
 
 				let path = vec![generate_uuid()];
-				let [image_node_id, transform_node_id, downscale_node_id] = [100, 101, 102];
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downscale_node_id);
+				let [image_node_id, transform_node_id, downres_node_id] = [100, 101, 102];
+				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downres_node_id);
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -648,8 +648,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					transform_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(image_node_id, 0))], next_pos()),
 				);
 				network.nodes.insert(
-					downscale_node_id,
-					downscale_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
+					downres_node_id,
+					downres_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 
 				responses.push_back(
