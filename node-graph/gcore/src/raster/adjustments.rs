@@ -195,33 +195,42 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
 fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
-	// Input Range
+	// Input Range (Range: 0-1)
 	let input_shadows = (input_start / 100.) as f32;
 	let input_midtones = (input_mid / 100.) as f32;
 	let input_highlights = (input_end / 100.) as f32;
 
-	// Output Range
+	// Output Range (Range: 0-1)
 	let output_minimums = (output_start / 100.) as f32;
 	let output_maximums = (output_end / 100.) as f32;
 
-	// Midtones interpolation factor between minimums and maximums
+	// Midtones interpolation factor between minimums and maximums (Range: 0-1)
 	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
 
-	// Gamma correction
+	// Gamma correction (Range: 0.01-10)
 	let gamma = if midtones < 0.5 {
-		1. / (1. + (9. * (1. - midtones * 2.))).min(9.99)
+		// Range: 0-1
+		let x = 1. - midtones * 2.;
+		// Range: 1-10
+		1. + 9. * x
 	} else {
-		1. / ((1. - midtones) * 2.).max(0.01)
+		// Range: 0-0.5
+		let x = 1. - midtones;
+		// Range: 0-1
+		let x = x * 2.;
+		// Range: 0.01-1
+		x.max(0.01)
 	};
 
-	// Input levels
-	let color = color.map_rgb(|channel| (channel - input_shadows) / (input_highlights - input_shadows));
+	// Input levels (Range: 0-1)
+	let highlights_minus_shadows = (input_highlights - input_shadows).max(f32::EPSILON).min(1.);
+	let color = color.map_rgb(|c| (c - input_shadows).max(0.) / highlights_minus_shadows);
 
-	// Midtones
-	let color = color.map_rgb(|channel| channel.powf(gamma));
+	// Midtones (Range: 0-1)
+	let color = color.gamma(gamma);
 
-	// Output levels
-	color.map_rgb(|channel| channel * (output_maximums - output_minimums) + output_minimums)
+	// Output levels (Range: 0-1)
+	color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -423,14 +432,14 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	let scale = 1. + scale * (1. - channel_difference);
 
 	let luminance_initial = color.to_linear_srgb().luminance_srgb();
-	let altered_color = color.map_rgb(|channel| (channel * scale - channel_reduction)).to_linear_srgb();
+	let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
 	let luminance = altered_color.luminance_srgb();
-	let altered_color = altered_color.map_rgb(|channel| channel * luminance_initial / luminance);
+	let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
 
 	let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
 	let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
 		let scale = (1. - luminance) / (channel_max - luminance);
-		altered_color.map_rgb(|channel| (channel - luminance) * scale + luminance)
+		altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
 	} else {
 		altered_color
 	};
@@ -445,7 +454,7 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 		// Near -0% vibrance we mostly use `altered_color`.
 		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
 		let factor = -slowed_vibrance;
-		altered_color.map_rgb(|channel| channel * (1. - factor) + luminance * factor)
+		altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
 	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
