@@ -1007,13 +1007,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					})
 					.disabled(transform_not_connected)
 					.on_update(update_value(
-						move |checkbox_input: &CheckboxInput| {
-							if checkbox_input.checked {
-								TaggedValue::OptionalDVec2(Some(vec2))
-							} else {
-								TaggedValue::OptionalDVec2(None)
-							}
-						},
+						move |checkbox_input: &CheckboxInput| TaggedValue::OptionalDVec2(if checkbox_input.checked { Some(vec2) } else { None }),
 						node_id,
 						resolution_index,
 					))
@@ -1021,6 +1015,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(vec2.x))
 					.label("W")
+					.min(64.)
+					.step(64.)
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
@@ -1032,6 +1028,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::related_separator(),
 				NumberInput::new(Some(vec2.y))
 					.label("H")
+					.min(64.)
+					.step(64.)
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
