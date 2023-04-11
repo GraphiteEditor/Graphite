@@ -473,7 +473,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_std::brush::VectorPointsNode"),
 			inputs: vec![DocumentInputType::value("VectorData", TaggedValue::VectorData(VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType {
-				name: "Image",
+				name: "Vector Points",
 				data_type: FrontendGraphDataType::General,
 			}],
 			properties: node_properties::no_properties,

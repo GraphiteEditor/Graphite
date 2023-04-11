@@ -524,7 +524,7 @@ impl TypingContext {
 
 /// Returns a list of all generic types used in the node
 fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
-	let inputs = [&types.input].into_iter().chain(types.parameters.iter().flat_map(|x| x.second()));
+	let inputs = [&types.input].into_iter().chain(types.parameters.iter().flat_map(|x| x.fn_output()));
 	let mut generics = inputs
 		.filter_map(|t| match t {
 			Type::Generic(out) => Some(out.clone()),
@@ -542,7 +542,7 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
 	let inputs = [(Some(&types.input), Some(input))]
 		.into_iter()
-		.chain(types.parameters.iter().map(|x| x.second()).zip(parameters.iter().map(|x| x.second())));
+		.chain(types.parameters.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
 	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs

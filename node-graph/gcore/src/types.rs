@@ -114,18 +114,18 @@ impl Type {
 		matches!(self, Type::Fn(_, _) | Type::Concrete(_))
 	}
 
-	pub fn is_generic_fn(&self) -> bool {
+	pub fn is_generic_or_fn(&self) -> bool {
 		matches!(self, Type::Fn(_, _) | Type::Generic(_))
 	}
 
-	pub fn first(&self) -> Option<&Type> {
+	pub fn fn_input(&self) -> Option<&Type> {
 		match self {
 			Type::Fn(first, _) => Some(first),
 			_ => None,
 		}
 	}
 
-	pub fn second(&self) -> Option<&Type> {
+	pub fn fn_output(&self) -> Option<&Type> {
 		match self {
 			Type::Fn(_, second) => Some(second),
 			_ => None,
