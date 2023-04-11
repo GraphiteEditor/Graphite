@@ -185,6 +185,19 @@ impl<'a> ModifyInputsContext<'a> {
 
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
+
+		self.modify_inputs("Transform", false, |inputs| {
+			let layer_transform = transform_utils::get_current_transform(inputs);
+			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
+
+			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
+			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
+			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
+			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
+
+			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			transform_utils::update_transform(inputs, transform);
+		});
 	}
 }
 
