@@ -200,7 +200,7 @@ impl Fsm for BrushToolFsmState {
 					tool_data.hardness = tool_options.hardness;
 					tool_data.flow = tool_options.flow;
 
-					add_polyline(tool_data, global_tool_data, responses);
+					add_brush_render(tool_data, global_tool_data, responses);
 
 					Drawing
 				}
@@ -211,7 +211,7 @@ impl Fsm for BrushToolFsmState {
 						tool_data.points.push(pos);
 					}
 
-					add_polyline(tool_data, global_tool_data, responses);
+					add_brush_render(tool_data, global_tool_data, responses);
 
 					Drawing
 				}
@@ -252,17 +252,6 @@ impl Fsm for BrushToolFsmState {
 
 fn remove_preview(data: &BrushToolData) -> Message {
 	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
-}
-
-fn add_polyline(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
-	let layer_path = data.path.clone().unwrap();
-	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
-	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-
-	responses.add(GraphOperationMessage::StrokeSet {
-		layer: layer_path,
-		stroke: Stroke::new(tool_data.primary_color.apply_opacity(data.flow as f32 / 100.), data.diameter),
-	});
 }
 
 fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
