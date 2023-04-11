@@ -563,8 +563,7 @@ impl Color {
 	pub fn gamma(&self, gamma: f32) -> Color {
 		// From https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
 		let inverse_gamma = 1. / gamma;
-		let per_channel = |channel: f32| channel.powf(inverse_gamma);
-		self.map_rgb(per_channel)
+		self.map_rgb(|c: f32| c.powf(inverse_gamma))
 	}
 
 	pub fn to_linear_srgb(&self) -> Self {
