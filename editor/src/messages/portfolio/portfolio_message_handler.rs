@@ -676,6 +676,8 @@ impl PortfolioMessageHandler {
 		responses.push_back(PropertiesPanelMessage::Init.into());
 		responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+		responses.add(PropertiesPanelMessage::ClearSelection);
+		responses.add(PropertiesPanelMessage::UpdateSelectedDocumentProperties);
 	}
 
 	/// Returns an iterator over the open documents in order.
