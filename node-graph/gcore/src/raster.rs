@@ -239,12 +239,11 @@ fn brighten_color_node(color: Color, brightness: f32) -> Color {
 }
 
 #[derive(Debug)]
-pub struct ForEachNode<Iter, MapNode> {
+pub struct ForEachNode<MapNode> {
 	map_node: MapNode,
-	_iter: PhantomData<Iter>,
 }
 
-#[node_macro::node_fn(ForEachNode<_Iter>)]
+#[node_macro::node_fn(ForEachNode)]
 fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'any_input MapNode) -> ()
 where
 	MapNode: for<'any_input> Node<'any_input, _Iter::Item, Output = ()> + 'input,
@@ -359,6 +358,15 @@ mod image {
 				data: Vec::new(),
 			}
 		}
+
+		pub fn new(width: u32, height: u32, color: Color) -> Self {
+			Self {
+				width,
+				height,
+				data: vec![color; (width * height) as usize],
+			}
+		}
+
 		pub fn as_slice(&self) -> ImageSlice {
 			ImageSlice {
 				width: self.width,
@@ -366,6 +374,15 @@ mod image {
 				data: self.data.as_slice(),
 			}
 		}
+
+		pub fn get_mut(&mut self, x: u32, y: u32) -> Option<&mut Color> {
+			self.data.get_mut((y * self.width + x) as usize)
+		}
+
+		pub fn get(&self, x: u32, y: u32) -> Option<&Color> {
+			self.data.get((y * self.width + x) as usize)
+		}
+
 		/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 		pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
@@ -448,6 +465,12 @@ mod image {
 			let y = position.y.clamp(0., self.image.height as f64 - 1.) as usize;
 
 			self.image.data[x + y * self.image.width as usize]
+		}
+	}
+
+	impl AsRef<ImageFrame> for ImageFrame {
+		fn as_ref(&self) -> &ImageFrame {
+			self
 		}
 	}
 

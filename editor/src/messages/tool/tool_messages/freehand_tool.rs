@@ -226,10 +226,4 @@ fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses
 		layer: layer_path.clone(),
 		stroke: Stroke::new(tool_data.primary_color, data.weight),
 	});
-	responses.add(GraphOperationMessage::TransformSet {
-		layer: layer_path,
-		transform: DAffine2::from_translation(position),
-		transform_in: TransformIn::Local,
-		skip_rerender: false,
-	});
 }

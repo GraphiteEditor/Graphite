@@ -1,9 +1,12 @@
-use dyn_any::{DynAny, StaticType};
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use glam::{BVec2, DAffine2, DVec2};
 use graphene_core::raster::{Color, Image, ImageFrame};
+use graphene_core::transform::Transform;
+use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::Node;
 
+use std::marker::PhantomData;
 use std::path::Path;
 
 #[derive(Debug, DynAny)]
@@ -139,6 +142,10 @@ pub struct MapImageFrameNode<MapFn> {
 	map_fn: MapFn,
 }
 
+impl<MapFn: dyn_any::StaticTypeSized> StaticType for MapImageFrameNode<MapFn> {
+	type Static = MapImageFrameNode<MapFn::Static>;
+}
+
 #[node_macro::node_fn(MapImageFrameNode)]
 fn map_image<MapFn>(mut image_frame: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
@@ -151,10 +158,35 @@ where
 	image_frame
 }
 
-#[derive(Debug, Clone)]
-struct AxisAlignedBbox {
+#[derive(Debug, Clone, DynAny)]
+pub struct AxisAlignedBbox {
 	start: DVec2,
 	end: DVec2,
+}
+
+impl AxisAlignedBbox {
+	pub fn size(&self) -> DVec2 {
+		self.end - self.start
+	}
+
+	pub fn to_transform(&self) -> DAffine2 {
+		DAffine2::from_translation(self.start) * DAffine2::from_scale(self.size())
+	}
+
+	pub fn contains(&self, point: DVec2) -> bool {
+		point.x >= self.start.x && point.x <= self.end.x && point.y >= self.start.y && point.y <= self.end.y
+	}
+
+	pub fn intersects(&self, other: &AxisAlignedBbox) -> bool {
+		other.start.x <= self.end.x && other.end.x >= self.start.x && other.start.y <= self.end.y && other.end.y >= self.start.y
+	}
+
+	pub fn union(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
+		AxisAlignedBbox {
+			start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
+			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -229,17 +261,41 @@ fn mask_image(mut image: ImageFrame, mask: ImageFrame) -> ImageFrame {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct BlendImageTupleNode<MapFn> {
+	map_fn: MapFn,
+}
+
+impl<MapFn: StaticTypeSized> StaticType for BlendImageTupleNode<MapFn> {
+	type Static = BlendImageTupleNode<MapFn::Static>;
+}
+
+#[node_macro::node_fn(BlendImageTupleNode)]
+fn blend_image_tuple<MapFn>(images: (ImageFrame, ImageFrame), map_fn: &'any_input MapFn) -> ImageFrame
+where
+	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input + Clone,
+{
+	let (mut background, foreground) = images;
+	let node = BlendImageNode::new(ClonedNode::new(background), ValueNode::new(map_fn.clone()));
+	node.eval(foreground)
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct BlendImageNode<Background, MapFn> {
 	background: Background,
 	map_fn: MapFn,
 }
 
+impl<Background: StaticTypeSized, MapFn: StaticTypeSized> StaticType for BlendImageNode<Background, MapFn> {
+	type Static = BlendImageNode<Background::Static, MapFn::Static>;
+}
+
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode)]
-fn blend_image<MapFn>(foreground: ImageFrame, mut background: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
+fn blend_image<MapFn, Frame: AsRef<ImageFrame>>(foreground: Frame, mut background: ImageFrame, map_fn: &'any_input MapFn) -> ImageFrame
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input,
 {
+	let foreground = foreground.as_ref();
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
 
@@ -269,6 +325,38 @@ where
 	}
 
 	background
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MergeBoundingBoxNode<Data> {
+	_data: PhantomData<Data>,
+}
+
+#[node_macro::node_fn(MergeBoundingBoxNode<_Data>)]
+fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _Data)) -> Option<AxisAlignedBbox> {
+	let (initial_aabb, data) = input;
+
+	let snd_aabb = compute_transformed_bounding_box(data.transform()).axis_aligned_bbox();
+
+	if let Some(fst_aabb) = initial_aabb {
+		Some(fst_aabb.union(&snd_aabb))
+	} else {
+		Some(snd_aabb)
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EmptyImageNode<FillColor> {
+	pub color: FillColor,
+}
+
+#[node_macro::node_fn(EmptyImageNode)]
+fn empty_image(transform: DAffine2, color: Color) -> ImageFrame {
+	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
+	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
+
+	let image = Image::new(width, height, color);
+	ImageFrame { image, transform }
 }
 
 #[derive(Debug, Clone, Copy)]

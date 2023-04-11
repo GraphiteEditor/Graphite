@@ -32,7 +32,9 @@ use document_legacy::layers::style::{Fill, RenderData, ViewMode};
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
+use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Color, ImageFrame};
+use graphene_core::Cow;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -1050,39 +1052,39 @@ impl DocumentMessageHandler {
 			return None;
 		};
 
-		// Skip processing under node graph frame input if not connected
-		if !node_network.connected_to_output(node_network.inputs[0], false) {
-			return Some(
-				PortfolioMessage::ProcessNodeGraphFrame {
+		// Find the primary input type of the node graph
+		let primary_input_type = node_network.input_types().next().clone();
+		let response = match primary_input_type {
+			// Only calclate the frame if the primary input is an image
+			Some(ty) if ty == concrete!(ImageFrame) => {
+				// Calculate the size of the region to be exported
+				let old_transforms = self.remove_document_transform();
+				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
+				let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+
+				let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+				self.restore_document_transform(old_transforms);
+
+				FrontendMessage::TriggerNodeGraphFrameGenerate {
 					document_id,
 					layer_path,
-					image_data: Default::default(),
-					size: (0, 0),
+					svg,
+					size,
 					imaginate_node,
 				}
-				.into(),
-			);
-		}
-
-		// Calculate the size of the region to be exported
-
-		let old_transforms = self.remove_document_transform();
-		let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
-		let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
-		let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-		self.restore_document_transform(old_transforms);
-
-		Some(
-			FrontendMessage::TriggerNodeGraphFrameGenerate {
+				.into()
+			}
+			// Skip processing under node graph frame input if not connected
+			_ => PortfolioMessage::ProcessNodeGraphFrame {
 				document_id,
 				layer_path,
-				svg,
-				size,
+				image_data: Default::default(),
+				size: (0, 0),
 				imaginate_node,
 			}
 			.into(),
-		)
+		};
+		Some(response)
 	}
 
 	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end

@@ -9,6 +9,7 @@ use document_legacy::{LayerId, Operation};
 use dyn_any::DynAny;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
+use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::vector::VectorData;
 use interpreted_executor::executor::DynamicExecutor;
@@ -42,7 +43,11 @@ impl NodeGraphExecutor {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string())
+		match self.executor.input_type() {
+			Some(t) if t == concrete!(ImageFrame) => self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).map_err(|e| e.to_string()),
+			_ => Err("Invalid input type".to_string()),
+		}
 	}
 
 	/// Computes an input for a node in the graph

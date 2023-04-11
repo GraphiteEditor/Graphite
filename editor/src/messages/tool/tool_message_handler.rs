@@ -70,6 +70,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			ToolMessage::ActivateToolShape => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }.into()),
 
 			#[remain::unsorted]
+			ToolMessage::ActivateToolBrush => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }.into()),
+			#[remain::unsorted]
 			ToolMessage::ActivateToolImaginate => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }.into()),
 
 			ToolMessage::ActivateTool { tool_type } => {
@@ -276,6 +278,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			ActivateToolEllipse,
 			ActivateToolShape,
 
+			ActivateToolBrush,
 			ActivateToolImaginate,
 
 			SelectRandomPrimaryColor,
