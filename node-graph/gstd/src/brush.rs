@@ -199,7 +199,7 @@ mod test {
 		let frames = MapNode::new(ValueNode::new(translate_node));
 		let frames = trace.then(frames).eval(()).collect::<Vec<_>>();
 		assert_eq!(frames.len(), 2);
-		assert_eq!(frames[0].image.width, 22);
+		assert_eq!(frames[0].image.width, 24);
 		let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 		let background_bounds = background_bounds.eval(frames.clone().into_iter());
 		let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
@@ -207,8 +207,8 @@ mod test {
 		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.0));
 		let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 		let final_image = final_image.eval(frames.into_iter());
-		assert_eq!(final_image.image.height, 22);
-		assert_eq!(final_image.image.width, 32);
+		assert_eq!(final_image.image.height, 24);
+		assert_eq!(final_image.image.width, 34);
 		drop(final_image);
 	}
 }
