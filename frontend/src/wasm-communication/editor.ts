@@ -1,4 +1,4 @@
-üimport type WasmBindgenPackage from "../../wasm/pkg";
+import type WasmBindgenPackage from "../../wasm/pkg";
 import init, { setRandomSeed, wasmMemory, JsEditorHandle } from '/wasm/pkg/graphite_wasm.js';
 import { panicProxy } from "/src/utility-functions/panic-proxy";
 import { type JsMessageType } from "/src/wasm-communication/messages";
@@ -10,7 +10,6 @@ export type Editor = Readonly<ReturnType<typeof createEditor>>;
 
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
 let wasmImport: WebAssembly.Memory | undefined;
-let editorInstance: WasmEditorInstance | undefined;
 
 export async function updateImage(path: BigUint64Array, mime: string, imageData: Uint8Array, transform: Float64Array, documentId: bigint): Promise<void> {
 	const blob = new Blob([imageData], { type: mime });
@@ -22,7 +21,7 @@ export async function updateImage(path: BigUint64Array, mime: string, imageData:
 	image.src = blobURL;
 	await image.decode();
 
-	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight,transform);
+	window["editorInstance"]?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight, transform);
 }
 
 export async function fetchImage(path: BigUint64Array, mime: string, documentId: bigint, url: string): Promise<void> {
@@ -36,7 +35,7 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 	image.src = blobURL;
 	await image.decode();
 
-	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight, undefined);
+	window["editorInstance"]?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight, undefined);
 }
 
 const tauri = "__TAURI_METADATA__" in window && import("@tauri-apps/api");
@@ -45,7 +44,7 @@ export async function dispatchTauri(message: unknown): Promise<void> {
 
 	try {
 		const response = await (await tauri).invoke("handle_message", { message });
-		editorInstance?.tauriResponse(response);
+		window["editorInstance"]?.tauriResponse(response);
 	} catch {
 		// eslint-disable-next-line no-console
 		console.error("Failed to dispatch Tauri message");
@@ -84,7 +83,7 @@ export function createEditor() {
 		// We pass along the first two arguments then add our own `raw` and `instance` context for the last two arguments
 		subscriptions.handleJsMessage(messageType, messageData, raw, instance);
 	});
-	editorInstance = instance;
+	window["editorInstance"] = instance;
 
 	// Subscriptions: Allows subscribing to messages in JS that are sent from the WASM backend
 	const subscriptions: SubscriptionRouter = createSubscriptionRouter();
