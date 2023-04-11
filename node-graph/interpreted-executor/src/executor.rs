@@ -7,6 +7,7 @@ use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
 use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, TypingContext};
+use graph_craft::{Type, TypeDescriptor};
 use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;
@@ -47,6 +48,14 @@ impl DynamicExecutor {
 			self.tree.free_node(node_id)
 		}
 		Ok(())
+	}
+
+	pub fn input_type(&self) -> Option<Type> {
+		self.typing_context.type_of(self.output).map(|node_io| node_io.input.clone())
+	}
+
+	pub fn output_type(&self) -> Option<Type> {
+		self.typing_context.type_of(self.output).map(|node_io| node_io.output.clone())
 	}
 }
 

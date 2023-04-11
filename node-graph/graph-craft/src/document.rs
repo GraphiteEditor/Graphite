@@ -47,7 +47,7 @@ impl DocumentNode {
 			.inputs
 			.iter()
 			.enumerate()
-			.filter(|(_, input)| matches!(input, NodeInput::Network(_)))
+			.filter(|(_, input)| matches!(input, NodeInput::Network(_) | NodeInput::ShortCircut(_)))
 			.nth(offset)
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
@@ -72,6 +72,7 @@ impl DocumentNode {
 				NodeInput::ShortCircut(ty) => (ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![])),
 			};
 			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
+			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::ShortCircut(_))), "recieved non resolved parameter");
 			assert!(
 				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
 				"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
@@ -218,6 +219,12 @@ pub enum DocumentNodeImplementation {
 	Unresolved(NodeIdentifier),
 }
 
+impl Default for DocumentNodeImplementation {
+	fn default() -> Self {
+		Self::Unresolved(NodeIdentifier::new("graphene_cored::ops::IdNode"))
+	}
+}
+
 impl DocumentNodeImplementation {
 	pub fn get_network(&self) -> Option<&NodeNetwork> {
 		if let DocumentNodeImplementation::Network(n) = self {
@@ -260,6 +267,227 @@ pub struct NodeNetwork {
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
 
+/// Graph modification functions
+impl NodeNetwork {
+	/// Get the original output nodes of this network, ignoring any preview node
+	pub fn original_outputs(&self) -> &Vec<NodeOutput> {
+		self.previous_outputs.as_ref().unwrap_or(&self.outputs)
+	}
+
+	pub fn input_types<'a>(&'a self) -> impl Iterator<Item = Type> + 'a {
+		self.inputs.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty().clone()).unwrap_or(concrete!(())))
+	}
+
+	/// An empty graph
+	pub fn value_network(node: DocumentNode) -> Self {
+		Self {
+			inputs: vec![0],
+			outputs: vec![NodeOutput::new(0, 0)],
+			nodes: [(0, node)].into_iter().collect(),
+			disabled: vec![],
+			previous_outputs: None,
+		}
+	}
+	/// A graph with just an input node
+	pub fn new_network() -> Self {
+		Self {
+			inputs: vec![0],
+			outputs: vec![NodeOutput::new(0, 0)],
+			nodes: [(
+				0,
+				DocumentNode {
+					name: "Input Frame".into(),
+					inputs: vec![NodeInput::ShortCircut(concrete!(u32))],
+					implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+					metadata: DocumentNodeMetadata { position: (8, 4).into() },
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	/// Appends a new node to the network after the output node and sets it as the new output
+	pub fn push_node(&mut self, mut node: DocumentNode) -> NodeId {
+		let id = self.nodes.len().try_into().expect("Too many nodes in network");
+		// Set the correct position for the new node
+		if let Some(pos) = self.nodes.get(&self.original_outputs()[0].node_id).map(|n| n.metadata.position) {
+			node.metadata.position = pos + IVec2::new(8, 0);
+		}
+		if self.outputs.is_empty() {
+			self.outputs.push(NodeOutput::new(id, 0));
+		}
+		let input = NodeInput::node(self.outputs[0].node_id, self.outputs[0].node_output_index);
+		if node.inputs.is_empty() {
+			node.inputs.push(input);
+		} else {
+			node.inputs[0] = input;
+		}
+		self.nodes.insert(id, node);
+		self.outputs = vec![NodeOutput::new(id, 0)];
+		id
+	}
+
+	/// Adds a output identity node to the network
+	pub fn push_output_node(&mut self) -> NodeId {
+		let node = DocumentNode {
+			name: "Output".into(),
+			inputs: vec![],
+			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+			metadata: DocumentNodeMetadata { position: (0, 0).into() },
+		};
+		self.push_node(node)
+	}
+
+	/// Adds a Cache and a Clone node to the network
+	pub fn push_cache_node(&mut self, ty: Type) -> NodeId {
+		let node = DocumentNode {
+			name: "Cache".into(),
+			inputs: vec![],
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: vec![
+					(
+						0,
+						DocumentNode {
+							name: "CacheNode".to_string(),
+							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(ty)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+							metadata: Default::default(),
+						},
+					),
+					(
+						1,
+						DocumentNode {
+							name: "CloneNode".to_string(),
+							inputs: vec![NodeInput::node(0, 0)],
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
+							metadata: Default::default(),
+						},
+					),
+				]
+				.into_iter()
+				.collect(),
+				..Default::default()
+			}),
+			metadata: DocumentNodeMetadata { position: (0, 0).into() },
+		};
+		self.push_node(node)
+	}
+
+	/// Get the nested network given by the path of node ids
+	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
+		let mut network = Some(self);
+
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get(segment)).and_then(|node| node.implementation.get_network());
+		}
+		network
+	}
+
+	/// Get the mutable nested network given by the path of node ids
+	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
+		let mut network = Some(self);
+
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
+		}
+		network
+	}
+
+	/// Check if the specified node id is connected to the output
+	pub fn connected_to_output(&self, target_node_id: NodeId, ignore_imaginate: bool) -> bool {
+		// If the node is the output then return true
+		if self.outputs.iter().any(|&NodeOutput { node_id, .. }| node_id == target_node_id) {
+			return true;
+		}
+		// Get the outputs
+		let Some(mut stack) = self.outputs.iter().map(|&output| self.nodes.get(&output.node_id)).collect::<Option<Vec<_>>>() else {
+			return false;
+		};
+		let mut already_visited = HashSet::new();
+		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
+
+		while let Some(node) = stack.pop() {
+			// Skip the imaginate node inputs
+			if ignore_imaginate && node.name == "Imaginate" {
+				continue;
+			}
+
+			for input in &node.inputs {
+				if let &NodeInput::Node { node_id: ref_id, .. } = input {
+					// Skip if already viewed
+					if already_visited.contains(&ref_id) {
+						continue;
+					}
+					// If the target node is used as input then return true
+					if ref_id == target_node_id {
+						return true;
+					}
+					// Add the referenced node to the stack
+					let Some(ref_node) = self.nodes.get(&ref_id) else {
+						continue;
+					};
+					already_visited.insert(ref_id);
+					stack.push(ref_node);
+				}
+			}
+		}
+
+		false
+	}
+
+	/// Is the node being used directly as an output?
+	pub fn outputs_contain(&self, node_id: NodeId) -> bool {
+		self.outputs.iter().any(|output| output.node_id == node_id)
+	}
+
+	/// Is the node being used directly as an original output?
+	pub fn original_outputs_contain(&self, node_id: NodeId) -> bool {
+		self.original_outputs().iter().any(|output| output.node_id == node_id)
+	}
+
+	/// Is the node being used directly as a previous output?
+	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
+		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
+	}
+
+	/// A iterator of all nodes connected by primary inputs.
+	///
+	/// Used for the properties panel and tools.
+	pub fn primary_flow(&self) -> impl Iterator<Item = (&DocumentNode, u64)> {
+		struct FlowIter<'a> {
+			stack: Vec<NodeId>,
+			network: &'a NodeNetwork,
+		}
+		impl<'a> Iterator for FlowIter<'a> {
+			type Item = (&'a DocumentNode, NodeId);
+			fn next(&mut self) -> Option<Self::Item> {
+				loop {
+					let node_id = self.stack.pop()?;
+					if let Some(document_node) = self.network.nodes.get(&node_id) {
+						self.stack.extend(
+							document_node
+						.inputs
+						.iter()
+						.take(1) // Only show the primary input
+						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
+						);
+						return Some((document_node, node_id));
+					};
+				}
+			}
+		}
+		FlowIter {
+			stack: self.outputs.iter().map(|output| output.node_id).collect(),
+			network: &self,
+		}
+	}
+}
+
+/// Functions for compiling the network
 impl NodeNetwork {
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.inputs.iter_mut().for_each(|id| *id = f(*id));
@@ -405,6 +633,31 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		}
+		// replace value inputs with value nodes
+		for input in &mut node.inputs {
+			let mut dummy_input = NodeInput::ShortCircut(concrete!(()));
+			std::mem::swap(&mut dummy_input, input);
+			if let NodeInput::Value { tagged_value, exposed } = dummy_input {
+				let value_node_id = gen_id();
+				let value_node_id = map_ids(id, value_node_id);
+				self.nodes.insert(
+					value_node_id,
+					DocumentNode {
+						name: "Value".into(),
+						inputs: vec![NodeInput::Value { tagged_value, exposed }],
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+						metadata: DocumentNodeMetadata::default(),
+					},
+				);
+				*input = NodeInput::Node {
+					node_id: value_node_id,
+					output_index: 0,
+					lambda: false,
+				};
+			} else {
+				*input = dummy_input;
+			}
+		}
 
 		match node.implementation {
 			DocumentNodeImplementation::Network(mut inner_network) => {
@@ -423,20 +676,6 @@ impl NodeNetwork {
 							let network_input = self.nodes.get_mut(network_input).unwrap();
 							network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 						}
-						NodeInput::Value { tagged_value, exposed } => {
-							let name = "Value".to_string();
-							let new_id = map_ids(id, gen_id());
-							let value_node = DocumentNode {
-								name,
-								inputs: vec![NodeInput::Value { tagged_value, exposed }],
-								implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
-								metadata: DocumentNodeMetadata::default(),
-							};
-							assert!(!self.nodes.contains_key(&new_id));
-							self.nodes.insert(new_id, value_node);
-							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.populate_first_network_input(new_id, 0, *offset, false);
-						}
 						NodeInput::Network(_) => {
 							*network_offsets.get_mut(network_input).unwrap() += 1;
 							if let Some(index) = self.inputs.iter().position(|i| *i == id) {
@@ -444,6 +683,7 @@ impl NodeNetwork {
 							}
 						}
 						NodeInput::ShortCircut(_) => (),
+						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 					}
 				}
 				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
@@ -461,7 +701,7 @@ impl NodeNetwork {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
 			}
-			DocumentNodeImplementation::Unresolved(_) => (),
+			DocumentNodeImplementation::Unresolved(_) => {}
 		}
 		assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
 		self.nodes.insert(id, node);
@@ -477,151 +717,6 @@ impl NodeNetwork {
 			output: output.node_id,
 			nodes: nodes.clone(),
 		})
-	}
-
-	/// Get the original output nodes of this network, ignoring any preview node
-	pub fn original_outputs(&self) -> &Vec<NodeOutput> {
-		self.previous_outputs.as_ref().unwrap_or(&self.outputs)
-	}
-
-	/// A graph with just an input and output node
-	pub fn new_network(output_offset: i32, output_node_id: NodeId) -> Self {
-		Self {
-			inputs: vec![0],
-			outputs: vec![NodeOutput::new(1, 0)],
-			nodes: [
-				(
-					0,
-					DocumentNode {
-						name: "Input Frame".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32))],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
-						metadata: DocumentNodeMetadata { position: (8, 4).into() },
-					},
-				),
-				(
-					1,
-					DocumentNode {
-						name: "Output".into(),
-						inputs: vec![NodeInput::node(output_node_id, 0)],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
-						metadata: DocumentNodeMetadata { position: (output_offset, 4).into() },
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		}
-	}
-
-	/// Get the nested network given by the path of node ids
-	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
-		let mut network = Some(self);
-
-		for segment in nested_path {
-			network = network.and_then(|network| network.nodes.get(segment)).and_then(|node| node.implementation.get_network());
-		}
-		network
-	}
-
-	/// Get the mutable nested network given by the path of node ids
-	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network = Some(self);
-
-		for segment in nested_path {
-			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
-		}
-		network
-	}
-
-	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId, ignore_imaginate: bool) -> bool {
-		// If the node is the output then return true
-		if self.outputs.iter().any(|&NodeOutput { node_id, .. }| node_id == target_node_id) {
-			return true;
-		}
-		// Get the outputs
-		let Some(mut stack) = self.outputs.iter().map(|&output| self.nodes.get(&output.node_id)).collect::<Option<Vec<_>>>() else {
-			return false;
-		};
-		let mut already_visited = HashSet::new();
-		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
-
-		while let Some(node) = stack.pop() {
-			// Skip the imaginate node inputs
-			if ignore_imaginate && node.name == "Imaginate" {
-				continue;
-			}
-
-			for input in &node.inputs {
-				if let &NodeInput::Node { node_id: ref_id, .. } = input {
-					// Skip if already viewed
-					if already_visited.contains(&ref_id) {
-						continue;
-					}
-					// If the target node is used as input then return true
-					if ref_id == target_node_id {
-						return true;
-					}
-					// Add the referenced node to the stack
-					let Some(ref_node) = self.nodes.get(&ref_id) else {
-						continue;
-					};
-					already_visited.insert(ref_id);
-					stack.push(ref_node);
-				}
-			}
-		}
-
-		false
-	}
-
-	/// Is the node being used directly as an output?
-	pub fn outputs_contain(&self, node_id: NodeId) -> bool {
-		self.outputs.iter().any(|output| output.node_id == node_id)
-	}
-
-	/// Is the node being used directly as an original output?
-	pub fn original_outputs_contain(&self, node_id: NodeId) -> bool {
-		self.original_outputs().iter().any(|output| output.node_id == node_id)
-	}
-
-	/// Is the node being used directly as a previous output?
-	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
-		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
-	}
-
-	/// A iterator of all nodes connected by primary inputs.
-	///
-	/// Used for the properties panel and tools.
-	pub fn primary_flow(&self) -> impl Iterator<Item = (&DocumentNode, u64)> {
-		struct FlowIter<'a> {
-			stack: Vec<NodeId>,
-			network: &'a NodeNetwork,
-		}
-		impl<'a> Iterator for FlowIter<'a> {
-			type Item = (&'a DocumentNode, NodeId);
-			fn next(&mut self) -> Option<Self::Item> {
-				loop {
-					let node_id = self.stack.pop()?;
-					if let Some(document_node) = self.network.nodes.get(&node_id) {
-						self.stack.extend(
-							document_node
-						.inputs
-						.iter()
-						.take(1) // Only show the primary input
-						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
-						);
-						return Some((document_node, node_id));
-					};
-				}
-			}
-		}
-		FlowIter {
-			stack: self.outputs.iter().map(|output| output.node_id).collect(),
-			network: &self,
-		}
 	}
 }
 

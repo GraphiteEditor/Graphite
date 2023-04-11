@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, ToTokens};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type, TypeParam,
-	TypeParamBound, WhereClause, WherePredicate,
+	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PatType, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type,
+	TypeParam, TypeParamBound, WhereClause, WherePredicate,
 };
 
 #[proc_macro_attribute]
@@ -46,6 +46,20 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		panic!("Expected ident as primary input.");
 	};
 	let primary_input_ty = &primary_input.ty;
+	let aux_type_generics = type_generics
+		.iter()
+		.filter(|gen| {
+			if let GenericParam::Type(ty) = gen {
+				!function.sig.inputs.iter().take(1).any(|param_ty| match param_ty {
+					FnArg::Typed(pat_ty) => pat_ty.ty.to_token_stream().to_string() == ty.ident.to_string(),
+					_ => false,
+				})
+			} else {
+				false
+			}
+		})
+		.cloned()
+		.collect::<Vec<_>>();
 
 	let body = function.block;
 
@@ -101,6 +115,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		}
 	});
 	let generics = type_generics.into_iter().chain(node_generics.iter().cloned()).collect::<Punctuated<_, Comma>>();
+	let new_fn_generics = aux_type_generics.into_iter().chain(node_generics.iter().cloned()).collect::<Punctuated<_, Comma>>();
 	// Bindings for all of the above generics to a node with an input of `()` and an output of the type in the function
 	let extra_where_clause = parameter_inputs
 		.iter()
@@ -122,7 +137,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 			})
 		})
 		.collect::<Vec<_>>();
-	where_clause.predicates.extend(extra_where_clause);
+	where_clause.predicates.extend(extra_where_clause.clone());
 
 	quote::quote! {
 
@@ -140,7 +155,8 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 			}
 		}
 
-		impl <#(#args),*> #node_name<#(#args),*>
+		impl <'input, #new_fn_generics> #node_name<#(#args),*>
+			where #(#extra_where_clause),*
 		{
 			pub const fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{
 				Self{

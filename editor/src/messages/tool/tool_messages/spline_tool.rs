@@ -270,10 +270,4 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 		layer: layer_path.clone(),
 		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
 	});
-	responses.add(GraphOperationMessage::TransformSet {
-		layer: layer_path,
-		transform: glam::DAffine2::from_translation(position),
-		transform_in: TransformIn::Local,
-		skip_rerender: false,
-	})
 }

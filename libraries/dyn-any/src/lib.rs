@@ -159,6 +159,27 @@ impl<T: StaticTypeSized> StaticType for *mut [T] {
 impl<'a, T: StaticTypeSized> StaticType for &'a [T] {
 	type Static = &'static [<T as StaticTypeSized>::Static];
 }
+macro_rules! impl_slice {
+    ($($id:ident),*) => {
+        $(
+        impl<'a, T: StaticTypeSized> StaticType for $id<'a, T> {
+            type Static = $id<'static, <T as StaticTypeSized>::Static>;
+        }
+        )*
+    };
+}
+
+mod slice {
+	use super::*;
+	use core::slice::*;
+	impl_slice!(Iter, IterMut, Chunks, ChunksMut, RChunks, RChunksMut, Windows);
+}
+
+#[cfg(feature = "alloc")]
+impl<'a, T: StaticTypeSized> StaticType for Box<dyn Iterator<Item = T> + 'a + Send + Sync> {
+	type Static = Box<dyn Iterator<Item = T::Static> + Send + Sync>;
+}
+
 impl<'a> StaticType for &'a str {
 	type Static = &'static str;
 }

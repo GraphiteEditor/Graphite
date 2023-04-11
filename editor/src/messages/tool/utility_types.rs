@@ -410,12 +410,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			// Raster tool group
 			ToolAvailability::Available(Box::<frame_tool::NodeGraphFrameTool>::default()),
 			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
-			ToolAvailability::ComingSoon(ToolEntry {
-				tool_type: ToolType::Brush,
-				icon_name: "RasterBrushTool".into(),
-				tooltip: "Coming Soon: Brush Tool (B)".into(),
-				tooltip_shortcut: None,
-			}),
+			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry {
 				tool_type: ToolType::Heal,
 				icon_name: "RasterHealTool".into(),
@@ -472,7 +467,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Text(_) => ToolType::Text,
 
 		// Raster tool group
-		// ToolMessage::Brush(_) => ToolType::Brush,
+		ToolMessage::Brush(_) => ToolType::Brush,
 		// ToolMessage::Heal(_) => ToolType::Heal,
 		// ToolMessage::Clone(_) => ToolType::Clone,
 		// ToolMessage::Patch(_) => ToolType::Patch,
@@ -509,7 +504,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
 
 		// Raster tool group
-		// ToolType::Brush => ToolMessageDiscriminant::ActivateToolBrush,
+		ToolType::Brush => ToolMessageDiscriminant::ActivateToolBrush,
 		// ToolType::Heal => ToolMessageDiscriminant::ActivateToolHeal,
 		// ToolType::Clone => ToolMessageDiscriminant::ActivateToolClone,
 		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,

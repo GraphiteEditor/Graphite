@@ -23,7 +23,7 @@ pub struct AddParameterNode<Second> {
 }
 
 #[node_macro::node_fn(AddParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Add<T>>::Output
+fn add_parameter<U, T>(first: U, second: T) -> <U as Add<T>>::Output
 where
 	U: Add<T>,
 {

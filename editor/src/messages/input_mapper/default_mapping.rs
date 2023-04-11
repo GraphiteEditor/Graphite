@@ -205,6 +205,11 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftPointerDown),
 		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightPointerDown),
 		//
+		// BrushToolMessage
+		entry!(PointerMove; action_dispatch=BrushToolMessage::PointerMove),
+		entry!(KeyDown(Lmb); action_dispatch=BrushToolMessage::DragStart),
+		entry!(KeyUp(Lmb); action_dispatch=BrushToolMessage::DragStop),
+		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
 		entry!(KeyDown(KeyZ); action_dispatch=ToolMessage::ActivateToolNavigate),
@@ -219,6 +224,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyM); action_dispatch=ToolMessage::ActivateToolRectangle),
 		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolShape),
+		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
 		entry!(KeyDown(KeyX); modifiers=[Shift, Accel], action_dispatch=ToolMessage::ResetColors),
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),
