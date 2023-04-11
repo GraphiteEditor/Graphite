@@ -181,12 +181,13 @@ mod test {
 	#[test]
 	fn test_brush_texture() {
 		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(0.0), ClonedNode::new(1.0));
-		let image = brush_texture_node.eval(20.0);
-		assert_eq!(image.image.width, 22);
-		assert_eq!(image.image.height, 22);
-		assert_eq!(image.transform, DAffine2::from_scale(DVec2::splat(22.0)));
-		// center pixel should be BLACK
-		assert_eq!(image.image.get(10, 10).unwrap(), &Color::BLACK);
+		let size = 20.;
+		let image = brush_texture_node.eval(size);
+		assert_eq!(image.image.width, size.ceil() as u32 + 4);
+		assert_eq!(image.image.height, size.ceil() as u32 + 4);
+		assert_eq!(image.transform, DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil() + 4.), 0., -DVec2::splat(size / 2.)));
+		// center pixel should be the most opaque pixel
+		assert_eq!(image.image.get(12, 12), image.image.data.iter().max_by_key(|x| (x.a() * 1000.) as u32));
 	}
 
 	#[test]
