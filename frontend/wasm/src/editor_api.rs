@@ -115,7 +115,7 @@ impl JsEditorHandle {
 			for image in image_data {
 				#[cfg(not(feature = "tauri"))]
 				{
-					let mut transform = if let Some(transform_val) = image.transform {
+					let transform = if let Some(transform_val) = image.transform {
 						let transform = js_sys::Float64Array::new_with_length(6);
 						transform.copy_from(&transform_val);
 						transform

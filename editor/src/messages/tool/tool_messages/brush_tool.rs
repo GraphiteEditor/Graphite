@@ -10,11 +10,9 @@ use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, 
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
-use document_legacy::Operation;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::vector::style::Stroke;
 use graphene_core::Cow;
 
 use glam::DVec2;
