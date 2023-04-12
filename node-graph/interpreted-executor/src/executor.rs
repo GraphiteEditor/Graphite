@@ -7,7 +7,7 @@ use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
 use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, TypingContext};
-use graph_craft::{Type, TypeDescriptor};
+use graph_craft::Type;
 use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;

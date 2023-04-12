@@ -971,12 +971,6 @@ fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecD
 	}
 }
 
-fn rerender_duplicated_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
-	for layer_path in tool_data.not_duplicated_layers.iter().flatten() {
-		responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
-	}
-}
-
 // TODO: Majorly clean up these next five functions
 
 fn drag_shallowest_manipulation(

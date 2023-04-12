@@ -11,7 +11,7 @@ use document_legacy::LayerId;
 use document_legacy::Operation;
 use graphene_core::vector::style::Stroke;
 
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -217,9 +217,9 @@ fn remove_preview(data: &FreehandToolData) -> Message {
 }
 
 fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
-	let layer_path = data.path.clone().unwrap();
 	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
-	let position = subpath.bounding_box().unwrap_or_default().into_iter().sum::<DVec2>() / 2.;
+
+	let layer_path = data.path.clone().unwrap();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 
 	responses.add(GraphOperationMessage::StrokeSet {

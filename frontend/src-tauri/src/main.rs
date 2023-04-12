@@ -98,11 +98,13 @@ fn handle_message(message: String) -> String {
 			for image in image_data {
 				let path = image.path.clone();
 				let mime = image.mime.clone();
+				let transform = image.transform.clone();
 				images.insert(format!("{:?}_{}", &image.path, document_id), image);
 				stub_data.push(FrontendImageData {
 					path,
 					mime,
 					image_data: Arc::new(Vec::new()),
+					transform,
 				});
 			}
 			FrontendMessage::UpdateImageData { document_id, image_data: stub_data }
