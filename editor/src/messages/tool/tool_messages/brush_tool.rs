@@ -224,6 +224,13 @@ impl Fsm for BrushToolFsmState {
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
 					if tool_data.points.last() != Some(&pos) {
+						// Linear interpolation for when the mouse has moved a lot between frames
+						if let Some(&last_point) = tool_data.points.last() {
+							let distance = (last_point - pos).length();
+							let extra_points = (distance / (tool_data.diameter / 2.)).floor() as usize;
+							tool_data.points.extend((0..extra_points).map(|i| last_point.lerp(pos, (i as f64 + 1.) / (extra_points as f64 + 1.))));
+						}
+
 						tool_data.points.push(pos);
 					}
 
