@@ -274,7 +274,8 @@ fn blend_image_tuple<MapFn>(images: (ImageFrame, ImageFrame), map_fn: &'any_inpu
 where
 	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input + Clone,
 {
-	let (mut background, foreground) = images;
+	let (background, foreground) = images;
+
 	let node = BlendImageNode::new(ClonedNode::new(background), ValueNode::new(map_fn.clone()));
 	node.eval(foreground)
 }

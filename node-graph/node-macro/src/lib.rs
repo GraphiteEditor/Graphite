@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, ToTokens};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PatType, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type,
-	TypeParam, TypeParamBound, WhereClause, WherePredicate,
+	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type, TypeParam,
+	TypeParamBound, WhereClause, WherePredicate,
 };
 
 #[proc_macro_attribute]
@@ -51,7 +51,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		.filter(|gen| {
 			if let GenericParam::Type(ty) = gen {
 				!function.sig.inputs.iter().take(1).any(|param_ty| match param_ty {
-					FnArg::Typed(pat_ty) => pat_ty.ty.to_token_stream().to_string() == ty.ident.to_string(),
+					FnArg::Typed(pat_ty) => ty.ident == pat_ty.ty.to_token_stream().to_string(),
 					_ => false,
 				})
 			} else {
