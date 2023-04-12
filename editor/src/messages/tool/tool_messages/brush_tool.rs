@@ -1,6 +1,7 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
@@ -9,11 +10,9 @@ use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, 
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
-use document_legacy::Operation;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::vector::style::Stroke;
 use graphene_core::Cow;
 
 use glam::DVec2;
@@ -60,6 +59,7 @@ pub enum BrushToolMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
+	ChangeDiameter(f64),
 	Diameter(f64),
 	Flow(f64),
 	Hardness(f64),
@@ -119,6 +119,18 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message {
 			match action {
+				BrushToolMessageOptionsUpdate::ChangeDiameter(change) => {
+					let needs_rounding = ((self.options.diameter + change.abs() / 2.) % change.abs() - change.abs() / 2.).abs() > 0.5;
+					if needs_rounding && change > 0. {
+						self.options.diameter = (self.options.diameter / change.abs()).ceil() * change.abs();
+					} else if needs_rounding && change < 0. {
+						self.options.diameter = (self.options.diameter / change.abs()).floor() * change.abs();
+					} else {
+						self.options.diameter = (self.options.diameter / change.abs()).round() * change.abs() + change;
+					}
+					self.options.diameter = self.options.diameter.max(1.);
+					self.register_properties(responses, LayoutTarget::ToolOptions);
+				}
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
@@ -137,11 +149,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 				DragStart,
 				DragStop,
 				Abort,
+				UpdateOptions,
 			),
 			Drawing => actions!(BrushToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Abort,
+				UpdateOptions,
 			),
 		}
 	}
@@ -164,6 +178,19 @@ struct BrushToolData {
 	hardness: f64,
 	flow: f64,
 	path: Option<Vec<LayerId>>,
+}
+
+impl BrushToolData {
+	fn update_points(&self, responses: &mut VecDeque<Message>) {
+		if let Some(layer_path) = self.path.clone() {
+			responses.add(NodeGraphMessage::SetQualifiedInputValue {
+				layer_path,
+				node_path: vec![0],
+				input_index: 1,
+				value: TaggedValue::VecDVec2(self.points.clone()),
+			});
+		}
+	}
 }
 
 impl Fsm for BrushToolFsmState {
@@ -189,8 +216,15 @@ impl Fsm for BrushToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
-					tool_data.path = Some(document.get_path_for_new_layer());
+					let existing_points = load_existing_points(document);
+					let new_layer = existing_points.is_none();
+					if let Some((layer_path, points)) = existing_points {
+						tool_data.path = Some(layer_path);
+						tool_data.points = points;
+					} else {
+						responses.push_back(DocumentMessage::DeselectAllLayers.into());
+						tool_data.path = Some(document.get_path_for_new_layer());
+					}
 
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
@@ -200,7 +234,11 @@ impl Fsm for BrushToolFsmState {
 					tool_data.hardness = tool_options.hardness;
 					tool_data.flow = tool_options.flow;
 
-					add_polyline(tool_data, global_tool_data, responses);
+					if new_layer {
+						add_brush_render(tool_data, global_tool_data, responses);
+					} else {
+						tool_data.update_points(responses);
+					}
 
 					Drawing
 				}
@@ -208,17 +246,22 @@ impl Fsm for BrushToolFsmState {
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
 					if tool_data.points.last() != Some(&pos) {
+						// Linear interpolation for when the mouse has moved a lot between frames
+						if let Some(&last_point) = tool_data.points.last() {
+							let distance = (last_point - pos).length();
+							let extra_points = (distance / (tool_data.diameter / 2.)).floor() as usize;
+							tool_data.points.extend((0..extra_points).map(|i| last_point.lerp(pos, (i as f64 + 1.) / (extra_points as f64 + 1.))));
+						}
+
 						tool_data.points.push(pos);
 					}
 
-					add_polyline(tool_data, global_tool_data, responses);
+					tool_data.update_points(responses);
 
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if !tool_data.points.is_empty() {
-						responses.push_back(remove_preview(tool_data));
-						add_brush_render(tool_data, global_tool_data, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -250,21 +293,6 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn remove_preview(data: &BrushToolData) -> Message {
-	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
-}
-
-fn add_polyline(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
-	let layer_path = data.path.clone().unwrap();
-	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
-	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-
-	responses.add(GraphOperationMessage::StrokeSet {
-		layer: layer_path,
-		stroke: Stroke::new(tool_data.primary_color.apply_opacity(data.flow as f32 / 100.), data.diameter),
-	});
-}
-
 fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
 	let brush_node = DocumentNode {
@@ -287,4 +315,23 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 	let mut network = NodeNetwork::value_network(brush_node);
 	network.push_output_node();
 	graph_modification_utils::new_custom_layer(network, layer_path.clone(), responses);
+}
+
+fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {
+	if document.selected_layers().count() != 1 {
+		return None;
+	}
+	let layer_path = document.selected_layers().next()?.to_vec();
+	let network = document.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_node_graph().ok())?;
+	let brush_node = network.nodes.get(&0)?;
+	if brush_node.implementation != DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()) {
+		return None;
+	}
+	let points_input = brush_node.inputs.get(1)?;
+	let NodeInput::Value {
+		tagged_value: TaggedValue::VecDVec2(points),
+		..
+	} = points_input else { return None };
+
+	Some((layer_path, points.clone()))
 }

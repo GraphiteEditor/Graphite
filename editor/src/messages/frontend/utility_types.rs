@@ -11,12 +11,13 @@ pub struct FrontendDocumentDetails {
 	pub id: u64,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct FrontendImageData {
 	pub path: Vec<LayerId>,
 	pub mime: String,
 	#[serde(skip)]
 	pub image_data: std::sync::Arc<Vec<u8>>,
+	pub transform: Option<[f64; 6]>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]

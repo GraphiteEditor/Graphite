@@ -768,6 +768,8 @@ export class ImaginateImageData {
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;
+	
+	readonly transform!: Float64Array ;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

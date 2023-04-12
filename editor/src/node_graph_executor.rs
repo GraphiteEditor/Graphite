@@ -269,9 +269,17 @@ impl NodeGraphExecutor {
 			// Attempt to downcast to an image frame
 			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
 
+			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
+			let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
+
 			// If no image was generated, clear the frame
 			if image.width == 0 || image.height == 0 {
 				responses.push_back(DocumentMessage::FrameClear.into());
+
+				// Update the transform based on the graph output
+				if let Some(transform) = transform {
+					responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
+				}
 			} else {
 				// Update the image data
 				let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
@@ -289,16 +297,9 @@ impl NodeGraphExecutor {
 					path: layer_path.clone(),
 					image_data,
 					mime,
+					transform,
 				}];
 				responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
-			}
-
-			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
-			if !transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON) {
-				// Update the transform based on the graph output
-				let transform = transform.to_cols_array();
-				responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
-				responses.push_back(Operation::SetLayerVisibility { path: layer_path, visible: true }.into());
 			}
 		}
 
