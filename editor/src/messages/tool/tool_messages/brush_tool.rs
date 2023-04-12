@@ -211,14 +211,19 @@ impl Fsm for BrushToolFsmState {
 						tool_data.points.push(pos);
 					}
 
-					add_brush_render(tool_data, global_tool_data, responses);
+					if let Some(layer_path) = tool_data.path.clone() {
+						responses.add(NodeGraphMessage::SetQualifiedInputValue {
+							layer_path,
+							node_path: vec![0],
+							input_index: 1,
+							value: TaggedValue::VecDVec2(tool_data.points.clone()),
+						});
+					}
 
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if !tool_data.points.is_empty() {
-						responses.push_back(remove_preview(tool_data));
-						add_brush_render(tool_data, global_tool_data, responses);
 						responses.push_back(DocumentMessage::CommitTransaction.into());
 					} else {
 						responses.push_back(DocumentMessage::AbortTransaction.into());
@@ -248,10 +253,6 @@ impl Fsm for BrushToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
 	}
-}
-
-fn remove_preview(data: &BrushToolData) -> Message {
-	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
 }
 
 fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
