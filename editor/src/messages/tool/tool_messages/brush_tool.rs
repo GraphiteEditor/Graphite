@@ -1,6 +1,7 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
@@ -60,6 +61,7 @@ pub enum BrushToolMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
+	ChangeDiameter(f64),
 	Diameter(f64),
 	Flow(f64),
 	Hardness(f64),
@@ -119,6 +121,18 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message {
 			match action {
+				BrushToolMessageOptionsUpdate::ChangeDiameter(change) => {
+					let needs_rounding = ((self.options.diameter + change.abs() / 2.) % change.abs() - change.abs() / 2.).abs() > 0.5;
+					if needs_rounding && change > 0. {
+						self.options.diameter = (self.options.diameter / change.abs()).ceil() * change.abs();
+					} else if needs_rounding && change < 0. {
+						self.options.diameter = (self.options.diameter / change.abs()).floor() * change.abs();
+					} else {
+						self.options.diameter = (self.options.diameter / change.abs()).round() * change.abs() + change;
+					}
+					self.options.diameter = self.options.diameter.max(1.);
+					self.register_properties(responses, LayoutTarget::ToolOptions);
+				}
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
@@ -137,11 +151,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 				DragStart,
 				DragStop,
 				Abort,
+				UpdateOptions,
 			),
 			Drawing => actions!(BrushToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Abort,
+				UpdateOptions,
 			),
 		}
 	}
