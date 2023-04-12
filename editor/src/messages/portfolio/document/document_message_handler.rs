@@ -580,7 +580,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					};
 
 					if let Some(transform) = transform {
-						let transform_in = TransformIn::Viewport;
+						let transform_in = TransformIn::Local;
 						responses.add(GraphOperationMessage::TransformChange {
 							layer: path,
 							transform,
