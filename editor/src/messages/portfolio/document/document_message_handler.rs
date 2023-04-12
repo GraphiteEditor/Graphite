@@ -1628,6 +1628,7 @@ impl DocumentMessageHandler {
 							path: path.clone(),
 							image_data: data.image_data.clone(),
 							mime: node_graph_frame.mime.clone(),
+							transform: None,
 						});
 					}
 				}

@@ -62,6 +62,9 @@ pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
 // Line tool
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
+// Brush tool
+pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
+
 // Scrollbars
 pub const SCROLLBAR_SPACING: f64 = 0.1;
 pub const ASYMPTOTIC_EFFECT: f64 = 0.5;

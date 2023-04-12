@@ -1,5 +1,5 @@
 use core::marker::PhantomData;
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use dyn_any::{StaticType, StaticTypeSized};
 
 use crate::Node;
 
