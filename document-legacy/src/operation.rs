@@ -51,10 +51,6 @@ pub enum Operation {
 		transform: [f64; 6],
 		network: graph_craft::document::NodeNetwork,
 	},
-	SetNodeGraphFrameImageData {
-		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
-	},
 	/// Sets a blob URL as the image source for an Image or Imaginate layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetLayerBlobUrl {

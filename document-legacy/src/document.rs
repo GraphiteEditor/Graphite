@@ -2,7 +2,7 @@ use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
-use crate::layers::nodegraph_layer::NodeGraphFrameLayer;
+use crate::layers::nodegraph_layer::{CachedOutputData, NodeGraphFrameLayer};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::layers::text_layer::{Font, TextLayer};
@@ -570,16 +570,6 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetNodeGraphFrameImageData { layer_path, image_data } => {
-				let layer = self.layer_mut(&layer_path).expect("Setting NodeGraphFrame image data for invalid layer");
-				if let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data {
-					let image_data = std::sync::Arc::new(image_data);
-					node_graph_frame.image_data = Some(crate::layers::nodegraph_layer::ImageData { image_data });
-				} else {
-					panic!("Incorrectly trying to set image data for a layer that is not an NodeGraphFrame layer type");
-				}
-				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
 			Operation::SetLayerPreserveAspect { layer_path, preserve_aspect } => {
 				if let Ok(layer) = self.layer_mut(&layer_path) {
 					layer.preserve_aspect = preserve_aspect;
@@ -781,15 +771,14 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution } => {
+			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution: _ } => {
 				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{:?}'", layer_path));
 
 				let LayerDataType::NodeGraphFrame(node_graph_frame) = &mut layer.data else {
 					panic!("Incorrectly trying to set the image blob URL for a layer that is not a NodeGraphFrame layer type");
 				};
 
-				node_graph_frame.blob_url = Some(blob_url);
-				node_graph_frame.dimensions = resolution.into();
+				node_graph_frame.cached_output_data = CachedOutputData::BlobURL(blob_url);
 
 				self.mark_as_dirty(&layer_path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
@@ -798,8 +787,7 @@ impl Document {
 				let layer = self.layer_mut(&path).expect("Clearing node graph image for invalid layer");
 				match &mut layer.data {
 					LayerDataType::NodeGraphFrame(node_graph) => {
-						node_graph.image_data = None;
-						node_graph.blob_url = None;
+						node_graph.cached_output_data = CachedOutputData::None;
 					}
 					e => panic!("Incorrectly trying to clear the blob URL for layer of type {}", LayerDataTypeDiscriminant::from(&*e)),
 				}
@@ -828,7 +816,7 @@ impl Document {
 			}
 			Operation::SetVectorData { path, vector_data } => {
 				if let LayerDataType::NodeGraphFrame(graph) = &mut self.layer_mut(&path)?.data {
-					graph.vector_data = Some(vector_data);
+					graph.cached_output_data = CachedOutputData::VectorPath(Box::new(vector_data));
 				}
 				Some(Vec::new())
 			}
