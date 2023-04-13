@@ -810,7 +810,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::IndexNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Segmentation", TaggedValue::Segments(vec![ImageFrame::empty()]), true),
-				DocumentInputType::value("Index", TaggedValue::U32(0), true),
+				DocumentInputType::value("Index", TaggedValue::U32(0), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::index_node_properties,
