@@ -356,6 +356,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
 			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
 		),
+		register_node!(graphene_core::text::TextGenerator<_, _>, input: String, params: [graphene_core::text::Font, f64]),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {

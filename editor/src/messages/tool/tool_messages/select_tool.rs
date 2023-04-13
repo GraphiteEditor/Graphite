@@ -26,6 +26,8 @@ use document_legacy::LayerId;
 use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
+use graph_craft::document::DocumentNodeImplementation;
+use graph_craft::NodeIdentifier;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -827,9 +829,12 @@ impl Fsm for SelectToolFsmState {
 						// Check that only one layer is selected
 						if selected_layers.next().is_none() {
 							if let Ok(layer) = document.document_legacy.layer(layer_path) {
-								if let LayerDataType::Text(_) = layer.data {
-									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-									responses.push_back(TextToolMessage::EditSelected.into());
+								if let Ok(network) = layer.as_node_graph() {
+									let text_node = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::text::TextGenerator<_, _>"));
+									if network.nodes.values().any(|node| node.implementation == text_node) {
+										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+										responses.push_back(TextToolMessage::EditSelected.into());
+									}
 								}
 							}
 						}

@@ -581,11 +581,6 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::SetTextEditability { path, editable } => {
-				todo!();
-				self.mark_as_dirty(&path)?;
-				Some(vec![DocumentChanged])
-			}
 			Operation::SetTextContent { path, new_text } => {
 				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
 				let mut current_folder = &mut self.root;

@@ -1,8 +1,9 @@
+use dyn_any::{DynAny, StaticType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,

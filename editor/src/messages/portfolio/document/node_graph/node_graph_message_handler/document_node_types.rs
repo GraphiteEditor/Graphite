@@ -1,6 +1,9 @@
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
+use crate::consts::DEFAULT_FONT_FAMILY;
+use crate::consts::DEFAULT_FONT_STYLE;
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::node_graph_executor::NodeGraphExecutor;
+use graphene_core::text::Font;
 use once_cell::sync::Lazy;
 
 use graph_craft::document::value::*;
@@ -684,6 +687,18 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
+			name: "Text",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::value("Text", TaggedValue::String("hello world".to_string()), false),
+				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
+				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::node_section_font,
 		},
 		DocumentNodeType {
 			name: "Transform",

@@ -14,10 +14,10 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::layers::style::RenderData;
-use document_legacy::layers::text_layer::Font;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
 use graphene_core::raster::Image;
+use graphene_core::text::Font;
 
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {

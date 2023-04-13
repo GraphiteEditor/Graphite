@@ -9,6 +9,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
 use graphene_core::raster::{BlendMode, Color, LuminanceCalculation};
+use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 
 use super::document_node_types::NodePropertiesContext;
@@ -153,6 +154,34 @@ fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 		])
 	}
 	widgets
+}
+fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, family: &str, style: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
+	let mut first_widgets = start_widgets(document_node, node_id, index, family, FrontendGraphDataType::Color, blank_assist);
+	let mut second_widgets = None;
+
+	let from_font_input = |font: &FontInput| TaggedValue::Font(Font::new(font.font_family.clone(), font.font_style.clone()));
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::Font(font),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		first_widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			FontInput::new(font.font_family.clone(), font.font_style.clone())
+				.on_update(update_value(from_font_input, node_id, index))
+				.widget_holder(),
+		]);
+		second_widgets = Some(vec![
+			TextLabel::new(style).widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			FontInput::new(font.font_family.clone(), font.font_style.clone())
+				.is_style_picker(true)
+				.on_update(update_value(from_font_input, node_id, index))
+				.widget_holder(),
+		]);
+	}
+	(first_widgets, second_widgets)
 }
 
 fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
@@ -675,6 +704,19 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets }
 	};
 	vec![translation, rotation, scale]
+}
+
+pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let text = text_area_widget(document_node, node_id, 0, "Text", true);
+	let (font, style) = font_inputs(document_node, node_id, 1, "Font", "Style", true);
+	let size = number_widget(document_node, node_id, 2, "Size", NumberInput::default().unit(" px").min(1.), true);
+
+	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
+	if let Some(style) = style {
+		result.push(LayoutGroup::Row { widgets: style });
+	}
+	result.push(LayoutGroup::Row { widgets: size });
+	result
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

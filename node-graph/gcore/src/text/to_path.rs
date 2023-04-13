@@ -1,14 +1,14 @@
-use crate::vector::consts::ManipulatorType;
-use crate::vector::manipulator_group::ManipulatorGroup;
-use crate::vector::manipulator_point::ManipulatorPoint;
-use crate::vector::subpath::Subpath;
+use bezier_rs::{ManipulatorGroup, Subpath};
 
 use glam::DVec2;
 use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 
+use crate::uuid::ManipulatorGroupId;
+
 struct Builder {
-	path: Subpath,
+	current_subpath: Subpath<ManipulatorGroupId>,
+	other_subpaths: Vec<Subpath<ManipulatorGroupId>>,
 	pos: DVec2,
 	offset: DVec2,
 	ascender: f64,
@@ -23,33 +23,31 @@ impl Builder {
 
 impl OutlineBuilder for Builder {
 	fn move_to(&mut self, x: f32, y: f32) {
-		let anchor = self.point(x, y);
-		if self.path.manipulator_groups().last().filter(|el| el.points.iter().any(Option::is_some)).is_some() {
-			self.path.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
+		if !self.current_subpath.is_empty() {
+			self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 		}
-		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor(self.point(x, y)));
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
-		let anchor = self.point(x, y);
-		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor(self.point(x, y)));
 	}
 
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
 		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
-		self.path.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle, ManipulatorType::OutHandle));
-		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
+		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor(anchor));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
 		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
-		self.path.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::OutHandle] = Some(ManipulatorPoint::new(handle1, ManipulatorType::OutHandle));
-		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::new_with_anchor(anchor));
-		self.path.manipulator_groups_mut().last_mut().unwrap().points[ManipulatorType::InHandle] = Some(ManipulatorPoint::new(handle2, ManipulatorType::InHandle));
+		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle1);
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new(anchor, Some(handle2), None));
 	}
 
 	fn close(&mut self) {
-		self.path.manipulator_groups_mut().push_end(ManipulatorGroup::closed());
+		self.current_subpath.set_closed(true);
+		self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 	}
 }
 
@@ -80,17 +78,18 @@ fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_
 	false
 }
 
-pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> Subpath {
+pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> Vec<Subpath<ManipulatorGroupId>> {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
-		None => return Subpath::default(),
+		None => return vec![Subpath::new(Vec::new(), false)],
 	};
 
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
 
 	let mut builder = Builder {
-		path: Subpath::new(),
+		current_subpath: Subpath::new(Vec::new(), false),
+		other_subpaths: Vec::new(),
 		pos: DVec2::ZERO,
 		offset: DVec2::ZERO,
 		ascender: (buzz_face.ascender() as f64 / buzz_face.height() as f64) * font_size / scale,
@@ -115,6 +114,10 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 				}
 				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
 				buzz_face.outline_glyph(GlyphId(glyph_info.glyph_id as u16), &mut builder);
+				if !builder.current_subpath.is_empty() {
+					builder.other_subpaths.push(core::mem::replace(&mut builder.current_subpath, Subpath::new(Vec::new(), false)));
+				}
+
 				builder.pos += DVec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * builder.scale;
 			}
 
@@ -122,7 +125,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 		}
 		builder.pos = DVec2::new(0., builder.pos.y + line_height);
 	}
-	builder.path
+	builder.other_subpaths
 }
 
 pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> DVec2 {

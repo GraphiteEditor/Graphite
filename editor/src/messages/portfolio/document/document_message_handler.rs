@@ -29,12 +29,13 @@ use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{Fill, RenderData, ViewMode};
-use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
-use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::{Color, ImageFrame};
 
 use glam::{DAffine2, DVec2};
+use graphene_core::text::Font;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -885,24 +886,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
-			SetTextboxEditability { path, editable } => {
-				let text = self.document_legacy.layer(&path).unwrap().as_text().unwrap();
-				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
-				if editable {
-					let color = if let Fill::Solid(solid_color) = text.path_style.fill() { *solid_color } else { Color::BLACK };
-					responses.push_back(
-						FrontendMessage::DisplayEditableTextbox {
-							text: text.text.clone(),
-							line_width: text.line_width,
-							font_size: text.size,
-							color,
-						}
-						.into(),
-					);
-				} else {
-					responses.push_back(FrontendMessage::DisplayRemoveEditableTextbox.into());
-				}
-			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
 				responses.push_front(DocumentMessage::DirtyRenderDocument.into());
@@ -1603,9 +1586,6 @@ impl DocumentMessageHandler {
 						path.pop();
 					}
 				}
-				LayerDataType::Text(text) => {
-					fonts.insert(text.font.clone());
-				}
 				LayerDataType::NodeGraphFrame(node_graph_frame) => {
 					if let Some(data) = &node_graph_frame.image_data {
 						image_data.push(FrontendImageData {
@@ -1613,6 +1593,17 @@ impl DocumentMessageHandler {
 							image_data: data.image_data.clone(),
 							mime: node_graph_frame.mime.clone(),
 						});
+					}
+					for node in node_graph_frame.network.nodes.values() {
+						for input in &node.inputs {
+							if let NodeInput::Value {
+								tagged_value: TaggedValue::Font(font),
+								..
+							} = input
+							{
+								fonts.insert(font.clone());
+							}
+						}
 					}
 				}
 				_ => {}

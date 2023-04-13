@@ -71,10 +71,6 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		pivot: (f64, f64),
 	},
-	SetTextEditability {
-		path: Vec<LayerId>,
-		editable: bool,
-	},
 	SetTextContent {
 		path: Vec<LayerId>,
 		new_text: String,
