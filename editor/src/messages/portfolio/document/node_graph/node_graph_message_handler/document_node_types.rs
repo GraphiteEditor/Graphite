@@ -633,14 +633,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Brightness/Contrast",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Brightness", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Contrast", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Use Legacy", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::brighten_image_properties,
+			properties: node_properties::brightness_contrast_properties,
 		},
 		DocumentNodeType {
 			name: "Threshold",

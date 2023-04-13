@@ -5,10 +5,11 @@ use crate::Node;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
-pub mod color;
 pub use self::color::Color;
 
 pub mod adjustments;
+pub mod brightness_contrast;
+pub mod color;
 pub use adjustments::*;
 
 #[derive(Debug, Default)]

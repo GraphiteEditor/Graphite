@@ -248,7 +248,31 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
 		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f64, f64, LuminanceCalculation]),
 		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
-		raster_node!(graphene_core::raster::BrightnessContrastNode< _, _>, params: [f64, f64]),
+		vec![(
+			NodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
+			|args| {
+				use graphene_core::raster::brightness_contrast::*;
+
+				let brightness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[0]);
+				let brightness = ClonedNode::new(brightness.eval(()) as f32);
+				let contrast: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
+				let contrast = ClonedNode::new(contrast.eval(()) as f32);
+				let use_legacy: DowncastBothNode<(), bool> = DowncastBothNode::new(args[2]);
+
+				if use_legacy.eval(()) {
+					let generate_brightness_contrast_legacy_mapper_node = GenerateBrightnessContrastLegacyMapperNode::new(brightness, contrast);
+					let map_image_frame_node = graphene_std::raster::MapImageFrameNode::new(ValueNode::new(generate_brightness_contrast_legacy_mapper_node.eval(())));
+					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+					Box::pin(any)
+				} else {
+					let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::new(brightness, contrast);
+					let map_image_frame_node = graphene_std::raster::MapImageFrameNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
+					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+					Box::pin(any)
+				}
+			},
+			NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(f64), value_fn!(f64), value_fn!(bool)]),
+		)],
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
