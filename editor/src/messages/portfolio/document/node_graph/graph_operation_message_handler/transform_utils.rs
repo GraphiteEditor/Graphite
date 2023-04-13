@@ -54,7 +54,7 @@ impl LayerBounds {
 		let layer = document.layer(layer_path).ok();
 		let bounds = layer
 			.and_then(|layer| layer.as_graph_frame().ok())
-			.and_then(|frame| frame.vector_data.as_ref().map(|vector| vector.nonzero_bounding_box()))
+			.and_then(|frame| frame.as_vector_data().as_ref().map(|vector| vector.nonzero_bounding_box()))
 			.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		let bounds_transform = DAffine2::IDENTITY;
 		let layer_transform = document.multiply_transforms(layer_path).unwrap_or_default();
