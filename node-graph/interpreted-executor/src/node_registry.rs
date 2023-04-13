@@ -218,6 +218,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
+		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame, params: [ImageFrame]),
+		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame>, params: [u32]),
 		vec![
 			(
 				NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),

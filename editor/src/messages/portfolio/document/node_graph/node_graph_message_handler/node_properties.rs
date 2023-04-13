@@ -1264,6 +1264,12 @@ pub fn no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: 
 	string_properties("Node has no properties")
 }
 
+pub fn index_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), true);
+
+	vec![LayoutGroup::Row { widgets: index }]
+}
+
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let name = document_node.name.clone();
 	let layout = match super::document_node_types::resolve_document_node_type(&name) {
