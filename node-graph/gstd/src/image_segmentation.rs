@@ -28,7 +28,6 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 	const NUM_LABELS: usize = u8::MAX as usize;
 	let mut result = Vec::<ImageFrame>::with_capacity(NUM_LABELS);
 	let mut current_label = 0_usize;
-	// TODO: Don't impose a limit on how many segments there should be
 	let mut label_appeared = [false; NUM_LABELS + 1];
 	let mut max_label = 0_usize;
 
@@ -81,16 +80,21 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 }
 
 fn convert_image_to_mask(input: &ImageFrame) -> Vec<u8> {
-	let mut result = Vec::<u8>::with_capacity((input.image.width * input.image.height) as usize);
-	let mut colors = HashMap::<[u8; 4], u8>::new();
-	let mut last_value = 0_u8;
+	let mut result = vec![0_u8; (input.image.width * input.image.height) as usize];
+	let mut colors = HashMap::<[u8; 4], usize>::new();
+	let mut last_value = 0_usize;
 
-	for color in input.image.data.iter() {
+	for (color, result) in input.image.data.iter().zip(result.iter_mut()) {
 		let color = color.to_rgba8();
 		if let Some(value) = colors.get(&color) {
-			result.push(*value);
+			*result = *value as u8;
 		} else {
-			result.push(last_value);
+			if last_value > u8::MAX as usize {
+				warn!("The limit for number of segments ({}) has been exceeded!", u8::MAX);
+				break;
+			}
+
+			*result = last_value as u8;
 			colors.insert(color, last_value);
 			last_value += 1;
 		}
