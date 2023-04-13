@@ -608,7 +608,7 @@ impl Color {
 	}
 
 	pub fn apply_opacity(&self, opacity: f32) -> Self {
-		Self::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), self.a() * opacity)
+		Self::from_rgbaf32_unchecked(self.r() * opacity, self.g() * opacity, self.b() * opacity, self.a() * opacity)
 	}
 
 	pub fn to_associated_alpha(&self, alpha: f32) -> Self {
