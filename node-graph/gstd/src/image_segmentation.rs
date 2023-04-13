@@ -28,7 +28,8 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 	const NUM_LABELS: usize = u8::MAX as usize;
 	let mut result = Vec::<ImageFrame>::with_capacity(NUM_LABELS);
 	let mut current_label = 0_usize;
-	let mut label_appeared = [false; NUM_LABELS];
+	// TODO: Don't impose a limit on how many segments there should be
+	let mut label_appeared = [false; NUM_LABELS + 1];
 	let mut max_label = 0_usize;
 
 	result.push(input_image.clone());
@@ -43,8 +44,10 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 
 			apply_mask(result_last, x as usize, y as usize, multiplier);
 
-			label_appeared[label] = true;
-			max_label = max_label.max(label);
+			if label < NUM_LABELS {
+				label_appeared[label] = true;
+				max_label = max_label.max(label);
+			}
 		}
 	}
 
@@ -52,7 +55,7 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 		result.pop();
 	}
 
-	for i in 1..=max_label {
+	for i in 1..=max_label.max(NUM_LABELS) {
 		current_label = i;
 
 		if !label_appeared[current_label] {
