@@ -346,9 +346,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {
+				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.backup(responses);
+				let selected_layers: Vec<Vec<LayerId>> = self.selected_layers().map(|layer_ids| layer_ids.to_vec()).collect();
 				for path in self.selected_layers_sorted() {
-					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
+					responses.push_back(
+						DocumentOperation::DuplicateLayer {
+							path: path.to_vec(),
+							// remove clone eventually
+							selected_layers: selected_layers.clone(),
+						}
+						.into(),
+					);
 				}
 			}
 			ExportDocument {

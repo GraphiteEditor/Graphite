@@ -130,6 +130,7 @@ pub enum Operation {
 	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
+		selected_layers: Vec<Vec<LayerId>>,
 	},
 	ModifyFont {
 		path: Vec<LayerId>,
