@@ -67,7 +67,7 @@ impl FolderLayer {
 	/// folder.add_layer(shape_layer.into(), None, -1);
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
-	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
+	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize, path: Option<Vec<u64>>) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 
 		if insert_index < 0 {
@@ -84,6 +84,16 @@ impl FolderLayer {
 
 			let id = self.next_assignment_id;
 			self.layers.insert(insert_index as usize, layer);
+			debug!("ins index {:?}", insert_index);
+			debug!("self.layer_ids {:?}", self.layer_ids);
+			match path {
+				Some(number) => {
+					debug!("number {:?}", number);
+					insert_index = self.layer_ids.iter().position(|&x| x == *number.last().unwrap_or(&0)).unwrap_or(0) as i128;
+					debug!("changed index {:?}", insert_index);
+				}
+				None => (),
+			}
 			self.layer_ids.insert(insert_index as usize, id);
 
 			// Linear probing for collision avoidance

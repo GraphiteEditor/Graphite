@@ -25,7 +25,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::layers::blend_mode::BlendMode;
+use document_legacy::layers::blend_mode::BlendMode; 
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{Fill, RenderData, ViewMode};

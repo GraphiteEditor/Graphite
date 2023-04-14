@@ -317,7 +317,7 @@ impl Document {
 				return Ok(());
 			}
 		}
-		folder.add_layer(layer, layer_id, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+		folder.add_layer(layer, layer_id, insert_index, None).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
 	}
 
@@ -341,7 +341,7 @@ impl Document {
 	/// -1 is equivalent to adding the layer to the top.
 	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
 		let folder = self.folder_mut(path)?;
-		folder.add_layer(layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)
+		folder.add_layer(layer, None, insert_index, None).ok_or(DocumentError::IndexOutOfBounds)
 	}
 
 	/// Deletes the layer specified by `path`.
@@ -701,7 +701,7 @@ impl Document {
 			} => {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(*layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(*layer, Some(layer_id), insert_index, None).ok_or(DocumentError::IndexOutOfBounds)?;
 				self.mark_as_dirty(&destination_path)?;
 
 				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
@@ -728,16 +728,20 @@ impl Document {
 				// we need all selected layers to move the ids of the non-duplicated layers
 				let layer = self.layer(&path)?.clone();
 				// debug!("layer: {:?}", &layer);
+
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
 				// ID gets set here, look into func (folder_layer.rs)
 				// since we use -1 here we get the next ID byt adding one like i thot
-				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
+				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
 					// can we order the layer path before sending response
 					// psedo
 					// set the layer id to be one plus selected
 					// iterate through children and fix duplicate IDs by incrementing by one?
+					debug!("folder path: {:?}", &folder_path);
+					debug!("folder {:?}", &folder);
+
 					debug!("selected layers: {:?}", &selected_layers);
 					debug!("new_path: {:?}", &new_path);
 					self.mark_as_dirty(folder_path)?;
