@@ -1255,7 +1255,7 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 		LayerDataType::Shape(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
-		LayerDataType::NodeGraphFrame(frame) if frame.vector_data.is_some() => {
+		LayerDataType::NodeGraphFrame(frame) if frame.as_vector_data().is_some() => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
 		_ => {}

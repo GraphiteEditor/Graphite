@@ -195,33 +195,42 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
 fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
-	// Input Range
+	// Input Range (Range: 0-1)
 	let input_shadows = (input_start / 100.) as f32;
 	let input_midtones = (input_mid / 100.) as f32;
 	let input_highlights = (input_end / 100.) as f32;
 
-	// Output Range
+	// Output Range (Range: 0-1)
 	let output_minimums = (output_start / 100.) as f32;
 	let output_maximums = (output_end / 100.) as f32;
 
-	// Midtones interpolation factor between minimums and maximums
+	// Midtones interpolation factor between minimums and maximums (Range: 0-1)
 	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
 
-	// Gamma correction
+	// Gamma correction (Range: 0.01-10)
 	let gamma = if midtones < 0.5 {
-		1. / (1. + (9. * (1. - midtones * 2.))).min(9.99)
+		// Range: 0-1
+		let x = 1. - midtones * 2.;
+		// Range: 1-10
+		1. + 9. * x
 	} else {
-		1. / ((1. - midtones) * 2.).max(0.01)
+		// Range: 0-0.5
+		let x = 1. - midtones;
+		// Range: 0-1
+		let x = x * 2.;
+		// Range: 0.01-1
+		x.max(0.01)
 	};
 
-	// Input levels
-	let color = color.map_rgb(|channel| (channel - input_shadows) / (input_highlights - input_shadows));
+	// Input levels (Range: 0-1)
+	let highlights_minus_shadows = (input_highlights - input_shadows).max(f32::EPSILON).min(1.);
+	let color = color.map_rgb(|c| (c - input_shadows).max(0.) / highlights_minus_shadows);
 
-	// Midtones
-	let color = color.map_rgb(|channel| channel.powf(gamma));
+	// Midtones (Range: 0-1)
+	let color = color.gamma(gamma);
 
-	// Output levels
-	color.map_rgb(|channel| channel * (output_maximums - output_minimums) + output_minimums)
+	// Output levels (Range: 0-1)
+	color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -300,7 +309,7 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(color: Color) -> Color {
-	color.map_rgb(|c| 1. - c)
+	color.map_rgb(|c| color.a() - c)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -339,43 +348,55 @@ pub struct BlendNode<BlendMode, Opacity> {
 	opacity: Opacity,
 }
 
+impl<Opacity: dyn_any::StaticTypeSized, Blend: dyn_any::StaticTypeSized> StaticType for BlendNode<Blend, Opacity> {
+	type Static = BlendNode<Blend::Static, Opacity::Static>;
+}
+
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	let (source_color, backdrop) = input;
-	let actual_opacity = 1. - (opacity / 100.) as f32;
-	return match blend_mode {
-		BlendMode::Normal => backdrop.blend_rgb(source_color, Color::blend_normal),
-		BlendMode::Multiply => backdrop.blend_rgb(source_color, Color::blend_multiply),
-		BlendMode::Darken => backdrop.blend_rgb(source_color, Color::blend_darken),
-		BlendMode::ColorBurn => backdrop.blend_rgb(source_color, Color::blend_color_burn),
-		BlendMode::LinearBurn => backdrop.blend_rgb(source_color, Color::blend_linear_burn),
-		BlendMode::DarkerColor => backdrop.blend_darker_color(source_color),
+	let opacity = opacity / 100.;
 
-		BlendMode::Screen => backdrop.blend_rgb(source_color, Color::blend_screen),
-		BlendMode::Lighten => backdrop.blend_rgb(source_color, Color::blend_lighten),
-		BlendMode::ColorDodge => backdrop.blend_rgb(source_color, Color::blend_color_dodge),
-		BlendMode::LinearDodge => backdrop.blend_rgb(source_color, Color::blend_linear_dodge),
-		BlendMode::LighterColor => backdrop.blend_lighter_color(source_color),
+	let (foreground, background) = input;
+	let foreground = foreground.to_linear_srgb();
+	let background = background.to_linear_srgb();
 
-		BlendMode::Overlay => source_color.blend_rgb(backdrop, Color::blend_hardlight),
-		BlendMode::SoftLight => backdrop.blend_rgb(source_color, Color::blend_softlight),
-		BlendMode::HardLight => backdrop.blend_rgb(source_color, Color::blend_hardlight),
-		BlendMode::VividLight => backdrop.blend_rgb(source_color, Color::blend_vivid_light),
-		BlendMode::LinearLight => backdrop.blend_rgb(source_color, Color::blend_linear_light),
-		BlendMode::PinLight => backdrop.blend_rgb(source_color, Color::blend_pin_light),
-		BlendMode::HardMix => backdrop.blend_rgb(source_color, Color::blend_hard_mix),
+	let target_color = match blend_mode {
+		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
+		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
+		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
+		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
+		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
+		BlendMode::DarkerColor => background.blend_darker_color(foreground),
 
-		BlendMode::Difference => backdrop.blend_rgb(source_color, Color::blend_exclusion),
-		BlendMode::Exclusion => backdrop.blend_rgb(source_color, Color::blend_exclusion),
-		BlendMode::Subtract => backdrop.blend_rgb(source_color, Color::blend_subtract),
-		BlendMode::Divide => backdrop.blend_rgb(source_color, Color::blend_divide),
+		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
+		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
+		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
+		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
+		BlendMode::LighterColor => background.blend_lighter_color(foreground),
 
-		BlendMode::Hue => backdrop.blend_hue(source_color),
-		BlendMode::Saturation => backdrop.blend_saturation(source_color),
-		BlendMode::Color => backdrop.blend_color(source_color),
-		BlendMode::Luminosity => backdrop.blend_luminosity(source_color),
-	}
-	.lerp(backdrop, actual_opacity);
+		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
+		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
+		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
+		BlendMode::VividLight => background.blend_rgb(foreground, Color::blend_vivid_light),
+		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
+		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
+		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
+
+		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_exclusion),
+		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
+		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
+		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
+
+		BlendMode::Hue => background.blend_hue(foreground),
+		BlendMode::Saturation => background.blend_saturation(foreground),
+		BlendMode::Color => background.blend_color(foreground),
+		BlendMode::Luminosity => background.blend_luminosity(foreground),
+	};
+
+	let multiplied_target_color = target_color.to_associated_alpha(opacity as f32);
+	let blended = background.alpha_blend(multiplied_target_color);
+
+	blended.to_gamma_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -411,14 +432,14 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	let scale = 1. + scale * (1. - channel_difference);
 
 	let luminance_initial = color.to_linear_srgb().luminance_srgb();
-	let altered_color = color.map_rgb(|channel| (channel * scale - channel_reduction)).to_linear_srgb();
+	let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
 	let luminance = altered_color.luminance_srgb();
-	let altered_color = altered_color.map_rgb(|channel| channel * luminance_initial / luminance);
+	let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
 
 	let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
 	let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
 		let scale = (1. - luminance) / (channel_max - luminance);
-		altered_color.map_rgb(|channel| (channel - luminance) * scale + luminance)
+		altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
 	} else {
 		altered_color
 	};
@@ -433,7 +454,7 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 		// Near -0% vibrance we mostly use `altered_color`.
 		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
 		let factor = -slowed_vibrance;
-		altered_color.map_rgb(|channel| channel * (1. - factor) + luminance * factor)
+		altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
 	};
 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
@@ -488,15 +509,20 @@ pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
 	gamma_correction: GammaCorrection,
 }
 
-// Based on https://stackoverflow.com/questions/12166117/what-is-the-math-behind-exposure-adjustment-on-photoshop
+// Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node_fn(ExposureNode)]
 fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
-	let multiplier = 2_f32.powf(exposure as f32);
-	color
-		// TODO: Fix incorrect behavior of offset
-		.map_rgb(|channel: f32| channel + offset as f32)
-		// TODO: Fix incorrect behavior of exposure
-		.map_rgb(|channel: f32| channel * multiplier)
-		// TODO: While gamma correction is correct on its own, determine and implement the correct order of these three operations
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
+	let color = color.to_linear_srgb();
+
+	let result = color
+		// Exposure
+		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
+		// Offset
+		.map_rgb(|c: f32| c + offset as f32)
+		// Gamma correction
 		.gamma(gamma_correction as f32)
+		.map_rgb(|c: f32| c.clamp(0., 1.));
+
+	result.to_gamma_srgb()
 }

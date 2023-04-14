@@ -239,12 +239,11 @@ fn brighten_color_node(color: Color, brightness: f32) -> Color {
 }
 
 #[derive(Debug)]
-pub struct ForEachNode<Iter, MapNode> {
+pub struct ForEachNode<MapNode> {
 	map_node: MapNode,
-	_iter: PhantomData<Iter>,
 }
 
-#[node_macro::node_fn(ForEachNode<_Iter>)]
+#[node_macro::node_fn(ForEachNode)]
 fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'any_input MapNode) -> ()
 where
 	MapNode: for<'any_input> Node<'any_input, _Iter::Item, Output = ()> + 'input,
@@ -331,11 +330,47 @@ mod image {
 	use dyn_any::{DynAny, StaticType};
 	use glam::{DAffine2, DVec2};
 
+	#[cfg(feature = "serde")]
+	mod base64_serde {
+		//! Basic wrapper for [`serde`] for [`base64`] encoding
+
+		use crate::Color;
+		use serde::{Deserialize, Deserializer, Serializer};
+
+		pub fn as_base64<S>(key: &[Color], serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			let u8_data = key
+				.iter()
+				.flat_map(|color| [color.r(), color.g(), color.b(), color.a()].into_iter().map(|channel| (channel * 255.).clamp(0., 255.) as u8))
+				.collect::<Vec<_>>();
+			serializer.serialize_str(&base64::encode(u8_data))
+		}
+
+		pub fn from_base64<'a, D>(deserializer: D) -> Result<Vec<Color>, D::Error>
+		where
+			D: Deserializer<'a>,
+		{
+			use serde::de::Error;
+
+			let color_from_chunk = |chunk: &[u8]| Color::from_rgba8(chunk[0], chunk[1], chunk[2], chunk[3]);
+
+			let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(4).map(color_from_chunk).collect();
+
+			String::deserialize(deserializer)
+				.and_then(|string| base64::decode(string).map_err(|err| Error::custom(err.to_string())))
+				.map(colors_from_bytes)
+				.map_err(serde::de::Error::custom)
+		}
+	}
+
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Image {
 		pub width: u32,
 		pub height: u32,
+		#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 		pub data: Vec<Color>,
 	}
 
@@ -359,6 +394,15 @@ mod image {
 				data: Vec::new(),
 			}
 		}
+
+		pub fn new(width: u32, height: u32, color: Color) -> Self {
+			Self {
+				width,
+				height,
+				data: vec![color; (width * height) as usize],
+			}
+		}
+
 		pub fn as_slice(&self) -> ImageSlice {
 			ImageSlice {
 				width: self.width,
@@ -366,6 +410,15 @@ mod image {
 				data: self.data.as_slice(),
 			}
 		}
+
+		pub fn get_mut(&mut self, x: u32, y: u32) -> Option<&mut Color> {
+			self.data.get_mut((y * self.width + x) as usize)
+		}
+
+		pub fn get(&self, x: u32, y: u32) -> Option<&Color> {
+			self.data.get((y * self.width + x) as usize)
+		}
+
 		/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 		pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
@@ -448,6 +501,12 @@ mod image {
 			let y = position.y.clamp(0., self.image.height as f64 - 1.) as usize;
 
 			self.image.data[x + y * self.image.width as usize]
+		}
+	}
+
+	impl AsRef<ImageFrame> for ImageFrame {
+		fn as_ref(&self) -> &ImageFrame {
+			self
 		}
 	}
 

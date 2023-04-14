@@ -93,7 +93,7 @@ impl<N: Clone, O: StaticType> Clone for DowncastNode<O, N> {
 impl<N: Copy, O: StaticType> Copy for DowncastNode<O, N> {}
 
 #[node_macro::node_fn(DowncastNode<_O>)]
-fn downcast<N, _O: StaticType>(input: Any<'input>, node: &'input N) -> _O
+fn downcast<N: 'input, _O: StaticType>(input: Any<'input>, node: &'input N) -> _O
 where
 	N: for<'any_input> Node<'any_input, Any<'any_input>, Output = Any<'any_input>> + 'input,
 {
