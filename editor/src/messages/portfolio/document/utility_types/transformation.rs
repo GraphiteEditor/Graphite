@@ -6,27 +6,26 @@ use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
-use graphene_core::vector::consts::ManipulatorType;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum OriginalTransforms {
 	Layer(HashMap<Vec<LayerId>, DAffine2>),
-	Path(HashMap<(u64, ManipulatorType), Vec<DVec2>>),
+	Path(HashMap<Vec<LayerId>, Vec<(ManipulatorPointId, DVec2)>>),
 }
 impl Default for OriginalTransforms {
 	fn default() -> Self {
 		OriginalTransforms::Path(HashMap::new())
 	}
 }
-impl Clone for OriginalTransforms {
-	fn clone(&self) -> Self {
+impl OriginalTransforms {
+	pub fn clear(&mut self) {
 		match self {
-			OriginalTransforms::Layer(layer_map) => OriginalTransforms::Layer(layer_map.clone()),
-			OriginalTransforms::Path(path_map) => OriginalTransforms::Path(path_map.clone()),
+			OriginalTransforms::Layer(layer_map) => layer_map.clear(),
+			OriginalTransforms::Path(path_map) => path_map.clear(),
 		}
 	}
 }
@@ -284,19 +283,19 @@ impl<'a> Selected<'a> {
 		shape_editor: Option<&'a ShapeState>,
 		tool_type: &'a ToolType,
 	) -> Self {
-		//if its select tool and og transform was the default new path map
+		// If user is using select tool then use the origional layer transforms.
 		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
 
 		match original_transforms {
 			OriginalTransforms::Layer(layer_map) => {
-				for path in selected {
-					if !layer_map.contains_key(path.clone()) {
-						if let Ok(layer) = document.layer(path) {
-							layer_map.insert(path.to_vec(), layer.transform);
+				for layer_path in selected {
+					if !layer_map.contains_key(*layer_path) {
+						if let Ok(layer) = document.layer(layer_path) {
+							layer_map.insert(layer_path.to_vec(), layer.transform);
 						} else {
-							warn!("Didn't find a layer for {:?}", path);
+							warn!("Didn't find a layer for {:?}", layer_path);
 						}
 					}
 				}
@@ -304,37 +303,41 @@ impl<'a> Selected<'a> {
 
 			OriginalTransforms::Path(path_map) => {
 				for path in selected {
-					match shape_editor {
-						Some(shape_editor) => {
-							let points = shape_editor.selected_points();
-							if !path_map.contains_key(&(path[0], ManipulatorType::Anchor)) {
-								if let Ok(layer) = document.layer(path) {
-									if let Some(vector_data) = layer.as_vector_data() {
-										path_map.insert(
-											(path[0], ManipulatorType::Anchor),
-											points
-												.map(|p| {
-													if let Some(manipulator_group) = vector_data.manipulator_groups().find(|group| group.id == p.group) {
-														p.manipulator_type.get_position(manipulator_group).unwrap_or_default()
-													} else {
-														DVec2::default()
-													}
-												})
-												.collect(),
-										);
-									} else {
-										warn!("Didn't find a vectordata for {:?}", layer);
-									}
-								} else {
-									warn!("Didn't find a layer for {:?}", path);
-								}
-
-								// let manipulator_group = vector_data.manipulator_groups().find(|group| group.id == manipulator_point_id.group)?;
-								// let point_position = manipulator_point_id.manipulator_type.get_position(manipulator_group)?;
-							}
-						}
-						None => warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType"),
+					let Some(shape_editor) = shape_editor else {
+						warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
+						continue;
 					};
+					// Anchors also move their handles
+					let expand_anchors = |&point: &ManipulatorPointId| {
+						if point.manipulator_type.is_handle() {
+							[Some(point), None, None]
+						} else {
+							[
+								Some(point),
+								Some(ManipulatorPointId::new(point.group, SelectedType::InHandle)),
+								Some(ManipulatorPointId::new(point.group, SelectedType::OutHandle)),
+							]
+						}
+					};
+					let points = shape_editor.selected_points().flat_map(expand_anchors).flatten();
+					if path_map.contains_key(*path) {
+						continue;
+					}
+					let Ok(layer) = document.layer(path) else {
+						warn!("Didn't find a layer for {:?}", path);
+						continue;
+					};
+					let Some(vector_data) = layer.as_vector_data() else {
+						warn!("Didn't find a vectordata for {:?}", layer);
+						continue;
+					};
+					let get_manipulator_point_position = |point_id: ManipulatorPointId| {
+						vector_data
+							.manipulator_from_id(point_id.group)
+							.and_then(|manipulator_group| point_id.manipulator_type.get_position(manipulator_group))
+							.map(|position| (point_id, position))
+					};
+					path_map.insert(path.to_vec(), points.filter_map(get_manipulator_point_position).collect());
 				}
 			}
 		}
@@ -395,7 +398,7 @@ impl<'a> Selected<'a> {
 					});
 				}
 				if *self.tool_type == ToolType::Path {
-					let viewspace = self.document.generate_transform_relative_to_viewport(*layer_path).ok().unwrap_or_default();
+					let viewspace = self.document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
 					let layerspace_rotation = viewspace.inverse() * transformation;
 
 					let initial_points = match self.original_transforms {
@@ -403,68 +406,54 @@ impl<'a> Selected<'a> {
 							warn!("Found Layer variant in original_transforms when Path wanted, returning identity transform for layer");
 							None
 						}
-						OriginalTransforms::Path(path_map) => path_map.get(&(layer_path[0], ManipulatorType::Anchor)),
+						OriginalTransforms::Path(path_map) => path_map.get(*layer_path),
 					};
 
-					let points = self.shape_editor.unwrap().selected_points();
-					match initial_points {
-						Some(original) => {
-							for p in points.zip(original) {
-								let viewport_point = viewspace.transform_point2(*p.1);
-								let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-								let point = *p.0;
-								let position = new_pos_viewport;
+					let Some(original) = initial_points else {
+						warn!("Initial Points empty, it should not be possible to reach here without points");
+						continue;
+					};
+					for (point_id, position) in original {
+						let viewport_point = viewspace.transform_point2(*position);
+						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+						let point = *point_id;
+						let position = new_pos_viewport;
 
-								let mut move_point = |point: ManipulatorPointId| {
-									let op = GraphOperationMessage::Vector {
-										layer: (*layer_path).to_vec(),
-										modification: VectorDataModification::SetManipulatorPosition { point, position },
-									};
-									self.responses.push_back(op.into());
-								};
-
-								move_point(point);
-
-								if point.manipulator_type == SelectedType::Anchor {
-									move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-									move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-								}
-							}
-						}
-						None => warn!("Initial Points empty, it should not be possible to reach here without points"),
+						self.responses.add(GraphOperationMessage::Vector {
+							layer: (*layer_path).to_vec(),
+							modification: VectorDataModification::SetManipulatorPosition { point, position },
+						});
 					}
 				}
 				self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 		}
 	}
-	// for layer in self.selected {
-	// 		if let Some(&transform) = self.original_transforms.get(*layer) {
-	// 			// Push front to stop document switching before sending the transform
-	// 			self.responses.add(GraphOperationMessage::TransformSet {
-	// 				layer: layer.to_vec(),
-	// 				transform,
-	// 				transform_in: TransformIn::Local,
-	// 			});
-	// 		}
-	// 	}
+
 	pub fn revert_operation(&mut self) {
 		for path in self.selected.iter().copied() {
 			let original_transform = &self.original_transforms;
 			match original_transform {
 				OriginalTransforms::Layer(hash) => {
-					if let Some(matrix) = hash.get(path) {
-						// Push front to stop document switching before sending the transform
-						let transform = *matrix;
-						self.responses.add(GraphOperationMessage::TransformSet {
-							layer: path.to_vec(),
-							transform,
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
+					let Some(matrix) = hash.get(path) else { continue };
+					let transform = *matrix;
+					self.responses.add(GraphOperationMessage::TransformSet {
+						layer: path.to_vec(),
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
+				}
+				OriginalTransforms::Path(path) => {
+					for (layer_path, points) in path {
+						for &(point, position) in points {
+							self.responses.add(GraphOperationMessage::Vector {
+								layer: (*layer_path).clone(),
+								modification: VectorDataModification::SetManipulatorPosition { point, position },
+							});
+						}
 					}
 				}
-				OriginalTransforms::Path(_) => {}
 			}
 		}
 	}

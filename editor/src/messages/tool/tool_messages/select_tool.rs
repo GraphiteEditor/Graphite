@@ -10,7 +10,7 @@ use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton
 use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
-use crate::messages::portfolio::document::utility_types::transformation::{OriginalTransforms, Selected};
+use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
@@ -805,14 +805,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						match &mut bounds.original_transforms {
-							OriginalTransforms::Layer(layer_map) => {
-								layer_map.clear();
-							}
-							OriginalTransforms::Path(path_map) => {
-								path_map.clear();
-							}
-						}
+						bounds.original_transforms.clear()
 					}
 
 					Ready
@@ -827,14 +820,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(response.into());
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						match &mut bounds.original_transforms {
-							OriginalTransforms::Layer(layer_map) => {
-								layer_map.clear();
-							}
-							OriginalTransforms::Path(path_map) => {
-								path_map.clear();
-							}
-						}
+						bounds.original_transforms.clear()
 					}
 
 					Ready

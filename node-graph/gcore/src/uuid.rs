@@ -75,12 +75,6 @@ pub use uuid_generation::*;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorGroupId(u64);
 
-impl From<ManipulatorGroupId> for u64 {
-	fn from(manipulator_group_id: ManipulatorGroupId) -> Self {
-		manipulator_group_id.0
-	}
-}
-
 impl bezier_rs::Identifier for ManipulatorGroupId {
 	fn new() -> Self {
 		Self(generate_uuid())

@@ -7,6 +7,7 @@ use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use document_legacy::layers::style::RenderData;
 use glam::DVec2;
+use graphene_core::vector::ManipulatorPointId;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
@@ -65,26 +66,26 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				typing.clear();
 			}
 
-			let mut point_count: usize = 0;
 			if using_path_tool {
 				if let Ok(layer) = document.document_legacy.layer(&selected_layers[0]) {
 					if let Some(vector_data) = layer.as_vector_data() {
 						*selected.original_transforms = OriginalTransforms::default();
 						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(&selected_layers[0]).ok().unwrap_or_default();
 
+						let mut point_count: usize = 0;
+						let count_point = |position| {
+							point_count += 1;
+							position
+						};
+						let get_location = |point: &ManipulatorPointId| {
+							vector_data
+								.manipulator_from_id(point.group)
+								.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
+								.map(|position| viewspace.transform_point2(position))
+						};
 						let points = shape_editor.selected_points();
 
-						*selected.pivot = points
-							.map(|point| {
-								point_count += 1;
-								if let Some(manipulator_group) = vector_data.manipulator_groups().find(|group| group.id == point.group) {
-									let position = point.manipulator_type.get_position(manipulator_group).unwrap_or_default();
-									viewspace.transform_point2(position)
-								} else {
-									DVec2::default()
-								}
-							})
-							.sum::<DVec2>() / point_count as f64;
+						*selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
 					}
 				}
 			} else {
@@ -92,27 +93,13 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
-			match &mut selected.original_transforms {
-				OriginalTransforms::Layer(layer_map) => {
-					layer_map.clear();
-				}
-				OriginalTransforms::Path(path_map) => {
-					path_map.clear();
-				}
-			}
+			selected.original_transforms.clear();
 		};
 
 		#[remain::sorted]
 		match message {
 			ApplyTransformOperation => {
-				match &mut selected.original_transforms {
-					OriginalTransforms::Layer(layer_map) => {
-						layer_map.clear();
-					}
-					OriginalTransforms::Path(path_map) => {
-						path_map.clear();
-					}
-				}
+				selected.original_transforms.clear();
 
 				self.typing.clear();
 
@@ -136,14 +123,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
-				match &mut selected.original_transforms {
-					OriginalTransforms::Layer(layer_map) => {
-						layer_map.clear();
-					}
-					OriginalTransforms::Path(path_map) => {
-						path_map.clear();
-					}
-				}
+				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			BeginRotate => {
@@ -160,14 +140,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
-				match &mut selected.original_transforms {
-					OriginalTransforms::Layer(layer_map) => {
-						layer_map.clear();
-					}
-					OriginalTransforms::Path(path_map) => {
-						path_map.clear();
-					}
-				}
+				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			BeginScale => {
@@ -183,27 +156,13 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
-				match &mut selected.original_transforms {
-					OriginalTransforms::Layer(layer_map) => {
-						layer_map.clear();
-					}
-					OriginalTransforms::Path(path_map) => {
-						path_map.clear();
-					}
-				}
+				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();
 
-				match &mut selected.original_transforms {
-					OriginalTransforms::Layer(layer_map) => {
-						layer_map.clear();
-					}
-					OriginalTransforms::Path(path_map) => {
-						path_map.clear();
-					}
-				}
+				selected.original_transforms.clear();
 				self.typing.clear();
 
 				self.transform_operation = TransformOperation::None;
@@ -263,7 +222,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 						}
 					};
-				} //TODO: check here
+				}
 				self.mouse_position = ipp.mouse.position;
 			}
 			SelectionChanged => {
