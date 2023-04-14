@@ -26,7 +26,7 @@ pub struct PathTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -46,8 +46,8 @@ pub enum PathToolMessage {
 	},
 	InsertPoint,
 	NudgeSelectedPoints {
-		delta_x: i32,
-		delta_y: i32,
+		delta_x: f64,
+		delta_y: f64,
 	},
 	PointerMove {
 		alt_mirror_angle: Key,
@@ -348,9 +348,7 @@ impl Fsm for PathToolFsmState {
 					},
 				) => self,
 				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-					let nudge_x = delta_x as f64;
-					let nudge_y = delta_y as f64;
-					shape_editor.move_selected_points(&document.document_legacy, (nudge_x, nudge_y).into(), true, responses);
+					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
 					PathToolFsmState::Ready
 				}
 			}
