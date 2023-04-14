@@ -20,17 +20,17 @@ pub trait TransformMut: Transform {
 	}
 }
 
-impl Transform for ImageFrame {
+impl<P> Transform for ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
 }
-impl Transform for &ImageFrame {
+impl<P> Transform for &ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
 }
-impl TransformMut for ImageFrame {
+impl<P> TransformMut for ImageFrame<P> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
 	}

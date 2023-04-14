@@ -1595,6 +1595,7 @@ dependencies = [
  "kurbo",
  "log",
  "node-macro",
+ "num",
  "once_cell",
  "rand_chacha 0.3.1",
  "serde",

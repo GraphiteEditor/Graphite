@@ -47,3 +47,4 @@ base64 = { version = "0.13", optional = true }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
+num = "0.4.0"
