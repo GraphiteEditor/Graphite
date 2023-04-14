@@ -23,7 +23,6 @@ pub enum PropertiesPanelMessage {
 	ModifyName { name: String },
 	ModifyPreserveAspect { preserve_aspect: bool },
 	ModifyStroke { stroke: Stroke },
-	ModifyText { new_text: String },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },

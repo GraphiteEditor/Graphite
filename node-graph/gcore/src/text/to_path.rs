@@ -82,7 +82,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
-		None => return vec![Subpath::new(Vec::new(), false)],
+		None => return vec![],
 	};
 
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
@@ -167,4 +167,8 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f6
 	}
 
 	bounds
+}
+
+pub fn load_face(data: &[u8]) -> rustybuzz::Face {
+	rustybuzz::Face::from_slice(data, 0).expect("Loading font failed")
 }

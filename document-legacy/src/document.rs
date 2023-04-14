@@ -540,19 +540,6 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddText {
-				path,
-				insert_index,
-				transform,
-				text,
-				style,
-				size,
-				font_name,
-				font_style,
-			} => {
-				todo!();
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
 			Operation::AddNodeGraphFrame {
 				path,
 				insert_index,
@@ -580,26 +567,6 @@ impl Document {
 					layer.preserve_aspect = preserve_aspect;
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::SetTextContent { path, new_text } => {
-				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
-				let mut current_folder = &mut self.root;
-
-				let (layer_path, id) = split_path(&path)?;
-				for id in layer_path {
-					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(layer_path.into()))?;
-				}
-				// current_folder
-				// 	.as_folder_mut()?
-				// 	.layer_mut(id)
-				// 	.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
-				// 	.as_text_mut()?
-				// 	.update_text(new_text, render_data);
-				todo!();
-
-				self.mark_as_dirty(&path)?;
-
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::AddNgon {
 				path,

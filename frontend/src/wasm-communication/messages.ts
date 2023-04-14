@@ -704,6 +704,10 @@ export class DisplayEditableTextbox extends JsMessage {
 
 	@Type(() => Color)
 	readonly color!: Color;
+
+	readonly url!: string;
+
+	readonly transform!: number[];
 }
 
 export class UpdateImageData extends JsMessage {

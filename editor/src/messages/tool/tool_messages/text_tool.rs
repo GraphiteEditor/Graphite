@@ -5,21 +5,21 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::input_widgets::{FontInput, NumberInput};
+use crate::messages::portfolio::document::node_graph::new_text_network;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::NodeIdentifier;
-use graphene_core::text::Font;
+use graphene_core::text::{load_face, Font};
 use graphene_core::Color;
 use serde::{Deserialize, Serialize};
 
@@ -195,35 +195,43 @@ impl TextToolData {
 		responses.add(Operation::SetLayerVisibility { path, visible: !editable });
 
 		if editable {
-			if let Some(frontend_message) = self.generate_front(editable, document, render_data, responses) {
+			if let Some(frontend_message) = self.generate_front(document, render_data, responses) {
 				responses.add(frontend_message);
 			}
 		} else {
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
 		}
 	}
-	fn generate_front(&self, editable: bool, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<FrontendMessage> {
+	fn generate_front(&self, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<FrontendMessage> {
 		let transform = document.document_legacy.multiply_transforms(&self.layer_path).ok()?;
 		let layer = document.document_legacy.layer(&self.layer_path).ok()?;
-		let style = layer.style().ok()?;
-		let color = if let Fill::Solid(solid_color) = style.fill() { *solid_color } else { Color::BLACK };
+		let color = layer
+			.style()
+			.ok()
+			.map_or(Color::BLACK, |style| if let Fill::Solid(solid_color) = style.fill() { *solid_color } else { Color::BLACK });
 
 		let network = get_network(&self.layer_path, document)?;
 		let node_id = get_text_node_id(network)?;
 		let node = network.nodes.get(&node_id)?;
-		let NodeInput::Value{tagged_value:TaggedValue::String(text),..} =& node.inputs[0] else { return None; };
-		let NodeInput::Value{tagged_value:TaggedValue::Font(font),..} =& node.inputs[1] else { return None; };
-		let NodeInput::Value{tagged_value:TaggedValue::F64(font_size),..} =& node.inputs[2] else { return None; };
+
+		let (text, font, font_size) = extract_props(node)?;
 
 		Some(FrontendMessage::DisplayEditableTextbox {
 			text: text.clone(),
 			line_width: None,
-			font_size: *font_size,
+			font_size,
 			color,
 			url: render_data.font_cache.get_preview_url(font).cloned().unwrap_or_default(),
 			transform: transform.to_cols_array(),
 		})
 	}
+}
+
+fn extract_props(node: &DocumentNode) -> Option<(&String, &Font, f64)> {
+	let NodeInput::Value{tagged_value:TaggedValue::String(text),..} =& node.inputs[0] else { return None; };
+	let NodeInput::Value{tagged_value:TaggedValue::Font(font),..} =& node.inputs[1] else { return None; };
+	let NodeInput::Value{tagged_value:TaggedValue::F64(font_size),..} =& node.inputs[2] else { return None; };
+	Some((text, font, *font_size))
 }
 
 fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
@@ -233,7 +241,7 @@ fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
 fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Message>, newlen: usize) {
 	while overlays.len() > newlen {
 		let operation = Operation::DeleteLayer { path: overlays.pop().unwrap() };
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 	}
 	while overlays.len() < newlen {
 		let path = vec![generate_uuid()];
@@ -245,7 +253,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 			insert_index: -1,
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 	}
 }
 
@@ -273,7 +281,7 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 			path: overlay_path.to_vec(),
 			transform: transform_from_box(bounds[0], bounds[1]),
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 	}
 	resize_overlays(&mut tool_data.overlays, responses, new_len);
 }
@@ -285,26 +293,24 @@ fn set_edit_layer(layer_path: &[LayerId], tool_state: TextToolFsmState, tool_dat
 
 	tool_data.layer_path = layer_path.into();
 
-	responses.push_back(DocumentMessage::StartTransaction.into());
+	responses.add(DocumentMessage::StartTransaction);
 
 	tool_data.set_editing(true, document, render_data, responses);
 
 	let replacement_selected_layers = vec![tool_data.layer_path.clone()];
-	responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+	responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 }
 
 fn get_network<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler) -> Option<&'a NodeNetwork> {
-	let layer = document.document_legacy.layer(&layer_path).ok()?;
+	let layer = document.document_legacy.layer(layer_path).ok()?;
 	layer.as_node_graph().ok()
 }
 
 fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {
-	let text_node = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::text::TextGenerator<_, _>"));
-
-	network.nodes.iter().find(|(_, node)| node.implementation == text_node).map(|(&id, _)| id)
+	network.nodes.iter().find(|(_, node)| node.name == "Text").map(|(&id, _)| id)
 }
 fn is_text_layer(document: &DocumentMessageHandler, layer_path: &[LayerId]) -> bool {
-	let Some(network) = get_network(&layer_path, document) else { return false; };
+	let Some(network) = get_network(layer_path, document) else { return false; };
 	get_text_node_id(network).is_some()
 }
 
@@ -362,7 +368,7 @@ impl Fsm for TextToolFsmState {
 					}
 					// Create new text
 					else if state == TextToolFsmState::Ready {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						let transform = DAffine2::from_translation(input.mouse.position);
 						let font_size = tool_options.font_size;
@@ -370,33 +376,36 @@ impl Fsm for TextToolFsmState {
 						let font_style = tool_options.font_style.clone();
 						tool_data.layer_path = document.get_path_for_new_layer();
 
-						responses.push_back(
-							Operation::AddText {
-								path: tool_data.layer_path.clone(),
-								transform: DAffine2::ZERO.to_cols_array(),
-								insert_index: -1,
-								text: String::new(),
-								style: style::PathStyle::new(None, Fill::solid(global_tool_data.primary_color)),
-								size: font_size as f64,
-								font_name,
-								font_style,
-							}
-							.into(),
-						);
-						responses.push_back(
-							GraphOperationMessage::TransformSet {
-								layer: tool_data.layer_path.clone(),
-								transform,
-								transform_in: TransformIn::Viewport,
-							}
-							.into(),
-						);
+						let font = Font::new(font_name, font_style);
+						let network = new_text_network("hello".to_string(), font.clone(), font_size as f64);
+						responses.add(Operation::AddNodeGraphFrame {
+							path: tool_data.layer_path.clone(),
+							insert_index: -1,
+							transform: DAffine2::ZERO.to_cols_array(),
+							network,
+						});
+						responses.add(GraphOperationMessage::FillSet {
+							layer: tool_data.layer_path.clone(),
+							fill: Fill::solid(global_tool_data.primary_color),
+						});
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: tool_data.layer_path.clone(),
+							transform,
+							transform_in: TransformIn::Viewport,
+						});
 
-						tool_data.set_editing(true, document, render_data, responses);
+						responses.add(FrontendMessage::DisplayEditableTextbox {
+							text: String::new(),
+							line_width: None,
+							font_size: font_size as f64,
+							color: global_tool_data.primary_color,
+							url: render_data.font_cache.get_preview_url(&font).cloned().unwrap_or_default(),
+							transform: transform.to_cols_array(),
+						});
 
 						let replacement_selected_layers = vec![tool_data.layer_path.clone()];
 
-						responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+						responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 
 						TextToolFsmState::Editing
 					} else {
@@ -429,13 +438,19 @@ impl Fsm for TextToolFsmState {
 					TextToolFsmState::Ready
 				}
 				(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
-					responses.push_back(FrontendMessage::TriggerTextCommit.into());
+					responses.add(FrontendMessage::TriggerTextCommit);
 
 					TextToolFsmState::Editing
 				}
 				(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-					let path = tool_data.layer_path.clone();
-					responses.push_back(Operation::SetTextContent { path, new_text }.into());
+					let layer_path = tool_data.layer_path.clone();
+					let network = get_network(&layer_path, document).unwrap();
+					responses.add(NodeGraphMessage::SetQualifiedInputValue {
+						layer_path,
+						node_path: vec![get_text_node_id(network).unwrap()],
+						input_index: 0,
+						value: TaggedValue::String(new_text),
+					});
 
 					tool_data.set_editing(false, document, render_data, responses);
 
@@ -444,18 +459,24 @@ impl Fsm for TextToolFsmState {
 					TextToolFsmState::Ready
 				}
 				(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
-					todo!(); // resize_overlays(&mut tool_data.overlays, responses, 1);
-		 // let text = document.document_legacy.layer(&tool_data.layer_path).unwrap().as_text().unwrap();
-		 // let quad = text.bounding_box(&new_text, text.load_face(render_data));
+					resize_overlays(&mut tool_data.overlays, responses, 1);
+					let network = get_network(&tool_data.layer_path, document).unwrap();
+					let node_id = get_text_node_id(network).unwrap();
+					let node = network.nodes.get(&node_id).unwrap();
+					let (_text, font, font_size) = extract_props(node).unwrap();
 
-					// let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
-					// let bounds = transformed_quad.bounding_box();
+					let buzz_face = render_data.font_cache.get(font).map(|data| load_face(&data));
+					let far = graphene_core::text::bounding_box(&new_text, buzz_face, font_size, None);
+					let quad = Quad::from_box([DVec2::ZERO, far]);
 
-					// let operation = Operation::SetLayerTransformInViewport {
-					// 	path: tool_data.overlays[0].clone(),
-					// 	transform: transform_from_box(bounds[0], bounds[1]),
-					// };
-					// responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+					let transformed_quad = document.document_legacy.multiply_transforms(&tool_data.layer_path).unwrap() * quad;
+					let bounds = transformed_quad.bounding_box();
+
+					let operation = Operation::SetLayerTransformInViewport {
+						path: tool_data.overlays[0].clone(),
+						transform: transform_from_box(bounds[0], bounds[1]),
+					};
+					responses.add(DocumentMessage::Overlays(operation.into()));
 
 					TextToolFsmState::Editing
 				}
@@ -475,10 +496,10 @@ impl Fsm for TextToolFsmState {
 			])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Text }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Text });
 	}
 }

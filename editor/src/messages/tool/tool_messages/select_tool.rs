@@ -830,8 +830,7 @@ impl Fsm for SelectToolFsmState {
 						if selected_layers.next().is_none() {
 							if let Ok(layer) = document.document_legacy.layer(layer_path) {
 								if let Ok(network) = layer.as_node_graph() {
-									let text_node = DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::text::TextGenerator<_, _>"));
-									if network.nodes.values().any(|node| node.implementation == text_node) {
+									if network.nodes.values().any(|node| node.name == "Text") {
 										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
 										responses.push_back(TextToolMessage::EditSelected.into());
 									}

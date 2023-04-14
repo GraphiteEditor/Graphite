@@ -35,16 +35,6 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddText {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		text: String,
-		size: f64,
-		font_name: String,
-		font_style: String,
-	},
 	AddNodeGraphFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,
@@ -70,10 +60,6 @@ pub enum Operation {
 	SetPivot {
 		layer_path: Vec<LayerId>,
 		pivot: (f64, f64),
-	},
-	SetTextContent {
-		path: Vec<LayerId>,
-		new_text: String,
 	},
 	AddPolyline {
 		path: Vec<LayerId>,
