@@ -17,6 +17,21 @@ pub use adjustments::*;
 pub trait Channel: Copy + Debug + num::Num + num::NumCast {
 	fn to_linear<Out: Linear>(self) -> Out;
 	fn from_linear<In: Linear>(linear: In) -> Self;
+	fn to_f32(self) -> f32 {
+		num::cast(self).expect("Failed to convert channel to f32")
+	}
+	fn from_f32(value: f32) -> Self {
+		num::cast(value).expect("Failed to convert f32 to channel")
+	}
+	fn to_f64(self) -> f64 {
+		num::cast(self).expect("Failed to convert channel to f64")
+	}
+	fn from_f64(value: f64) -> Self {
+		num::cast(value).expect("Failed to convert f64 to channel")
+	}
+	fn to_channel<Out: Channel>(self) -> Out {
+		num::cast(self).expect("Failed to convert channel to channel")
+	}
 }
 
 pub trait Linear: num::NumCast {}
@@ -84,6 +99,7 @@ pub trait Alpha {
 	fn a(&self) -> Self::AlphaChannel {
 		self.alpha()
 	}
+	fn multiply_alpha(&self, alpha: Self::AlphaChannel) -> Self;
 }
 
 pub trait Depth {
@@ -103,150 +119,144 @@ pub trait Luminance {
 }
 
 pub trait Sample {
-	type Pixel: Copy + Debug;
+	type Pixel;
 	fn sample(&self, pos: DVec2) -> Self::Pixel;
 }
 
 pub trait Raster {
-	type Pixel: Copy + Debug;
+	type Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
 	fn get_pixel(&self, x: u32, y: u32) -> Self::Pixel;
 }
 
-impl<T: Raster> Sample for T {
-	type Pixel = T::Pixel;
-	fn sample(&self, pos: DVec2) -> Self::Pixel {
-		let x = pos.x as u32;
-		let y = pos.y as u32;
-		self.get_pixel(x, y)
-        }
-    }
+pub trait RasterMut: Raster {
+	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel>;
+	fn set_pixel(&mut self, x: u32, y: u32, pixel: Self::Pixel) {
+		*self.get_pixel_mut(x, y).unwrap() = pixel;
+	}
+	fn map_pixel<F: Fn(Self::Pixel) -> Self::Pixel>(&mut self, map_fn: F) {
+		for y in 0..self.height() {
+			for x in 0..self.width() {
+				let pixel = self.get_pixel(x, y);
+				self.set_pixel(x, y, map_fn(pixel));
+			}
+		}
+	}
+}
 
-    pub trait RasterMut: Raster {
-        fn set_pixel(&mut self, x: u32, y: u32, pixel: Self::Pixel);
-        fn map_pixel<F: Fn(Self::Pixel) -> Self::Pixel>(&mut self, map_fn: F) {
-            for y in 0..self.height() {
-                for x in 0..self.width() {
-                    let pixel = self.get_pixel(x, y);
-                    self.set_pixel(x, y, map_fn(pixel));
-                }
-            }
-        }
-    }
+#[derive(Debug, Default)]
+pub struct MapNode<MapFn> {
+	map_fn: MapFn,
+}
 
-    #[derive(Debug, Default)]
-    pub struct MapNode<MapFn> {
-        map_fn: MapFn,
-    }
+#[node_macro::node_fn(MapNode)]
+fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'any_input MapFnNode) -> MapFnIterator<'input, 'input, _Iter, MapFnNode>
+where
+	MapFnNode: for<'any_input> Node<'any_input, _Iter::Item>,
+{
+	MapFnIterator::new(input, map_fn)
+}
 
-    #[node_macro::node_fn(MapNode)]
-    fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'any_input MapFnNode) -> MapFnIterator<'input, 'input, _Iter, MapFnNode>
-    where
-        MapFnNode: for<'any_input> Node<'any_input, _Iter::Item>,
-    {
-        MapFnIterator::new(input, map_fn)
-    }
+#[must_use = "iterators are lazy and do nothing unless consumed"]
+pub struct MapFnIterator<'i, 's, Iter, MapFn> {
+	iter: Iter,
+	map_fn: &'s MapFn,
+	_phantom: core::marker::PhantomData<&'i &'s ()>,
+}
 
-    #[must_use = "iterators are lazy and do nothing unless consumed"]
-    pub struct MapFnIterator<'i, 's, Iter, MapFn> {
-        iter: Iter,
-        map_fn: &'s MapFn,
-        _phantom: core::marker::PhantomData<&'i &'s ()>,
-    }
+impl<'i, 's: 'i, Iter: Debug, MapFn> Debug for MapFnIterator<'i, 's, Iter, MapFn> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("MapFnIterator").field("iter", &self.iter).field("map_fn", &"MapFn").finish()
+	}
+}
 
-    impl<'i, 's: 'i, Iter: Debug, MapFn> Debug for MapFnIterator<'i, 's, Iter, MapFn> {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            f.debug_struct("MapFnIterator").field("iter", &self.iter).field("map_fn", &"MapFn").finish()
-        }
-    }
+impl<'i, 's: 'i, Iter: Clone, MapFn> Clone for MapFnIterator<'i, 's, Iter, MapFn> {
+	fn clone(&self) -> Self {
+		Self {
+			iter: self.iter.clone(),
+			map_fn: self.map_fn,
+			_phantom: core::marker::PhantomData,
+		}
+	}
+}
+impl<'i, 's: 'i, Iter: Copy, MapFn> Copy for MapFnIterator<'i, 's, Iter, MapFn> {}
 
-    impl<'i, 's: 'i, Iter: Clone, MapFn> Clone for MapFnIterator<'i, 's, Iter, MapFn> {
-        fn clone(&self) -> Self {
-            Self {
-                iter: self.iter.clone(),
-                map_fn: self.map_fn,
-                _phantom: core::marker::PhantomData,
-            }
-        }
-    }
-    impl<'i, 's: 'i, Iter: Copy, MapFn> Copy for MapFnIterator<'i, 's, Iter, MapFn> {}
+impl<'i, 's: 'i, Iter, MapFn> MapFnIterator<'i, 's, Iter, MapFn> {
+	pub fn new(iter: Iter, map_fn: &'s MapFn) -> Self {
+		Self {
+			iter,
+			map_fn,
+			_phantom: core::marker::PhantomData,
+		}
+	}
+}
 
-    impl<'i, 's: 'i, Iter, MapFn> MapFnIterator<'i, 's, Iter, MapFn> {
-        pub fn new(iter: Iter, map_fn: &'s MapFn) -> Self {
-            Self {
-                iter,
-                map_fn,
-                _phantom: core::marker::PhantomData,
-            }
-        }
-    }
+impl<'i, 's: 'i, I: Iterator + 's, F> Iterator for MapFnIterator<'i, 's, I, F>
+where
+	F: Node<'i, I::Item> + 'i,
+	Self: 'i,
+{
+	type Item = F::Output;
 
-    impl<'i, 's: 'i, I: Iterator + 's, F> Iterator for MapFnIterator<'i, 's, I, F>
-    where
-        F: Node<'i, I::Item> + 'i,
-        Self: 'i,
-    {
-        type Item = F::Output;
+	#[inline]
+	fn next(&mut self) -> Option<F::Output> {
+		self.iter.next().map(|x| self.map_fn.eval(x))
+	}
 
-        #[inline]
-        fn next(&mut self) -> Option<F::Output> {
-            self.iter.next().map(|x| self.map_fn.eval(x))
-        }
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		self.iter.size_hint()
+	}
+}
 
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            self.iter.size_hint()
-        }
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct WeightedAvgNode {}
 
-    #[derive(Debug, Clone, Copy)]
-    pub struct WeightedAvgNode {}
+#[node_macro::node_fn(WeightedAvgNode)]
+fn weighted_avg_node<_Iter: Iterator<Item = (Color, f32)>>(input: _Iter) -> Color
+where
+	_Iter: Clone,
+{
+	let total_weight: f32 = input.clone().map(|(_, weight)| weight).sum();
+	let total_r: f32 = input.clone().map(|(color, weight)| color.r() * weight).sum();
+	let total_g: f32 = input.clone().map(|(color, weight)| color.g() * weight).sum();
+	let total_b: f32 = input.clone().map(|(color, weight)| color.b() * weight).sum();
+	let total_a: f32 = input.map(|(color, weight)| color.a() * weight).sum();
+	Color::from_rgbaf32_unchecked(total_r / total_weight, total_g / total_weight, total_b / total_weight, total_a / total_weight)
+}
 
-    #[node_macro::node_fn(WeightedAvgNode)]
-    fn weighted_avg_node<_Iter: Iterator<Item = (Color, f32)>>(input: _Iter) -> Color
-    where
-        _Iter: Clone,
-    {
-        let total_weight: f32 = input.clone().map(|(_, weight)| weight).sum();
-        let total_r: f32 = input.clone().map(|(color, weight)| color.r() * weight).sum();
-        let total_g: f32 = input.clone().map(|(color, weight)| color.g() * weight).sum();
-        let total_b: f32 = input.clone().map(|(color, weight)| color.b() * weight).sum();
-        let total_a: f32 = input.map(|(color, weight)| color.a() * weight).sum();
-        Color::from_rgbaf32_unchecked(total_r / total_weight, total_g / total_weight, total_b / total_weight, total_a / total_weight)
-    }
+#[derive(Debug)]
+pub struct GaussianNode<Sigma> {
+	sigma: Sigma,
+}
+#[node_macro::node_fn(GaussianNode)]
+fn gaussian_node(input: f32, sigma: f64) -> f32 {
+	let sigma = sigma as f32;
+	(1.0 / (2.0 * core::f32::consts::PI * sigma * sigma).sqrt()) * (-input * input / (2.0 * sigma * sigma)).exp()
+}
 
-    #[derive(Debug)]
-    pub struct GaussianNode<Sigma> {
-        sigma: Sigma,
-    }
-    #[node_macro::node_fn(GaussianNode)]
-    fn gaussian_node(input: f32, sigma: f64) -> f32 {
-        let sigma = sigma as f32;
-        (1.0 / (2.0 * core::f32::consts::PI * sigma * sigma).sqrt()) * (-input * input / (2.0 * sigma * sigma)).exp()
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct DistanceNode;
 
-    #[derive(Debug, Clone, Copy)]
-    pub struct DistanceNode;
+#[node_macro::node_fn(DistanceNode)]
+fn distance_node(input: (i32, i32)) -> f32 {
+	let (x, y) = input;
+	((x * x + y * y) as f32).sqrt()
+}
 
-    #[node_macro::node_fn(DistanceNode)]
-    fn distance_node(input: (i32, i32)) -> f32 {
-        let (x, y) = input;
-        ((x * x + y * y) as f32).sqrt()
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct ImageIndexIterNode<P> {
+	_p: core::marker::PhantomData<P>,
+}
 
-    #[derive(Debug, Clone, Copy)]
-    pub struct ImageIndexIterNode<P> {
-        _pixel: core::marker::PhantomData<P>,
-    }
+#[node_macro::node_fn(ImageIndexIterNode<_P>)]
+fn image_index_iter_node<_P>(input: ImageSlice<'input, _P>) -> core::ops::Range<u32> {
+	0..(input.width * input.height)
+}
 
-    #[node_macro::node_fn(ImageIndexIterNode<_P>)]
-    fn image_index_iter_node<_P>(input: ImageSlice<'input, _P>) -> core::ops::Range<u32> {
-        0..(input.width * input.height)
-    }
-
-    #[derive(Debug)]
-    pub struct WindowNode<P, Radius: for<'i> Node<'i, (), Output = u32>, Image: for<'i> Node<'i, (), Output = ImageSlice<'i, P>>> {
+#[derive(Debug)]
+pub struct WindowNode<P, Radius: for<'i> Node<'i, (), Output = u32>, Image: for<'i> Node<'i, (), Output = ImageSlice<'i, P>>> {
 	radius: Radius,
 	image: Image,
 	_pixel: core::marker::PhantomData<P>,
@@ -315,7 +325,7 @@ impl<'a, P> ImageWindowIterator<'a, P> {
 }
 
 #[cfg(not(target_arch = "spirv"))]
-impl<'a, P> Iterator for ImageWindowIterator<'a, P> {
+impl<'a, P: Copy> Iterator for ImageWindowIterator<'a, P> {
 	type Item = (P, (i32, i32));
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
@@ -520,13 +530,36 @@ mod image {
 		}
 	}
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
+	#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Image<P> {
 		pub width: u32,
 		pub height: u32,
 		#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 		pub data: Vec<P>,
+	}
+
+	impl<P: StaticTypeSized> StaticType for Image<P> {
+		type Static = Image<P::Static>;
+	}
+
+	impl<P: Copy> Raster for Image<P> {
+		type Pixel = P;
+		fn get_pixel(&self, x: u32, y: u32) -> P {
+			self.data[(x + y * self.width) as usize]
+		}
+		fn width(&self) -> u32 {
+			self.width
+		}
+		fn height(&self) -> u32 {
+			self.height
+		}
+	}
+
+	impl<P: Copy> RasterMut for Image<P> {
+		fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut P> {
+			self.data.get_mut((x + y * self.width) as usize)
+		}
 	}
 
 	impl<P: Hash> Hash for Image<P> {
@@ -576,17 +609,31 @@ mod image {
 	}
 
 	use super::*;
-	impl<P: Linear + Alpha + RGB> Image<P> {
+	impl<P: Alpha + RGB> Image<P>
+	where
+		P::ColorChannel: Linear,
+	{
 		/// Flattens each channel cast to a u8
 		pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 			let Image { width, height, data } = self;
+			use num_derive::*;
+			#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
+			struct SRGB(f32);
+			impl SRGBGamma for SRGB {}
 
-			let to_gamma = |x| SRGBGamma::from_linear(x);
-			let to_u8 = |x| (num::cast::<_, f32>(x) * 255.) as u8;
+			let to_gamma = |x| SRGB::from_linear(x);
+			let to_u8 = |x| (num::cast::<_, f32>(x).unwrap() * 255.) as u8;
 
 			let result_bytes = data
 				.into_iter()
-				.flat_map(|color| [to_u8(to_gamma(color.r())), to_u8(to_gamma(color.g())), to_u8(to_gamma(color.b())), to_u8(color.a())])
+				.flat_map(|color| {
+					[
+						to_u8(to_gamma(color.r())),
+						to_u8(to_gamma(color.g())),
+						to_u8(to_gamma(color.b())),
+						(num::cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
+					]
+				})
 				.collect();
 
 			(result_bytes, width, height)
@@ -607,7 +654,7 @@ mod image {
 	}
 
 	#[node_macro::node_fn(ImageRefNode<_P>)]
-	fn image_ref_node<_P>(image: &'input Image<_P>) -> ImageSlice<'input, _P> {
+	fn image_ref_node<_P: Clone>(image: &'input Image<_P>) -> ImageSlice<'input, _P> {
 		image.as_slice()
 	}
 
@@ -636,14 +683,49 @@ mod image {
 		}
 	}
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, specta::Type)]
+	#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct ImageFrame<P> {
 		pub image: Image<P>,
 		pub transform: DAffine2,
 	}
 
-	impl<P> ImageFrame<P> {
+	impl<P: Debug + Copy> Sample for ImageFrame<P> {
+		type Pixel = P;
+
+		fn sample(&self, pos: DVec2) -> Self::Pixel {
+			let pos = self.transform.transform_point2(pos);
+			self.image.get_pixel(pos.x as u32, pos.y as u32)
+		}
+	}
+
+	impl<P: Copy> Raster for ImageFrame<P> {
+		type Pixel = P;
+
+		fn width(&self) -> u32 {
+			self.image.width()
+		}
+
+		fn height(&self) -> u32 {
+			self.image.height()
+		}
+
+		fn get_pixel(&self, x: u32, y: u32) -> Self::Pixel {
+			self.image.get_pixel(x, y)
+		}
+	}
+
+	impl<P: Copy> RasterMut for ImageFrame<P> {
+		fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
+			self.image.get_pixel_mut(x, y)
+		}
+	}
+
+	impl<P: StaticTypeSized> StaticType for ImageFrame<P> {
+		type Static = ImageFrame<P::Static>;
+	}
+
+	impl<P: Copy> ImageFrame<P> {
 		pub const fn empty() -> Self {
 			Self {
 				image: Image::empty(),

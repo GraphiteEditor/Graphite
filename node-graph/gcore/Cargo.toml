@@ -48,3 +48,5 @@ specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
 num = "0.4.0"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
