@@ -521,5 +521,10 @@ pub struct IndexNode<Index> {
 
 #[node_macro::node_fn(IndexNode)]
 pub fn index_node(input: Vec<super::ImageFrame>, index: u32) -> super::ImageFrame {
-	input[index as usize].clone()
+	if (index as usize) < input.len() {
+		input[index as usize].clone()
+	} else {
+		warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
+		super::ImageFrame::empty()
+	}
 }

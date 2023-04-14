@@ -31,6 +31,11 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 	let mut label_appeared = [false; NUM_LABELS + 1];
 	let mut max_label = 0_usize;
 
+	if input_mask.data.is_empty() {
+		warn!("The mask for the segmentation node is empty!");
+		return vec![ImageFrame::empty()];
+	}
+
 	result.push(input_image.clone());
 	let result_last = result.last_mut().unwrap();
 
