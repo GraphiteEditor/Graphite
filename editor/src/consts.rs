@@ -55,6 +55,7 @@ pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 5.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
+
 // Pen tool
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
 
