@@ -4,7 +4,6 @@ use crate::messages::prelude::*;
 
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::LayerDataType;
-use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_std::vector::subpath::Subpath;
@@ -36,7 +35,7 @@ impl PathOutline {
 		let subpath = match &document_layer.data {
 			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
 			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(render_data)),
-			LayerDataType::NodeGraphFrame(NodeGraphFrameLayer { vector_data: Some(vector_data), .. }) => Some(Subpath::from_bezier_crate(&vector_data.subpaths)),
+			LayerDataType::NodeGraphFrame(frame) => frame.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
 			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 
