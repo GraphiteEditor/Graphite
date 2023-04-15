@@ -12,7 +12,7 @@ use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{Alpha, AssociatedAlpha, Luminance, RGB};
+use super::{Alpha, AssociatedAlpha, Luminance, Rec709Primaries, RGB, SRGB};
 
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
@@ -79,6 +79,9 @@ impl Luminance for Color {
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
 	}
 }
+
+impl Rec709Primaries for Color {}
+impl SRGB for Color {}
 
 impl Color {
 	pub const BLACK: Color = Color::from_rgbf32_unchecked(0., 0., 0.);

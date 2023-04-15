@@ -136,7 +136,7 @@ where
 {
 	let mut image = image;
 
-	image.map_pixel(|c| map_fn.eval(c));
+	image.map_pixels(|c| map_fn.eval(c));
 	image
 }
 
@@ -209,23 +209,37 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct MaskImageNode<P, M, Mask> {
-	mask: Mask,
+pub struct MaskImageNode<P, S, Stencil> {
+	stencil: Stencil,
 	_p: PhantomData<P>,
-	_m: PhantomData<M>,
+	_s: PhantomData<S>,
 }
 
-#[node_macro::node_fn(MaskImageNode<_P, _M>)]
-fn mask_image<_P: Copy + Alpha, _M: Luminance, Input: Transform + RasterMut<Pixel = _P>, Mask: Sample<Pixel = _M> + Transform>(mut image: Input, mask: Mask) -> Input {
+#[node_macro::node_fn(MaskImageNode<_P, _S>)]
+fn mask_image<
+	// _P is the color of the input image. It must have an alpha channel because that is going to
+	// be modified by the mask
+	_P: Copy + Alpha,
+	// _S is the color of the stencil. It must have a luminance channel because that is used to
+	// mask the input image
+	_S: Luminance,
+	// Input image
+	Input: Transform + RasterMut<Pixel = _P>,
+	// Stencil
+	Stencil: Sample<Pixel = _S> + Transform,
+>(
+	mut image: Input,
+	stencil: Stencil,
+) -> Input {
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
-	let mask_size = mask.transform().decompose_scale();
+	let mask_size = stencil.transform().decompose_scale();
 
 	if mask_size == DVec2::ZERO {
 		return image;
 	}
 
 	// Transforms a point from the background image to the forground image
-	let bg_to_fg = DAffine2::from_scale(mask_size) * mask.transform().inverse() * image.transform() * DAffine2::from_scale(1. / image_size);
+	let bg_to_fg = DAffine2::from_scale(mask_size) * stencil.transform().inverse() * image.transform() * DAffine2::from_scale(1. / image_size);
 
 	for y in 0..image.height() {
 		for x in 0..image.width() {
@@ -234,7 +248,7 @@ fn mask_image<_P: Copy + Alpha, _M: Luminance, Input: Transform + RasterMut<Pixe
 			mask_point = mask_point.clamp(DVec2::ZERO, mask_size);
 
 			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
-			let mask_pixel = mask.sample(mask_point);
+			let mask_pixel = stencil.sample(mask_point);
 
 			image_pixel.multiply_alpha(mask_pixel.l().to_channel());
 		}

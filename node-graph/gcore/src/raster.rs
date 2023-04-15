@@ -50,25 +50,26 @@ impl<T: Linear + Debug + Copy> Channel for T {
 		num::cast(linear).expect("Failed to convert linear to channel")
 	}
 }
-impl Channel for SRGBFloat {
+
+use num_derive::*;
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
+struct SRGBGammaFloat(f32);
+
+impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
-		let channel = num::cast::<_, f32>(self).expect("Failed to convert srgb to linear");
-		let out = if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) };
+		let gamma = num::cast::<_, f32>(self).expect("Failed to convert srgb to linear");
+		let out = if gamma <= 0.0031308 { gamma * 12.92 } else { 1.055 * gamma.powf(1. / 2.4) - 0.055 };
 		num::cast(out).expect("Failed to convert srgb to linear")
 	}
 
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
-		let linear = num::cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
-		let out = if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1. / 2.4) - 0.055 };
+		let channel = num::cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
+		let out = if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) };
 		num::cast(out).expect("Failed to convert linear to srgb")
 	}
 }
-use num_derive::*;
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
-struct SRGBFloat(f32);
-
 pub trait RGBPrimaries {
 	const RED: DVec2;
 	const GREEN: DVec2;
@@ -95,6 +96,7 @@ impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 #[cfg(not(feature = "serde"))]
 impl<T> Serde for T {}
 
+// TODO: Come up with a better name for this trait
 pub trait Pixel: Clone + Pod + Zeroable {
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()
@@ -146,6 +148,11 @@ pub trait Depth {
 	}
 }
 
+pub trait ExtraChannels<const NUM: usize> {
+	type ChannelType: Channel;
+	fn extra_channels(&self) -> [Self::ChannelType; NUM];
+}
+
 pub trait Luminance {
 	type LuminanceChannel: Channel;
 	fn luminance(&self) -> Self::LuminanceChannel;
@@ -154,13 +161,16 @@ pub trait Luminance {
 	}
 }
 
+// TODO: We might rename this to Raster at some point
 pub trait Sample {
-	type Pixel;
+	type Pixel: Pixel;
+	// TODO: Add an area parameter
 	fn sample(&self, pos: DVec2) -> Self::Pixel;
 }
 
+// TODO: We might rename this to Bitmap at some point
 pub trait Raster {
-	type Pixel;
+	type Pixel: Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
 	fn get_pixel(&self, x: u32, y: u32) -> Self::Pixel;
@@ -171,7 +181,7 @@ pub trait RasterMut: Raster {
 	fn set_pixel(&mut self, x: u32, y: u32, pixel: Self::Pixel) {
 		*self.get_pixel_mut(x, y).unwrap() = pixel;
 	}
-	fn map_pixel<F: Fn(Self::Pixel) -> Self::Pixel>(&mut self, map_fn: F) {
+	fn map_pixels<F: Fn(Self::Pixel) -> Self::Pixel>(&mut self, map_fn: F) {
 		for y in 0..self.height() {
 			for x in 0..self.width() {
 				let pixel = self.get_pixel(x, y);
@@ -467,7 +477,7 @@ impl<'a, P> Default for ImageSlice<'a, P> {
 	}
 }
 
-impl<P: Copy + Debug> Raster for ImageSlice<'_, P> {
+impl<P: Copy + Debug + Pixel> Raster for ImageSlice<'_, P> {
 	type Pixel = P;
 	#[cfg(not(target_arch = "spirv"))]
 	fn get_pixel(&self, x: u32, y: u32) -> P {
@@ -654,7 +664,7 @@ mod image {
 		pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 			let Image { width, height, data } = self;
 
-			let to_gamma = |x| SRGBFloat::from_linear(x);
+			let to_gamma = |x| SRGBGammaFloat::from_linear(x);
 			let to_u8 = |x| (num::cast::<_, f32>(x).unwrap() * 255.) as u8;
 
 			let result_bytes = data
