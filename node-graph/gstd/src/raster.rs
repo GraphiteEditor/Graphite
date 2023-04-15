@@ -321,7 +321,7 @@ where
 			}
 
 			let dst_pixel = background.get_pixel_mut(x, y).unwrap();
-			let src_pixel = foreground.sample(fg_point);
+			let src_pixel = foreground.sample(fg_point / foreground_size);
 
 			*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
 		}
