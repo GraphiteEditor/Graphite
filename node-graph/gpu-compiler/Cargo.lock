@@ -80,9 +80,11 @@ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
 name = "bezier-rs"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "dyn-any",
  "glam",
+ "serde",
 ]
 
 [[package]]
@@ -421,7 +423,6 @@ dependencies = [
  "log",
  "num-traits",
  "nvtx",
- "rand_chacha",
  "serde",
  "serde_json",
  "spirv-builder",
@@ -435,6 +436,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
+ "bezier-rs",
  "bytemuck",
  "dyn-any",
  "dyn-clone",
@@ -442,9 +444,9 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
- "rand_chacha",
  "serde",
  "specta",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -459,8 +461,10 @@ dependencies = [
  "log",
  "node-macro",
  "once_cell",
+ "rand_chacha",
  "serde",
  "specta",
+ "spin",
 ]
 
 [[package]]
@@ -619,6 +623,16 @@ name = "litrs"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9275e0933cf8bb20f008924c0cb07a0692fe54d8064996520bf998de9eb79aa"
+
+[[package]]
+name = "lock_api"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "435011366fe56583b16cf956f9df0095b405b82d76425bc8981c0e22e60ec4df"
+dependencies = [
+ "autocfg",
+ "scopeguard",
+]
 
 [[package]]
 name = "log"
@@ -964,6 +978,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "scopeguard"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
 name = "scratch"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1059,6 +1079,15 @@ dependencies = [
  "quote",
  "syn",
  "termcolor",
+]
+
+[[package]]
+name = "spin"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5d6e0250b93c8427a177b849d144a96d5acc57006149479403d7861ab721e34"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]
@@ -1404,3 +1433,9 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "735a71d46c4d68d71d4b24d03fdc2b98e38cea81730595801db779c04fe80d70"

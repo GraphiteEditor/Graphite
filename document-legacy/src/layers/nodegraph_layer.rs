@@ -1,4 +1,3 @@
-use super::base64_serde;
 use super::layer_info::LayerData;
 use super::style::{RenderData, ViewMode};
 use crate::intersection::{intersect_quad_bez_path, intersect_quad_subpath, Quad};
@@ -11,27 +10,20 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct NodeGraphFrameLayer {
-	// Image stored in layer after generation completes
-	pub mime: String,
+pub enum CachedOutputData {
+	#[default]
+	None,
+	BlobURL(String),
+	VectorPath(Box<VectorData>),
+}
 
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct NodeGraphFrameLayer {
 	/// The document node network that this layer contains
 	pub network: graph_craft::document::NodeNetwork,
 
-	// TODO: Have the browser dispose of this blob URL when this is dropped (like when the layer is deleted)
 	#[serde(skip)]
-	pub blob_url: Option<String>,
-	#[serde(skip)]
-	pub dimensions: DVec2,
-	pub image_data: Option<ImageData>,
-	pub vector_data: Option<VectorData>,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, specta::Type)]
-pub struct ImageData {
-	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
-	#[specta(type = String)]
-	pub image_data: std::sync::Arc<Vec<u8>>,
+	pub cached_output_data: CachedOutputData,
 }
 
 impl LayerData for NodeGraphFrameLayer {
@@ -59,37 +51,41 @@ impl LayerData for NodeGraphFrameLayer {
 			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
 
 		// Render any paths if they exist
-		if let Some(vector_data) = &self.vector_data {
-			let layer_bounds = vector_data.bounding_box().unwrap_or_default();
-			let transfomed_bounds = vector_data.bounding_box_with_transform(transform).unwrap_or_default();
+		match &self.cached_output_data {
+			CachedOutputData::VectorPath(vector_data) => {
+				let layer_bounds = vector_data.bounding_box().unwrap_or_default();
+				let transfomed_bounds = vector_data.bounding_box_with_transform(transform).unwrap_or_default();
 
-			let _ = write!(svg, "<path d=\"");
-			for subpath in &vector_data.subpaths {
-				let _ = subpath.subpath_to_svg(svg, transform);
+				let _ = write!(svg, "<path d=\"");
+				for subpath in &vector_data.subpaths {
+					let _ = subpath.subpath_to_svg(svg, transform);
+				}
+				svg.push('"');
+
+				svg.push_str(&vector_data.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transfomed_bounds));
+				let _ = write!(svg, "/>");
 			}
-			svg.push('"');
-
-			svg.push_str(&vector_data.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transfomed_bounds));
-			let _ = write!(svg, "/>");
-		} else if let Some(blob_url) = &self.blob_url {
-			// Render the image if it exists
-			let _ = write!(
-				svg,
-				r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix({})" />"#,
-				width.abs(),
-				height.abs(),
-				blob_url,
-				matrix
-			);
-		} else {
-			// Render a dotted blue outline if there is no image or vector data
-			let _ = write!(
-				svg,
-				r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
-				width.abs(),
-				height.abs(),
-				matrix,
-			);
+			CachedOutputData::BlobURL(blob_url) => {
+				// Render the image if it exists
+				let _ = write!(
+					svg,
+					r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix({})" />"#,
+					width.abs(),
+					height.abs(),
+					blob_url,
+					matrix
+				);
+			}
+			_ => {
+				// Render a dotted blue outline if there is no image or vector data
+				let _ = write!(
+					svg,
+					r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
+					width.abs(),
+					height.abs(),
+					matrix,
+				);
+			}
 		}
 
 		let _ = svg.write_str(r#"</g>"#);
@@ -98,7 +94,7 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 
 	fn bounding_box(&self, transform: glam::DAffine2, _render_data: &RenderData) -> Option<[DVec2; 2]> {
-		if let Some(vector_data) = &self.vector_data {
+		if let CachedOutputData::VectorPath(vector_data) = &self.cached_output_data {
 			return vector_data.bounding_box_with_transform(transform);
 		}
 
@@ -114,7 +110,7 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, _render_data: &RenderData) {
-		if let Some(vector_data) = &self.vector_data {
+		if let CachedOutputData::VectorPath(vector_data) = &self.cached_output_data {
 			let filled_style = vector_data.style.fill().is_some();
 			if vector_data.subpaths.iter().any(|subpath| intersect_quad_subpath(quad, subpath, filled_style || subpath.closed())) {
 				intersections.push(path.clone());
@@ -136,6 +132,21 @@ impl NodeGraphFrameLayer {
 
 	fn bounds(&self) -> BezPath {
 		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.)).to_path(0.)
+	}
+
+	pub fn as_vector_data(&self) -> Option<&VectorData> {
+		if let CachedOutputData::VectorPath(vector_data) = &self.cached_output_data {
+			Some(vector_data)
+		} else {
+			None
+		}
+	}
+	pub fn as_blob_url(&self) -> Option<&String> {
+		if let CachedOutputData::BlobURL(blob_url) = &self.cached_output_data {
+			Some(blob_url)
+		} else {
+			None
+		}
 	}
 }
 

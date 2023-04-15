@@ -1,11 +1,10 @@
 pub use self::document_node_types::*;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::widgets::button_widgets::{BreadcrumbTrailButtons, TextButton};
+use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
@@ -148,34 +147,34 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collect the addresses of the currently viewed nested node e.g. Root -> MyFunFilter -> Exposure
-	fn collect_nested_addresses(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
-		// Build path list
-		let mut path = vec!["Root".to_string()];
-		let mut network = self.get_root_network(document);
-		for node_id in &self.nested_path {
-			let node = network.and_then(|network| network.nodes.get(node_id));
-			if let Some(DocumentNode { name, .. }) = node {
-				path.push(name.clone());
-			}
-			network = node.and_then(|node| node.implementation.get_network());
-		}
-		let nesting = path.len();
+	fn collect_nested_addresses(&mut self, _document: &Document, _responses: &mut VecDeque<Message>) {
+		// // Build path list
+		// let mut path = vec!["Root".to_string()];
+		// let mut network = self.get_root_network(document);
+		// for node_id in &self.nested_path {
+		// 	let node = network.and_then(|network| network.nodes.get(node_id));
+		// 	if let Some(DocumentNode { name, .. }) = node {
+		// 		path.push(name.clone());
+		// 	}
+		// 	network = node.and_then(|node| node.implementation.get_network());
+		// }
+		// let nesting = path.len();
 
-		// Update UI
-		self.widgets[0] = LayoutGroup::Row {
-			widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
-				labels: path.clone(),
-				on_update: WidgetCallback::new(move |input: &u64| {
-					NodeGraphMessage::ExitNestedNetwork {
-						depth_of_nesting: nesting - (*input as usize) - 1,
-					}
-					.into()
-				}),
-				..Default::default()
-			}))],
-		};
+		// // Update UI
+		// self.widgets[0] = LayoutGroup::Row {
+		// 	widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
+		// 		labels: path.clone(),
+		// 		on_update: WidgetCallback::new(move |input: &u64| {
+		// 			NodeGraphMessage::ExitNestedNetwork {
+		// 				depth_of_nesting: nesting - (*input as usize) - 1,
+		// 			}
+		// 			.into()
+		// 		}),
+		// 		..Default::default()
+		// 	}))],
+		// };
 
-		self.send_node_bar_layout(responses);
+		// self.send_node_bar_layout(responses);
 	}
 
 	/// Updates the buttons for disable and preview
@@ -405,7 +404,7 @@ impl NodeGraphMessageHandler {
 
 impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, selected): (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)) {
+	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, _selected): (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {

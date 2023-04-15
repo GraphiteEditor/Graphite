@@ -113,51 +113,70 @@ impl Fsm for ImaginateToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					shape_data.path = Some(document.get_path_for_new_layer());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					responses.add(DocumentMessage::DeselectAllLayers);
 
 					use graph_craft::document::*;
 
+					// Utility function to offset the position of each consecutive node
+					let mut pos = 8;
+					let mut next_pos = || {
+						pos += 8;
+						graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+					};
+
+					// Get the node type for the Transform and Imaginate nodes
+					let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+						warn!("Transform node should be in registry");
+						return Drawing;
+					};
 					let imaginate_node_type = &*IMAGINATE_NODE;
 
-					let mut imaginate_inputs: Vec<NodeInput> = imaginate_node_type.inputs.iter().map(|input| input.default.clone()).collect();
-					imaginate_inputs[0] = NodeInput::node(0, 0);
+					// Give them a unique ID
+					let [transform_node_id, imaginate_node_id] = [100, 101];
 
-					let imaginate_node_id = 100;
+					// Create the network based on the Input -> Output passthrough default network
 					let mut network = node_graph::new_image_network(16, imaginate_node_id);
+
+					// Insert the nodes into the default network
+					network
+						.nodes
+						.insert(transform_node_id, transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()));
 					network.nodes.insert(
 						imaginate_node_id,
-						imaginate_node_type.to_document_node(imaginate_inputs, graph_craft::document::DocumentNodeMetadata::position((16, 4))),
+						imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 					);
 
-					responses.push_back(
-						Operation::AddNodeGraphFrame {
-							path: shape_data.path.clone().unwrap(),
-							insert_index: -1,
-							transform: DAffine2::ZERO.to_cols_array(),
-							network,
-						}
-						.into(),
-					);
+					// Add the node graph frame layer to the document
+					responses.add(Operation::AddNodeGraphFrame {
+						path: shape_data.path.clone().unwrap(),
+						insert_index: -1,
+						transform: DAffine2::ZERO.to_cols_array(),
+						network,
+					});
+					responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
 
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, document, center, lock_ratio, input) {
-						responses.push_back(message);
-					}
+					let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
+					responses.try_add(message);
 
 					state
 				}
 				(Drawing, DragStop) => {
+					if let Some(layer_path) = &shape_data.path {
+						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+					}
+
 					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 					shape_data.cleanup(responses);
 
 					Ready
 				}
 				(Drawing, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					responses.add(DocumentMessage::AbortTransaction);
 
 					shape_data.cleanup(responses);
 
@@ -180,10 +199,10 @@ impl Fsm for ImaginateToolFsmState {
 			ImaginateToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
 }

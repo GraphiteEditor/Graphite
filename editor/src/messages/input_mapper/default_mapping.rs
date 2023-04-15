@@ -1,4 +1,4 @@
-use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
+use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::macros::*;
@@ -6,6 +6,7 @@ use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
+use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 
 use glam::DVec2;
 
@@ -205,6 +206,13 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftPointerDown),
 		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightPointerDown),
 		//
+		// BrushToolMessage
+		entry!(PointerMove; action_dispatch=BrushToolMessage::PointerMove),
+		entry!(KeyDown(Lmb); action_dispatch=BrushToolMessage::DragStart),
+		entry!(KeyUp(Lmb); action_dispatch=BrushToolMessage::DragStop),
+		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD))),
+		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD))),
+		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
 		entry!(KeyDown(KeyZ); action_dispatch=ToolMessage::ActivateToolNavigate),
@@ -219,6 +227,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyM); action_dispatch=ToolMessage::ActivateToolRectangle),
 		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolShape),
+		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
 		entry!(KeyDown(KeyX); modifiers=[Shift, Accel], action_dispatch=ToolMessage::ResetColors),
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),

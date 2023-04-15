@@ -34,7 +34,12 @@ where
 			Box::new(self.node.eval(*input))
 		}
 	}
+	fn reset(self: std::pin::Pin<&mut Self>) {
+		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
+		Node::reset(wrapped_node);
+	}
 }
+
 impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 	pub const fn new(node: S0) -> Self {
 		Self { node, _i: core::marker::PhantomData }
@@ -88,7 +93,7 @@ impl<N: Clone, O: StaticType> Clone for DowncastNode<O, N> {
 impl<N: Copy, O: StaticType> Copy for DowncastNode<O, N> {}
 
 #[node_macro::node_fn(DowncastNode<_O>)]
-fn downcast<N, _O: StaticType>(input: Any<'input>, node: &'input N) -> _O
+fn downcast<N: 'input, _O: StaticType>(input: Any<'input>, node: &'input N) -> _O
 where
 	N: for<'any_input> Node<'any_input, Any<'any_input>, Output = Any<'any_input>> + 'input,
 {

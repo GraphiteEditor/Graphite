@@ -44,7 +44,7 @@ fn map_gpu_single_image(input: Image, node: String) -> Image {
 		nodes: [(
 			0,
 			DocumentNode {
-				name: "Image filter Node".into(),
+				name: "Image Filter".into(),
 				inputs: vec![NodeInput::Network(concrete!(Color))],
 				implementation: DocumentNodeImplementation::Unresolved(identifier),
 				metadata: DocumentNodeMetadata::default(),

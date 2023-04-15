@@ -166,7 +166,7 @@ impl TransformOperation {
 		self.apply_transform_operation(selected, snapping, axis);
 	}
 
-	pub fn handle_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -287,6 +287,7 @@ impl<'a> Selected<'a> {
 					layer: layer_path.to_vec(),
 					transform: new,
 					transform_in: TransformIn::Local,
+					skip_rerender: true,
 				});
 			}
 
@@ -302,6 +303,7 @@ impl<'a> Selected<'a> {
 					layer: layer.to_vec(),
 					transform,
 					transform_in: TransformIn::Local,
+					skip_rerender: false,
 				});
 			}
 		}

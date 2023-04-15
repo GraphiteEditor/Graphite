@@ -9,6 +9,7 @@ use document_legacy::{LayerId, Operation};
 use dyn_any::DynAny;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
+use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::vector::VectorData;
 use interpreted_executor::executor::DynamicExecutor;
@@ -42,7 +43,11 @@ impl NodeGraphExecutor {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string())
+		match self.executor.input_type() {
+			Some(t) if t == concrete!(ImageFrame) => self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).map_err(|e| e.to_string()),
+			_ => Err("Invalid input type".to_string()),
+		}
 	}
 
 	/// Computes an input for a node in the graph
@@ -264,36 +269,30 @@ impl NodeGraphExecutor {
 			// Attempt to downcast to an image frame
 			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
 
+			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
+			let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
+
 			// If no image was generated, clear the frame
 			if image.width == 0 || image.height == 0 {
 				responses.push_back(DocumentMessage::FrameClear.into());
+
+				// Update the transform based on the graph output
+				if let Some(transform) = transform {
+					responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
+				}
 			} else {
 				// Update the image data
 				let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
 
-				responses.push_back(
-					Operation::SetNodeGraphFrameImageData {
-						layer_path: layer_path.clone(),
-						image_data: image_data.clone(),
-					}
-					.into(),
-				);
 				let mime = "image/bmp".to_string();
 				let image_data = std::sync::Arc::new(image_data);
 				let image_data = vec![FrontendImageData {
 					path: layer_path.clone(),
 					image_data,
 					mime,
+					transform,
 				}];
 				responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
-			}
-
-			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
-			if !transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON) {
-				// Update the transform based on the graph output
-				let transform = transform.to_cols_array();
-				responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
-				responses.push_back(Operation::SetLayerVisibility { path: layer_path, visible: true }.into());
 			}
 		}
 

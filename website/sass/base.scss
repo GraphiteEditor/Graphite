@@ -152,6 +152,7 @@ h3 ~ ol li p,
 h1 ~ img,
 h2 ~ img,
 h3 ~ img,
+p ~ .informational-group,
 p ~ h1,
 p ~ h2,
 p ~ h3,
@@ -202,6 +203,79 @@ kbd {
 
 summary {
 	cursor: pointer;
+}
+
+.video-embed {
+	position: relative;
+	width: 100%;
+
+	&.aspect-16x9 {
+		padding-top: calc(100% / (16 / 9));
+	}
+
+	iframe {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		top: 0;
+		left: 0;
+	}
+}
+
+.atlas {
+	object-fit: cover;
+	object-position: calc(-48px * var(--atlas-index)) 0;
+	width: 48px;
+	height: 48px;
+}
+
+.informational-group {
+	display: flex;
+	flex-wrap: wrap;
+	width: 100%;
+	margin-bottom: 20px;
+
+	&.features {
+		gap: 16px;
+
+		.informational {
+			padding: 16px;
+			gap: 16px;
+			background: rgba(0, 0, 0, 0.0625);
+			// Half width, minus own padding on both sides, minus half a gap
+			flex: 1 0 calc(50% - (16px * 2) - (16px / 2));
+	
+			@media screen and (max-width: 1100px) {
+				// Full width, minus own padding on both sides
+				flex: 1 0 calc(100% - (16px * 2));
+			}
+		}
+	}
+
+	&.concepts {
+		justify-content: space-between;
+		
+		.informational {
+			flex-direction: column;
+			flex: 0 1 auto;
+
+			img {
+				width: 72px;
+				height: 72px;
+				object-position: calc(-72px * var(--atlas-index)) 0;
+				margin-bottom: 8px;
+			}
+		}
+	}
+
+	.informational {
+		display: flex;
+		align-items: center;
+
+		img {
+			flex: 0 0 auto;
+		}
+	}
 }
 
 .link {

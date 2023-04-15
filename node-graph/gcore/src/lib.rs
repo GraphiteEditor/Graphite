@@ -36,6 +36,7 @@ pub use raster::Color;
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
+	fn reset(self: Pin<&mut Self>) {}
 }
 
 #[cfg(feature = "alloc")]
@@ -61,7 +62,7 @@ where
 		core::any::type_name::<Self::Output>()
 	}
 	#[cfg(feature = "alloc")]
-	fn to_node_io(&self, parameters: Vec<(Type, Type)>) -> NodeIOTypes {
+	fn to_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes {
 		NodeIOTypes {
 			input: concrete!(<Input as StaticType>::Static),
 			output: concrete!(<Self::Output as StaticType>::Static),

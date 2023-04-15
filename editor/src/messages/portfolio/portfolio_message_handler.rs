@@ -485,14 +485,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				size,
 				imaginate_node,
 			} => {
-				if let Err(description) = self.executor.evaluate_node_graph(
+				let result = self.executor.evaluate_node_graph(
 					(document_id, &mut self.documents),
 					layer_path,
 					(image_data, size),
 					imaginate_node,
 					(preferences, &self.persistent_data),
 					responses,
-				) {
+				);
+
+				if let Err(description) = result {
 					responses.push_back(
 						DialogMessage::DisplayDialogError {
 							title: "Unable to update node graph".to_string(),
@@ -674,6 +676,8 @@ impl PortfolioMessageHandler {
 		responses.push_back(PropertiesPanelMessage::Init.into());
 		responses.push_back(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() }.into());
 		responses.push_back(DocumentMessage::DocumentStructureChanged.into());
+		responses.add(PropertiesPanelMessage::ClearSelection);
+		responses.add(PropertiesPanelMessage::UpdateSelectedDocumentProperties);
 	}
 
 	/// Returns an iterator over the open documents in order.

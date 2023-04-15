@@ -4,17 +4,17 @@ use crate::consts::DEFAULT_FONT_STYLE;
 use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_core::text::Font;
-use once_cell::sync::Lazy;
 
+use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
-
-use graph_craft::concrete;
 use graph_craft::NodeIdentifier;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
+use graphene_core::vector::VectorData;
 use graphene_core::*;
 
+use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -108,16 +108,16 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeType {
-			name: "Downscale",
+			name: "Downres",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Downscale".to_string(),
+						name: "Downres".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownscaleNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
@@ -141,10 +141,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downscale the image to a lower resolution"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
 		},
 		// DocumentNodeType {
-		// 	name: "Input",
+		// 	name: "Input Frame",
 		// 	category: "Ignore",
 		// 	identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 		// 	inputs: vec![DocumentInputType {
@@ -156,7 +156,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		// 	properties: node_properties::input_properties,
 		// },
 		DocumentNodeType {
-			name: "Input",
+			name: "Input Frame",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 1],
@@ -263,8 +263,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Output",
@@ -276,7 +275,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is rendered into the frame"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
 		},
 		DocumentNodeType {
 			name: "Image Frame",
@@ -290,7 +289,18 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeType {
-			name: "Blend Node",
+			name: "Mask",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::mask_properties,
+		},
+		DocumentNodeType {
+			name: "Blend",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
 			inputs: vec![
@@ -443,6 +453,35 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::blur_image_properties,
 		},
 		DocumentNodeType {
+			name: "Brush",
+			category: "Brush",
+			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode"),
+			inputs: vec![
+				DocumentInputType::value("None", TaggedValue::None, false),
+				DocumentInputType::value("Trace", TaggedValue::VecDVec2((0..2).map(|x| DVec2::new(x as f64 * 10., 0.)).collect()), true),
+				DocumentInputType::value("Diameter", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Hardness", TaggedValue::F64(50.), false),
+				DocumentInputType::value("Flow", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+			}],
+			properties: node_properties::brush_node_properties,
+		},
+		DocumentNodeType {
+			name: "Extract Vector Points",
+			category: "Brush",
+			identifier: NodeImplementation::proto("graphene_std::brush::VectorPointsNode"),
+			inputs: vec![DocumentInputType::value("VectorData", TaggedValue::VectorData(VectorData::empty()), true)],
+			outputs: vec![DocumentOutputType {
+				name: "Vector Points",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
 			name: "Cache",
 			category: "Structural",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -483,6 +522,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
+		},
+		DocumentNodeType {
+			name: "Ref",
+			category: "Structural",
+			identifier: NodeImplementation::proto("graphene_std::memo::CacheNode"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -589,14 +636,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Brightness/Contrast",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Brightness", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Contrast", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Use Legacy", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::brighten_image_properties,
+			properties: node_properties::brightness_contrast_properties,
 		},
 		DocumentNodeType {
 			name: "Threshold",
@@ -738,7 +786,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
 				DocumentInputType::value("Weight", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Dash Lengths", TaggedValue::VecF32(Vec::new()), false),
 				DocumentInputType::value("Dash Offset", TaggedValue::F64(0.), false),
@@ -847,8 +895,18 @@ impl DocumentNodeType {
 }
 
 pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
+	// if the network has no inputs, it doesn't need to be wrapped in a scope
+	if network.inputs.is_empty() {
+		return network;
+	}
+
 	assert_eq!(network.inputs.len(), 1, "Networks wrapped in scope must have exactly one input");
-	let input_type = network.nodes[&network.inputs[0]].inputs.iter().find(|&i| matches!(i, NodeInput::Network(_))).unwrap().clone();
+	let input = network.nodes[&network.inputs[0]].inputs.iter().find(|&i| matches!(i, NodeInput::Network(_))).cloned();
+
+	// if the network has no network inputs, it doesn't need to be wrapped in a scope either
+	let Some(input_type) = input else {
+            return network;
+    };
 
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
@@ -856,6 +914,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 		inputs: vec![NodeInput::node(0, 1)],
 		metadata: DocumentNodeMetadata::default(),
 	};
+
 	// wrap the inner network in a scope
 	let nodes = vec![
 		resolve_document_node_type("Begin Scope")
@@ -880,8 +939,8 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
-			resolve_document_node_type("Input")
-				.expect("Input node does not exist")
+			resolve_document_node_type("Input Frame")
+				.expect("Input Frame node does not exist")
 				.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
 			resolve_document_node_type("Output")
 				.expect("Output node does not exist")
@@ -896,7 +955,6 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 }
 
 pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let input = resolve_document_node_type("Input").expect("Input node does not exist");
 	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -911,15 +969,14 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	};
 
 	NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(5, 0)],
+		inputs: vec![],
+		outputs: vec![NodeOutput::new(4, 0)],
 		nodes: [
-			input.to_document_node_default_inputs([], next_pos()),
 			path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], next_pos()),
-			transform.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
-			fill.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
-			stroke.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
-			output.to_document_node_default_inputs([Some(NodeInput::node(4, 0))], next_pos()),
+			transform.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()),
+			fill.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
+			stroke.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
+			output.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
 		]
 		.into_iter()
 		.enumerate()

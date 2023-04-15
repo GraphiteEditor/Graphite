@@ -450,10 +450,10 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 }
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let information = WidgetHolder::text_widget("The graph's input is the artwork under the frame layer");
+	let information = WidgetHolder::text_widget("The graph's input frame is the rasterized artwork under the layer");
 	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
-		.tooltip("Refresh the artwork under the frame")
+		.tooltip("Refresh the artwork under the layer")
 		.on_update(move |_| DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() }.into())
 		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
@@ -506,6 +506,12 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
+pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorInput::default(), true);
+
+	vec![mask]
+}
+
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
@@ -524,11 +530,16 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	]
 }
 
-pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-255.).max(255.), true);
-	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-255.).max(255.), true);
+pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
+	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
+	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", true);
 
-	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
+	vec![
+		LayoutGroup::Row { widgets: brightness },
+		LayoutGroup::Row { widgets: contrast },
+		LayoutGroup::Row { widgets: use_legacy },
+	]
 }
 
 pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -536,6 +547,16 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
 
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
+}
+
+pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color = color_widget(document_node, node_id, 5, "Color", ColorInput::default(), true);
+
+	let size = number_widget(document_node, node_id, 2, "Diameter", NumberInput::default().min(0.).max(100.).unit(" px"), true);
+	let hardness = number_widget(document_node, node_id, 3, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let flow = number_widget(document_node, node_id, 4, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), true);
+
+	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: flow }]
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -755,44 +776,35 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateServerStatus::Unavailable => "Unavailable",
 			ImaginateServerStatus::Connected => "Connected",
 		};
-		let widgets = vec![
-			vec![
-				WidgetHolder::text_widget("Server"),
+		let mut widgets = vec![
+			WidgetHolder::text_widget("Server"),
+			WidgetHolder::unrelated_separator(),
+			IconButton::new("Settings", 24)
+				.tooltip("Preferences: Imaginate")
+				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
+				.widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			WidgetHolder::bold_text(status),
+			WidgetHolder::related_separator(),
+			IconButton::new("Reload", 24)
+				.tooltip("Refresh connection status")
+				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
+				.widget_holder(),
+		];
+		if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
+			widgets.extend([
 				WidgetHolder::unrelated_separator(),
-				IconButton::new("Settings", 24)
-					.tooltip("Preferences: Imaginate")
-					.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
+				TextButton::new("Server Help")
+					.tooltip("Learn how to connect Imaginate to an image generation server")
+					.on_update(|_| {
+						FrontendMessage::TriggerVisitLink {
+							url: "https://github.com/GraphiteEditor/Graphite/discussions/1089".to_string(),
+						}
+						.into()
+					})
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
-				WidgetHolder::bold_text(status),
-			],
-			if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
-				vec![
-					WidgetHolder::unrelated_separator(),
-					TextButton::new("Help")
-						.tooltip("Learn how to connect Imaginate to an image generation server")
-						.on_update(|_| {
-							FrontendMessage::TriggerVisitLink {
-								url: "https://github.com/GraphiteEditor/Graphite/discussions/1089".to_string(),
-							}
-							.into()
-						})
-						.widget_holder(),
-				]
-			} else {
-				vec![]
-			},
-			vec![
-				WidgetHolder::related_separator(),
-				IconButton::new("Reload", 24)
-					.tooltip("Refresh connection status")
-					.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
-					.widget_holder(),
-			],
-		]
-		.into_iter()
-		.flatten()
-		.collect();
+			]);
+		}
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
@@ -800,7 +812,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		panic!("Invalid status input")
 	};
 	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
-		panic!("Invalid cached image input, recieved {:?}, index: {}", cached_value, cached_index)
+		panic!("Invalid cached image input, received {:?}, index: {}", cached_value, cached_index)
 	};
 	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
@@ -978,8 +990,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	// Get the existing layer transform
-	let transform = context.document.root.transform.inverse() * context.document.multiply_transforms(context.layer_path).unwrap();
 	// Create the input to the graph using an empty image
 	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
 		image: graphene_core::raster::Image::empty(),
@@ -1018,7 +1028,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("Rescale", 24)
-					.tooltip("Set the Node Graph Frame layer dimensions to this resolution")
+					.tooltip("Set the layer dimensions to this resolution")
 					.on_update(move |_| {
 						Operation::SetLayerScaleAroundPivot {
 							path: layer_path.clone(),
@@ -1031,8 +1041,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit")
 					.tooltip({
-						let message = "Set a custom resolution instead of using the frame's rounded dimensions";
-						let manual_message = "Set a custom resolution instead of using the frame's rounded dimensions.\n\
+						let message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64)";
+						let manual_message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64).\n\
 							\n\
 							(Resolution must be set manually while the 'Transform' input is disconnected.)";
 
@@ -1044,13 +1054,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					})
 					.disabled(transform_not_connected)
 					.on_update(update_value(
-						move |checkbox_input: &CheckboxInput| {
-							if checkbox_input.checked {
-								TaggedValue::OptionalDVec2(Some(vec2))
-							} else {
-								TaggedValue::OptionalDVec2(None)
-							}
-						},
+						move |checkbox_input: &CheckboxInput| TaggedValue::OptionalDVec2(if checkbox_input.checked { Some(vec2) } else { None }),
 						node_id,
 						resolution_index,
 					))
@@ -1058,6 +1062,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(vec2.x))
 					.label("W")
+					.min(64.)
+					.step(64.)
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
@@ -1069,6 +1075,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::related_separator(),
 				NumberInput::new(Some(vec2.y))
 					.label("H")
+					.min(64.)
+					.step(64.)
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(

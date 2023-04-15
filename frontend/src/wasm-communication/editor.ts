@@ -11,7 +11,7 @@ export type Editor = Readonly<ReturnType<typeof createEditor>>;
 let wasmImport: WasmRawInstance | undefined;
 let editorInstance: WasmEditorInstance | undefined;
 
-export async function updateImage(path: BigUint64Array, mime: string, imageData: Uint8Array, documentId: bigint): Promise<void> {
+export async function updateImage(path: BigUint64Array, mime: string, imageData: Uint8Array, transform: Float64Array, documentId: bigint): Promise<void> {
 	const blob = new Blob([imageData], { type: mime });
 
 	const blobURL = URL.createObjectURL(blob);
@@ -21,7 +21,7 @@ export async function updateImage(path: BigUint64Array, mime: string, imageData:
 	image.src = blobURL;
 	await image.decode();
 
-	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
+	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight,transform);
 }
 
 export async function fetchImage(path: BigUint64Array, mime: string, documentId: bigint, url: string): Promise<void> {
@@ -35,7 +35,7 @@ export async function fetchImage(path: BigUint64Array, mime: string, documentId:
 	image.src = blobURL;
 	await image.decode();
 
-	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight);
+	editorInstance?.setImageBlobURL(documentId, path, blobURL, image.naturalWidth, image.naturalHeight, undefined);
 }
 
 const tauri = "__TAURI_METADATA__" in window && import("@tauri-apps/api");
@@ -58,7 +58,7 @@ export async function initWasm(): Promise<void> {
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
 	// eslint-disable-next-line import/no-cycle
-	wasmImport = await import("@graphite/../wasm/pkg").then(panicProxy);
+	wasmImport = await import("@graphite/../wasm/pkg");
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);

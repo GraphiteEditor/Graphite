@@ -340,6 +340,7 @@ impl SelectToolData {
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		responses.push_back(DocumentMessage::DeselectAllLayers.into());
 
+		// Take the selected layers and store them in a separate list.
 		self.not_duplicated_layers = Some(self.layers_dragging.clone());
 
 		// Duplicate each previously selected layer and select the new ones.
@@ -350,6 +351,7 @@ impl SelectToolData {
 					layer: layer_path.clone(),
 					transform: DAffine2::from_translation(self.drag_start - self.drag_current),
 					transform_in: TransformIn::Viewport,
+					skip_rerender: true,
 				}
 				.into(),
 			);
@@ -367,26 +369,24 @@ impl SelectToolData {
 			let layer_metadata = *document.layer_metadata(layer_path);
 			*layer_path.last_mut().unwrap() = generate_uuid();
 
-			responses.push_back(
-				Operation::InsertLayer {
-					layer: Box::new(layer),
-					destination_path: layer_path.clone(),
-					insert_index: -1,
-				}
-				.into(),
-			);
+			responses.add(Operation::InsertLayer {
+				layer: Box::new(layer),
+				destination_path: layer_path.clone(),
+				insert_index: -1,
+			});
+			responses.add(DocumentMessage::UpdateLayerMetadata {
+				layer_path: layer_path.clone(),
+				layer_metadata,
+			});
+		}
 
-			responses.push_back(
-				DocumentMessage::UpdateLayerMetadata {
-					layer_path: layer_path.clone(),
-					layer_metadata,
-				}
-				.into(),
-			);
+		// Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
+		for layer_path in self.not_duplicated_layers.iter().flatten() {
+			responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
 		}
 	}
 
-	/// Removes the duplicated layers. Called when Alt is released and the layers have been duplicated.
+	/// Removes the duplicated layers. Called when Alt is released and the layers have previously been duplicated.
 	fn stop_duplicates(&mut self, responses: &mut VecDeque<Message>) {
 		let originals = match self.not_duplicated_layers.take() {
 			Some(x) => x,
@@ -407,6 +407,7 @@ impl SelectToolData {
 					layer: layer_path.clone(),
 					transform: DAffine2::from_translation(self.drag_current - self.drag_start),
 					transform_in: TransformIn::Viewport,
+					skip_rerender: true,
 				}
 				.into(),
 			);
@@ -474,7 +475,7 @@ impl Fsm for SelectToolFsmState {
 						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
 							match tool_data.nested_selection_behavior {
 								NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect_layer_path, tool_data, responses),
-								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, intersect_layer_path, responses),
+								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, responses),
 							}
 						}
 					}
@@ -626,6 +627,7 @@ impl Fsm for SelectToolFsmState {
 								layer: path.to_vec(),
 								transform: DAffine2::from_translation(mouse_delta + closest_move),
 								transform_in: TransformIn::Viewport,
+								skip_rerender: true,
 							}
 							.into(),
 						);
@@ -731,15 +733,20 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(Dragging, Enter) => {
+					rerender_selected_layers(tool_data, responses);
+
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
 					tool_data.snap_manager.cleanup(responses);
 					responses.push_front(response.into());
+
 					Ready
 				}
 				(Dragging, DragStop { remove_from_selection }) => {
+					rerender_selected_layers(tool_data, responses);
+
 					// Deselect layer if not snap dragging
 					if !tool_data.is_dragging && input.keyboard.get(remove_from_selection as usize) && tool_data.layer_selected_on_start.is_none() {
 						let quad = tool_data.selection_quad();
@@ -762,9 +769,12 @@ impl Fsm for SelectToolFsmState {
 
 					responses.push_back(DocumentMessage::CommitTransaction.into());
 					tool_data.snap_manager.cleanup(responses);
+
 					Ready
 				}
 				(ResizingBounds, DragStop { .. } | Enter) => {
+					rerender_selected_layers(tool_data, responses);
+
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -780,6 +790,8 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(RotatingBounds, DragStop { .. } | Enter) => {
+					rerender_selected_layers(tool_data, responses);
+
 					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
@@ -842,6 +854,8 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(Dragging, Abort) => {
+					rerender_selected_layers(tool_data, responses);
+
 					tool_data.snap_manager.cleanup(responses);
 					responses.push_back(DocumentMessage::Undo.into());
 
@@ -952,6 +966,12 @@ impl Fsm for SelectToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+	}
+}
+
+fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
+	for layer_path in &tool_data.layers_dragging {
+		responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
 	}
 }
 
@@ -1205,7 +1225,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 	}
 }
 
-fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec<u64>, responses: &mut VecDeque<Message>) {
+fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<Message>) {
 	match &intersect.data {
 		// LayerDataType::Text(_) => {
 		// 	responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
@@ -1214,7 +1234,7 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, intersect_layer_path: &Vec
 		LayerDataType::Shape(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
-		LayerDataType::NodeGraphFrame(frame) if frame.vector_data.is_some() => {
+		LayerDataType::NodeGraphFrame(frame) if frame.as_vector_data().is_some() => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
 		_ => {}

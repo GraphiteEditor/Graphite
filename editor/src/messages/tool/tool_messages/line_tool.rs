@@ -256,6 +256,7 @@ fn generate_transform(tool_data: &mut LineToolData, lock_angle: bool, snap_angle
 		layer: tool_data.path.clone().unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
 		transform_in: TransformIn::Viewport,
+		skip_rerender: false,
 	}
 	.into()
 }

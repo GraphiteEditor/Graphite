@@ -49,7 +49,6 @@ pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 	Text,
-	Image,
 	NodeGraphFrame,
 }
 
@@ -59,8 +58,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => write!(f, "Folder"),
 			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
 			LayerDataTypeDiscriminant::Text => write!(f, "Text"),
-			LayerDataTypeDiscriminant::Image => write!(f, "Image"),
-			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "Node Graph Frame"),
+			LayerDataTypeDiscriminant::NodeGraphFrame => write!(f, "Layer"),
 		}
 	}
 }
@@ -434,7 +432,7 @@ impl Layer {
 
 	pub fn as_vector_data(&self) -> Option<&VectorData> {
 		match &self.data {
-			LayerDataType::NodeGraphFrame(NodeGraphFrameLayer { vector_data: Some(vector_data), .. }) => Some(vector_data),
+			LayerDataType::NodeGraphFrame(frame) => frame.as_vector_data(),
 			_ => None,
 		}
 	}
@@ -483,7 +481,7 @@ impl Layer {
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
 			LayerDataType::Shape(s) => Ok(&s.style),
-			LayerDataType::NodeGraphFrame(t) => t.vector_data.as_ref().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
+			LayerDataType::NodeGraphFrame(t) => t.as_vector_data().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
 			_ => Err(DocumentError::NotShape),
 		}
 	}
