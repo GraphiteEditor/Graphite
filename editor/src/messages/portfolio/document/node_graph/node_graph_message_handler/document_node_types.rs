@@ -735,18 +735,29 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Transform",
-			category: "Vector",
+			category: "Transform",
 			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _>"),
 			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
 			properties: node_properties::transform_properties,
+		},
+		DocumentNodeType {
+			name: "SetTransform",
+			category: "Transform",
+			identifier: NodeImplementation::proto("graphene_core::transform::SetTransformNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
+			],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Fill",
