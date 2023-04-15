@@ -392,6 +392,7 @@ impl Fsm for TextToolFsmState {
 							layer: tool_data.layer_path.clone(),
 							transform,
 							transform_in: TransformIn::Viewport,
+							skip_rerender: true,
 						});
 
 						responses.add(FrontendMessage::DisplayEditableTextbox {
