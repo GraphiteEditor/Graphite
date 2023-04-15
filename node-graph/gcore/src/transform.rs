@@ -80,3 +80,14 @@ pub(crate) fn transform_vector_data<Data: TransformMut>(mut data: Data, translat
 
 	data
 }
+#[derive(Debug, Clone, Copy)]
+pub struct SetTransformNode<TransformInput> {
+	pub(crate) transform: TransformInput,
+}
+
+#[node_macro::node_fn(SetTransformNode)]
+pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(mut data: Data, transform: TransformInput) -> Data {
+	let data_transform = data.transform_mut();
+	*data_transform = transform.transform();
+	data
+}
