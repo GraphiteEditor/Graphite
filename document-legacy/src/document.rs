@@ -724,26 +724,12 @@ impl Document {
 				responses.extend(update_thumbnails_upstream(&destination_path));
 				Some(responses)
 			}
-			Operation::DuplicateLayer { path, selected_layers } => {
-				// we need all selected layers to move the ids of the non-duplicated layers
+			Operation::DuplicateLayer { path } => {
 				let layer = self.layer(&path)?.clone();
-				// debug!("layer: {:?}", &layer);
-
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				// ID gets set here, look into func (folder_layer.rs)
-				// since we use -1 here we get the next ID byt adding one like i thot
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
-					// can we order the layer path before sending response
-					// psedo
-					// set the layer id to be one plus selected
-					// iterate through children and fix duplicate IDs by incrementing by one?
-					debug!("folder path: {:?}", &folder_path);
-					debug!("folder {:?}", &folder);
-
-					debug!("selected layers: {:?}", &selected_layers);
-					debug!("new_path: {:?}", &new_path);
 					self.mark_as_dirty(folder_path)?;
 					Some(
 						[

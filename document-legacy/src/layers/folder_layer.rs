@@ -83,17 +83,16 @@ impl FolderLayer {
 			}
 
 			let id = self.next_assignment_id;
-			self.layers.insert(insert_index as usize, layer);
-			debug!("ins index {:?}", insert_index);
-			debug!("self.layer_ids {:?}", self.layer_ids);
+
 			match path {
-				Some(number) => {
-					debug!("number {:?}", number);
-					insert_index = self.layer_ids.iter().position(|&x| x == *number.last().unwrap_or(&0)).unwrap_or(0) as i128;
-					debug!("changed index {:?}", insert_index);
+				Some(layer_path) => {
+					let selected_id = *layer_path.last().unwrap_or(&0);
+					insert_index = self.layer_ids.iter().position(|id| *id == selected_id).unwrap_or(0) as i128;
+					insert_index = insert_index + 1;
 				}
 				None => (),
 			}
+			self.layers.insert(insert_index as usize, layer);
 			self.layer_ids.insert(insert_index as usize, id);
 
 			// Linear probing for collision avoidance

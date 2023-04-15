@@ -25,7 +25,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::layers::blend_mode::BlendMode; 
+use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{Fill, RenderData, ViewMode};
@@ -348,16 +348,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			DuplicateSelectedLayers => {
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.backup(responses);
-				let selected_layers: Vec<Vec<LayerId>> = self.selected_layers().map(|layer_ids| layer_ids.to_vec()).collect();
 				for path in self.selected_layers_sorted() {
-					responses.push_back(
-						DocumentOperation::DuplicateLayer {
-							path: path.to_vec(),
-							// remove clone eventually
-							selected_layers: selected_layers.clone(),
-						}
-						.into(),
-					);
+					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
 			}
 			ExportDocument {
