@@ -1,7 +1,7 @@
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use glam::{BVec2, DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Channel, Color, Image, ImageFrame, Luminance, RasterMut, Sample};
+use graphene_core::raster::{Alpha, Channel, Color, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
 use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::Node;
@@ -99,7 +99,7 @@ pub struct DownresNode<P> {
 }
 
 #[node_macro::node_fn(DownresNode<_P>)]
-fn downres<_P: Copy>(image_frame: ImageFrame<_P>) -> ImageFrame<_P> {
+fn downres<_P: Pixel>(image_frame: ImageFrame<_P>) -> ImageFrame<_P> {
 	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
 	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
 
@@ -254,9 +254,9 @@ impl<MapFn: StaticTypeSized, P: StaticTypeSized> StaticType for BlendImageTupleN
 }
 
 #[node_macro::node_fn(BlendImageTupleNode<_P>)]
-fn blend_image_tuple<_P: Copy + Debug, MapFn>(images: (ImageFrame<_P>, ImageFrame<_P>), map_fn: &'any_input MapFn) -> ImageFrame<_P>
+fn blend_image_tuple<_P: Pixel + Debug, MapFn>(images: (ImageFrame<_P>, ImageFrame<_P>), map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
-	MapFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color> + 'input + Clone,
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
 {
 	let (background, foreground) = images;
 
@@ -309,7 +309,7 @@ where
 			let dst_pixel = background.get_pixel_mut(x, y).unwrap();
 			let src_pixel = foreground.sample(fg_point);
 
-			*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
+			*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
 		}
 	}
 
@@ -341,7 +341,7 @@ pub struct EmptyImageNode<P, FillColor> {
 }
 
 #[node_macro::node_fn(EmptyImageNode<_P>)]
-fn empty_image<_P>(transform: DAffine2, color: Color) -> ImageFrame<_P> {
+fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
@@ -356,7 +356,7 @@ pub struct ImaginateNode<P, E> {
 }
 
 #[node_macro::node_fn(ImaginateNode<_P>)]
-fn imaginate<_P: Clone>(image_frame: ImageFrame<_P>, cached: Option<std::sync::Arc<graphene_core::raster::Image<_P>>>) -> ImageFrame<_P> {
+fn imaginate<_P: Pixel>(image_frame: ImageFrame<_P>, cached: Option<std::sync::Arc<graphene_core::raster::Image<_P>>>) -> ImageFrame<_P> {
 	let cached_image = cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image_frame.image);
 	ImageFrame {
 		image: cached_image,
@@ -370,7 +370,7 @@ pub struct ImageFrameNode<P, Transform> {
 	_p: PhantomData<P>,
 }
 #[node_macro::node_fn(ImageFrameNode<_P>)]
-fn image_frame<_P>(image: Image<_P>, transform: DAffine2) -> graphene_core::raster::ImageFrame<_P> {
+fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_core::raster::ImageFrame<_P> {
 	graphene_core::raster::ImageFrame { image, transform }
 }
 #[cfg(test)]

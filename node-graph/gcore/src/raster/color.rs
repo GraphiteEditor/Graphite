@@ -10,8 +10,9 @@ use spirv_std::num_traits::float::Float;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Euclid;
 
-#[cfg(feature = "gpu")]
 use bytemuck::{Pod, Zeroable};
+
+use super::{Alpha, AssociatedAlpha, Luminance, RGB};
 
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
@@ -19,9 +20,8 @@ use bytemuck::{Pod, Zeroable};
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "gpu", derive(Pod, Zeroable))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -36,6 +36,47 @@ impl Hash for Color {
 		self.green.to_bits().hash(state);
 		self.blue.to_bits().hash(state);
 		self.alpha.to_bits().hash(state);
+	}
+}
+
+impl RGB for Color {
+	type ColorChannel = f32;
+	fn red(&self) -> f32 {
+		self.red
+	}
+	fn green(&self) -> f32 {
+		self.green
+	}
+	fn blue(&self) -> f32 {
+		self.blue
+	}
+}
+
+impl Alpha for Color {
+	type AlphaChannel = f32;
+	fn alpha(&self) -> f32 {
+		self.alpha
+	}
+	fn multiply_alpha(&self, alpha: Self::AlphaChannel) -> Self {
+		Self {
+			red: self.red * alpha,
+			green: self.green * alpha,
+			blue: self.blue * alpha,
+			alpha: self.alpha * alpha,
+		}
+	}
+}
+
+impl AssociatedAlpha for Color {
+	fn to_unassociated<Out: super::UnassociatedAlpha>(&self) -> Out {
+		todo!()
+	}
+}
+
+impl Luminance for Color {
+	type LuminanceChannel = f32;
+	fn luminance(&self) -> f32 {
+		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
 	}
 }
 

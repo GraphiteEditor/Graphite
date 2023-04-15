@@ -87,25 +87,25 @@ macro_rules! raster_node {
 			|args| {
 				let node = construct_node!(args, $path, [$($type),*]);
 				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-				let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+				let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
 				Box::pin(any)
 			},
 			{
 				let params = vec![$(value_fn!($type)),*];
-				NodeIOTypes::new(concrete!(Image), concrete!(Image), params)
+				NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), params)
 			},
 		),
 		(
 			NodeIdentifier::new(stringify!($path)),
 			|args| {
 				let node = construct_node!(args, $path, [$($type),*]);
-				let map_node = graphene_std::raster::MapImageFrameNode::new(graphene_core::value::ValueNode::new(node));
-				let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
+				let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
 				Box::pin(any)
 			},
 			{
 				let params = vec![$(value_fn!($type)),*];
-				NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), params)
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), params)
 			},
 		)
 		]
@@ -128,7 +128,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [&u32]),
 		register_node!(graphene_core::ops::AddNode, input: (u32, u32), params: []),
 		register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
-		register_node!(graphene_core::ops::CloneNode<_>, input: &ImageFrame, params: []),
+		register_node!(graphene_core::ops::CloneNode<_>, input: &ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [&u32]),
@@ -137,12 +137,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
-		register_node!(graphene_core::ops::SomeNode, input: ImageFrame, params: []),
-		register_node!(graphene_std::raster::DownresNode, input: ImageFrame, params: []),
-		register_node!(graphene_std::raster::MaskImageNode<_>, input: ImageFrame, params: [ImageFrame]),
-		register_node!(graphene_std::raster::EmptyImageNode<_>, input: DAffine2, params: [Color]),
+		register_node!(graphene_core::ops::SomeNode, input: ImageFrame<Color>, params: []),
+		register_node!(graphene_std::raster::DownresNode<_>, input: ImageFrame<Color>, params: []),
+		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
+		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		#[cfg(feature = "gpu")]
-		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image, params: [String]),
+		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
 		vec![(
 			NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 			|args| {
@@ -155,8 +155,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				vec![Type::Fn(Box::new(generic!(T)), Box::new(generic!(V))), Type::Fn(Box::new(generic!(V)), Box::new(generic!(U)))],
 			),
 		)],
-		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame>, params: [ImageFrame, &ValueNode<BlendImageTupleNode<ValueNode<BlendNode<ClonedNode<BlendMode>, ClonedNode<f64>>>>>]),
-		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame>, params: [AxisAlignedBbox, &MergeBoundingBoxNode]),
+		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame<Color>>, params: [ImageFrame<Color>, &ValueNode<BlendImageTupleNode<ValueNode<BlendNode<ClonedNode<BlendMode>, ClonedNode<f64>>>>>]),
+		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame<Color>>, params: [AxisAlignedBbox, &MergeBoundingBoxNode]),
 		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<DVec2>, params: []),
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::BrushNode"),
@@ -193,23 +193,27 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(
 				concrete!(()),
-				concrete!(ImageFrame),
+				concrete!(ImageFrame<Color>),
 				vec![value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64), value_fn!(Color)],
 			),
 		)],
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::ReduceNode<_, _>"),
 			|args| {
-				let acc: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+				let acc: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 				let image = acc.eval(());
 				let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.0));
 				let _ = &blend_node as &dyn for<'i> Node<'i, (Color, Color), Output = Color>;
 				let node = ReduceNode::new(ClonedNode::new(image), ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
-				//let _ = &node as &dyn for<'i> Node<'i, core::slice::Iter<ImageFrame>, Output = ImageFrame>;
-				let any: DynAnyNode<Box<dyn Iterator<Item = ImageFrame> + Sync + Send>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
+				//let _ = &node as &dyn for<'i> Node<'i, core::slice::Iter<ImageFrame<Color>>, Output = ImageFrame<Color>>;
+				let any: DynAnyNode<Box<dyn Iterator<Item = ImageFrame<Color>> + Sync + Send>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 				Box::pin(any)
 			},
-			NodeIOTypes::new(concrete!(Box<dyn Iterator<Item = &ImageFrame> + Sync + Send>), concrete!(ImageFrame), vec![value_fn!(ImageFrame)]),
+			NodeIOTypes::new(
+				concrete!(Box<dyn Iterator<Item = &ImageFrame<Color>> + Sync + Send>),
+				concrete!(ImageFrame<Color>),
+				vec![value_fn!(ImageFrame<Color>)],
+			),
 		)],
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
@@ -218,29 +222,33 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			(
 				NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
 				|args| {
-					let image: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
 					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
 					let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(blend_mode.eval(())), ClonedNode::new(opacity.eval(())));
 					let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
-					let _ = &node as &dyn for<'i> Node<'i, ImageFrame, Output = ImageFrame>;
-					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					let _ = &node as &dyn for<'i> Node<'i, ImageFrame<Color>, Output = ImageFrame<Color>>;
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(ImageFrame), value_fn!(BlendMode), value_fn!(f64)]),
+				NodeIOTypes::new(
+					concrete!(ImageFrame<Color>),
+					concrete!(ImageFrame<Color>),
+					vec![value_fn!(ImageFrame<Color>), value_fn!(BlendMode), value_fn!(f64)],
+				),
 			),
 			(
 				NodeIdentifier::new("graphene_core::raster::EraseNode<_, _>"),
 				|args| {
-					let image: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
 					let blend_node = graphene_std::brush::EraseNode::new(ClonedNode::new(opacity.eval(())));
 					let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
-					let _ = &node as &dyn for<'i> Node<'i, ImageFrame, Output = ImageFrame>;
-					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					let _ = &node as &dyn for<'i> Node<'i, ImageFrame<Color>, Output = ImageFrame<Color>>;
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(ImageFrame), value_fn!(f64)]),
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>), value_fn!(f64)]),
 			),
 		],
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
@@ -261,17 +269,17 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 
 				if use_legacy.eval(()) {
 					let generate_brightness_contrast_legacy_mapper_node = GenerateBrightnessContrastLegacyMapperNode::new(brightness, contrast);
-					let map_image_frame_node = graphene_std::raster::MapImageFrameNode::new(ValueNode::new(generate_brightness_contrast_legacy_mapper_node.eval(())));
-					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_legacy_mapper_node.eval(())));
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
 					Box::pin(any)
 				} else {
 					let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::new(brightness, contrast);
-					let map_image_frame_node = graphene_std::raster::MapImageFrameNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
-					let any: DynAnyNode<ImageFrame, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
 					Box::pin(any)
 				}
 			},
-			NodeIOTypes::new(concrete!(ImageFrame), concrete!(ImageFrame), vec![value_fn!(f64), value_fn!(f64), value_fn!(bool)]),
+			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(f64), value_fn!(f64), value_fn!(bool)]),
 		)],
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
@@ -280,63 +288,63 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			(
 				NodeIdentifier::new("graphene_std::memo::LetNode<_>"),
 				|_| {
-					let node: LetNode<ImageFrame> = graphene_std::memo::LetNode::new();
+					let node: LetNode<ImageFrame<Color>> = graphene_std::memo::LetNode::new();
 					let any = graphene_std::any::DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(Option<ImageFrame>), concrete!(&ImageFrame), vec![]),
+				NodeIOTypes::new(concrete!(Option<ImageFrame<Color>>), concrete!(&ImageFrame<Color>), vec![]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
 				|args| {
-					let input: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
+					let input: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 					let node = graphene_std::memo::EndLetNode::new(input);
-					let any: DynAnyInRefNode<ImageFrame, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					let any: DynAnyInRefNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(generic!(T), concrete!(ImageFrame), vec![value_fn!(ImageFrame)]),
+				NodeIOTypes::new(generic!(T), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
 				|args| {
 					let input: DowncastBothNode<(), VectorData> = DowncastBothNode::new(args[0]);
 					let node = graphene_std::memo::EndLetNode::new(input);
-					let any: DynAnyInRefNode<ImageFrame, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					let any: DynAnyInRefNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(generic!(T), concrete!(ImageFrame), vec![value_fn!(VectorData)]),
+				NodeIOTypes::new(generic!(T), concrete!(ImageFrame<Color>), vec![value_fn!(VectorData)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),
 				|args| {
-					let map_fn: DowncastBothRefNode<Option<ImageFrame>, ImageFrame> = DowncastBothRefNode::new(args[0]);
+					let map_fn: DowncastBothRefNode<Option<ImageFrame<Color>>, ImageFrame<Color>> = DowncastBothRefNode::new(args[0]);
 					let node = graphene_std::memo::RefNode::new(map_fn);
 					let any = graphene_std::any::DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame), vec![]),
+				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame<Color>), vec![]),
 			),
 			(
 				NodeIdentifier::new("graphene_core::structural::MapImageNode"),
 				|args| {
 					let map_fn: DowncastBothNode<Color, Color> = DowncastBothNode::new(args[0]);
 					let node = graphene_std::raster::MapImageNode::new(ValueNode::new(map_fn));
-					let any: DynAnyNode<Image, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![]),
+				NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_>"),
 				|args| {
-					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image>>>(args[15]);
+					let cached = graphene_std::any::input_node::<Option<std::sync::Arc<Image<Color>>>>(args[15]);
 					let node = graphene_std::raster::ImaginateNode::new(cached);
 					let any = DynAnyNode::new(ValueNode::new(node));
 					any.into_type_erased()
 				},
 				NodeIOTypes::new(
-					concrete!(ImageFrame),
-					concrete!(ImageFrame),
+					concrete!(ImageFrame<Color>),
+					concrete!(ImageFrame<Color>),
 					vec![
 						value_fn!(f64),
 						value_fn!(Option<DVec2>),
@@ -353,7 +361,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						value_fn!(ImaginateMaskStartingFill),
 						value_fn!(bool),
 						value_fn!(bool),
-						value_fn!(Option<std::sync::Arc<Image>>),
+						value_fn!(Option<std::sync::Arc<Image<Color>>>),
 						value_fn!(f64),
 						value_fn!(ImaginateStatus),
 					],
@@ -364,9 +372,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				|args| {
 					let radius = DowncastBothNode::<(), u32>::new(args[0]);
 					let sigma = DowncastBothNode::<(), f64>::new(args[1]);
-					let image = DowncastBothRefNode::<Image, Image>::new(args[2]);
-					let empty_image: ValueNode<Image> = ValueNode::new(Image::empty());
-					let empty: TypeNode<_, (), Image> = TypeNode::new(empty_image.then(CloneNode::new()));
+					let image = DowncastBothRefNode::<Image<Color>, Image<Color>>::new(args[2]);
+					let empty_image: ValueNode<Image<Color>> = ValueNode::new(Image::empty());
+					let empty: TypeNode<_, (), Image<Color>> = TypeNode::new(empty_image.then(CloneNode::new()));
 					use graphene_core::Node;
 					let radius = ClonedNode::new(radius.eval(()));
 					let sigma = ClonedNode::new(sigma.eval(()));
@@ -391,41 +399,41 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let dimensions: TypeNode<_, (), (u32, u32)> = TypeNode::new(dimensions);
 					let new_image = dimensions.then(new_image);
 					let new_image = ForgetNode::new().then(new_image);
-					let node: DynAnyNode<&Image, _, _> = DynAnyNode::new(ValueNode::new(new_image));
+					let node: DynAnyNode<&Image<Color>, _, _> = DynAnyNode::new(ValueNode::new(new_image));
 					node.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(Image), concrete!(Image), vec![value_fn!(u32), value_fn!(f64)]),
+				NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![value_fn!(u32), value_fn!(f64)]),
 			),
-			//register_node!(graphene_std::memo::CacheNode<_>, input: Image, params: []),
+			//register_node!(graphene_std::memo::CacheNode<_>, input: Image<Color>, params: []),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
 				|args| {
-					let input: DowncastBothNode<(), Image> = DowncastBothNode::new(args[0]);
-					let node: CacheNode<Image, _> = graphene_std::memo::CacheNode::new(input);
+					let input: DowncastBothNode<(), Image<Color>> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<Image<Color>, _> = graphene_std::memo::CacheNode::new(input);
 					let any = DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&Image), vec![value_fn!(Image)]),
-			),
-			(
-				NodeIdentifier::new("graphene_std::memo::CacheNode"),
-				|args| {
-					let input: DowncastBothNode<(), ImageFrame> = DowncastBothNode::new(args[0]);
-					let node: CacheNode<ImageFrame, _> = graphene_std::memo::CacheNode::new(input);
-					let any = DynAnyRefNode::new(node);
-					any.into_type_erased()
-				},
-				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame), vec![value_fn!(ImageFrame)]),
+				NodeIOTypes::new(concrete!(()), concrete!(&Image<Color>), vec![value_fn!(Image<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
 				|args| {
-					let input: DowncastBothNode<ImageFrame, ImageFrame> = DowncastBothNode::new(args[0]);
-					let node: CacheNode<ImageFrame, _> = graphene_std::memo::CacheNode::new(input);
+					let input: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<ImageFrame<Color>, _> = graphene_std::memo::CacheNode::new(input);
 					let any = DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(ImageFrame), concrete!(&ImageFrame), vec![fn_type!(ImageFrame, ImageFrame)]),
+				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
+			),
+			(
+				NodeIdentifier::new("graphene_std::memo::CacheNode"),
+				|args| {
+					let input: DowncastBothNode<ImageFrame<Color>, ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+					let node: CacheNode<ImageFrame<Color>, _> = graphene_std::memo::CacheNode::new(input);
+					let any = DynAnyRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(&ImageFrame<Color>), vec![fn_type!(ImageFrame<Color>, ImageFrame<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
@@ -448,15 +456,15 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIOTypes::new(concrete!(()), concrete!(&Vec<DVec2>), vec![value_fn!(Vec<DVec2>)]),
 			),
 		],
-		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image, params: [&str]),
-		register_node!(graphene_std::raster::ImageFrameNode<_>, input: Image, params: [DAffine2]),
+		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
+		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
 		#[cfg(feature = "quantization")]
-		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame, params: [u32, u32]),
+		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
 		raster_node!(graphene_core::quantization::QuantizeNode<_>, params: [QuantizationChannels]),
 		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, params: [QuantizationChannels]),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2, DVec2]),
-		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame, params: [DVec2, f64, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f64, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>, input: VectorData, params: [graphene_core::vector::style::FillType, Option<graphene_core::Color>, graphene_core::vector::style::GradientType, DVec2, DVec2, DAffine2, Vec<(f64, Option<graphene_core::Color>)>]),
 		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [Option<graphene_core::Color>, f64, Vec<f32>, f64, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f64]),
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),

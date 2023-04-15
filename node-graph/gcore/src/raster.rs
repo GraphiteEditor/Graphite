@@ -2,6 +2,7 @@ use core::{fmt::Debug, marker::PhantomData};
 
 use crate::Node;
 
+use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
 use num::Num;
 #[cfg(target_arch = "spirv")]
@@ -34,10 +35,22 @@ pub trait Channel: Copy + Debug + num::Num + num::NumCast {
 	}
 }
 
-pub trait Linear: num::NumCast {}
+pub trait Linear: num::NumCast + Num {}
+impl Linear for f32 {}
+impl Linear for f64 {}
 
-pub trait SRGBGamma: Num + Debug + Copy + num::NumCast {}
-impl<T: SRGBGamma> Channel for T {
+impl<T: Linear + Debug + Copy> Channel for T {
+	#[inline(always)]
+	fn to_linear<Out: Linear>(self) -> Out {
+		num::cast(self).expect("Failed to convert channel to linear")
+	}
+
+	#[inline(always)]
+	fn from_linear<In: Linear>(linear: In) -> Self {
+		num::cast(linear).expect("Failed to convert linear to channel")
+	}
+}
+impl Channel for SRGBFloat {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
 		let channel = num::cast::<_, f32>(self).expect("Failed to convert srgb to linear");
@@ -52,6 +65,9 @@ impl<T: SRGBGamma> Channel for T {
 		num::cast(out).expect("Failed to convert linear to srgb")
 	}
 }
+use num_derive::*;
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
+struct SRGBFloat(f32);
 
 pub trait RGBPrimaries {
 	const RED: DVec2;
@@ -79,7 +95,15 @@ impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 #[cfg(not(feature = "serde"))]
 impl<T> Serde for T {}
 
-pub trait Pixel: Serde + Clone {}
+pub trait Pixel: Clone + Pod + Zeroable {
+	fn to_bytes(&self) -> Vec<u8> {
+		bytemuck::bytes_of(self).to_vec()
+	}
+	fn from_bytes(bytes: &[u8]) -> &Self {
+		bytemuck::try_from_bytes(bytes).expect("Failed to convert bytes to pixel")
+	}
+}
+impl<T: Serde + Clone + Pod + Zeroable> Pixel for T {}
 
 pub trait RGB: Pixel {
 	type ColorChannel: Channel;
@@ -511,27 +535,25 @@ mod image {
 	mod base64_serde {
 		//! Basic wrapper for [`serde`] for [`base64`] encoding
 
+		use super::super::Pixel;
 		use crate::Color;
 		use serde::{Deserialize, Deserializer, Serializer};
 
-		pub fn as_base64<S>(key: &[Color], serializer: S) -> Result<S::Ok, S::Error>
+		pub fn as_base64<S, P: Pixel>(key: &Vec<P>, serializer: S) -> Result<S::Ok, S::Error>
 		where
 			S: Serializer,
 		{
-			let u8_data = key
-				.iter()
-				.flat_map(|color| [color.r(), color.g(), color.b(), color.a()].into_iter().map(|channel| (channel * 255.).clamp(0., 255.) as u8))
-				.collect::<Vec<_>>();
+			let u8_data = key.iter().flat_map(|color| color.to_bytes()).collect::<Vec<_>>();
 			serializer.serialize_str(&base64::encode(u8_data))
 		}
 
-		pub fn from_base64<'a, D>(deserializer: D) -> Result<Vec<Color>, D::Error>
+		pub fn from_base64<'a, D, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error>
 		where
 			D: Deserializer<'a>,
 		{
 			use serde::de::Error;
 
-			let color_from_chunk = |chunk: &[u8]| Color::from_rgba8(chunk[0], chunk[1], chunk[2], chunk[3]);
+			let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk.try_into().unwrap()).clone();
 
 			let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(4).map(color_from_chunk).collect();
 
@@ -631,12 +653,8 @@ mod image {
 		/// Flattens each channel cast to a u8
 		pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 			let Image { width, height, data } = self;
-			use num_derive::*;
-			#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
-			struct SRGB(f32);
-			impl SRGBGamma for SRGB {}
 
-			let to_gamma = |x| SRGB::from_linear(x);
+			let to_gamma = |x| SRGBFloat::from_linear(x);
 			let to_u8 = |x| (num::cast::<_, f32>(x).unwrap() * 255.) as u8;
 
 			let result_bytes = data
