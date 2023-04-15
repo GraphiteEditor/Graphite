@@ -202,7 +202,7 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
-			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<u32>),
+			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame>>),
 		}
 	}
 }
