@@ -501,11 +501,16 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	]
 }
 
-pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-255.).max(255.), true);
-	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-255.).max(255.), true);
+pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
+	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
+	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", true);
 
-	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
+	vec![
+		LayoutGroup::Row { widgets: brightness },
+		LayoutGroup::Row { widgets: contrast },
+		LayoutGroup::Row { widgets: use_legacy },
+	]
 }
 
 pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
