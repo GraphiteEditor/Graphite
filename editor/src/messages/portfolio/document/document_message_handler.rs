@@ -29,12 +29,12 @@ use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::nodegraph_layer::CachedOutputData;
-use document_legacy::layers::style::{Fill, RenderData, ViewMode};
+use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::raster::{Color, ImageFrame};
+use graphene_core::raster::ImageFrame;
 use graphene_core::Cow;
 
 use glam::{DAffine2, DVec2};

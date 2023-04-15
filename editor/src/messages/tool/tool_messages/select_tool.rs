@@ -26,8 +26,6 @@ use document_legacy::LayerId;
 use document_legacy::Operation;
 
 use glam::{DAffine2, DVec2};
-use graph_craft::document::DocumentNodeImplementation;
-use graph_craft::NodeIdentifier;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

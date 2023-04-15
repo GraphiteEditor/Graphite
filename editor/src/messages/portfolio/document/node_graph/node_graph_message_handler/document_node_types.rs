@@ -987,7 +987,6 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 }
 
 pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
-	let input = resolve_document_node_type("Input").expect("Input node does not exist");
 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -1003,9 +1002,8 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 
 	NodeNetwork {
 		inputs: vec![0],
-		outputs: vec![NodeOutput::new(5, 0)],
+		outputs: vec![NodeOutput::new(4, 0)],
 		nodes: [
-			input.to_document_node_default_inputs([], next_pos()),
 			text_generator.to_document_node(
 				[
 					NodeInput::value(TaggedValue::String(text), false),
@@ -1014,10 +1012,10 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 				],
 				next_pos(),
 			),
-			transform.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
-			fill.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
-			stroke.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
-			output.to_document_node_default_inputs([Some(NodeInput::node(4, 0))], next_pos()),
+			transform.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()),
+			fill.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], next_pos()),
+			stroke.to_document_node_default_inputs([Some(NodeInput::node(2, 0))], next_pos()),
+			output.to_document_node_default_inputs([Some(NodeInput::node(3, 0))], next_pos()),
 		]
 		.into_iter()
 		.enumerate()

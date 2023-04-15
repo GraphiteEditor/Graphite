@@ -8,7 +8,6 @@ use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
-use graphene_core::text::Font;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::cmp::max;
@@ -689,22 +688,6 @@ impl Document {
 				} else {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
-			}
-			Operation::ModifyFont { path, font_family, font_style, size } => {
-				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
-				let mut current_folder = &mut self.root;
-				let (folder_path, id) = split_path(&path)?;
-				for id in folder_path {
-					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-				}
-				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-				todo!();
-
-				// text.font = Font::new(font_family, font_style);
-				// text.size = size;
-				// text.cached_path = Some(text.generate_path(text.load_face(render_data)));
-				// self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::RenameLayer { layer_path: path, new_name: name } => {
 				self.layer_mut(&path)?.name = Some(name);

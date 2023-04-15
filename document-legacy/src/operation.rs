@@ -109,12 +109,6 @@ pub enum Operation {
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},
-	ModifyFont {
-		path: Vec<LayerId>,
-		font_family: String,
-		size: f64,
-		font_style: String,
-	},
 	MoveSelectedManipulatorPoints {
 		layer_path: Vec<LayerId>,
 		delta: (f64, f64),

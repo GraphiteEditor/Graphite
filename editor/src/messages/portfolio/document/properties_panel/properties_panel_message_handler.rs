@@ -94,12 +94,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				}
 				.into(),
 			),
-			ModifyFont { font_family, font_style, size } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-
-				self.create_document_operation(Operation::ModifyFont { path, font_family, font_style, size }, true, responses);
-				responses.push_back(ResendActiveProperties.into());
-			}
 			ModifyTransform { value, transform_op } => {
 				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = get_document(*target_document).layer(path).unwrap();

@@ -19,7 +19,6 @@ pub enum PropertiesPanelMessage {
 	Deactivate,
 	Init,
 	ModifyFill { fill: Fill },
-	ModifyFont { font_family: String, font_style: String, size: f64 },
 	ModifyName { name: String },
 	ModifyPreserveAspect { preserve_aspect: bool },
 	ModifyStroke { stroke: Stroke },
