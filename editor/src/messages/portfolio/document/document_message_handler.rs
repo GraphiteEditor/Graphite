@@ -34,7 +34,7 @@ use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::raster::{Color, ImageFrame};
+use graphene_core::raster::{Color, ImageFrame, RasterMut};
 use graphene_core::Cow;
 
 use glam::{DAffine2, DVec2};

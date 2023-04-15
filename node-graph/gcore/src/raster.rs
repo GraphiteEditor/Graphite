@@ -58,15 +58,15 @@ struct SRGBGammaFloat(f32);
 impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
-		let gamma = num::cast::<_, f32>(self).expect("Failed to convert srgb to linear");
-		let out = if gamma <= 0.0031308 { gamma * 12.92 } else { 1.055 * gamma.powf(1. / 2.4) - 0.055 };
+		let channel = num::cast::<_, f32>(self).expect("Failed to convert srgb to linear");
+		let out = if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) };
 		num::cast(out).expect("Failed to convert srgb to linear")
 	}
 
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
-		let channel = num::cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
-		let out = if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) };
+		let linear = num::cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
+		let out = if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1. / 2.4) - 0.055 };
 		num::cast(out).expect("Failed to convert linear to srgb")
 	}
 }
@@ -650,7 +650,7 @@ mod image {
 	impl Image<Color> {
 		/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 		pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
-			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8(v[0], v[1], v[2], v[3])).collect();
+			let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8_srgb(v[0], v[1], v[2], v[3])).collect();
 			Image { width, height, data }
 		}
 	}

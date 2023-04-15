@@ -141,8 +141,8 @@ impl Color {
 	/// let color2 = Color::from_rgba8(0x72, 0x67, 0x62, 0xFF);
 	/// assert!(color == color2)
 	/// ```
-	pub fn from_rgb8(red: u8, green: u8, blue: u8) -> Color {
-		Color::from_rgba8(red, green, blue, 255)
+	pub fn from_rgb8_srgb(red: u8, green: u8, blue: u8) -> Color {
+		Color::from_rgba8_srgb(red, green, blue, 255)
 	}
 
 	/// Return an SDR `Color` given RGBA channels from `0` to `255`.
@@ -152,7 +152,7 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
 	/// ```
-	pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
 		let map_range = |int_color| int_color as f32 / 255.0;
 		Color {
 			red: map_range(red),
@@ -160,6 +160,7 @@ impl Color {
 			blue: map_range(blue),
 			alpha: map_range(alpha),
 		}
+		.to_linear_srgb()
 	}
 
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
@@ -571,7 +572,7 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
 
-		Some(Color::from_rgba8(r, g, b, a))
+		Some(Color::from_rgba8_srgb(r, g, b, a))
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
@@ -588,7 +589,7 @@ impl Color {
 		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
-		Some(Color::from_rgb8(r, g, b))
+		Some(Color::from_rgb8_srgb(r, g, b))
 	}
 
 	/// Linearly interpolates between two colors based on t.
@@ -720,7 +721,7 @@ fn hsl_roundtrip() {
 		(82, 84, 84),
 		(255, 255, 178),
 	] {
-		let col = Color::from_rgb8(red, green, blue);
+		let col = Color::from_rgb8_srgb(red, green, blue);
 		let [hue, saturation, lightness, alpha] = col.to_hsla();
 		let result = Color::from_hsla(hue, saturation, lightness, alpha);
 		assert!((col.r() - result.r()) < f32::EPSILON * 100.);
