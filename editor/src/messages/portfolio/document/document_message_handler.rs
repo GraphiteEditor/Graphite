@@ -3,7 +3,7 @@ use super::utility_types::misc::DocumentRenderMode;
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::frontend::utility_types::ExportBounds;
-use crate::messages::frontend::utility_types::{FileType, FrontendImageData};
+use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
@@ -28,6 +28,7 @@ use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use document_legacy::layers::nodegraph_layer::CachedOutputData;
 use document_legacy::layers::style::{Fill, RenderData, ViewMode};
 use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
@@ -424,7 +425,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let layer = self.document_legacy.layer(layer_path).expect("Clearing NodeGraphFrame image for invalid layer");
 				let previous_blob_url = match &layer.data {
-					LayerDataType::NodeGraphFrame(node_graph_frame) => &node_graph_frame.blob_url,
+					LayerDataType::NodeGraphFrame(node_graph_frame) => node_graph_frame.as_blob_url(),
 					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
 				};
 
@@ -841,7 +842,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Revoke the old blob URL
 				match &layer.data {
 					LayerDataType::NodeGraphFrame(node_graph_frame) => {
-						if let Some(url) = &node_graph_frame.blob_url {
+						if let Some(url) = node_graph_frame.as_blob_url() {
 							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
 						}
 					}
@@ -1612,12 +1613,12 @@ impl DocumentMessageHandler {
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: u64) {
-		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, image_data: &mut Vec<FrontendImageData>, fonts: &mut HashSet<Font>) {
+		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, fonts: &mut HashSet<Font>) {
 			match data {
 				LayerDataType::Folder(folder) => {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers().iter()) {
 						path.push(*id);
-						walk_layers(&layer.data, path, image_data, fonts);
+						walk_layers(&layer.data, path, responses, fonts);
 						path.pop();
 					}
 				}
@@ -1625,25 +1626,16 @@ impl DocumentMessageHandler {
 					fonts.insert(text.font.clone());
 				}
 				LayerDataType::NodeGraphFrame(node_graph_frame) => {
-					if let Some(data) = &node_graph_frame.image_data {
-						image_data.push(FrontendImageData {
-							path: path.clone(),
-							image_data: data.image_data.clone(),
-							mime: node_graph_frame.mime.clone(),
-							transform: None,
-						});
+					if node_graph_frame.cached_output_data == CachedOutputData::None {
+						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: path.clone() });
 					}
 				}
 				_ => {}
 			}
 		}
 
-		let mut image_data = Vec::new();
 		let mut fonts = HashSet::new();
-		walk_layers(root, &mut path, &mut image_data, &mut fonts);
-		if !image_data.is_empty() {
-			responses.push_front(FrontendMessage::UpdateImageData { document_id, image_data }.into());
-		}
+		walk_layers(root, &mut path, responses, &mut fonts);
 		for font in fonts {
 			responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default: false }.into());
 		}
