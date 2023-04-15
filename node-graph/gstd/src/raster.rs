@@ -303,7 +303,7 @@ where
 	let background_size = background.transform().decompose_scale();
 
 	// Transforms a point from the background image to the forground image
-	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform().inverse() * background.transform() * DAffine2::from_scale(1. / background_size);
+	let bg_to_fg = foreground.transform().inverse() * background.transform() * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0,0) (1, 1) in the background image space
 	let bg_aabb = compute_transformed_bounding_box(background.transform().inverse() * foreground.transform()).axis_aligned_bbox();
@@ -316,12 +316,12 @@ where
 		for x in start.x..end.x {
 			let bg_point = DVec2::new(x as f64, y as f64);
 			let fg_point = bg_to_fg.transform_point2(bg_point);
-			if !((fg_point.cmpge(DVec2::ZERO) & fg_point.cmple(foreground_size)) == BVec2::new(true, true)) {
+			if !((fg_point.cmpge(DVec2::ZERO) & fg_point.cmple(DVec2::ONE)) == BVec2::new(true, true)) {
 				continue;
 			}
 
 			let dst_pixel = background.get_pixel_mut(x, y).unwrap();
-			let src_pixel = foreground.sample(fg_point / foreground_size);
+			let src_pixel = foreground.sample(fg_point);
 
 			*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
 		}
