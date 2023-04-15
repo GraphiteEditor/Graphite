@@ -285,6 +285,7 @@ pub use hue_shift::HueSaturationNode;
 #[cfg(not(target_arch = "spirv"))]
 mod hue_shift {
 	use super::*;
+
 	#[derive(Debug)]
 	pub struct HueSaturationNode<Hue, Saturation, Lightness> {
 		hue_shift: Hue,
@@ -462,21 +463,6 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BrightnessContrastNode<Brightness, Contrast> {
-	brightness: Brightness,
-	contrast: Contrast,
-}
-
-// From https://stackoverflow.com/questions/2976274/adjust-bitmap-image-brightness-contrast-using-c
-#[node_macro::node_fn(BrightnessContrastNode)]
-fn adjust_image_brightness_and_contrast(color: Color, brightness: f64, contrast: f64) -> Color {
-	let (brightness, contrast) = (brightness as f32, contrast as f32);
-	let factor = (259. * (contrast + 255.)) / (255. * (259. - contrast));
-	let channel = |channel: f32| ((factor * (channel * 255. + brightness - 128.) + 128.) / 255.).clamp(0., 1.);
-	color.map_rgb(channel)
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct OpacityNode<O> {
 	opacity_multiplier: O,
 }
@@ -524,5 +510,6 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 		.gamma(gamma_correction as f32)
 		.map_rgb(|c: f32| c.clamp(0., 1.));
 
+	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	result.to_gamma_srgb()
 }

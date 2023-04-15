@@ -1610,7 +1610,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: u64) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, _document_id: u64) {
 		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, fonts: &mut HashSet<Font>) {
 			match data {
 				LayerDataType::Folder(folder) => {
