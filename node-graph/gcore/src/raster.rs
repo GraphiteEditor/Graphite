@@ -69,7 +69,19 @@ impl<T: Rec709Primaries> RGBPrimaries for T {
 
 pub trait SRGB: Rec709Primaries {}
 
-pub trait RGB {
+#[cfg(feature = "serde")]
+pub trait Serde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
+#[cfg(not(feature = "serde"))]
+pub trait Serde {}
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
+#[cfg(not(feature = "serde"))]
+impl<T> Serde for T {}
+
+pub trait Pixel: Serde + Clone {}
+
+pub trait RGB: Pixel {
 	type ColorChannel: Channel;
 	fn red(&self) -> Self::ColorChannel;
 	fn r(&self) -> Self::ColorChannel {
@@ -532,18 +544,21 @@ mod image {
 
 	#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct Image<P> {
+	pub struct Image<P: Pixel> {
 		pub width: u32,
 		pub height: u32,
 		#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 		pub data: Vec<P>,
 	}
 
-	impl<P: StaticTypeSized> StaticType for Image<P> {
+	impl<P: StaticTypeSized + Pixel> StaticType for Image<P>
+	where
+		P::Static: Pixel,
+	{
 		type Static = Image<P::Static>;
 	}
 
-	impl<P: Copy> Raster for Image<P> {
+	impl<P: Copy + Pixel> Raster for Image<P> {
 		type Pixel = P;
 		fn get_pixel(&self, x: u32, y: u32) -> P {
 			self.data[(x + y * self.width) as usize]
@@ -556,13 +571,13 @@ mod image {
 		}
 	}
 
-	impl<P: Copy> RasterMut for Image<P> {
+	impl<P: Copy + Pixel> RasterMut for Image<P> {
 		fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut P> {
 			self.data.get_mut((x + y * self.width) as usize)
 		}
 	}
 
-	impl<P: Hash> Hash for Image<P> {
+	impl<P: Hash + Pixel> Hash for Image<P> {
 		fn hash<H: Hasher>(&self, state: &mut H) {
 			const HASH_SAMPLES: u64 = 1000;
 			let data_length = self.data.len() as u64;
@@ -574,7 +589,7 @@ mod image {
 		}
 	}
 
-	impl<P: Clone> Image<P> {
+	impl<P: Pixel> Image<P> {
 		pub const fn empty() -> Self {
 			Self {
 				width: 0,
@@ -640,7 +655,7 @@ mod image {
 		}
 	}
 
-	impl<P> IntoIterator for Image<P> {
+	impl<P: Pixel> IntoIterator for Image<P> {
 		type Item = P;
 		type IntoIter = alloc::vec::IntoIter<P>;
 		fn into_iter(self) -> Self::IntoIter {
@@ -654,7 +669,7 @@ mod image {
 	}
 
 	#[node_macro::node_fn(ImageRefNode<_P>)]
-	fn image_ref_node<_P: Clone>(image: &'input Image<_P>) -> ImageSlice<'input, _P> {
+	fn image_ref_node<_P: Pixel>(image: &'input Image<_P>) -> ImageSlice<'input, _P> {
 		image.as_slice()
 	}
 
@@ -675,7 +690,7 @@ mod image {
 	}
 
 	#[node_macro::node_fn(MapImageSliceNode)]
-	fn map_node<P>(input: (u32, u32), data: Vec<P>) -> Image<P> {
+	fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
 		Image {
 			width: input.0,
 			height: input.1,
@@ -685,12 +700,12 @@ mod image {
 
 	#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct ImageFrame<P> {
+	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 		pub transform: DAffine2,
 	}
 
-	impl<P: Debug + Copy> Sample for ImageFrame<P> {
+	impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 		type Pixel = P;
 
 		fn sample(&self, pos: DVec2) -> Self::Pixel {
@@ -699,7 +714,7 @@ mod image {
 		}
 	}
 
-	impl<P: Copy> Raster for ImageFrame<P> {
+	impl<P: Copy + Pixel> Raster for ImageFrame<P> {
 		type Pixel = P;
 
 		fn width(&self) -> u32 {
@@ -715,17 +730,20 @@ mod image {
 		}
 	}
 
-	impl<P: Copy> RasterMut for ImageFrame<P> {
+	impl<P: Copy + Pixel> RasterMut for ImageFrame<P> {
 		fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
 			self.image.get_pixel_mut(x, y)
 		}
 	}
 
-	impl<P: StaticTypeSized> StaticType for ImageFrame<P> {
+	impl<P: StaticTypeSized + Pixel> StaticType for ImageFrame<P>
+	where
+		P::Static: Pixel,
+	{
 		type Static = ImageFrame<P::Static>;
 	}
 
-	impl<P: Copy> ImageFrame<P> {
+	impl<P: Copy + Pixel> ImageFrame<P> {
 		pub const fn empty() -> Self {
 			Self {
 				image: Image::empty(),
@@ -746,13 +764,13 @@ mod image {
 		}
 	}
 
-	impl<P> AsRef<ImageFrame<P>> for ImageFrame<P> {
+	impl<P: Pixel> AsRef<ImageFrame<P>> for ImageFrame<P> {
 		fn as_ref(&self) -> &ImageFrame<P> {
 			self
 		}
 	}
 
-	impl<P: Hash> Hash for ImageFrame<P> {
+	impl<P: Hash + Pixel> Hash for ImageFrame<P> {
 		fn hash<H: Hasher>(&self, state: &mut H) {
 			self.image.hash(state);
 			self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
