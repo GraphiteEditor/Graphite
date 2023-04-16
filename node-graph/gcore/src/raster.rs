@@ -102,16 +102,14 @@ pub trait Pixel: Clone + Pod + Zeroable {
 		bytemuck::bytes_of(self).to_vec()
 	}
 	// TODO: use u8 for Color
-	fn from_bytes(bytes: &[u8]) -> &Self {
-		bytemuck::try_from_bytes(bytes).expect("Failed to convert bytes to pixel")
+	fn from_bytes(bytes: &[u8]) -> Self {
+		*bytemuck::try_from_bytes(bytes).expect("Failed to convert bytes to pixel")
 	}
 
 	fn byte_size() -> usize {
 		std::mem::size_of::<Self>()
 	}
 }
-impl<T: Serde + Clone + Pod + Zeroable> Pixel for T {}
-
 pub trait RGB: Pixel {
 	type ColorChannel: Channel;
 	fn red(&self) -> Self::ColorChannel;
