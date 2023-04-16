@@ -317,7 +317,7 @@ impl Document {
 				return Ok(());
 			}
 		}
-		folder.add_layer(layer, layer_id, insert_index, None).ok_or(DocumentError::IndexOutOfBounds)?;
+		folder.add_layer(layer, layer_id, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 		Ok(())
 	}
 
@@ -341,7 +341,7 @@ impl Document {
 	/// -1 is equivalent to adding the layer to the top.
 	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
 		let folder = self.folder_mut(path)?;
-		folder.add_layer(layer, None, insert_index, None).ok_or(DocumentError::IndexOutOfBounds)
+		folder.add_layer(layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
 
 	/// Deletes the layer specified by `path`.
@@ -691,7 +691,7 @@ impl Document {
 			} => {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
 				let folder = self.folder_mut(folder_path)?;
-				folder.add_layer(*layer, Some(layer_id), insert_index, None).ok_or(DocumentError::IndexOutOfBounds)?;
+				folder.add_layer(*layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 				self.mark_as_dirty(&destination_path)?;
 
 				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
@@ -718,7 +718,11 @@ impl Document {
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
+
+				let selected_id = path.last().copied().unwrap_or_default();
+				let insert_index = folder.layer_ids.iter().position(|&id| id == selected_id).unwrap_or(0) as isize + 1;
+
+				if let Some(new_layer_id) = folder.add_layer(layer, None, insert_index) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
 					self.mark_as_dirty(folder_path)?;
 					Some(

@@ -67,9 +67,10 @@ impl FolderLayer {
 	/// folder.add_layer(shape_layer.into(), None, -1);
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
-	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize, path: Option<Vec<u64>>) -> Option<LayerId> {
+	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 
+		// Bounds check for the insert index
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index + 1;
 		}
@@ -85,11 +86,6 @@ impl FolderLayer {
 		}
 
 		let id = self.next_assignment_id;
-		if let Some(layer_path) = path {
-			let selected_id = *layer_path.last().unwrap_or(&0);
-			insert_index = self.layer_ids.iter().position(|id| *id == selected_id).unwrap_or(0) as i128;
-			insert_index = insert_index + 1;
-		}
 		self.layers.insert(insert_index as usize, layer);
 		self.layer_ids.insert(insert_index as usize, id);
 

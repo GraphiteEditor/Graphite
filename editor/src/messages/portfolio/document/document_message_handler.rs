@@ -347,7 +347,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {
-				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.backup(responses);
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
