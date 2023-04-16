@@ -73,37 +73,32 @@ impl FolderLayer {
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index + 1;
 		}
-
-		if insert_index <= self.layers.len() as i128 && insert_index >= 0 {
-			if let Some(id) = id {
-				self.next_assignment_id = id;
-			}
-			if self.layer_ids.contains(&self.next_assignment_id) {
-				return None;
-			}
-
-			let id = self.next_assignment_id;
-
-			match path {
-				Some(layer_path) => {
-					let selected_id = *layer_path.last().unwrap_or(&0);
-					insert_index = self.layer_ids.iter().position(|id| *id == selected_id).unwrap_or(0) as i128;
-					insert_index = insert_index + 1;
-				}
-				None => (),
-			}
-			self.layers.insert(insert_index as usize, layer);
-			self.layer_ids.insert(insert_index as usize, id);
-
-			// Linear probing for collision avoidance
-			while self.layer_ids.contains(&self.next_assignment_id) {
-				self.next_assignment_id += 1;
-			}
-
-			Some(id)
-		} else {
-			None
+		if insert_index > self.layers.len() as i128 || insert_index < 0 {
+			return None;
 		}
+
+		if let Some(id) = id {
+			self.next_assignment_id = id;
+		}
+		if self.layer_ids.contains(&self.next_assignment_id) {
+			return None;
+		}
+
+		let id = self.next_assignment_id;
+		if let Some(layer_path) = path {
+			let selected_id = *layer_path.last().unwrap_or(&0);
+			insert_index = self.layer_ids.iter().position(|id| *id == selected_id).unwrap_or(0) as i128;
+			insert_index = insert_index + 1;
+		}
+		self.layers.insert(insert_index as usize, layer);
+		self.layer_ids.insert(insert_index as usize, id);
+
+		// Linear probing for collision avoidance
+		while self.layer_ids.contains(&self.next_assignment_id) {
+			self.next_assignment_id += 1;
+		}
+
+		Some(id)
 	}
 
 	/// Remove a layer with a given ID from the folder.
