@@ -11,7 +11,11 @@ impl<'i> Node<'i, Color> for BrightnessContrastLegacyMapperNode {
 	type Output = Color;
 
 	fn eval<'s: 'i>(&'s self, color: Color) -> Color {
-		color.map_rgb(|c| (c + c * self.contrast + self.combined).clamp(0., 1.))
+		let color = color.to_gamma_srgb();
+
+		let color = color.map_rgb(|c| (c + c * self.contrast + self.combined).clamp(0., 1.));
+
+		color.to_linear_srgb()
 	}
 }
 
@@ -43,10 +47,14 @@ impl<'i> Node<'i, Color> for BrightnessContrastMapperNode {
 	type Output = Color;
 
 	fn eval<'s: 'i>(&'s self, color: Color) -> Color {
-		color.map_rgb(|c| {
+		let color = color.to_gamma_srgb();
+
+		let color = color.map_rgb(|c| {
 			let index_in_combined_lut = (c * (self.combined_lut.len() - 1) as f32).round() as usize;
 			self.combined_lut[index_in_combined_lut]
-		})
+		});
+
+		color.to_linear_srgb()
 	}
 }
 
@@ -123,20 +131,20 @@ fn solve_cubic_splines(cubic_spline_values: &CubicSplines) -> [f32; 4] {
 			3. * (y[1] - y[0]) / ((x[1] - x[0]) * (x[1] - x[0])),
 		],
 		[
-			1. / (x[1] - x[1 - 1]),
-			2. * (1. / (x[1] - x[1 - 1]) + 1. / (x[1 + 1] - x[1])),
-			1. / (x[1 + 1] - x[1]),
+			1. / (x[1] - x[0]),
+			2. * (1. / (x[1] - x[0]) + 1. / (x[2] - x[1])),
+			1. / (x[2] - x[1]),
 			0.,
 			// |
-			3. * ((y[1] - y[1 - 1]) / ((x[1] - x[1 - 1]) * (x[1] - x[1 - 1])) + (y[1 + 1] - y[1]) / ((x[1 + 1] - x[1]) * (x[1 + 1] - x[1]))),
+			3. * ((y[1] - y[0]) / ((x[1] - x[0]) * (x[1] - x[0])) + (y[2] - y[1]) / ((x[2] - x[1]) * (x[2] - x[1]))),
 		],
 		[
 			0.,
-			1. / (x[2] - x[2 - 1]),
-			2. * (1. / (x[2] - x[2 - 1]) + 1. / (x[2 + 1] - x[2])),
-			1. / (x[2 + 1] - x[2]),
+			1. / (x[2] - x[1]),
+			2. * (1. / (x[2] - x[1]) + 1. / (x[3] - x[2])),
+			1. / (x[3] - x[2]),
 			// |
-			3. * ((y[2] - y[2 - 1]) / ((x[2] - x[2 - 1]) * (x[2] - x[2 - 1])) + (y[2 + 1] - y[2]) / ((x[2 + 1] - x[2]) * (x[2 + 1] - x[2]))),
+			3. * ((y[2] - y[1]) / ((x[2] - x[1]) * (x[2] - x[1])) + (y[3] - y[2]) / ((x[3] - x[2]) * (x[3] - x[2]))),
 		],
 		[
 			0.,
@@ -226,10 +234,10 @@ fn interpolate_cubic_splines(input: f32, points: &CubicSplines, solutions: &[f32
 }
 
 mod tests {
-	use crate::value::ClonedNode;
-
 	#[allow(unused_imports)]
 	use super::*;
+	#[allow(unused_imports)]
+	use crate::value::ClonedNode;
 
 	#[test]
 	fn brightness_contrast_legacy_tests() {

@@ -166,9 +166,6 @@ pub struct LuminanceNode<LuminanceCalculation> {
 
 #[node_macro::node_fn(LuminanceNode)]
 fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
-
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
@@ -176,10 +173,6 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
 		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
-
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let luminance = Color::linear_to_srgb(luminance);
-
 	color.map_rgb(|_| luminance)
 }
 
@@ -195,6 +188,8 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
 fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
+	let color = color.to_gamma_srgb();
+
 	// Input Range (Range: 0-1)
 	let input_shadows = (input_start / 100.) as f32;
 	let input_midtones = (input_mid / 100.) as f32;
@@ -230,7 +225,9 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 	let color = color.gamma(gamma);
 
 	// Output levels (Range: 0-1)
-	color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums)
+	let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -248,6 +245,8 @@ pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 // Works the same for gamma and linear color
 #[node_macro::node_fn(GrayscaleNode)]
 fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
+	let color = color.to_gamma_srgb();
+
 	let reds = reds as f32 / 100.;
 	let yellows = yellows as f32 / 100.;
 	let greens = greens as f32 / 100.;
@@ -275,7 +274,9 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, gree
 	let luminance = gray_base + additional;
 
 	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
-	tint.with_luminance(luminance)
+	let color = tint.with_luminance(luminance);
+
+	color.to_linear_srgb()
 }
 
 #[cfg(not(target_arch = "spirv"))]
@@ -295,13 +296,20 @@ mod hue_shift {
 
 	#[node_macro::node_fn(HueSaturationNode)]
 	fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
+		let color = color.to_gamma_srgb();
+
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
-		Color::from_hsla(
+
+		let color = Color::from_hsla(
 			(hue + hue_shift as f32 / 360.) % 1.,
+			// TODO: Improve the way saturation works (it's slightly off)
 			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+			// TODO: Fix the way lightness works (it's very off)
 			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
 			alpha,
-		)
+		);
+
+		color.to_linear_srgb()
 	}
 }
 
@@ -310,7 +318,11 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(color: Color) -> Color {
-	color.map_rgb(|c| color.a() - c)
+	let color = color.to_gamma_srgb();
+
+	let color = color.map_rgb(|c| color.a() - c);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -324,9 +336,6 @@ pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
 	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
 	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
-
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
 
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
@@ -358,8 +367,6 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 	let opacity = opacity / 100.;
 
 	let (foreground, background) = input;
-	let foreground = foreground.to_linear_srgb();
-	let background = background.to_linear_srgb();
 
 	let target_color = match blend_mode {
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
@@ -394,10 +401,7 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
 	};
 
-	let multiplied_target_color = target_color.to_associated_alpha(opacity as f32);
-	let blended = background.alpha_blend(multiplied_target_color);
-
-	blended.to_gamma_srgb()
+	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -405,13 +409,10 @@ pub struct VibranceNode<Vibrance> {
 	vibrance: Vibrance,
 }
 
-// From https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// Modified from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
-
 	let vibrance = vibrance as f32 / 100.;
 	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 	// So this scales the 0% to -50% range to 0% to -100%.
@@ -446,7 +447,7 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	};
 	let altered_color = altered_color.to_gamma_srgb();
 
-	let altered_color = if vibrance >= 0. {
+	if vibrance >= 0. {
 		altered_color
 	} else {
 		// TODO: The result ends up a bit darker than it should be, further investigation is needed
@@ -456,10 +457,7 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
 		let factor = -slowed_vibrance;
 		altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
-	};
-
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	altered_color.to_gamma_srgb()
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -479,13 +477,18 @@ pub struct PosterizeNode<P> {
 }
 
 // Based on http://www.axiomx.com/posterize.htm
+// This algorithm is perfectly accurate.
 #[node_macro::node_fn(PosterizeNode)]
 fn posterize(color: Color, posterize_value: f64) -> Color {
+	let color = color.to_gamma_srgb();
+
 	let posterize_value = posterize_value as f32;
 	let number_of_areas = posterize_value.recip();
 	let size_of_areas = (posterize_value - 1.).recip();
 	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-	color.map_rgb(channel)
+	let color = color.map_rgb(channel);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -498,20 +501,15 @@ pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node_fn(ExposureNode)]
 fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
-
-	let result = color
+	let adjusted = color
 		// Exposure
 		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
 		// Offset
 		.map_rgb(|c: f32| c + offset as f32)
 		// Gamma correction
-		.gamma(gamma_correction as f32)
-		.map_rgb(|c: f32| c.clamp(0., 1.));
+		.gamma(gamma_correction as f32);
 
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	result.to_gamma_srgb()
+	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 }
 
 #[derive(Debug)]
