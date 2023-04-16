@@ -366,32 +366,32 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "Reds",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(40.), false),
 				},
 				DocumentInputType {
 					name: "Yellows",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(60.), false),
 				},
 				DocumentInputType {
 					name: "Greens",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(40.), false),
 				},
 				DocumentInputType {
 					name: "Cyans",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(60.), false),
 				},
 				DocumentInputType {
 					name: "Blues",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(20.), false),
 				},
 				DocumentInputType {
 					name: "Magentas",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(80.), false),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],

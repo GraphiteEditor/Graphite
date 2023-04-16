@@ -1,7 +1,7 @@
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
-use glam::{BVec2, DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Channel, Color, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
+use glam::{DAffine2, DVec2};
+use graphene_core::raster::{Alpha, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
 use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::Node;
@@ -300,7 +300,6 @@ fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Backgrou
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
-	let foreground_size = foreground.transform().decompose_scale();
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
 
 	// Transforms a point from the background image to the forground image
