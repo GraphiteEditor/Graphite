@@ -1,7 +1,6 @@
 import * as path from "path";
 import fs from "fs";
 import { spawnSync } from "child_process";
-import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 import SvelteCheckPlugin from "svelte-check-plugin";
 import SveltePreprocess from "svelte-preprocess";
 import * as webpack from "webpack";
@@ -112,17 +111,6 @@ const config: webpack.Configuration = {
 		hot: true,
 	},
 	plugins: [
-		// WASM Pack Plugin integrates compiled Rust code (.wasm) and generated wasm-bindgen code (.js) with the webpack bundle
-		// Use this JS to import the bundled Rust entry points: const wasm = import("@graphite/../wasm/pkg").then(panicProxy);
-		// Then call WASM functions with: (await wasm).functionName()
-		// https://github.com/wasm-tool/wasm-pack-plugin
-		new WasmPackPlugin({
-			crateDirectory: path.resolve(__dirname, "wasm"),
-			// Remove when this issue is resolved: https://github.com/wasm-tool/wasm-pack-plugin/issues/93
-			outDir: path.resolve(__dirname, "wasm/pkg"),
-			watchDirectories: ["../editor", "../document-legacy", "../proc-macros", "../node-graph"].map((folder) => path.resolve(__dirname, folder)),
-		}),
-
 		// License Checker Webpack Plugin validates the license compatibility of all dependencies which are compiled into the webpack bundle
 		// It also writes the third-party license notices to a file which is displayed in the application
 		// https://github.com/microsoft/license-checker-webpack-plugin

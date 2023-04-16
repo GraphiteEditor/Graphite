@@ -30,4 +30,4 @@ cargo install cargo-about
 # Build for production
 echo 👷 Build Graphite web client
 export NODE_ENV=production
-npm run build && mv public dist # `&&` is used here to preserve the exit code
+npm run build-webpack && mv public dist # `&&` is used here to preserve the exit code
