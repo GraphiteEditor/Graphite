@@ -265,6 +265,7 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 
 	let layer_path = tool_data.path.clone().unwrap();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path.clone(),
 		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
