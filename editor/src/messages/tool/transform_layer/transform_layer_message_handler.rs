@@ -123,6 +123,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
+
 				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}

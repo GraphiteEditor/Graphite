@@ -2,13 +2,11 @@ use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
 use document_legacy::LayerId;
@@ -84,14 +82,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DragStart,
 				Delete,
 				NudgeSelectedPoints,
-
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
-
 			),
 		}
 	}
@@ -363,11 +359,7 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-				HintGroup(vec![
-					HintInfo::keys([Key::KeyG], "Grab Selected"),
-					HintInfo::keys([Key::KeyR], "Rotate Selected"),
-					HintInfo::keys([Key::KeyS], "Scale Selected"),
-				]),
+				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),

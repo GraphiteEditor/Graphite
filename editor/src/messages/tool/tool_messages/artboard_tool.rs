@@ -345,7 +345,7 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear()
+						bounds.original_transforms.clear();
 					}
 
 					ArtboardToolFsmState::Ready
@@ -354,7 +354,7 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear()
+						bounds.original_transforms.clear();
 					}
 
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
@@ -365,7 +365,7 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear()
+						bounds.original_transforms.clear();
 					}
 
 					ArtboardToolFsmState::Ready

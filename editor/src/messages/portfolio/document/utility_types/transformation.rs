@@ -283,7 +283,7 @@ impl<'a> Selected<'a> {
 		shape_editor: Option<&'a ShapeState>,
 		tool_type: &'a ToolType,
 	) -> Self {
-		// If user is using select tool then use the origional layer transforms.
+		// If user is using the Select tool then use the original layer transforms
 		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
@@ -436,10 +436,9 @@ impl<'a> Selected<'a> {
 			match original_transform {
 				OriginalTransforms::Layer(hash) => {
 					let Some(matrix) = hash.get(path) else { continue };
-					let transform = *matrix;
 					self.responses.add(GraphOperationMessage::TransformSet {
 						layer: path.to_vec(),
-						transform,
+						transform: *matrix,
 						transform_in: TransformIn::Local,
 						skip_rerender: false,
 					});
