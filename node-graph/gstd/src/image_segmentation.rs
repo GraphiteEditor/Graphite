@@ -3,10 +3,10 @@ use std::collections::hash_map::HashMap;
 use graphene_core::raster::{Color, ImageFrame};
 use graphene_core::Node;
 
-fn apply_mask(image_frame: &mut ImageFrame, x: usize, y: usize, multiplier: u8) {
+fn apply_mask(image_frame: &mut ImageFrame<Color>, x: usize, y: usize, multiplier: u8) {
 	let color = &mut image_frame.image.data[y * image_frame.image.width as usize + x];
 	let color8 = color.to_rgba8();
-	*color = Color::from_rgba8(color8[0] * multiplier, color8[1] * multiplier, color8[2] * multiplier, color8[3] * multiplier);
+	*color = Color::from_rgba8_srgb(color8[0] * multiplier, color8[1] * multiplier, color8[2] * multiplier, color8[3] * multiplier);
 }
 
 pub struct Mask {
@@ -24,9 +24,9 @@ impl Mask {
 	}
 }
 
-fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageFrame> {
+fn image_segmentation(input_image: &ImageFrame<Color>, input_mask: &Mask) -> Vec<ImageFrame<Color>> {
 	const NUM_LABELS: usize = u8::MAX as usize;
-	let mut result = Vec::<ImageFrame>::with_capacity(NUM_LABELS);
+	let mut result = Vec::<ImageFrame<Color>>::with_capacity(NUM_LABELS);
 	let mut current_label = 0_usize;
 	let mut label_appeared = [false; NUM_LABELS + 1];
 	let mut max_label = 0_usize;
@@ -84,7 +84,7 @@ fn image_segmentation(input_image: &ImageFrame, input_mask: &Mask) -> Vec<ImageF
 	result
 }
 
-fn convert_image_to_mask(input: &ImageFrame) -> Vec<u8> {
+fn convert_image_to_mask(input: &ImageFrame<Color>) -> Vec<u8> {
 	let mut result = vec![0_u8; (input.image.width * input.image.height) as usize];
 	let mut colors = HashMap::<[u8; 4], usize>::new();
 	let mut last_value = 0_usize;
@@ -114,7 +114,7 @@ pub struct ImageSegmentationNode<MaskImage> {
 }
 
 #[node_macro::node_fn(ImageSegmentationNode)]
-pub(crate) fn image_segmentation(image: ImageFrame, mask_image: ImageFrame) -> Vec<ImageFrame> {
+pub(crate) fn image_segmentation(image: ImageFrame<Color>, mask_image: ImageFrame<Color>) -> Vec<ImageFrame<Color>> {
 	let mask_data = convert_image_to_mask(&mask_image);
 	let mask = Mask {
 		data: mask_data,

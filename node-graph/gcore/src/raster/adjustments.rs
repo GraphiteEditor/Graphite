@@ -520,7 +520,7 @@ pub struct IndexNode<Index> {
 }
 
 #[node_macro::node_fn(IndexNode)]
-pub fn index_node(input: Vec<super::ImageFrame>, index: u32) -> super::ImageFrame {
+pub fn index_node(input: Vec<super::ImageFrame<Color>>, index: u32) -> super::ImageFrame<Color> {
 	if (index as usize) < input.len() {
 		input[index as usize].clone()
 	} else {
