@@ -348,6 +348,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
+				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
+				self.layer_range_selection_reference.clear();
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
