@@ -48,6 +48,7 @@ pub enum TaggedValue {
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	VecDVec2(Vec<DVec2>),
+	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -111,6 +112,12 @@ impl Hash for TaggedValue {
 					dvec2.to_array().iter().for_each(|x| x.to_bits().hash(state));
 				}
 			}
+			Self::Segments(segments) => {
+				32.hash(state);
+				for segment in segments {
+					segment.hash(state)
+				}
+			}
 		}
 	}
 }
@@ -153,6 +160,7 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(x) => Box::new(x),
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::VecDVec2(x) => Box::new(x),
+			TaggedValue::Segments(x) => Box::new(x),
 		}
 	}
 
@@ -194,6 +202,7 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
+			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 		}
 	}
 }
