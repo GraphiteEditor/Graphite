@@ -16,12 +16,16 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: 
 }
 
 pub fn new_custom_layer(network: NodeNetwork, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+	new_custom_layer_with_transform(network, layer_path, DAffine2::ZERO, responses);
+}
+
+pub fn new_custom_layer_with_transform(network: NodeNetwork, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) {
 	responses.push_back(DocumentMessage::DeselectAllLayers.into());
 	responses.push_back(
 		Operation::AddNodeGraphFrame {
 			path: layer_path.clone(),
 			insert_index: -1,
-			transform: DAffine2::ZERO.to_cols_array(),
+			transform: transform.to_cols_array(),
 			network,
 		}
 		.into(),

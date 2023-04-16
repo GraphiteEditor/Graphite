@@ -289,7 +289,7 @@ impl NodeNetwork {
 		}
 	}
 	/// A graph with just an input node
-	pub fn new_network() -> Self {
+	pub fn new_network(input_type: Type) -> Self {
 		Self {
 			inputs: vec![0],
 			outputs: vec![NodeOutput::new(0, 0)],
@@ -297,7 +297,7 @@ impl NodeNetwork {
 				0,
 				DocumentNode {
 					name: "Input Frame".into(),
-					inputs: vec![NodeInput::ShortCircut(concrete!(u32))],
+					inputs: vec![NodeInput::ShortCircut(input_type)],
 					implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 					metadata: DocumentNodeMetadata { position: (8, 4).into() },
 				},

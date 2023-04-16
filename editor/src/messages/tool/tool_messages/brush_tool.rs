@@ -9,13 +9,14 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use document_legacy::LayerId;
+use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::Cow;
+use graphene_core::{Color, Cow};
 
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
+use graphene_core::raster::ImageFrame;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -61,6 +62,7 @@ pub enum BrushToolMessage {
 pub enum BrushToolMessageOptionsUpdate {
 	ChangeDiameter(f64),
 	Diameter(f64),
+	Eraser(bool),
 	Flow(f64),
 	Hardness(f64),
 }
@@ -106,11 +108,15 @@ impl PropertyHolder for BrushTool {
 			.unit("%")
 			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 			.widget_holder();
+		let eraser_label = TextLabel::new("Eraser: ").widget_holder();
+		let eraser = CheckboxInput::new(false)
+			.on_update(|checkbox_input: &CheckboxInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Eraser(checkbox_input.checked)).into())
+			.widget_holder();
 
 		let separator = Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![diameter, separator.clone(), hardness, separator, flow],
+			widgets: vec![diameter, separator.clone(), hardness, separator.clone(), flow, separator, eraser_label, eraser],
 		}]))
 	}
 }
@@ -134,6 +140,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
+				BrushToolMessageOptionsUpdate::Eraser(erase) => {
+					self.data.erase = erase;
+				}
 			}
 			return;
 		}
@@ -178,14 +187,24 @@ struct BrushToolData {
 	hardness: f64,
 	flow: f64,
 	path: Option<Vec<LayerId>>,
+	erase: bool,
+	brush_node: Option<NodeId>,
 }
 
 impl BrushToolData {
 	fn update_points(&self, responses: &mut VecDeque<Message>) {
 		if let Some(layer_path) = self.path.clone() {
+			let min = self.points.iter().fold(DVec2::splat(f64::INFINITY), |min, p| min.min(*p)) - DVec2::splat(self.diameter + 4.);
+			let max = self.points.iter().fold(DVec2::splat(f64::NEG_INFINITY), |max, p| max.max(*p)) + DVec2::splat(self.diameter + 4.);
+
+			let transform = DAffine2::from_scale_angle_translation(max - min, 0., min);
+			responses.add(Operation::SetLayerTransform {
+				path: layer_path.clone(),
+				transform: transform.to_cols_array(),
+			});
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
-				node_path: vec![0],
+				node_path: vec![self.brush_node.unwrap()],
 				input_index: 1,
 				value: TaggedValue::VecDVec2(self.points.clone()),
 			});
@@ -293,9 +312,9 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+fn add_brush_render(data: &mut BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
-	let brush_node = DocumentNode {
+	let mut brush_node = DocumentNode {
 		name: "Brush".to_string(),
 		inputs: vec![
 			NodeInput::ShortCircut(concrete!(())),
@@ -312,9 +331,27 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
 	};
-	let mut network = NodeNetwork::value_network(brush_node);
+
+	let mut network = if data.erase {
+		let mut network = NodeNetwork::new_network(concrete!(ImageFrame<Color>));
+		brush_node.metadata.position = (8, 6).into();
+		network.nodes.insert(10, brush_node);
+		data.brush_node = Some(10);
+		let mask_node_type = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Mask").expect("Mask node should be in registry");
+		let mask_node = mask_node_type.to_document_node_default_inputs([None, Some(NodeInput::node(10, 0))], DocumentNodeMetadata::position((8, 10)));
+		network.push_node(mask_node);
+		network
+	} else {
+		data.brush_node = Some(0);
+		NodeNetwork::value_network(brush_node)
+	};
 	network.push_output_node();
-	graph_modification_utils::new_custom_layer(network, layer_path.clone(), responses);
+
+	let min = data.points.iter().fold(DVec2::splat(f64::INFINITY), |min, p| min.min(*p)) - DVec2::splat(data.diameter + 4.);
+	let max = data.points.iter().fold(DVec2::splat(f64::NEG_INFINITY), |max, p| max.max(*p)) + DVec2::splat(data.diameter + 4.);
+	log::info!("min: {:?}, max: {:?}", min, max);
+
+	graph_modification_utils::new_custom_layer_with_transform(network, layer_path.clone(), DAffine2::from_scale_angle_translation(max - min, 0., min), responses);
 }
 
 fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {
@@ -323,10 +360,10 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 	}
 	let layer_path = document.selected_layers().next()?.to_vec();
 	let network = document.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_node_graph().ok())?;
-	let brush_node = network.nodes.get(&0)?;
-	if brush_node.implementation != DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()) {
-		return None;
-	}
+	let brush_node = network
+		.nodes
+		.values()
+		.find(|node| node.implementation == DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()))?;
 	let points_input = brush_node.inputs.get(1)?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(points),

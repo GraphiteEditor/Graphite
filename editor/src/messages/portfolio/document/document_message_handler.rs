@@ -1063,6 +1063,7 @@ impl DocumentMessageHandler {
 				// Calculate the size of the region to be exported
 				let old_transforms = self.remove_document_transform();
 				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
+				log::info!("Transform: {:?}", transform);
 				let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
 				let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
