@@ -1,14 +1,34 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
-
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
+use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
-pub type OriginalTransforms = HashMap<Vec<LayerId>, DAffine2>;
+#[derive(Debug, PartialEq, Clone)]
+pub enum OriginalTransforms {
+	Layer(HashMap<Vec<LayerId>, DAffine2>),
+	Path(HashMap<Vec<LayerId>, Vec<(ManipulatorPointId, DVec2)>>),
+}
+impl Default for OriginalTransforms {
+	fn default() -> Self {
+		OriginalTransforms::Path(HashMap::new())
+	}
+}
+impl OriginalTransforms {
+	pub fn clear(&mut self) {
+		match self {
+			OriginalTransforms::Layer(layer_map) => layer_map.clear(),
+			OriginalTransforms::Path(path_map) => path_map.clear(),
+		}
+	}
+}
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Axis {
@@ -63,6 +83,13 @@ impl Translation {
 			constraint: self.constraint,
 		}
 	}
+	pub fn set_amount(self, change: DVec2) -> Self {
+		Self {
+			dragged_distance: change,
+			typed_distance: None,
+			constraint: self.constraint,
+		}
+	}
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Copy)]
@@ -87,6 +114,12 @@ impl Rotation {
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_angle: self.dragged_angle + delta,
+			typed_angle: None,
+		}
+	}
+	pub fn set_amount(self, angle: f64) -> Self {
+		Self {
+			dragged_angle: angle,
 			typed_angle: None,
 		}
 	}
@@ -125,6 +158,14 @@ impl Scale {
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
 			dragged_factor: self.dragged_factor + delta,
+			typed_factor: None,
+			constraint: self.constraint,
+		}
+	}
+
+	pub fn set_amount(self, change: f64) -> Self {
+		Self {
+			dragged_factor: 1. + change,
 			typed_factor: None,
 			constraint: self.constraint,
 		}
@@ -228,16 +269,74 @@ pub struct Selected<'a> {
 	pub document: &'a Document,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
+	pub shape_editor: Option<&'a ShapeState>,
+	pub tool_type: &'a ToolType,
 }
 
 impl<'a> Selected<'a> {
-	pub fn new(original_transforms: &'a mut OriginalTransforms, pivot: &'a mut DVec2, selected: &'a [&'a Vec<LayerId>], responses: &'a mut VecDeque<Message>, document: &'a Document) -> Self {
-		for path in selected {
-			if !original_transforms.contains_key(*path) {
-				if let Ok(layer) = document.layer(path) {
-					original_transforms.insert(path.to_vec(), layer.transform);
-				} else {
-					warn!("Didn't find a layer for {:?}", path);
+	pub fn new(
+		original_transforms: &'a mut OriginalTransforms,
+		pivot: &'a mut DVec2,
+		selected: &'a [&'a Vec<LayerId>],
+		responses: &'a mut VecDeque<Message>,
+		document: &'a Document,
+		shape_editor: Option<&'a ShapeState>,
+		tool_type: &'a ToolType,
+	) -> Self {
+		// If user is using the Select tool then use the original layer transforms
+		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
+			*original_transforms = OriginalTransforms::Layer(HashMap::new());
+		}
+
+		match original_transforms {
+			OriginalTransforms::Layer(layer_map) => {
+				for layer_path in selected {
+					if !layer_map.contains_key(*layer_path) {
+						if let Ok(layer) = document.layer(layer_path) {
+							layer_map.insert(layer_path.to_vec(), layer.transform);
+						} else {
+							warn!("Didn't find a layer for {:?}", layer_path);
+						}
+					}
+				}
+			}
+			OriginalTransforms::Path(path_map) => {
+				for path in selected {
+					let Some(shape_editor) = shape_editor else {
+						warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
+						continue;
+					};
+					// Anchors also move their handles
+					let expand_anchors = |&point: &ManipulatorPointId| {
+						if point.manipulator_type.is_handle() {
+							[Some(point), None, None]
+						} else {
+							[
+								Some(point),
+								Some(ManipulatorPointId::new(point.group, SelectedType::InHandle)),
+								Some(ManipulatorPointId::new(point.group, SelectedType::OutHandle)),
+							]
+						}
+					};
+					let points = shape_editor.selected_points().flat_map(expand_anchors).flatten();
+					if path_map.contains_key(*path) {
+						continue;
+					}
+					let Ok(layer) = document.layer(path) else {
+						warn!("Didn't find a layer for {:?}", path);
+						continue;
+					};
+					let Some(vector_data) = layer.as_vector_data() else {
+						warn!("Didn't find a vectordata for {:?}", layer);
+						continue;
+					};
+					let get_manipulator_point_position = |point_id: ManipulatorPointId| {
+						vector_data
+							.manipulator_from_id(point_id.group)
+							.and_then(|manipulator_group| point_id.manipulator_type.get_position(manipulator_group))
+							.map(|position| (point_id, position))
+					};
+					path_map.insert(path.to_vec(), points.filter_map(get_manipulator_point_position).collect());
 				}
 			}
 		}
@@ -247,6 +346,8 @@ impl<'a> Selected<'a> {
 			document,
 			original_transforms,
 			pivot,
+			shape_editor,
+			tool_type,
 		}
 	}
 
@@ -278,33 +379,79 @@ impl<'a> Selected<'a> {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
-				let original_layer_transforms = *self.original_transforms.get(*layer_path).unwrap();
+				if *self.tool_type == ToolType::Select {
+					let original_layer_transforms = match self.original_transforms {
+						OriginalTransforms::Layer(layer_map) => *layer_map.get(*layer_path).unwrap(),
+						OriginalTransforms::Path(_path_map) => {
+							warn!("Found Path variant in original_transforms, returning identity transform for layer {:?}", layer_path);
+							DAffine2::IDENTITY
+						}
+					};
+					let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
+					let new = to.inverse() * transformation * to * original_layer_transforms;
+					self.responses.add(GraphOperationMessage::TransformSet {
+						layer: layer_path.to_vec(),
+						transform: new,
+						transform_in: TransformIn::Local,
+						skip_rerender: true,
+					});
+				}
+				if *self.tool_type == ToolType::Path {
+					let viewspace = self.document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
+					let layerspace_rotation = viewspace.inverse() * transformation;
 
-				let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
-				let new = to.inverse() * transformation * to * original_layer_transforms;
+					let initial_points = match self.original_transforms {
+						OriginalTransforms::Layer(_layer_map) => {
+							warn!("Found Layer variant in original_transforms when Path wanted, returning identity transform for layer");
+							None
+						}
+						OriginalTransforms::Path(path_map) => path_map.get(*layer_path),
+					};
 
-				self.responses.add(GraphOperationMessage::TransformSet {
-					layer: layer_path.to_vec(),
-					transform: new,
-					transform_in: TransformIn::Local,
-					skip_rerender: true,
-				});
+					let Some(original) = initial_points else {
+						warn!("Initial Points empty, it should not be possible to reach here without points");
+						continue;
+					};
+					for (point_id, position) in original {
+						let viewport_point = viewspace.transform_point2(*position);
+						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+						let point = *point_id;
+						let position = new_pos_viewport;
+
+						self.responses.add(GraphOperationMessage::Vector {
+							layer: (*layer_path).to_vec(),
+							modification: VectorDataModification::SetManipulatorPosition { point, position },
+						});
+					}
+				}
+				self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
-
-			self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 		}
 	}
 
 	pub fn revert_operation(&mut self) {
-		for layer in self.selected {
-			if let Some(&transform) = self.original_transforms.get(*layer) {
-				// Push front to stop document switching before sending the transform
-				self.responses.add(GraphOperationMessage::TransformSet {
-					layer: layer.to_vec(),
-					transform,
-					transform_in: TransformIn::Local,
-					skip_rerender: false,
-				});
+		for path in self.selected.iter().copied() {
+			let original_transform = &self.original_transforms;
+			match original_transform {
+				OriginalTransforms::Layer(hash) => {
+					let Some(matrix) = hash.get(path) else { continue };
+					self.responses.add(GraphOperationMessage::TransformSet {
+						layer: path.to_vec(),
+						transform: *matrix,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
+				}
+				OriginalTransforms::Path(path) => {
+					for (layer_path, points) in path {
+						for &(point, position) in points {
+							self.responses.add(GraphOperationMessage::Vector {
+								layer: (*layer_path).clone(),
+								modification: VectorDataModification::SetManipulatorPosition { point, position },
+							});
+						}
+					}
+				}
 			}
 		}
 	}
