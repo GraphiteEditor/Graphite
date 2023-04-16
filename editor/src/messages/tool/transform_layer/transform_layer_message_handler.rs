@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use document_legacy::layers::style::RenderData;
+use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
 
@@ -43,16 +44,48 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data, shape_editor): TransformData) {
 		use TransformLayerMessage::*;
 
-		// TODO: Transform individual points when using the path tool.
-		let _using_path_tool = tool_data.active_tool_type == ToolType::Path;
+		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
-		let mut selected = Selected::new(&mut self.original_transforms, &mut self.pivot, &selected_layers, responses, &document.document_legacy);
+
+		let mut selected = Selected::new(
+			&mut self.original_transforms,
+			&mut self.pivot,
+			&selected_layers,
+			responses,
+			&document.document_legacy,
+			Some(shape_editor),
+			&tool_data.active_tool_type,
+		);
 
 		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2| {
 			if operation != TransformOperation::None {
 				selected.revert_operation();
 				typing.clear();
+			}
+
+			if using_path_tool {
+				if let Ok(layer) = document.document_legacy.layer(&selected_layers[0]) {
+					if let Some(vector_data) = layer.as_vector_data() {
+						*selected.original_transforms = OriginalTransforms::default();
+						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(&selected_layers[0]).ok().unwrap_or_default();
+
+						let mut point_count: usize = 0;
+						let count_point = |position| {
+							point_count += 1;
+							position
+						};
+						let get_location = |point: &ManipulatorPointId| {
+							vector_data
+								.manipulator_from_id(point.group)
+								.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
+								.map(|position| viewspace.transform_point2(position))
+						};
+						let points = shape_editor.selected_points();
+
+						*selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
+					}
+				}
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
@@ -65,7 +98,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		#[remain::sorted]
 		match message {
 			ApplyTransformOperation => {
-				self.original_transforms.clear();
+				selected.original_transforms.clear();
+
 				self.typing.clear();
 
 				self.transform_operation = TransformOperation::None;
@@ -90,6 +124,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
+				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			BeginRotate => {
@@ -106,6 +141,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
+				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			BeginScale => {
@@ -122,6 +158,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
+				selected.original_transforms.clear();
 				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 			}
 			CancelTransformOperation => {
@@ -163,15 +200,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let selected_pivot = selected.mean_average_of_pivots(render_data);
-							let angle = {
-								let start_offset = self.mouse_position - selected_pivot;
-								let end_offset = ipp.mouse.position - selected_pivot;
-
-								start_offset.angle_between(end_offset)
-							};
+							let start_offset = *selected.pivot - self.mouse_position;
+							let end_offset = *selected.pivot - ipp.mouse.position;
+							let angle = start_offset.angle_between(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
+
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
 						}

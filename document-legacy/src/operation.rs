@@ -4,6 +4,7 @@ use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
+use graphene_core::vector::SelectedType;
 use graphene_std::vector::consts::ManipulatorType;
 use graphene_std::vector::manipulator_group::ManipulatorGroup;
 use graphene_std::vector::subpath::Subpath;
@@ -141,7 +142,7 @@ pub enum Operation {
 	MoveManipulatorPoint {
 		layer_path: Vec<LayerId>,
 		id: u64,
-		manipulator_type: ManipulatorType,
+		manipulator_type: SelectedType,
 		position: (f64, f64),
 	},
 	SetManipulatorPoints {
