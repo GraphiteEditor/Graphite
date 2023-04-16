@@ -4,7 +4,7 @@ use graphene_core::raster::{Color, ImageFrame};
 use graphene_core::Node;
 
 /// The `GenerateQuantizationNode` encodes the brightness of each channel of the image as an integer number
-/// sepified by the samples parameter. This node is used to asses the loss of visual information when
+/// signified by the samples parameter. This node is used to asses the loss of visual information when
 /// quantizing the image using different fit functions.
 pub struct GenerateQuantizationNode<N, M> {
 	samples: N,
