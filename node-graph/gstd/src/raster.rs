@@ -300,7 +300,7 @@ where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
 	let foreground_size = foreground.transform().decompose_scale();
-	let background_size = background.transform().decompose_scale();
+	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
 
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
@@ -318,8 +318,9 @@ where
 			let fg_point = bg_to_fg.transform_point2(bg_point);
 
 			if let Some(src_pixel) = foreground.sample(fg_point) {
-				let dst_pixel = background.get_pixel_mut(x, y).unwrap();
-				*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
+				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
+					*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
+				}
 			}
 		}
 	}
