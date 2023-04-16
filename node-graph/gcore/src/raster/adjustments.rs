@@ -513,3 +513,18 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 	// TODO: Remove conversion to linear when the whole node graph uses linear color
 	result.to_gamma_srgb()
 }
+
+#[derive(Debug)]
+pub struct IndexNode<Index> {
+	pub index: Index,
+}
+
+#[node_macro::node_fn(IndexNode)]
+pub fn index_node(input: Vec<super::ImageFrame<Color>>, index: u32) -> super::ImageFrame<Color> {
+	if (index as usize) < input.len() {
+		input[index as usize].clone()
+	} else {
+		warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
+		super::ImageFrame::empty()
+	}
+}
