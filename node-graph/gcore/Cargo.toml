@@ -13,7 +13,7 @@ std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta"]
 default = ["async", "serde", "kurbo", "log", "std"]
 log = ["dep:log"]
 serde = ["dep:serde", "glam/serde", "bezier-rs/serde", "base64"]
-gpu = ["spirv-std", "bytemuck", "glam/bytemuck", "dyn-any", "glam/libm"]
+gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
 async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs", "once_cell"]
@@ -26,7 +26,7 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 ], optional = true, default-features = false }
 
 spirv-std = { version = "0.5", features = ["glam"], optional = true }
-bytemuck = { version = "1.8", features = ["derive"], optional = true }
+bytemuck = { version = "1.8", features = ["derive"] }
 async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = [
 	"derive",
@@ -47,3 +47,6 @@ base64 = { version = "0.13", optional = true }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
+num = "0.4.0"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
