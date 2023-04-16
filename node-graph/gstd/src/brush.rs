@@ -154,12 +154,15 @@ fn translate_node<Data: TransformMut>(offset: DVec2, mut translatable: Data) -> 
 mod test {
 	use super::*;
 	use crate::raster::*;
-	use glam::DAffine2;
+
+	#[allow(unused_imports)]
 	use graphene_core::ops::{AddNode, CloneNode};
 	use graphene_core::raster::*;
 	use graphene_core::structural::Then;
 	use graphene_core::transform::{Transform, TransformMut};
 	use graphene_core::value::{ClonedNode, ValueNode};
+
+	use glam::DAffine2;
 
 	#[test]
 	fn test_translate_node() {

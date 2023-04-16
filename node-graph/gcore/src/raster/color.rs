@@ -301,9 +301,18 @@ impl Color {
 		}
 	}
 
+	pub fn from_luminance(luminance: f32) -> Color {
+		Color {
+			red: luminance,
+			green: luminance,
+			blue: luminance,
+			alpha: 1.,
+		}
+	}
+
 	pub fn with_luminance(&self, luminance: f32) -> Color {
-		let d = luminance - self.luminance_rec_601_rounded();
-		self.map_rgb(|c| (c + d).clamp(0., 1.))
+		let delta = luminance - self.luminance_rec_601_rounded();
+		self.map_rgb(|c| (c + delta).clamp(0., 1.))
 	}
 
 	pub fn saturation(&self) -> f32 {

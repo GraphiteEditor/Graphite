@@ -444,7 +444,7 @@ where
 #[cfg(target_arch = "spirv")]
 const NOTHING: () = ();
 
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use dyn_any::{StaticType, StaticTypeSized};
 #[derive(Clone, Debug, PartialEq, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ImageSlice<'a, Pixel> {
@@ -541,7 +541,7 @@ mod image {
 	use crate::Node;
 	use alloc::vec::Vec;
 	use core::hash::{Hash, Hasher};
-	use dyn_any::{DynAny, StaticType};
+	use dyn_any::StaticType;
 	use glam::{DAffine2, DVec2};
 
 	#[cfg(feature = "serde")]
