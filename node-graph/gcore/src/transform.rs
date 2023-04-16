@@ -3,6 +3,7 @@ use glam::DAffine2;
 use glam::DVec2;
 
 use crate::raster::ImageFrame;
+use crate::raster::Pixel;
 use crate::vector::VectorData;
 use crate::Node;
 
@@ -10,6 +11,12 @@ pub trait Transform {
 	fn transform(&self) -> DAffine2;
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		pivot
+	}
+	fn decompose_scale(&self) -> DVec2 {
+		DVec2::new(
+			self.transform().transform_vector2((1., 0.).into()).length(),
+			self.transform().transform_vector2((0., 1.).into()).length(),
+		)
 	}
 }
 
@@ -20,17 +27,17 @@ pub trait TransformMut: Transform {
 	}
 }
 
-impl Transform for ImageFrame {
+impl<P: Pixel> Transform for ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
 }
-impl Transform for &ImageFrame {
+impl<P: Pixel> Transform for &ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
 }
-impl TransformMut for ImageFrame {
+impl<P: Pixel> TransformMut for ImageFrame<P> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
 	}

@@ -3,7 +3,7 @@ use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::{Node, Type};
+use graphene_core::{Color, Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -23,9 +23,9 @@ pub enum TaggedValue {
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
-	Image(graphene_core::raster::Image),
-	RcImage(Option<Arc<graphene_core::raster::Image>>),
-	ImageFrame(graphene_core::raster::ImageFrame),
+	Image(graphene_core::raster::Image<Color>),
+	RcImage(Option<Arc<graphene_core::raster::Image<Color>>>),
+	ImageFrame(graphene_core::raster::ImageFrame<Color>),
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
@@ -168,9 +168,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Bool(_) => concrete!(bool),
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
-			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image),
-			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
-			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame),
+			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
+			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image<Color>>>),
+			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame<Color>),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpaths(_) => concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),

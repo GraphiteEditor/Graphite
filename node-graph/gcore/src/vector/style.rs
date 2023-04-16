@@ -396,7 +396,7 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			weight: 0.,
-			color: Some(Color::from_rgba8(0, 0, 0, 255)),
+			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			line_cap: LineCap::Butt,

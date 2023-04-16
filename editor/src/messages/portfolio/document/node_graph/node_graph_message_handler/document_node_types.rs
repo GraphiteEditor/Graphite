@@ -113,8 +113,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Downres".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode")),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode<_>")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
@@ -160,7 +160,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(1, 0)],
 				nodes: [DocumentNode {
 					name: "Identity".to_string(),
-					inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
+					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					metadata: Default::default(),
 				}]
@@ -174,7 +174,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(ImageFrame)),
+					default: NodeInput::Network(concrete!(ImageFrame<Color>)),
 				},
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 			],
@@ -193,7 +193,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						metadata: Default::default(),
 					},
@@ -277,7 +277,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Image Frame",
 			category: "General",
-			identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_>"),
+			identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true),
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
@@ -288,7 +288,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Mask",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_>"),
+			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -419,7 +419,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::Network(concrete!(Image))],
+							inputs: vec![NodeInput::Network(concrete!(Image<Color>))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},
@@ -489,7 +489,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(concrete!(ImageFrame))],
+							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(concrete!(ImageFrame<Color>))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},

@@ -10,8 +10,9 @@ use spirv_std::num_traits::float::Float;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Euclid;
 
-#[cfg(feature = "gpu")]
 use bytemuck::{Pod, Zeroable};
+
+use super::{Alpha, AssociatedAlpha, Luminance, Rec709Primaries, RGB, SRGB};
 
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
@@ -19,9 +20,8 @@ use bytemuck::{Pod, Zeroable};
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "gpu", derive(Pod, Zeroable))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -38,6 +38,50 @@ impl Hash for Color {
 		self.alpha.to_bits().hash(state);
 	}
 }
+
+impl RGB for Color {
+	type ColorChannel = f32;
+	fn red(&self) -> f32 {
+		self.red
+	}
+	fn green(&self) -> f32 {
+		self.green
+	}
+	fn blue(&self) -> f32 {
+		self.blue
+	}
+}
+
+impl Alpha for Color {
+	type AlphaChannel = f32;
+	fn alpha(&self) -> f32 {
+		self.alpha
+	}
+	fn multiply_alpha(&self, alpha: Self::AlphaChannel) -> Self {
+		Self {
+			red: self.red * alpha,
+			green: self.green * alpha,
+			blue: self.blue * alpha,
+			alpha: self.alpha * alpha,
+		}
+	}
+}
+
+impl AssociatedAlpha for Color {
+	fn to_unassociated<Out: super::UnassociatedAlpha>(&self) -> Out {
+		todo!()
+	}
+}
+
+impl Luminance for Color {
+	type LuminanceChannel = f32;
+	fn luminance(&self) -> f32 {
+		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
+	}
+}
+
+impl Rec709Primaries for Color {}
+impl SRGB for Color {}
 
 impl Color {
 	pub const BLACK: Color = Color::from_rgbf32_unchecked(0., 0., 0.);
@@ -97,8 +141,8 @@ impl Color {
 	/// let color2 = Color::from_rgba8(0x72, 0x67, 0x62, 0xFF);
 	/// assert!(color == color2)
 	/// ```
-	pub fn from_rgb8(red: u8, green: u8, blue: u8) -> Color {
-		Color::from_rgba8(red, green, blue, 255)
+	pub fn from_rgb8_srgb(red: u8, green: u8, blue: u8) -> Color {
+		Color::from_rgba8_srgb(red, green, blue, 255)
 	}
 
 	/// Return an SDR `Color` given RGBA channels from `0` to `255`.
@@ -108,7 +152,7 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba8(0x72, 0x67, 0x62, 0x61);
 	/// ```
-	pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
 		let map_range = |int_color| int_color as f32 / 255.0;
 		Color {
 			red: map_range(red),
@@ -116,6 +160,7 @@ impl Color {
 			blue: map_range(blue),
 			alpha: map_range(alpha),
 		}
+		.to_linear_srgb()
 	}
 
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
@@ -527,7 +572,7 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
 
-		Some(Color::from_rgba8(r, g, b, a))
+		Some(Color::from_rgba8_srgb(r, g, b, a))
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
@@ -544,7 +589,7 @@ impl Color {
 		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
-		Some(Color::from_rgb8(r, g, b))
+		Some(Color::from_rgb8_srgb(r, g, b))
 	}
 
 	/// Linearly interpolates between two colors based on t.
@@ -676,7 +721,7 @@ fn hsl_roundtrip() {
 		(82, 84, 84),
 		(255, 255, 178),
 	] {
-		let col = Color::from_rgb8(red, green, blue);
+		let col = Color::from_rgb8_srgb(red, green, blue);
 		let [hue, saturation, lightness, alpha] = col.to_hsla();
 		let result = Color::from_hsla(hue, saturation, lightness, alpha);
 		assert!((col.r() - result.r()) < f32::EPSILON * 100.);

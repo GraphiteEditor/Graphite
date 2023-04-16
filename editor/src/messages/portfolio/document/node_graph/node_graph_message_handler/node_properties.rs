@@ -954,7 +954,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		transform: glam::DAffine2::IDENTITY,
 	});
 	// Compute the transform input to the node graph frame
-	let image_frame: graphene_core::raster::ImageFrame = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
+	let image_frame: graphene_core::raster::ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
 	let transform = image_frame.transform;
 
 	let resolution = {

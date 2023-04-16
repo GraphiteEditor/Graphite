@@ -34,7 +34,7 @@ use document_legacy::layers::text_layer::Font;
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::NodeId;
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::raster::{Color, ImageFrame};
+use graphene_core::raster::{Color, ImageFrame, RasterMut};
 use graphene_core::Cow;
 
 use glam::{DAffine2, DVec2};
@@ -1057,7 +1057,7 @@ impl DocumentMessageHandler {
 		let primary_input_type = node_network.input_types().next().clone();
 		let response = match primary_input_type {
 			// Only calclate the frame if the primary input is an image
-			Some(ty) if ty == concrete!(ImageFrame) => {
+			Some(ty) if ty == concrete!(ImageFrame<Color>) => {
 				// Calculate the size of the region to be exported
 				let old_transforms = self.remove_document_transform();
 				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
