@@ -718,7 +718,11 @@ impl Document {
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
-				if let Some(new_layer_id) = folder.add_layer(layer, None, -1) {
+
+				let selected_id = path.last().copied().unwrap_or_default();
+				let insert_index = folder.layer_ids.iter().position(|&id| id == selected_id).unwrap_or(0) as isize + 1;
+
+				if let Some(new_layer_id) = folder.add_layer(layer, None, insert_index) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
 					self.mark_as_dirty(folder_path)?;
 					Some(

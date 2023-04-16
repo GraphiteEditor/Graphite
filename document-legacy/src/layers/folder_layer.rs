@@ -70,31 +70,31 @@ impl FolderLayer {
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 
+		// Bounds check for the insert index
 		if insert_index < 0 {
 			insert_index = self.layers.len() as i128 + insert_index + 1;
 		}
-
-		if insert_index <= self.layers.len() as i128 && insert_index >= 0 {
-			if let Some(id) = id {
-				self.next_assignment_id = id;
-			}
-			if self.layer_ids.contains(&self.next_assignment_id) {
-				return None;
-			}
-
-			let id = self.next_assignment_id;
-			self.layers.insert(insert_index as usize, layer);
-			self.layer_ids.insert(insert_index as usize, id);
-
-			// Linear probing for collision avoidance
-			while self.layer_ids.contains(&self.next_assignment_id) {
-				self.next_assignment_id += 1;
-			}
-
-			Some(id)
-		} else {
-			None
+		if insert_index > self.layers.len() as i128 || insert_index < 0 {
+			return None;
 		}
+
+		if let Some(id) = id {
+			self.next_assignment_id = id;
+		}
+		if self.layer_ids.contains(&self.next_assignment_id) {
+			return None;
+		}
+
+		let id = self.next_assignment_id;
+		self.layers.insert(insert_index as usize, layer);
+		self.layer_ids.insert(insert_index as usize, id);
+
+		// Linear probing for collision avoidance
+		while self.layer_ids.contains(&self.next_assignment_id) {
+			self.next_assignment_id += 1;
+		}
+
+		Some(id)
 	}
 
 	/// Remove a layer with a given ID from the folder.
