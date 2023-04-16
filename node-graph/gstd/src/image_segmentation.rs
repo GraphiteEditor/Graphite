@@ -5,7 +5,7 @@ use graphene_core::Node;
 
 fn apply_mask(image_frame: &mut ImageFrame<Color>, x: usize, y: usize, multiplier: u8) {
 	let color = &mut image_frame.image.data[y * image_frame.image.width as usize + x];
-	let color8 = color.to_rgba8();
+	let color8 = color.to_rgba8_srgb();
 	*color = Color::from_rgba8_srgb(color8[0] * multiplier, color8[1] * multiplier, color8[2] * multiplier, color8[3] * multiplier);
 }
 
@@ -90,7 +90,7 @@ fn convert_image_to_mask(input: &ImageFrame<Color>) -> Vec<u8> {
 	let mut last_value = 0_usize;
 
 	for (color, result) in input.image.data.iter().zip(result.iter_mut()) {
-		let color = color.to_rgba8();
+		let color = color.to_rgba8_srgb();
 		if let Some(value) = colors.get(&color) {
 			*result = *value as u8;
 		} else {

@@ -12,7 +12,7 @@ use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{Alpha, AssociatedAlpha, Luminance, Rec709Primaries, RGB, SRGB};
+use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB};
 
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
@@ -49,6 +49,16 @@ impl RGB for Color {
 	}
 	fn blue(&self) -> f32 {
 		self.blue
+	}
+}
+
+impl Pixel for Color {
+	fn to_bytes(&self) -> Vec<u8> {
+		self.to_rgba8_srgb().to_vec()
+	}
+
+	fn from_bytes(bytes: &[u8]) -> Self {
+		Color::from_rgba8_srgb(bytes[0], bytes[1], bytes[2], bytes[3])
 	}
 }
 
@@ -514,8 +524,9 @@ impl Color {
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// //TODO: Add test
 	/// ```
-	pub fn to_rgba8(&self) -> [u8; 4] {
-		[(self.red * 255.) as u8, (self.green * 255.) as u8, (self.blue * 255.) as u8, (self.alpha * 255.) as u8]
+	pub fn to_rgba8_srgb(&self) -> [u8; 4] {
+		let gamma = self.to_gamma_srgb();
+		[(gamma.red * 255.) as u8, (gamma.green * 255.) as u8, (gamma.blue * 255.) as u8, (gamma.alpha * 255.) as u8]
 	}
 
 	// https://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/
