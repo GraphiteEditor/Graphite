@@ -6,8 +6,9 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use document_legacy::layers::style::RenderData;
-use glam::DVec2;
 use graphene_core::vector::ManipulatorPointId;
+
+use glam::DVec2;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
@@ -88,6 +89,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
+
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
 			selected.original_transforms.clear();

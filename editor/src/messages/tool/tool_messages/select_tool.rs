@@ -806,7 +806,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear()
+						bounds.original_transforms.clear();
 					}
 
 					Ready
@@ -821,7 +821,7 @@ impl Fsm for SelectToolFsmState {
 					responses.push_back(response.into());
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear()
+						bounds.original_transforms.clear();
 					}
 
 					Ready
