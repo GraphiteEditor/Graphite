@@ -12,6 +12,7 @@ use graph_craft::executor::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::vector::VectorData;
+use graphene_core::Color;
 use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
@@ -24,7 +25,7 @@ pub struct NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn execute_network<'a>(&'a mut self, network: NodeNetwork, image_frame: ImageFrame) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
+	fn execute_network<'a>(&'a mut self, network: NodeNetwork, image_frame: ImageFrame<Color>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
 		let mut scoped_network = wrap_network_in_scope(network);
 
 		scoped_network.duplicate_outputs(&mut generate_uuid);
@@ -44,14 +45,14 @@ impl NodeGraphExecutor {
 		use graph_craft::executor::Executor;
 
 		match self.executor.input_type() {
-			Some(t) if t == concrete!(ImageFrame) => self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(ImageFrame<Color>) => self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
 		}
 	}
 
 	/// Computes an input for a node in the graph
-	pub fn compute_input<T: dyn_any::StaticType>(&mut self, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image_frame: Cow<ImageFrame>) -> Result<T, String> {
+	pub fn compute_input<T: dyn_any::StaticType>(&mut self, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image_frame: Cow<ImageFrame<Color>>) -> Result<T, String> {
 		let mut network = old_network.clone();
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
@@ -93,7 +94,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Encodes an image into a format using the image crate
-	fn encode_img(image: Image, resize: Option<DVec2>, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
+	fn encode_img(image: Image<Color>, resize: Option<DVec2>, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
 		use image::{ImageBuffer, Rgba};
 		use std::io::Cursor;
 
@@ -118,7 +119,7 @@ impl NodeGraphExecutor {
 		imaginate_node: Vec<NodeId>,
 		(document, document_id): (&mut DocumentMessageHandler, u64),
 		layer_path: Vec<LayerId>,
-		image_frame: ImageFrame,
+		image_frame: ImageFrame<Color>,
 		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
 	) -> Result<Message, String> {
 		use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
@@ -153,8 +154,8 @@ impl NodeGraphExecutor {
 		};
 		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image_frame))?;
 
-		let input_image_frame: Option<ImageFrame> = if use_base_image {
-			Some(self.compute_input::<ImageFrame>(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?)
+		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
+			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?)
 		} else {
 			None
 		};
