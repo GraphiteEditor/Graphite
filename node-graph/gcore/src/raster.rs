@@ -101,6 +101,7 @@ pub trait Pixel: Clone + Pod + Zeroable {
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()
 	}
+	// TODO: use u8 for Color
 	fn from_bytes(bytes: &[u8]) -> &Self {
 		bytemuck::try_from_bytes(bytes).expect("Failed to convert bytes to pixel")
 	}
@@ -165,7 +166,7 @@ pub trait Luminance {
 pub trait Sample {
 	type Pixel: Pixel;
 	// TODO: Add an area parameter
-	fn sample(&self, pos: DVec2) -> Self::Pixel;
+	fn sample(&self, pos: DVec2) -> Option<Self::Pixel>;
 }
 
 // TODO: We might rename this to Bitmap at some point
@@ -173,7 +174,7 @@ pub trait Raster {
 	type Pixel: Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
-	fn get_pixel(&self, x: u32, y: u32) -> Self::Pixel;
+	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel>;
 }
 
 pub trait RasterMut: Raster {
@@ -184,7 +185,7 @@ pub trait RasterMut: Raster {
 	fn map_pixels<F: Fn(Self::Pixel) -> Self::Pixel>(&mut self, map_fn: F) {
 		for y in 0..self.height() {
 			for x in 0..self.width() {
-				let pixel = self.get_pixel(x, y);
+				let pixel = self.get_pixel(x, y).unwrap();
 				self.set_pixel(x, y, map_fn(pixel));
 			}
 		}
@@ -480,8 +481,8 @@ impl<'a, P> Default for ImageSlice<'a, P> {
 impl<P: Copy + Debug + Pixel> Raster for ImageSlice<'_, P> {
 	type Pixel = P;
 	#[cfg(not(target_arch = "spirv"))]
-	fn get_pixel(&self, x: u32, y: u32) -> P {
-		self.data[(x + y * self.width) as usize]
+	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
+		self.data.get((x + y * self.width) as usize).copied()
 	}
 	#[cfg(target_arch = "spirv")]
 	fn get_pixel(&self, _x: u32, _y: u32) -> P {
@@ -546,7 +547,6 @@ mod image {
 		//! Basic wrapper for [`serde`] for [`base64`] encoding
 
 		use super::super::Pixel;
-		use crate::Color;
 		use serde::{Deserialize, Deserializer, Serializer};
 
 		pub fn as_base64<S, P: Pixel>(key: &Vec<P>, serializer: S) -> Result<S::Ok, S::Error>
@@ -592,8 +592,8 @@ mod image {
 
 	impl<P: Copy + Pixel> Raster for Image<P> {
 		type Pixel = P;
-		fn get_pixel(&self, x: u32, y: u32) -> P {
-			self.data[(x + y * self.width) as usize]
+		fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
+			self.data.get((x + y * self.width) as usize).copied()
 		}
 		fn width(&self) -> u32 {
 			self.width
@@ -736,8 +736,12 @@ mod image {
 	impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 		type Pixel = P;
 
-		fn sample(&self, pos: DVec2) -> Self::Pixel {
-			let pos = self.transform.transform_point2(pos);
+		fn sample(&self, pos: DVec2) -> Option<Self::Pixel> {
+			let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
+			let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);
+			if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {
+				return None;
+			}
 			self.image.get_pixel(pos.x as u32, pos.y as u32)
 		}
 	}
@@ -753,7 +757,7 @@ mod image {
 			self.image.height()
 		}
 
-		fn get_pixel(&self, x: u32, y: u32) -> Self::Pixel {
+		fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
 			self.image.get_pixel(x, y)
 		}
 	}

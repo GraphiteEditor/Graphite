@@ -187,7 +187,7 @@ mod test {
 		assert_eq!(image.image.height, size.ceil() as u32 + 4);
 		assert_eq!(image.transform, DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil() + 4.), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
-		assert_eq!(image.image.get_pixel(11, 11), Color::BLACK);
+		assert_eq!(image.image.get_pixel(11, 11), Some(Color::BLACK));
 	}
 
 	#[test]
