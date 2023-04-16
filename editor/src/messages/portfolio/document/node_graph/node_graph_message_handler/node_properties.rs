@@ -501,11 +501,16 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	]
 }
 
-pub fn brighten_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-255.).max(255.), true);
-	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-255.).max(255.), true);
+pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
+	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
+	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", true);
 
-	vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }]
+	vec![
+		LayoutGroup::Row { widgets: brightness },
+		LayoutGroup::Row { widgets: contrast },
+		LayoutGroup::Row { widgets: use_legacy },
+	]
 }
 
 pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -949,7 +954,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		transform: glam::DAffine2::IDENTITY,
 	});
 	// Compute the transform input to the node graph frame
-	let image_frame: graphene_core::raster::ImageFrame = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
+	let image_frame: graphene_core::raster::ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
 	let transform = image_frame.transform;
 
 	let resolution = {
@@ -1257,6 +1262,12 @@ fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
 
 pub fn no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	string_properties("Node has no properties")
+}
+
+pub fn index_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), true);
+
+	vec![LayoutGroup::Row { widgets: index }]
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {

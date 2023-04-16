@@ -205,7 +205,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				let r = (random_number >> 16) as u8;
 				let g = (random_number >> 8) as u8;
 				let b = random_number as u8;
-				let random_color = Color::from_rgba8(r, g, b, 255);
+				let random_color = Color::from_rgba8_srgb(r, g, b, 255);
 				document_data.primary_color = random_color;
 
 				document_data.update_working_colors(responses);

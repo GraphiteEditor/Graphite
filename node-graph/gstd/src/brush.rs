@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Color, Image, ImageFrame};
+use graphene_core::raster::{Color, Image, ImageFrame, RasterMut};
 use graphene_core::transform::TransformMut;
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
@@ -93,7 +93,7 @@ fn erase(input: (Color, Color), flow: f64) -> Color {
 }
 
 #[node_fn(BrushTextureNode)]
-fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> ImageFrame {
+fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> ImageFrame<Color> {
 	// Diameter
 	let radius = diameter / 2.;
 	// TODO: Remove the 4px padding after figuring out why the brush stamp gets randomly offset by 1px up/down/left/right when clicking with the Brush tool
@@ -128,7 +128,7 @@ fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> Image
 
 			let pixel_fill = summation / MULTISAMPLE_GRID.len() as f64;
 
-			let pixel = image.get_mut(x, y).unwrap();
+			let pixel = image.get_pixel_mut(x, y).unwrap();
 			*pixel = color.apply_opacity(pixel_fill as f32);
 		}
 	}
@@ -154,12 +154,15 @@ fn translate_node<Data: TransformMut>(offset: DVec2, mut translatable: Data) -> 
 mod test {
 	use super::*;
 	use crate::raster::*;
-	use glam::DAffine2;
+
+	#[allow(unused_imports)]
 	use graphene_core::ops::{AddNode, CloneNode};
 	use graphene_core::raster::*;
 	use graphene_core::structural::Then;
 	use graphene_core::transform::{Transform, TransformMut};
 	use graphene_core::value::{ClonedNode, ValueNode};
+
+	use glam::DAffine2;
 
 	#[test]
 	fn test_translate_node() {
@@ -187,7 +190,7 @@ mod test {
 		assert_eq!(image.image.height, size.ceil() as u32 + 4);
 		assert_eq!(image.transform, DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil() + 4.), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
-		assert_eq!(image.image.get(11, 11), Some(&Color::BLACK));
+		assert_eq!(image.image.get_pixel(11, 11), Some(Color::BLACK));
 	}
 
 	#[test]
