@@ -27,6 +27,10 @@
 			"module": "commonjs",
 			"useDefineForClassFields": false,
 			"noImplicitOverride": true
+		},
+		"moduleTypes": {
+		  "webpack.config.ts": "cjs",
+		  "webpack-config-scripts/**/*": "cjs"
 		}
 	}
 }
