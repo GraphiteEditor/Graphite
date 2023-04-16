@@ -105,6 +105,10 @@ pub trait Pixel: Clone + Pod + Zeroable {
 	fn from_bytes(bytes: &[u8]) -> &Self {
 		bytemuck::try_from_bytes(bytes).expect("Failed to convert bytes to pixel")
 	}
+
+	fn byte_size() -> usize {
+		std::mem::size_of::<Self>()
+	}
 }
 impl<T: Serde + Clone + Pod + Zeroable> Pixel for T {}
 
@@ -138,7 +142,7 @@ pub trait Alpha {
 	fn a(&self) -> Self::AlphaChannel {
 		self.alpha()
 	}
-	fn multiply_alpha(&self, alpha: Self::AlphaChannel) -> Self;
+	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self;
 }
 
 pub trait Depth {
@@ -565,7 +569,7 @@ mod image {
 
 			let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk.try_into().unwrap()).clone();
 
-			let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(4).map(color_from_chunk).collect();
+			let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(P::byte_size()).map(color_from_chunk).collect();
 
 			String::deserialize(deserializer)
 				.and_then(|string| base64::decode(string).map_err(|err| Error::custom(err.to_string())))
@@ -656,7 +660,7 @@ mod image {
 	}
 
 	use super::*;
-	impl<P: Alpha + RGB> Image<P>
+	impl<P: Alpha + RGB + AssociatedAlpha> Image<P>
 	where
 		P::ColorChannel: Linear,
 	{
@@ -671,9 +675,9 @@ mod image {
 				.into_iter()
 				.flat_map(|color| {
 					[
-						to_u8(to_gamma(color.r())),
-						to_u8(to_gamma(color.g())),
-						to_u8(to_gamma(color.b())),
+						to_u8(to_gamma(color.r() / color.a().to_channel())),
+						to_u8(to_gamma(color.g() / color.a().to_channel())),
+						to_u8(to_gamma(color.b() / color.a().to_channel())),
 						(num::cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
 					]
 				})
