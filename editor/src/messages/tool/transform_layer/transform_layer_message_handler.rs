@@ -43,13 +43,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data, shape_editor): TransformData) {
 		use TransformLayerMessage::*;
 
-		// TODO: Transform individual points when using the path tool.
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
 
-		// set og to default whenevever we being an op with path tool
-		//TODO: check all these values in selected to see if they change on pointer move
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
 			&mut self.pivot,
@@ -120,6 +117,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				if selected_layers.is_empty() {
 					return;
 				}
+
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
@@ -153,6 +151,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				if selected_layers.is_empty() {
 					return;
 				}
+
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());

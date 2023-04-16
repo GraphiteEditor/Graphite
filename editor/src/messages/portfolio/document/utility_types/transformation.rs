@@ -300,7 +300,6 @@ impl<'a> Selected<'a> {
 					}
 				}
 			}
-
 			OriginalTransforms::Path(path_map) => {
 				for path in selected {
 					let Some(shape_editor) = shape_editor else {

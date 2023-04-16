@@ -18,6 +18,7 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::{Layer, LayerDataType};
