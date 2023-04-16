@@ -239,12 +239,10 @@ mod tests {
 	#[allow(unused_imports)]
 	use crate::value::ClonedNode;
 
-	fn string_data(string: &str) -> Vec<u8> {
-		string.split(',').map(|s| s.parse().unwrap()).collect::<Vec<u8>>()
-	}
-
 	#[test]
 	fn brightness_contrast_legacy_tests() {
+		let string_data = |string: &str| string.split(',').map(|s| s.parse().unwrap()).collect::<Vec<u8>>();
+
 		let brightness_contrast_legacy_map = |brightness, contrast| -> [u8; 256] {
 			let brightness = ClonedNode::new(brightness);
 			let contrast = ClonedNode::new(contrast);
@@ -300,6 +298,8 @@ mod tests {
 
 	#[test]
 	fn brightness_contrast_tests() {
+		let string_data = |string: &str| string.split(',').map(|s| s.parse().unwrap()).collect::<Vec<u8>>();
+
 		let brightness_contrast_map = |brightness, contrast| -> [u8; 1024] {
 			let brightness = ClonedNode::new(brightness);
 			let contrast = ClonedNode::new(contrast);
