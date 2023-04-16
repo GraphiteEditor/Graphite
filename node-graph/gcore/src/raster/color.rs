@@ -57,7 +57,7 @@ impl Alpha for Color {
 	fn alpha(&self) -> f32 {
 		self.alpha
 	}
-	fn multiply_alpha(&self, alpha: Self::AlphaChannel) -> Self {
+	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
 		Self {
 			red: self.red * alpha,
 			green: self.green * alpha,

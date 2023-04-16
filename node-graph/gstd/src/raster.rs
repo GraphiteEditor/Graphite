@@ -239,17 +239,18 @@ fn mask_image<
 	}
 
 	// Transforms a point from the background image to the forground image
-	let bg_to_fg = DAffine2::from_scale(mask_size) * stencil.transform().inverse() * image.transform() * DAffine2::from_scale(1. / image_size);
+	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
 
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_point = DVec2::new(x as f64, y as f64);
 			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			mask_point = mask_point.clamp(DVec2::ZERO, mask_size);
+			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
+			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
 			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
 			if let Some(mask_pixel) = stencil.sample(mask_point) {
-				image_pixel.multiply_alpha(mask_pixel.l().to_channel());
+				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().to_channel());
 			}
 		}
 	}
