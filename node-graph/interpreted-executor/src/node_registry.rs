@@ -487,7 +487,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {
-		map.entry(id).or_default().insert(types.clone(), c);
+		// TODO: this is a hack to remove the newline from the node new_name
+		// This occurs for the ChannelMixerNode presumably because of the long name.
+		// This might be caused by the stringify! macro
+		let new_name = id.name.replace('\n', " ");
+		let nid = NodeIdentifier { name: Cow::Owned(new_name) };
+		map.entry(nid).or_default().insert(types.clone(), c);
 	}
 	map
 }
