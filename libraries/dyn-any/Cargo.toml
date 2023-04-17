@@ -8,7 +8,7 @@ description = "An Any trait that works for arbitrary lifetimes"
 license = "MIT OR Apache-2.0"
 readme = "./README.md"
 homepage = "https://graphite.rs/libraries/dyn-any"
-repository = "https://github.com/GraphiteEditor/Graphite/libraries/dyn-any"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/dyn-any"
 documentation = "https://docs.rs/dyn-any"
 
 [dependencies]
