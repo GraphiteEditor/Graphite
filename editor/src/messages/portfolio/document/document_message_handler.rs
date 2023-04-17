@@ -435,6 +435,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
+				let shallowest_common_folder = new_folder_path.clone();
 
 				// Required for grouping parent folders with their own children
 				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
@@ -443,11 +444,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
-				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
-				responses.push_back(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
-				responses.push_back(
+				responses.push_front(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
+				responses.push_front(DocumentMessage::DeleteSelectedLayers.into());
+				responses.push_front(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
+				responses.push_front(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
+				responses.push_front(
 					PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::Internal,
 						folder_path: new_folder_path.clone(),
@@ -455,12 +456,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-				responses.push_back(
+				responses.push_front(
 					DocumentMessage::SetSelectedLayers {
 						replacement_selected_layers: vec![new_folder_path],
 					}
 					.into(),
 				);
+				// Problem the layer tree isn't updated in time. The remove duplicate is triggering to soon
+				self.document_legacy.remove_duplicate_folders(&shallowest_common_folder);
+				let c: Vec<_> = self.all_layers().collect();
+				// debug!("C: {:?}", &c);
+				// self.document_legacy.remove_duplicate_folders(&shallowest_common_folder);
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {

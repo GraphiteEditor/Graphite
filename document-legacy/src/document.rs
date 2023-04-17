@@ -242,6 +242,24 @@ impl Document {
 		return self.folder(path.as_ref()).is_ok();
 	}
 
+	pub fn remove_duplicate_folders(&self, shallowest_common_folder: &Vec<LayerId>) {
+		debug!("folder: {:?}", &shallowest_common_folder);
+		let children = self.folder_children_paths(shallowest_common_folder);
+		debug!("children: {:?}", &children);
+		if children.len() <= 0 {
+			debug!("REMOVE EMPTY FOLDER: {:?}", &shallowest_common_folder);
+		// return
+		} else {
+			// debug!("children: {:?}", &children);
+			for child in children {
+				if self.is_folder(&child) {
+					// debug!("RECURSE");
+					self.remove_duplicate_folders(&child);
+				}
+			}
+		}
+	}
+
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
 	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
