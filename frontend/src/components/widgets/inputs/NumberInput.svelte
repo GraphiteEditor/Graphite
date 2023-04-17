@@ -174,6 +174,9 @@
 	function onCancelTextChange() {
 		updateValue(undefined, min, max, displayDecimalPlaces, unit);
 
+		rangeSliderValue = value;
+		rangeSliderValueAsRendered = value;
+
 		editing = false;
 
 		self?.unFocus();
@@ -203,11 +206,16 @@
 
 	function updateValue(newValue: number | undefined, min: number | undefined, max: number | undefined, displayDecimalPlaces: number, unit: string) {
 		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
-		const nowValid = value !== undefined && isInteger ? Math.round(value) : value;
-		let cleaned = newValue !== undefined ? newValue : nowValid;
+		const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
+		let cleaned = newValue !== undefined ? newValue : oldValue;
 
-		if (typeof min === "number" && !Number.isNaN(min) && cleaned !== undefined) cleaned = Math.max(cleaned, min);
-		if (typeof max === "number" && !Number.isNaN(max) && cleaned !== undefined) cleaned = Math.min(cleaned, max);
+		if (cleaned !== undefined) {
+			if (typeof min === "number" && !Number.isNaN(min)) cleaned = Math.max(cleaned, min);
+			if (typeof max === "number" && !Number.isNaN(max)) cleaned = Math.min(cleaned, max);
+
+			rangeSliderValue = cleaned;
+			rangeSliderValueAsRendered = cleaned;
+		}
 
 		text = displayText(cleaned, displayDecimalPlaces, unit);
 

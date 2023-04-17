@@ -668,6 +668,38 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::adjust_vibrance_properties,
 		},
 		DocumentNodeType {
+			name: "Channel Mixer",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				// Monochrome toggle
+				DocumentInputType::value("Monochrome", TaggedValue::Bool(false), false),
+				// Red output channel
+				DocumentInputType::value("Red", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Green", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Blue", TaggedValue::F64(20.), false),
+				DocumentInputType::value("Constant", TaggedValue::F64(0.), false),
+				// Red output channel
+				DocumentInputType::value("R: Red", TaggedValue::F64(100.), false),
+				DocumentInputType::value("R: Green", TaggedValue::F64(0.), false),
+				DocumentInputType::value("R: Blue", TaggedValue::F64(0.), false),
+				DocumentInputType::value("R: Constant", TaggedValue::F64(0.), false),
+				// Green output channel
+				DocumentInputType::value("G: Red", TaggedValue::F64(0.), false),
+				DocumentInputType::value("G: Green", TaggedValue::F64(100.), false),
+				DocumentInputType::value("G: Blue", TaggedValue::F64(0.), false),
+				DocumentInputType::value("G: Constant", TaggedValue::F64(0.), false),
+				// Blue output channel
+				DocumentInputType::value("B: Red", TaggedValue::F64(0.), false),
+				DocumentInputType::value("B: Green", TaggedValue::F64(0.), false),
+				DocumentInputType::value("B: Blue", TaggedValue::F64(100.), false),
+				DocumentInputType::value("B: Constant", TaggedValue::F64(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::adjust_channel_mixer_properties,
+		},
+		DocumentNodeType {
 			name: "Opacity",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
