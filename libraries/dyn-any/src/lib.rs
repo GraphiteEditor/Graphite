@@ -111,25 +111,25 @@ pub unsafe trait StaticType {
 	}
 }
 
-pub trait StaticTypeSized: StaticType {
+pub unsafe trait StaticTypeSized {
 	type Static: 'static;
 	fn type_id(&self) -> core::any::TypeId {
 		core::any::TypeId::of::<<Self as StaticTypeSized>::Static>()
 	}
 }
-impl<T: StaticType + Sized> StaticTypeSized for T
+unsafe impl<T: StaticType + Sized> StaticTypeSized for T
 where
 	T::Static: Sized,
 {
 	type Static = <T as StaticType>::Static;
 }
-pub trait StaticTypeClone: StaticType {
+pub unsafe trait StaticTypeClone {
 	type Static: 'static + Clone;
 	fn type_id(&self) -> core::any::TypeId {
 		core::any::TypeId::of::<<Self as StaticTypeClone>::Static>()
 	}
 }
-impl<T: StaticType + Clone> StaticTypeClone for T
+unsafe impl<T: StaticType + Clone> StaticTypeClone for T
 where
 	T::Static: Clone,
 {

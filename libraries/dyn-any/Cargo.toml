@@ -1,6 +1,6 @@
 [package]
 name = "dyn-any"
-version = "0.3.0"
+version = "0.3.1"
 rust-version = "1.66.0"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
