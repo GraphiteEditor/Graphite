@@ -33,7 +33,7 @@ pub use raster::Color;
 // pub trait Node: for<'n> NodeIO<'n> {
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
-	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output;
+	fn eval(&'i self, input: Input) -> Self::Output;
 	fn reset(self: Pin<&mut Self>) {}
 }
 
@@ -79,14 +79,14 @@ where
 /*impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'n> Node<'n, I, Output = O> {
 	type Output = O;
 
-	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> Self::Output {
 		(**self).eval(input)
 	}
 }*/
-impl<'i, 'n: 'i, I: 'i, O: 'i> Node<'i, I> for &'n dyn for<'a> Node<'a, I, Output = O> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
-	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> Self::Output {
 		(**self).eval(input)
 	}
 }
@@ -97,7 +97,7 @@ use dyn_any::StaticType;
 impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
 	type Output = O;
 
-	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> Self::Output {
 		(**self).eval(input)
 	}
 }

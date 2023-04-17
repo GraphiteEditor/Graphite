@@ -213,7 +213,7 @@ pub struct UpcastNode {
 impl<'input> Node<'input, Box<dyn DynAny<'input> + 'input>> for UpcastNode {
 	type Output = Box<dyn DynAny<'input> + 'input>;
 
-	fn eval<'s: 'input>(&'s self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
+	fn eval(&'input self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
 		self.value.clone().to_any()
 	}
 }

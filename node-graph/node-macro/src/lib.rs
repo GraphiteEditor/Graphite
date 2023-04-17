@@ -146,7 +146,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		{
 			type Output = #output;
 			#[inline]
-			fn eval<'node: 'input>(&'node self, #primary_input_mutability #primary_input_ident: #primary_input_ty) -> Self::Output {
+			fn eval(&'input self, #primary_input_mutability #primary_input_ident: #primary_input_ty) -> Self::Output {
 				#(
 					let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(());
 				)*
