@@ -264,10 +264,6 @@ pub struct BlendImageTupleNode<P, MapFn> {
 	_p: PhantomData<P>,
 }
 
-impl<MapFn: StaticTypeSized, P: StaticTypeSized> StaticType for BlendImageTupleNode<P, MapFn> {
-	type Static = BlendImageTupleNode<P::Static, MapFn::Static>;
-}
-
 #[node_macro::node_fn(BlendImageTupleNode<_P>)]
 fn blend_image_tuple<_P: Pixel + Debug, MapFn>(images: (ImageFrame<_P>, ImageFrame<_P>), map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
@@ -284,10 +280,6 @@ pub struct BlendImageNode<P, Background, MapFn> {
 	background: Background,
 	map_fn: MapFn,
 	_p: PhantomData<P>,
-}
-
-impl<P: StaticTypeSized, Background: StaticTypeSized, MapFn: StaticTypeSized> StaticType for BlendImageNode<P, Background, MapFn> {
-	type Static = BlendImageNode<P::Static, Background::Static, MapFn::Static>;
 }
 
 // TODO: Implement proper blending

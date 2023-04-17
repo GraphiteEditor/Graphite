@@ -33,7 +33,7 @@ enum BezierHandles {
 }
 
 #[cfg(feature = "dyn-any")]
-impl dyn_any::StaticType for BezierHandles {
+unsafe impl dyn_any::StaticType for BezierHandles {
 	type Static = BezierHandles;
 }
 
@@ -63,6 +63,6 @@ impl Debug for Bezier {
 }
 
 #[cfg(feature = "dyn-any")]
-impl dyn_any::StaticType for Bezier {
+unsafe impl dyn_any::StaticType for Bezier {
 	type Static = Bezier;
 }
