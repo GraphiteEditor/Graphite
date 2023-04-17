@@ -9,6 +9,7 @@ const config: webpack.Configuration = {
 	entry: {
 		bundle: ["./src/webpack.ts"]
 	},
+	mode: "production",
 	resolve: {
 		alias: {
 			// Note: Later in this config file, we'll automatically add paths from `tsconfig.compilerOptions.paths`
