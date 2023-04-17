@@ -1,18 +1,13 @@
 import * as path from "path";
 import fs from "fs";
 import { spawnSync } from "child_process";
-import SvelteCheckPlugin from "svelte-check-plugin";
-import SveltePreprocess from "svelte-preprocess";
 import * as webpack from "webpack";
-import "webpack-dev-server";
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
 
-const mode = process.env.NODE_ENV === "production" ? "production" : "development";
 
 const config: webpack.Configuration = {
-	mode,
 	entry: {
-		bundle: ["./src/main.ts"]
+		bundle: ["./src/webpack.ts"]
 	},
 	resolve: {
 		alias: {
@@ -23,92 +18,13 @@ const config: webpack.Configuration = {
 		mainFields: ["svelte", "browser", "module", "main"]
 	},
 	output: {
-		path: path.resolve(__dirname, "public/build"),
-		publicPath: "/build/",
+		path: path.resolve(__dirname, "dist"),
+		publicPath: "/dist/",
 		filename: "[name].js",
 		chunkFilename: "[name].[id].js"
 	},
 	module: {
-		rules: [
-			// Rule: Svelte
-			{
-				test: /\.svelte$/,
-				use: {
-					loader: "svelte-loader",
-					options: {
-						compilerOptions: {
-							// Dev mode must be enabled for HMR to work!
-							dev: mode === "development"
-						},
-						// TODO: Reenable in prod, see: https://github.com/sveltejs/rollup-plugin-svelte#extracting-css
-						// emitCss: mode === "production",
-						emitCss: false,
-						hotReload: mode === "development",
-						hotOptions: {
-							// List of options and defaults: https://www.npmjs.com/package/svelte-loader-hot#usage
-							noPreserveState: false,
-							optimistic: true,
-						},
-						preprocess: SveltePreprocess({
-							scss: true,
-							sass: true,
-						}),
-						onwarn(warning: { code: string; }, handler: (warn: any) => any) {
-							const suppress = [
-								"css-unused-selector",
-								"unused-export-let",
-								"a11y-no-noninteractive-tabindex",
-							];
-							if (suppress.includes(warning.code)) return;
-
-							handler(warning);
-						},
-					}
-				},
-			},
-
-			// Required to prevent errors from Svelte on Webpack 5+
-			// https://github.com/sveltejs/svelte-loader#usage
-			{
-				test: /node_modules\/svelte\/.*\.mjs$/,
-				resolve: {
-					fullySpecified: false
-				}
-			},
-
-			// Rule: SASS
-			{
-				test: /\.(scss|sass)$/,
-				use: [
-					"css-loader",
-					"sass-loader"
-				]
-			},
-
-			// Rule: CSS
-			{
-				test: /\.css$/,
-				use: [
-					"css-loader",
-				]
-			},
-
-			// Rule: TypeScript
-			{
-				test: /\.ts$/,
-				use: "ts-loader",
-				exclude: /node_modules/
-			},
-
-			// Rule: SVG
-			{
-				test: /\.svg$/,
-				type: "asset/source",
-			},
-		]
-	},
-	devServer: {
-		hot: true,
+		rules: []
 	},
 	plugins: [
 		// License Checker Webpack Plugin validates the license compatibility of all dependencies which are compiled into the webpack bundle
@@ -125,7 +41,6 @@ const config: webpack.Configuration = {
 
 		// new SvelteCheckPlugin(),
 	],
-	devtool: mode === "development" ? "source-map" : false,
 	experiments: {
 		asyncWebAssembly: true,
 	},
@@ -177,7 +92,7 @@ interface Dependency extends PackageInfo {
 
 function formatThirdPartyLicenses(jsLicenses: {dependencies: Dependency[]}): string {
 	let rustLicenses: LicenseInfo[] | undefined;
-	if (process.env.NODE_ENV === "production" && process.env.SKIP_CARGO_ABOUT === undefined) {
+	if (process.env.SKIP_CARGO_ABOUT === undefined) {
 		try {
 			rustLicenses = generateRustLicenses();
 		} catch (err) {

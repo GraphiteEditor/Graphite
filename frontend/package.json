@@ -5,10 +5,14 @@
 	"author": "Graphite Authors <contact@graphite.rs>",
 	"browserslist": "> 1.5%, last 2 versions, not dead, not ie 11, not op_mini all, not ios_saf < 13",
 	"type": "module",
+	"alias": {
+		"@graphite/../assets/*": "~/assets/$1",
+		"@graphite/*": "~/src/$1"
+	  },
 	"scripts": {
 		"start": "npm run build-wasm && concurrently -k \"parcel serve index.html --port 8080\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
-		"build": "npm run build-wasm-prod && parcel build index.html || (npm run print-building-help && exit 1)",
-		"build-webpack": "npm run build-wasm-prod && webpack build || (npm run print-building-help && exit 1)",
+		"build": "npm run build-wasm-prod && npm run build-licenses && parcel build index.html || (npm run print-building-help && exit 1)",
+		"build-licenses": "webpack build",
 		"tauri:dev": "echo 'Make sure you build the wasm binary for tauri using `npm run tauri:build-wasm`' && parcel serve index.html --port 8080",
 		"build-wasm": "wasm-pack build ./wasm --dev --target=web",
 		"build-wasm-prod": "wasm-pack build ./wasm --release --target=web",
@@ -39,24 +43,7 @@
 
 
 		"@types/license-checker-webpack-plugin": "^0.2.1",
-		"@types/node": "^18.11.18",
-		"@types/webpack": "^5.28.0",
-		"@types/webpack-dev-server": "^4.7.2",
-		"@typescript-eslint/eslint-plugin": "^5.48.0",
-		"@typescript-eslint/parser": "^5.48.0",
-		"css-loader": "^6.7.3",
-		"eslint": "^8.31.0",
-		"eslint-config-prettier": "^8.6.0",
-		"eslint-plugin-import": "^2.26.0",
 		"license-checker-webpack-plugin": "^0.2.1",
-		"prettier": "^2.8.2",
-		"sass": "^1.57.1",
-		"sass-loader": "^13.2.0",
-		"svelte-check": "^3.0.1",
-		"svelte-check-plugin": "^1.0.4",
-		"svelte-loader": "^3.1.4",
-		"ts-loader": "^9.4.2",
-		"ts-node": "^10.9.1",
 		"webpack": "^5.75.0",
 		"webpack-cli": "^5.0.1"
 
