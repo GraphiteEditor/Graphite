@@ -19,7 +19,7 @@ where
 	CachedNode: for<'any_input> Node<'any_input, I, Output = T>,
 {
 	type Output = &'i T;
-	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> Self::Output {
 		let mut hasher = Xxh3::new();
 		input.hash(&mut hasher);
 		let hash = hasher.finish();
@@ -63,7 +63,7 @@ pub struct LetNode<T> {
 }
 impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 	type Output = &'i T;
-	fn eval<'s: 'i>(&'s self, input: Option<T>) -> Self::Output {
+	fn eval(&'i self, input: Option<T>) -> Self::Output {
 		match input {
 			Some(input) => {
 				let mut hasher = Xxh3::new();
@@ -108,7 +108,7 @@ where
 	Input: Node<'i, ()>,
 {
 	type Output = <Input>::Output;
-	fn eval<'s: 'i>(&'s self, _: &'i T) -> Self::Output {
+	fn eval(&'i self, _: &'i T) -> Self::Output {
 		self.input.eval(())
 	}
 }
@@ -131,7 +131,7 @@ where
 	Let: for<'a> Node<'a, Option<T>, Output = &'a T>,
 {
 	type Output = &'i T;
-	fn eval<'s: 'i>(&'s self, _: ()) -> Self::Output {
+	fn eval(&'i self, _: ()) -> Self::Output {
 		self.let_node.eval(None)
 	}
 }

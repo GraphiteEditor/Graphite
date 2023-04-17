@@ -10,7 +10,7 @@ pub struct BrightnessContrastLegacyMapperNode {
 impl<'i> Node<'i, Color> for BrightnessContrastLegacyMapperNode {
 	type Output = Color;
 
-	fn eval<'s: 'i>(&'s self, color: Color) -> Color {
+	fn eval(&'i self, color: Color) -> Color {
 		let color = color.to_gamma_srgb();
 
 		let color = color.map_rgb(|c| (c + c * self.contrast + self.combined).clamp(0., 1.));
@@ -46,7 +46,7 @@ pub struct BrightnessContrastMapperNode {
 impl<'i> Node<'i, Color> for BrightnessContrastMapperNode {
 	type Output = Color;
 
-	fn eval<'s: 'i>(&'s self, color: Color) -> Color {
+	fn eval(&'i self, color: Color) -> Color {
 		let color = color.to_gamma_srgb();
 
 		let color = color.map_rgb(|c| {
