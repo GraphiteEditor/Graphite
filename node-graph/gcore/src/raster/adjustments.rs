@@ -358,10 +358,6 @@ pub struct BlendNode<BlendMode, Opacity> {
 	opacity: Opacity,
 }
 
-impl<Opacity: dyn_any::StaticTypeSized, Blend: dyn_any::StaticTypeSized> StaticType for BlendNode<Blend, Opacity> {
-	type Static = BlendNode<Blend::Static, Opacity::Static>;
-}
-
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
 	let opacity = opacity / 100.;

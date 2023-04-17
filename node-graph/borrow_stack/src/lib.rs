@@ -42,7 +42,7 @@ impl<'n, T: 'n + dyn_any::StaticTypeSized> FixedSizeStack<T> {
 	pub fn is_empty(&self) -> bool {
 		self.len.load(Ordering::SeqCst) == 0
 	}
-	pub fn push_fn<'a>(&self, f: impl FnOnce(&'a [T::Static]) -> T) {
+	pub fn push_fn<'a>(&self, f: impl FnOnce(&'a [<T as StaticTypeSized>::Static]) -> T) {
 		assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<T::Static>());
 		unsafe { self.push(f(self.get())) }
 	}
