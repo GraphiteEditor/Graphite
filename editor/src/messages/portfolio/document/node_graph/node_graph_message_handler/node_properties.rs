@@ -59,7 +59,7 @@ fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 }
 
 fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
-	let input = document_node.inputs.get(index).unwrap();
+	let input = document_node.inputs.get(index).expect("A widget failed to be built because its node's input index is invalid.");
 	let mut widgets = vec![
 		expose_widget(node_id, index, data_type, input.is_exposed()),
 		WidgetHolder::unrelated_separator(),
@@ -68,6 +68,7 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	if blank_assist {
 		add_blank_assist(&mut widgets);
 	}
+
 	widgets
 }
 
@@ -546,81 +547,68 @@ pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId,
 
 pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let monochrome_index = 1;
-
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
-
 	let is_monochrome = if let &NodeInput::Value {
-		tagged_value: TaggedValue::Bool(monochrome),
+		tagged_value: TaggedValue::Bool(monochrome_choice),
 		..
 	} = &document_node.inputs[monochrome_index]
 	{
-		monochrome
+		monochrome_choice
 	} else {
 		false
 	};
 
-	if is_monochrome {
-		// Gray output
-		let gray = vec![WidgetHolder::text_widget("Gray Output:")];
-		let gray_r = number_widget(document_node, node_id, 2, "Red", NumberInput::default().min(-200.).max(200.).value(Some(40.)).unit("%"), true);
-		let gray_g = number_widget(document_node, node_id, 3, "Green", NumberInput::default().min(-200.).max(200.).unit("%").value(Some(40.)), true);
-		let gray_b = number_widget(document_node, node_id, 4, "Blue", NumberInput::default().min(-200.).max(200.).unit("%").value(Some(20.)), true);
-		let gray_c = number_widget(document_node, node_id, 5, "Constant", NumberInput::default().min(-200.).max(200.).unit("%"), true);
+	let output_channel_index = 18;
+	let mut output_channel = vec![WidgetHolder::text_widget("Output Channel"), WidgetHolder::unrelated_separator()];
+	add_blank_assist(&mut output_channel);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::U32(red_green_blue_index),
+		exposed: false,
+	} = &document_node.inputs[output_channel_index]
+	{
+		let entries = [("Red", 0), ("Green", 1), ("Blue", 2)]
+			.into_iter()
+			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::U32(val), node_id, output_channel_index)))
+			.collect();
+		output_channel.extend([RadioInput::new(entries).selected_index(red_green_blue_index).widget_holder()]);
+	};
 
-		vec![
-			LayoutGroup::Row { widgets: monochrome },
-			// Gray output
-			LayoutGroup::Row { widgets: gray },
-			LayoutGroup::Row { widgets: gray_r },
-			LayoutGroup::Row { widgets: gray_g },
-			LayoutGroup::Row { widgets: gray_b },
-			LayoutGroup::Row { widgets: gray_c },
-		]
+	let is_output_channel = if let &NodeInput::Value {
+		tagged_value: TaggedValue::U32(red_green_blue_index),
+		..
+	} = &document_node.inputs[output_channel_index]
+	{
+		red_green_blue_index
 	} else {
-		// Red output channel
-		let red = vec![WidgetHolder::text_widget("Red Output Channel:")];
-		let red_r = number_widget(document_node, node_id, 6, "R: Red", NumberInput::default().min(-200.).max(200.).value(Some(100.)).unit("%"), true);
-		let red_g = number_widget(document_node, node_id, 7, "R: Green", NumberInput::default().min(-200.).max(200.).unit("%"), true);
-		let red_b = number_widget(document_node, node_id, 8, "R: Blue", NumberInput::default().min(-200.).max(200.).unit("%"), true);
-		let red_c = number_widget(document_node, node_id, 9, "R: Constant", NumberInput::default().min(-200.).max(200.).unit("%"), true);
+		warn!("Channel Mixer node properties panel could not be displayed.");
+		return vec![];
+	};
 
-		// Green output channel
-		let green = vec![WidgetHolder::text_widget("Green Output Channel:")];
-		let green_r = number_widget(document_node, node_id, 10, "G: Red", NumberInput::default().min(-200.).max(200.).unit("%"), true);
-		let green_g = number_widget(document_node, node_id, 11, "G: Green", NumberInput::default().min(-200.).max(200.).value(Some(100.)).unit("%"), true);
-		let green_b = number_widget(document_node, node_id, 12, "G: Blue", NumberInput::default().min(-200.).max(200.).unit("%"), true);
-		let green_c = number_widget(document_node, node_id, 13, "G: Constant", NumberInput::default().min(-200.).max(200.).unit("%"), true);
+	let (r, g, b, c) = match (is_monochrome, is_output_channel) {
+		(true, _) => ((2, "Red", 40.), (3, "Green", 40.), (4, "Blue", 20.), (5, "Constant", 0.)),
+		(false, 0) => ((6, "(Red) Red", 100.), (7, "(Red) Green", 0.), (8, "(Red) Blue", 0.), (9, "(Red) Constant", 0.)),
+		(false, 1) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
+		(false, 2) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
+		_ => unreachable!(),
+	};
 
-		// Blue output channel
-		let blue = vec![WidgetHolder::text_widget("Blue Output Channel:")];
-		let blue_r = number_widget(document_node, node_id, 14, "B: Red", NumberInput::default().min(-200.).max(200.).unit("%"), true);
-		let blue_g = number_widget(document_node, node_id, 15, "B: Green", NumberInput::default().min(-200.).max(200.).unit("%"), true);
-		let blue_b = number_widget(document_node, node_id, 16, "B: Blue", NumberInput::default().min(-200.).max(200.).value(Some(100.)).unit("%"), true);
-		let blue_c = number_widget(document_node, node_id, 17, "B: Constant", NumberInput::default().min(-200.).max(200.).unit("%"), true);
+	let red = number_widget(document_node, node_id, r.0, r.1, NumberInput::default().min(-200.).max(200.).value(Some(r.2)).unit("%"), true);
+	let green = number_widget(document_node, node_id, g.0, g.1, NumberInput::default().min(-200.).max(200.).value(Some(g.2)).unit("%"), true);
+	let blue = number_widget(document_node, node_id, b.0, b.1, NumberInput::default().min(-200.).max(200.).value(Some(b.2)).unit("%"), true);
+	let constant = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-200.).max(200.).value(Some(c.2)).unit("%"), true);
 
-		vec![
-			// Gray output
-			LayoutGroup::Row { widgets: monochrome },
-			// Red output channel
-			LayoutGroup::Row { widgets: red },
-			LayoutGroup::Row { widgets: red_r },
-			LayoutGroup::Row { widgets: red_g },
-			LayoutGroup::Row { widgets: red_b },
-			LayoutGroup::Row { widgets: red_c },
-			// Green output channel
-			LayoutGroup::Row { widgets: green },
-			LayoutGroup::Row { widgets: green_r },
-			LayoutGroup::Row { widgets: green_g },
-			LayoutGroup::Row { widgets: green_b },
-			LayoutGroup::Row { widgets: green_c },
-			// Blue output channel
-			LayoutGroup::Row { widgets: blue },
-			LayoutGroup::Row { widgets: blue_r },
-			LayoutGroup::Row { widgets: blue_g },
-			LayoutGroup::Row { widgets: blue_b },
-			LayoutGroup::Row { widgets: blue_c },
-		]
-	}
+	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
+	if !is_monochrome {
+		layout.push(LayoutGroup::Row { widgets: output_channel });
+	};
+	layout.extend([
+		// Gray output
+		LayoutGroup::Row { widgets: red },
+		LayoutGroup::Row { widgets: green },
+		LayoutGroup::Row { widgets: blue },
+		LayoutGroup::Row { widgets: constant },
+	]);
+	layout
 }
 
 #[cfg(feature = "gpu")]
