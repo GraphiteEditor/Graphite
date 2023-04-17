@@ -7,6 +7,7 @@
 	"type": "module",
 	"alias": {
 		"@graphite/../assets/*": "~/assets/$1",
+		"@graphite/../public/*": "~/public/$1",
 		"@graphite/*": "~/src/$1"
 	},
 	"scripts": {
@@ -31,6 +32,7 @@
 	},
 	"devDependencies": {
 		"@parcel/transformer-inline-string": "^2.8.3",
+		"@parcel/transformer-webmanifest": "^2.8.3",
 		"@types/license-checker-webpack-plugin": "^0.2.1",
 		"@types/node": "^18.15.11",
 		"@types/webpack": "^5.28.1",
@@ -44,9 +46,11 @@
 		"svelte-preprocess": "^4.10.7",
 		"ts-node": "^10.9.1",
 		"typescript": "^4.9.5",
-		"wasm-pack": "0.11.0",
 		"webpack": "^5.75.0",
 		"webpack-cli": "^5.0.1"
+	},
+	"optionalDependencies": {
+		"wasm-pack": "0.11.0"
 	},
 	"//": "Notes about dependency issues and incompatibilities should be added here when needed.",
 	"homepage": "https://graphite.rs",
