@@ -981,7 +981,7 @@ checksum = "0bd4b30a6560bbd9b4620f4de34c3f14f60848e58a9b7216801afcb4c7b31c3c"
 
 [[package]]
 name = "dyn-any"
-version = "0.2.1"
+version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
  "glam",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "dyn-any-derive"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "dyn-any",
  "proc-macro2",

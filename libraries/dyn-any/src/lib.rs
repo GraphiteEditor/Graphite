@@ -104,32 +104,32 @@ pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>
 	}
 }
 
-pub trait StaticType {
+pub unsafe trait StaticType {
 	type Static: 'static + ?Sized;
 	fn type_id(&self) -> core::any::TypeId {
 		core::any::TypeId::of::<Self::Static>()
 	}
 }
 
-pub trait StaticTypeSized {
+pub unsafe trait StaticTypeSized {
 	type Static: 'static;
 	fn type_id(&self) -> core::any::TypeId {
-		core::any::TypeId::of::<Self::Static>()
+		core::any::TypeId::of::<<Self as StaticTypeSized>::Static>()
 	}
 }
-impl<T: StaticType + Sized> StaticTypeSized for T
+unsafe impl<T: StaticType + Sized> StaticTypeSized for T
 where
 	T::Static: Sized,
 {
 	type Static = <T as StaticType>::Static;
 }
-pub trait StaticTypeClone {
+pub unsafe trait StaticTypeClone {
 	type Static: 'static + Clone;
 	fn type_id(&self) -> core::any::TypeId {
-		core::any::TypeId::of::<Self::Static>()
+		core::any::TypeId::of::<<Self as StaticTypeClone>::Static>()
 	}
 }
-impl<T: StaticType + Clone> StaticTypeClone for T
+unsafe impl<T: StaticType + Clone> StaticTypeClone for T
 where
 	T::Static: Clone,
 {
@@ -139,7 +139,7 @@ where
 macro_rules! impl_type {
 	($($id:ident$(<$($(($l:lifetime, $s:lifetime)),*|)?$($T:ident),*>)?),*) => {
 		$(
-		impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
+		unsafe impl< $($($T:  $crate::StaticTypeSized ,)*)?> $crate::StaticType for $id $(<$($($l,)*)?$($T, )*>)?{
 			type Static = $id$(<$($($s,)*)?$(<$T as $crate::StaticTypeSized>::Static,)*>)?;
 		}
 		)*
@@ -147,22 +147,22 @@ macro_rules! impl_type {
 }
 
 #[cfg(feature = "alloc")]
-impl<'a, T: StaticTypeClone + Clone> StaticType for Cow<'a, T> {
-	type Static = Cow<'static, T::Static>;
+unsafe impl<'a, T: StaticTypeClone + Clone> StaticType for Cow<'a, T> {
+	type Static = Cow<'static, <T as StaticTypeClone>::Static>;
 }
-impl<T: StaticTypeSized> StaticType for *const [T] {
+unsafe impl<T: StaticTypeSized> StaticType for *const [T] {
 	type Static = *const [<T as StaticTypeSized>::Static];
 }
-impl<T: StaticTypeSized> StaticType for *mut [T] {
+unsafe impl<T: StaticTypeSized> StaticType for *mut [T] {
 	type Static = *mut [<T as StaticTypeSized>::Static];
 }
-impl<'a, T: StaticTypeSized> StaticType for &'a [T] {
+unsafe impl<'a, T: StaticTypeSized> StaticType for &'a [T] {
 	type Static = &'static [<T as StaticTypeSized>::Static];
 }
 macro_rules! impl_slice {
     ($($id:ident),*) => {
         $(
-        impl<'a, T: StaticTypeSized> StaticType for $id<'a, T> {
+        unsafe impl<'a, T: StaticTypeSized> StaticType for $id<'a, T> {
             type Static = $id<'static, <T as StaticTypeSized>::Static>;
         }
         )*
@@ -176,24 +176,24 @@ mod slice {
 }
 
 #[cfg(feature = "alloc")]
-impl<'a, T: StaticTypeSized> StaticType for Box<dyn Iterator<Item = T> + 'a + Send + Sync> {
-	type Static = Box<dyn Iterator<Item = T::Static> + Send + Sync>;
+unsafe impl<'a, T: StaticTypeSized> StaticType for Box<dyn Iterator<Item = T> + 'a + Send + Sync> {
+	type Static = Box<dyn Iterator<Item = <T as StaticTypeSized>::Static> + Send + Sync>;
 }
 
-impl<'a> StaticType for &'a str {
+unsafe impl<'a> StaticType for &'a str {
 	type Static = &'static str;
 }
-impl StaticType for () {
+unsafe impl StaticType for () {
 	type Static = ();
 }
-impl<'a, T: 'a + StaticType + ?Sized> StaticType for &'a T {
+unsafe impl<'a, T: 'a + StaticType + ?Sized> StaticType for &'a T {
 	type Static = &'static <T as StaticType>::Static;
 }
-impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
+unsafe impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
 	type Static = [<T as StaticTypeSized>::Static; N];
 }
 
-impl<'a> StaticType for dyn DynAny<'a> + '_ {
+unsafe impl<'a> StaticType for dyn DynAny<'a> + '_ {
 	type Static = dyn DynAny<'static>;
 }
 #[cfg(feature = "alloc")]
@@ -275,7 +275,7 @@ impl_type!(
 );
 
 #[cfg(feature = "alloc")]
-impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {
+unsafe impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {
 	type Static = Box<<T as crate::StaticType>::Static>;
 }
 #[test]
@@ -293,7 +293,7 @@ macro_rules! impl_tuple {
 		impl_tuple! { @rec $($t)* }
 	};
 	(@impl $($t:ident)*) => {
-		impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
+		unsafe impl< $($t: StaticTypeSized,)*> StaticType for ($($t,)*) {
 			type Static = ($(<$t as $crate::StaticTypeSized>::Static,)*);
 		}
 	};

@@ -20,7 +20,7 @@ pub struct Subpath<ManipulatorGroupId: crate::Identifier> {
 }
 
 #[cfg(feature = "dyn-any")]
-impl<ManipulatorGroupId: crate::Identifier> dyn_any::StaticType for Subpath<ManipulatorGroupId> {
+unsafe impl<ManipulatorGroupId: crate::Identifier> dyn_any::StaticType for Subpath<ManipulatorGroupId> {
 	type Static = Subpath<ManipulatorGroupId>;
 }
 
