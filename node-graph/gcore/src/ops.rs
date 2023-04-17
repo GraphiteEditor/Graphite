@@ -8,7 +8,7 @@ pub struct AddNode;
 
 impl<'i, L: Add<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for AddNode {
 	type Output = <L as Add<R>>::Output;
-	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
 		input.0 + input.1
 	}
 }
@@ -30,58 +30,6 @@ where
 	first + second
 }
 
-/*
-#[cfg(feature = "std")]
-pub mod dynamic {
-	use super::*;
-
-	// Unfortunatly we can't impl the AddNode as we get
-	// `upstream crates may add a new impl of trait `core::ops::Add` for type `alloc::boxed::Box<(dyn dyn_any::DynAny<'_> + 'static)>` in future versions`
-	pub struct DynamicAddNode;
-
-	// Alias for a dynamic type
-	pub type Dynamic<'a> = alloc::boxed::Box<dyn dyn_any::DynAny<'a> + 'a>;
-
-	/// Resolves the dynamic types for a dynamic node.
-	///
-	/// Macro uses format `BaseNode => (arg1: u32) (arg1: i32)`
-	macro_rules! resolve_dynamic_types {
-	($node:ident => $(($($arg:ident : $t:ty),*))*) => {
-		$(
-			// Check for each possible set of arguments if their types match the arguments given
-			if $(core::any::TypeId::of::<$t>() == $arg.type_id())&&* {
-				// Cast the arguments and then call the inner node
-				alloc::boxed::Box::new($node.eval(($(*dyn_any::downcast::<$t>($arg).unwrap()),*)) ) as Dynamic
-			}
-		)else*
-		else {
-			panic!("Unhandled type"); // TODO: Exit neatly (although this should probably not happen)
-		}
-	};
-}
-
-	impl<'i> Node<(Dynamic<'i>, Dynamic<'i>)> for DynamicAddNode {
-		type Output = Dynamic<'i>;
-		fn eval<'s: 'i>(self, (left, right): (Dynamic, Dynamic)) -> Self::Output {
-			resolve_dynamic_types! { AddNode =>
-			(left: usize, right: usize)
-			(left: u8, right: u8)
-			(left: u16, right: u16)
-			(left: u32, right: u32)
-			(left: u64, right: u64)
-			(left: u128, right: u128)
-			(left: isize, right: isize)
-			(left: i8, right: i8)
-			(left: i16, right: i16)
-			(left: i32, right: i32)
-			(left: i64, right: i64)
-			(left: i128, right: i128)
-			(left: f32, right: f32)
-			(left: f64, right: f64) }
-		}
-	}
-}*/
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SomeNode;
 #[node_macro::node_fn(SomeNode)]
@@ -93,7 +41,7 @@ fn some<T>(input: T) -> Option<T> {
 pub struct CloneNode<O>(PhantomData<O>);
 impl<'i, 'n: 'i, O: Clone + 'i> Node<'i, &'n O> for CloneNode<O> {
 	type Output = O;
-	fn eval<'s: 'i>(&'s self, input: &'i O) -> Self::Output {
+	fn eval(&'i self, input: &'i O) -> Self::Output {
 		input.clone()
 	}
 }
@@ -107,7 +55,7 @@ impl<O> CloneNode<O> {
 pub struct FstNode;
 impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for FstNode {
 	type Output = L;
-	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
 		input.0
 	}
 }
@@ -122,7 +70,7 @@ impl FstNode {
 pub struct SndNode;
 impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for SndNode {
 	type Output = R;
-	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
 		input.1
 	}
 }
@@ -137,7 +85,7 @@ impl SndNode {
 pub struct SwapNode;
 impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for SwapNode {
 	type Output = (R, L);
-	fn eval<'s: 'i>(&'s self, input: (L, R)) -> Self::Output {
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
 		(input.1, input.0)
 	}
 }
@@ -152,7 +100,7 @@ impl SwapNode {
 pub struct DupNode;
 impl<'i, O: Clone + 'i> Node<'i, O> for DupNode {
 	type Output = (O, O);
-	fn eval<'s: 'i>(&'s self, input: O) -> Self::Output {
+	fn eval(&'i self, input: O) -> Self::Output {
 		(input.clone(), input)
 	}
 }
@@ -167,7 +115,7 @@ impl DupNode {
 pub struct IdNode;
 impl<'i, O: 'i> Node<'i, O> for IdNode {
 	type Output = O;
-	fn eval<'s: 'i>(&'s self, input: O) -> Self::Output {
+	fn eval(&'i self, input: O) -> Self::Output {
 		input
 	}
 }
@@ -186,7 +134,7 @@ where
 	N: for<'n> Node<'n, I, Output = O>,
 {
 	type Output = O;
-	fn eval<'s: 'i>(&'s self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> Self::Output {
 		self.0.eval(input)
 	}
 }

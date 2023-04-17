@@ -200,7 +200,7 @@ pub struct MapNode<MapFn> {
 }
 
 #[node_macro::node_fn(MapNode)]
-fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'any_input MapFnNode) -> MapFnIterator<'input, 'input, _Iter, MapFnNode>
+fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'any_input MapFnNode) -> MapFnIterator<'input, _Iter, MapFnNode>
 where
 	MapFnNode: for<'any_input> Node<'any_input, _Iter::Item>,
 {
@@ -208,40 +208,34 @@ where
 }
 
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct MapFnIterator<'i, 's, Iter, MapFn> {
+pub struct MapFnIterator<'i, Iter, MapFn> {
 	iter: Iter,
-	map_fn: &'s MapFn,
-	_phantom: core::marker::PhantomData<&'i &'s ()>,
+	map_fn: &'i MapFn,
 }
 
-impl<'i, 's: 'i, Iter: Debug, MapFn> Debug for MapFnIterator<'i, 's, Iter, MapFn> {
+impl<'i, Iter: Debug, MapFn> Debug for MapFnIterator<'i, Iter, MapFn> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("MapFnIterator").field("iter", &self.iter).field("map_fn", &"MapFn").finish()
 	}
 }
 
-impl<'i, 's: 'i, Iter: Clone, MapFn> Clone for MapFnIterator<'i, 's, Iter, MapFn> {
+impl<'i, Iter: Clone, MapFn> Clone for MapFnIterator<'i, Iter, MapFn> {
 	fn clone(&self) -> Self {
 		Self {
 			iter: self.iter.clone(),
 			map_fn: self.map_fn,
-			_phantom: core::marker::PhantomData,
 		}
 	}
 }
-impl<'i, 's: 'i, Iter: Copy, MapFn> Copy for MapFnIterator<'i, 's, Iter, MapFn> {}
+impl<'i, Iter: Copy, MapFn> Copy for MapFnIterator<'i, Iter, MapFn> {}
 
-impl<'i, 's: 'i, Iter, MapFn> MapFnIterator<'i, 's, Iter, MapFn> {
-	pub fn new(iter: Iter, map_fn: &'s MapFn) -> Self {
-		Self {
-			iter,
-			map_fn,
-			_phantom: core::marker::PhantomData,
-		}
+impl<'i, Iter, MapFn> MapFnIterator<'i, Iter, MapFn> {
+	pub fn new(iter: Iter, map_fn: &'i MapFn) -> Self {
+		Self { iter, map_fn }
 	}
 }
 
-impl<'i, 's: 'i, I: Iterator + 's, F> Iterator for MapFnIterator<'i, 's, I, F>
+impl<'i, I: Iterator + 'i, F> Iterator for MapFnIterator<'i, I, F>
 where
 	F: Node<'i, I::Item> + 'i,
 	Self: 'i,
@@ -318,7 +312,7 @@ where
 {
 	type Output = ImageWindowIterator<'input, P>;
 	#[inline]
-	fn eval<'node: 'input>(&'node self, input: u32) -> Self::Output {
+	fn eval(&'input self, input: u32) -> Self::Output {
 		let radius = self.radius.eval(());
 		let image = self.image.eval(());
 		{

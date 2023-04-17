@@ -14,7 +14,7 @@ where
 	Second: for<'a> Node<'a, <First as Node<'a, Input>>::Output> + 'i,
 {
 	type Output = <Second as Node<'i, <First as Node<'i, Input>>::Output>>::Output;
-	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
+	fn eval(&'i self, input: Input) -> Self::Output {
 		let arg = self.first.eval(input);
 		self.second.eval(arg)
 	}
@@ -64,7 +64,7 @@ where
 	Root: Node<'i, I>,
 {
 	type Output = (Input, Root::Output);
-	fn eval<'s: 'i>(&'s self, input: Input) -> Self::Output {
+	fn eval(&'i self, input: Input) -> Self::Output {
 		let arg = self.0.eval(I::from(()));
 		(input, arg)
 	}

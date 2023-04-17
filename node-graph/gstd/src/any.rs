@@ -27,7 +27,7 @@ where
 	N: for<'any_input> Node<'any_input, _I, Output = &'any_input _O>,
 {
 	type Output = Any<'input>;
-	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
+	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
 			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyRefNode Input, {e} in:\n{node_name}"));
@@ -54,7 +54,7 @@ where
 	N: for<'any_input> Node<'any_input, &'any_input _I, Output = _O>,
 {
 	type Output = Any<'input>;
-	fn eval<'node: 'input>(&'node self, input: Any<'input>) -> Self::Output {
+	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
 			let input: Box<&_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyInRefNode Input, {e} in:\n{node_name}"));
@@ -113,7 +113,7 @@ pub struct DowncastBothNode<'a, I, O> {
 impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
 	type Output = O;
 	#[inline]
-	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
+	fn eval(&'input self, input: I) -> Self::Output {
 		{
 			let input = Box::new(input);
 			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|e| panic!("DowncastBothNode Input {e}"));
@@ -140,7 +140,7 @@ pub struct DowncastBothRefNode<'a, I, O> {
 impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<'n, I, O> {
 	type Output = &'input O;
 	#[inline]
-	fn eval<'node: 'input>(&'node self, input: I) -> Self::Output {
+	fn eval(&'input self, input: I) -> Self::Output {
 		{
 			let input = Box::new(input);
 			let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input)).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
@@ -161,7 +161,7 @@ pub struct ComposeTypeErased<'a> {
 
 impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
 	type Output = Any<'i>;
-	fn eval<'s: 'i>(&'s self, input: Any<'i>) -> Self::Output {
+	fn eval(&'i self, input: Any<'i>) -> Self::Output {
 		let arg = self.first.eval(input);
 		self.second.eval(arg)
 	}

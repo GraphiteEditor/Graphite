@@ -8,7 +8,7 @@ pub struct IntNode<const N: u32>;
 
 impl<'i, const N: u32> Node<'i, ()> for IntNode<N> {
 	type Output = u32;
-	fn eval<'s: 'i>(&'s self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: ()) -> Self::Output {
 		N
 	}
 }
@@ -22,7 +22,7 @@ impl<T: StaticTypeSized> StaticType for ValueNode<T> {
 
 impl<'i, T: 'i> Node<'i, ()> for ValueNode<T> {
 	type Output = &'i T;
-	fn eval<'s: 'i>(&'s self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: ()) -> Self::Output {
 		&self.0
 	}
 }
@@ -57,7 +57,7 @@ where
 
 impl<'i, T: Clone + 'i> Node<'i, ()> for ClonedNode<T> {
 	type Output = T;
-	fn eval<'s: 'i>(&'s self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: ()) -> Self::Output {
 		self.0.clone()
 	}
 }
@@ -80,7 +80,7 @@ pub struct DefaultNode<T>(PhantomData<T>);
 
 impl<'i, T: Default + 'i> Node<'i, ()> for DefaultNode<T> {
 	type Output = T;
-	fn eval<'s: 'i>(&self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: ()) -> Self::Output {
 		T::default()
 	}
 }
@@ -98,7 +98,7 @@ pub struct ForgetNode;
 
 impl<'i, T: 'i> Node<'i, T> for ForgetNode {
 	type Output = ();
-	fn eval<'s: 'i>(&self, _input: T) -> Self::Output {}
+	fn eval(&'i self, _input: T) -> Self::Output {}
 }
 
 impl ForgetNode {
