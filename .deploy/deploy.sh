@@ -28,7 +28,6 @@ tar -xzf wasm-pack-v0.11.0-x86_64-unknown-linux-musl.tar.gz
 mv wasm-pack-v0.11.0-x86_64-unknown-linux-musl/wasm-pack /opt/buildhome/.cargo/bin
 
 wasm-pack --version
-wasm-opt --version
 
 
 # Install the project's Node dependencies through npm
@@ -40,8 +39,10 @@ npm --version
 cd frontend
 npm ci --no-optional
 
-
 # Build for production
 echo 👷 Build Graphite web client
+wasm-opt --version
+apt-get install mlocate
+locate -b wasm-opt
 export NODE_ENV=production
 npm run build && mv public dist # `&&` is used here to preserve the exit code
