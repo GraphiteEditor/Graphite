@@ -83,7 +83,7 @@ where
 		(**self).eval(input)
 	}
 }*/
-impl<'i,  I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
 	fn eval(&'i self, input: I) -> Self::Output {
