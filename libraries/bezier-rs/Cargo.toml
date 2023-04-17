@@ -16,5 +16,5 @@ documentation = "https://graphite.rs/libraries/bezier-rs/"
 [dependencies]
 glam = { version = "0.22", features = ["serde"] }
 
-dyn-any = { version = "0.2.1", path = "../dyn-any", optional = true }
+dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }

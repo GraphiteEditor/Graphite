@@ -450,7 +450,7 @@ pub struct ImageSlice<'a, Pixel> {
 	pub data: &'a (),
 }
 
-impl<P: StaticTypeSized> StaticType for ImageSlice<'_, P> {
+unsafe impl<P: StaticTypeSized> StaticType for ImageSlice<'_, P> {
 	type Static = ImageSlice<'static, P::Static>;
 }
 
@@ -579,7 +579,7 @@ mod image {
 		pub data: Vec<P>,
 	}
 
-	impl<P: StaticTypeSized + Pixel> StaticType for Image<P>
+	unsafe impl<P: StaticTypeSized + Pixel> StaticType for Image<P>
 	where
 		P::Static: Pixel,
 	{
@@ -764,7 +764,7 @@ mod image {
 		}
 	}
 
-	impl<P: StaticTypeSized + Pixel> StaticType for ImageFrame<P>
+	unsafe impl<P: StaticTypeSized + Pixel> StaticType for ImageFrame<P>
 	where
 		P::Static: Pixel,
 	{
