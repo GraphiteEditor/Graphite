@@ -7,6 +7,14 @@ else
 	git switch $CF_PAGES_BRANCH || git switch -c $CF_PAGES_BRANCH
 fi
 
+
+# Install the latest version of the Rust toolchain
+echo 🔧 Install Rust
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+export PATH=$PATH:/opt/buildhome/.cargo/bin
+echo rustc version:
+rustc --version
+
 # Install the cargo-about Rust dependency that's used during the Webpack build process (in `webpack.config.js`)
 echo 📦 Install cargo-about
 wget "https://github.com/EmbarkStudios/cargo-about/releases/download/0.5.5/cargo-about-0.5.5-x86_64-unknown-linux-musl.tar.gz"
@@ -22,13 +30,6 @@ mv wasm-pack-v0.11.0-x86_64-unknown-linux-musl/wasm-pack /opt/buildhome/.cargo/b
 wasm-pack --version
 wasm-opt --version
 
-
-# Install the latest version of the Rust toolchain
-echo 🔧 Install Rust
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-export PATH=$PATH:/opt/buildhome/.cargo/bin
-echo rustc version:
-rustc --version
 
 # Install the project's Node dependencies through npm
 echo 🚧 Install Node dependencies
