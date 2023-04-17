@@ -60,6 +60,9 @@ impl Pixel for Color {
 	fn from_bytes(bytes: &[u8]) -> Self {
 		Color::from_rgba8_srgb(bytes[0], bytes[1], bytes[2], bytes[3])
 	}
+	fn byte_size() -> usize {
+		4
+	}
 }
 
 impl Alpha for Color {
