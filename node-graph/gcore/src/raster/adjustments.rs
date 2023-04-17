@@ -461,6 +461,73 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, MonochromeC, RedR, RedG, RedB, RedC, GreenR, GreenG, GreenB, GreenC, BlueR, BlueG, BlueB, BlueC> {
+	monochrome: Monochrome,
+	monochrome_r: MonochromeR,
+	monochrome_g: MonochromeG,
+	monochrome_b: MonochromeB,
+	monochrome_c: MonochromeC,
+	red_r: RedR,
+	red_g: RedG,
+	red_b: RedB,
+	red_c: RedC,
+	green_r: GreenR,
+	green_g: GreenG,
+	green_b: GreenB,
+	green_c: GreenC,
+	blue_r: BlueR,
+	blue_g: BlueG,
+	blue_b: BlueB,
+	blue_c: BlueC,
+}
+
+#[node_macro::node_fn(ChannelMixerNode)]
+fn channel_mixer_node(
+	color: Color,
+	monochrome: bool,
+	monochrome_r: f64,
+	monochrome_g: f64,
+	monochrome_b: f64,
+	monochrome_c: f64,
+	red_r: f64,
+	red_g: f64,
+	red_b: f64,
+	red_c: f64,
+	green_r: f64,
+	green_g: f64,
+	green_b: f64,
+	green_c: f64,
+	blue_r: f64,
+	blue_g: f64,
+	blue_b: f64,
+	blue_c: f64,
+) -> Color {
+	let color = color.to_gamma_srgb();
+
+	let (r, g, b, a) = color.components();
+
+	let color = if monochrome {
+		let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
+
+		let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
+
+		Color::from_rgbaf32_unchecked(gray, gray, gray, a)
+	} else {
+		let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
+		let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
+		let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
+
+		let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
+		let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
+		let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
+
+		Color::from_rgbaf32_unchecked(red, green, blue, a)
+	};
+
+	color.to_linear_srgb()
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct OpacityNode<O> {
 	opacity_multiplier: O,
 }

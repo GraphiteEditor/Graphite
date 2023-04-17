@@ -668,6 +668,40 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::adjust_vibrance_properties,
 		},
 		DocumentNodeType {
+			name: "Channel Mixer",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				// Monochrome toggle
+				DocumentInputType::value("Monochrome", TaggedValue::Bool(false), false),
+				// Monochrome
+				DocumentInputType::value("Red", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Green", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Blue", TaggedValue::F64(20.), false),
+				DocumentInputType::value("Constant", TaggedValue::F64(0.), false),
+				// Red output channel
+				DocumentInputType::value("(Red) Red", TaggedValue::F64(100.), false),
+				DocumentInputType::value("(Red) Green", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Red) Blue", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Red) Constant", TaggedValue::F64(0.), false),
+				// Green output channel
+				DocumentInputType::value("(Green) Red", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Green) Green", TaggedValue::F64(100.), false),
+				DocumentInputType::value("(Green) Blue", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Green) Constant", TaggedValue::F64(0.), false),
+				// Blue output channel
+				DocumentInputType::value("(Blue) Red", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blue) Green", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blue) Blue", TaggedValue::F64(100.), false),
+				DocumentInputType::value("(Blue) Constant", TaggedValue::F64(0.), false),
+				// Display-only properties (not used within the node)
+				DocumentInputType::value("Output Channel", TaggedValue::U32(0), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::adjust_channel_mixer_properties,
+		},
+		DocumentNodeType {
 			name: "Opacity",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
