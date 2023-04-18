@@ -1125,7 +1125,7 @@ impl DocumentMessageHandler {
 		let artboards = self.artboard_message_handler.artboards_document.render_root(&render_data);
 		let outside_artboards_color = outside.map_or_else(
 			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
-			|col| col.rgba_hex_srgb(),
+			|col| col.rgba_hex(),
 		);
 		let outside_artboards = format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color);
 		let matrix = transform
