@@ -797,17 +797,26 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 }
 
-#[derive(Debug)]
-pub struct IndexNode<Index> {
-	pub index: Index,
-}
+#[cfg(not(target_arch = "spirv"))]
+pub use index_node::IndexNode;
 
-#[node_macro::node_fn(IndexNode)]
-pub fn index_node(input: Vec<super::ImageFrame<Color>>, index: u32) -> super::ImageFrame<Color> {
-	if (index as usize) < input.len() {
-		input[index as usize].clone()
-	} else {
-		warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
-		super::ImageFrame::empty()
+#[cfg(not(target_arch = "spirv"))]
+mod index_node {
+	use crate::raster::{Color, ImageFrame};
+	use crate::Node;
+
+	#[derive(Debug)]
+	pub struct IndexNode<Index> {
+		pub index: Index,
+	}
+
+	#[node_macro::node_fn(IndexNode)]
+	pub fn index_node(input: Vec<ImageFrame<Color>>, index: u32) -> ImageFrame<Color> {
+		if (index as usize) < input.len() {
+			input[index as usize].clone()
+		} else {
+			warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
+			ImageFrame::empty()
+		}
 	}
 }

@@ -6,6 +6,7 @@ use graph_craft::document::*;
 
 use graph_craft::*;
 use std::borrow::Cow;
+use std::time::Duration;
 
 fn main() {
 	let client = reqwest::blocking::Client::new();
@@ -37,7 +38,12 @@ fn main() {
 	};
 
 	let compile_request = CompileRequest::new(proto_network, vec![concrete!(u32)], concrete!(u32), io);
-	let response = client.post("http://localhost:3000/compile/spirv").json(&compile_request).send().unwrap();
+	let response = client
+		.post("http://localhost:3000/compile/spirv")
+		.timeout(Duration::from_secs(30))
+		.json(&compile_request)
+		.send()
+		.unwrap();
 	println!("response: {:?}", response);
 }
 
@@ -54,7 +60,7 @@ fn add_network() -> NodeNetwork {
 					name: "Dup".into(),
 					inputs: vec![NodeInput::value(value::TaggedValue::U32(5u32), false)],
 					metadata: DocumentNodeMetadata::default(),
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::value::ValueNode")),
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 				},
 			), /*,
 			   (

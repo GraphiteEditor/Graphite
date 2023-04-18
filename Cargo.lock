@@ -1617,7 +1617,6 @@ dependencies = [
  "kurbo",
  "log",
  "node-macro",
- "num",
  "num-derive",
  "num-traits",
  "once_cell",

@@ -9,7 +9,14 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta"]
+std = [
+	"dyn-any",
+	"dyn-any/std",
+	"alloc",
+	"glam/std",
+	"specta",
+	"num-traits/std",
+]
 default = ["async", "serde", "kurbo", "log", "std", "rand_chacha"]
 log = ["dep:log"]
 serde = [
@@ -53,6 +60,7 @@ base64 = { version = "0.13", optional = true }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
-num = "0.4.0"
-num-derive = "0.3.3"
-num-traits = "0.2.15"
+num-derive = { version = "0.3.3" }
+num-traits = { version = "0.2.15", default-features = false, features = [
+	"i128",
+] }

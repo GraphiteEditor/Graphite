@@ -53,6 +53,7 @@ impl RGB for Color {
 }
 
 impl Pixel for Color {
+    #[cfg(not(target_arch = "spirv"))]
 	fn to_bytes(&self) -> Vec<u8> {
 		self.to_rgba8_srgb().to_vec()
 	}
