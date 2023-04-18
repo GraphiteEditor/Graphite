@@ -176,8 +176,8 @@ fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreproc
 	responses.push_back(
 		FrontendMessage::UpdateEyedropperSamplingState {
 			mouse_position: Some(input.mouse.position.into()),
-			primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
-			secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
+			primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex_srgb().as_str(),
+			secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex_srgb().as_str(),
 			set_color_choice,
 		}
 		.into(),

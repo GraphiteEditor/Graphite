@@ -26,7 +26,7 @@ pub mod gpu {
         {% endfor %}
 
 		{% for node in nodes %}
-		let {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}&{{arg}}, {% endfor %});
+		let {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}{{arg}}, {% endfor %});
 		{% endfor %}
 		let output = {{last_node}}.eval(());
         // TODO: Write output to buffer

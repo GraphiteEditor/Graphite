@@ -47,7 +47,7 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 	}
 	let lib = src.join("lib.rs");
 	let shader = serialize_gpu(network, io)?;
-	println!("{}", shader);
+	eprintln!("{}", shader);
 	std::fs::write(lib, shader)?;
 	Ok(())
 }
