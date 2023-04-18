@@ -735,9 +735,21 @@ impl Document {
 				Some(responses)
 			}
 			Operation::DuplicateLayer { path } => {
+				// we need to recurse through the layer
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 				let folder = self.folder_mut(folder_path)?;
+
+				// recursive attempt - replace this with a recursive func similar to select tool
+				// let mut new_sublayers = Vec::new();
+				// for sublayer_path in layer.sublayers.iter() {
+				// 	let new_sublayer_path = [path, sublayer_path.as_slice()].concat();
+				// 	let sublayer_messages = DuplicateLayer { path: &new_sublayer_path };
+				// 	new_sublayers.push(new_sublayer_path);
+				// 	new_sublayers.extend(sublayer_messages);
+				// }
+				//
+
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
 					self.mark_as_dirty(folder_path)?;
