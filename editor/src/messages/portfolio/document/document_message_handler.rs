@@ -299,7 +299,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let id = generate_uuid();
 				container_path.push(id);
 				responses.push_back(DocumentMessage::DeselectAllLayers.into());
-				responses.push_back(DocumentOperation::CreateFolder { path: container_path.clone() }.into());
+				responses.push_back(
+					DocumentOperation::CreateFolder {
+						path: container_path.clone(),
+						insert_index: -1,
+					}
+					.into(),
+				);
 				responses.push_back(
 					DocumentMessage::SetLayerExpansion {
 						layer_path: container_path,
@@ -434,8 +440,37 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_back(DocumentOperation::ClearBlobURL { path: layer_path.into() }.into());
 			}
 			GroupSelectedLayers => {
-				let mut new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
-				let shallowest_common_folder = new_folder_path.clone();
+				// Necessary because the shallowest common folder of a single folder is the folder which causes errors
+				let mut new_folder_path: Vec<u64>;
+				if self.selected_layers_sorted().len() == 1 {
+					new_folder_path = [].to_vec();
+				} else {
+					new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
+				}
+
+				// 	<---------------------------- Workinging HERE
+				// Check which child of the shallowest common folder contains a selected layer
+				// Use the top-most child of the children as the insert index of the new grouped folder
+				let children = self.document_legacy.folder_children_paths(&new_folder_path);
+				let mut insert_index = 0;
+				let mut child_layers_deleted = -1;
+				let mut new_index = 0;
+
+				let level_of_children = children.first().unwrap_or(&vec![0]).len();
+				let selected_sub_layers: Vec<Vec<u64>> = self.selected_layers().map(|layer| layer[..level_of_children].to_vec()).collect();
+				for child in children {
+					if selected_sub_layers.contains(&child) {
+						insert_index = new_index;
+						child_layers_deleted = child_layers_deleted + 1
+					}
+					new_index = new_index + 1;
+				}
+				// debug!("index: {}", insert_index);
+				// debug!("child layers: {}", child_layers_deleted);
+				insert_index = insert_index - child_layers_deleted;
+				// debug!("index: {}", &insert_index);
+
+				// ------------------------------>
 
 				// Required for grouping parent folders with their own children
 				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
@@ -444,11 +479,19 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_front(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
-				responses.push_front(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_front(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
-				responses.push_front(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
-				responses.push_front(
+				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
+				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
+				// This creates the new folder and i added the insert index argument similar to what u did with duplicating
+				responses.push_back(
+					DocumentOperation::CreateFolder {
+						path: new_folder_path.clone(),
+						insert_index: insert_index,
+					}
+					.into(),
+				);
+				// This is then called I think it adds the shapes to the folder, that we copied on line 482
+				responses.push_back(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
+				responses.push_back(
 					PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::Internal,
 						folder_path: new_folder_path.clone(),
@@ -456,17 +499,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-				responses.push_front(
+				responses.push_back(
 					DocumentMessage::SetSelectedLayers {
 						replacement_selected_layers: vec![new_folder_path],
 					}
 					.into(),
 				);
-				// Problem the layer tree isn't updated in time. The remove duplicate is triggering to soon
-				self.document_legacy.remove_duplicate_folders(&shallowest_common_folder);
-				let c: Vec<_> = self.all_layers().collect();
-				// debug!("C: {:?}", &c);
-				// self.document_legacy.remove_duplicate_folders(&shallowest_common_folder);
+				debug!("a");
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {

@@ -161,6 +161,7 @@ pub enum Operation {
 	},
 	CreateFolder {
 		path: Vec<LayerId>,
+		insert_index: isize,
 	},
 	TransformLayer {
 		path: Vec<LayerId>,
