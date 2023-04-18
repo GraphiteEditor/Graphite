@@ -53,7 +53,7 @@ impl RGB for Color {
 }
 
 impl Pixel for Color {
-    #[cfg(not(target_arch = "spirv"))]
+	#[cfg(not(target_arch = "spirv"))]
 	fn to_bytes(&self) -> Vec<u8> {
 		self.to_rgba8_srgb().to_vec()
 	}
@@ -493,7 +493,7 @@ impl Color {
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert!(color.components() == (0.114, 0.103, 0.98, 0.97));
+	/// assert_eq!(color.components(),  (0.114, 0.103, 0.98, 0.97));
 	/// ```
 	pub fn components(&self) -> (f32, f32, f32, f32) {
 		(self.red, self.green, self.blue, self.alpha)
