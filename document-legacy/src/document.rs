@@ -9,7 +9,9 @@ use crate::layers::text_layer::{Font, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
+use graph_craft::document;
 use kurbo::common;
+use serde::__private::doc;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::cmp::max;
@@ -738,17 +740,9 @@ impl Document {
 				// we need to recurse through the layer
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
-				let folder = self.folder_mut(folder_path)?;
 
-				// recursive attempt - replace this with a recursive func similar to select tool
-				// let mut new_sublayers = Vec::new();
-				// for sublayer_path in layer.sublayers.iter() {
-				// 	let new_sublayer_path = [path, sublayer_path.as_slice()].concat();
-				// 	let sublayer_messages = DuplicateLayer { path: &new_sublayer_path };
-				// 	new_sublayers.push(new_sublayer_path);
-				// 	new_sublayers.extend(sublayer_messages);
-				// }
-				//
+				recursive_search(self, &folder_path.to_vec());
+				let folder = self.folder_mut(folder_path)?;
 
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
@@ -1167,4 +1161,27 @@ pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64)
 
 		scale_factor -= 0.1;
 	}
+}
+
+fn recursive_search(document: &mut Document, layer_path: &Vec<u64>) {
+	// let mut responses = Vec::new();
+	let children = document.folder_children_paths(&layer_path);
+	for child in children {
+		debug!("child: {:?}", &child);
+		if document.is_folder(&child) {
+			recursive_search(document, &child);
+		}
+		// Add layer here; layer = child
+		// dont we need to change the layer/child id before pushing it to the duplicate folder
+		//otherwise we're adding the same original layer IDs to the new duplicated folder (layer_path)
+
+		//cant use docmessages so i created a docresponse that calls this docmessage::MoveSelectedLayers in docmessagehandler
+		// too tired to even test this but maybe this makes sense?
+		DocumentResponse::MoveSelectedLayersTo {
+			folder_path: layer_path.to_vec(),
+			insert_index: -1,
+			reverse_index: false,
+		};
+	}
+	// each layer thats not a folder will get pushed to its
 }

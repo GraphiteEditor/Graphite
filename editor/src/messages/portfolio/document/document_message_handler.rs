@@ -130,6 +130,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									self.layer_metadata.remove(path);
 								}
 								DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
+								DocumentResponse::MoveSelectedLayersTo {
+									folder_path,
+									insert_index,
+									reverse_index,
+								} => responses.push_back(
+									MoveSelectedLayersTo {
+										folder_path: folder_path.clone(),
+										insert_index: insert_index.clone(),
+										reverse_index: reverse_index.clone(),
+									}
+									.into(),
+								),
 								DocumentResponse::CreatedLayer { path } => {
 									if self.layer_metadata.contains_key(path) {
 										warn!("CreatedLayer overrides existing layer metadata.");
