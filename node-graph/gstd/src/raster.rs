@@ -1,5 +1,4 @@
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
-
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Alpha, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;

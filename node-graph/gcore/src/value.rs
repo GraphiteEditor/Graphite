@@ -1,7 +1,6 @@
-use core::marker::PhantomData;
-use dyn_any::{StaticType, StaticTypeSized};
-
 use crate::Node;
+
+use core::marker::PhantomData;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;
