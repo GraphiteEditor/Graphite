@@ -314,6 +314,7 @@ impl Fsm for BrushToolFsmState {
 
 fn add_brush_render(data: &mut BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
+	let color = if data.erase { Color::WHITE } else { tool_data.primary_color };
 	let mut brush_node = DocumentNode {
 		name: "Brush".to_string(),
 		inputs: vec![
@@ -326,14 +327,14 @@ fn add_brush_render(data: &mut BrushToolData, tool_data: &DocumentToolData, resp
 			// Flow
 			NodeInput::value(TaggedValue::F64(data.flow), false),
 			// Color
-			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
+			NodeInput::value(TaggedValue::Color(color), false),
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
 	};
 
 	let mut network = if data.erase {
-		let mut network = NodeNetwork::new_network(concrete!(ImageFrame<Color>));
+		let mut network = NodeNetwork::empty();
 		brush_node.metadata.position = (8, 6).into();
 		network.nodes.insert(10, brush_node);
 		data.brush_node = Some(10);

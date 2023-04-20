@@ -288,6 +288,16 @@ impl NodeNetwork {
 			previous_outputs: None,
 		}
 	}
+
+	/// A graph with just an input node
+	pub fn empty() -> Self {
+		Self {
+			inputs: vec![],
+			outputs: vec![],
+			nodes: [].into_iter().collect(),
+			..Default::default()
+		}
+	}
 	/// A graph with just an input node
 	pub fn new_network(input_type: Type) -> Self {
 		Self {
