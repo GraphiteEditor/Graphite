@@ -737,42 +737,43 @@ impl Document {
 				Some(responses)
 			}
 			Operation::DuplicateLayer { path } => {
+				// TODO: Unselect all but the root layer
+				// Notes: Currently works with a folder with all children but breaks with all children plus one or more empty folders.
 				debug!("path: {:?}", &path);
 				let layer = self.layer(&path)?.clone();
 
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
-				debug!("folder path: {:?}", &folder_path);
 
-				let mut duplicated_layers = vec![];
-				let mut queue = vec![];
+				let mut duplicated_layers: Vec<Vec<u64>> = vec![];
 				let layer_is_folder = (&layer).as_folder().is_ok();
 				if layer_is_folder {
-					let children = self.folder_children_paths(path.as_slice());
-					for child in children {
-						// TODO: Add recursion
-						if !self.is_folder(&child) {
-							duplicated_layers.push(child);
-							// let child_layer = self.layer(&child).unwrap();
-							// queue.push(Operation::DuplicateLayer { path: child, new_path: None }.into());
-						}
+					let folder_is_empty = self.folder_children_paths(&path).is_empty();
+					if !folder_is_empty {
+						// Returns a list of layers that are within the folder, currently doesn't recurse. Before I work on recursion I want to get it to work with shapes and empty folder
+						duplicated_layers = recursive_collect(self, &path);
+					} else {
+						debug!("empty: {:?}", &path);
 					}
 				}
-				// ISSUE: When recursively calling duplicate layer, new path is NOT the new duplicated folder its the OG selected folder
-				// When we call the recursive operation, at that time we don't know what the new layer id is
+				debug!("dup: {:?}", &duplicated_layers);
 
 				let folder = self.folder_mut(folder_path)?;
 
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
+					debug!("lol");
 					let new_path = [folder_path, &[new_layer_id]].concat();
+
+					// Loop through the duplicated layers and update the layer path by swapping the path with new_path
+					// Use the updated layer path in our duplicate layer operation call
+					let mut queue = vec![];
 					for layer in duplicated_layers {
-						debug!("new_path: {:?}", &new_path);
-						debug!("sub: {:?}", layer.to_vec());
-
-						// 	let new_layer_path = [new_path.clone(), layer[new_path.len()..].to_vec()].concat();
-
-						// We need to loop through each layer we need to replace the id that equals new_path + 1
-						// use then send a operation of the updated path
-						// for id in layer {}
+						let sub = layer[..new_path.len()].to_vec();
+						for i in 0..=new_path.clone().len() - 1 {
+							if !(new_path.clone().get(i).unwrap() == sub.get(i).unwrap()) {
+								let updated_layer_path = [new_path.clone(), layer[new_path.len()..].to_vec()].concat();
+								queue.push(Operation::DuplicateLayer { path: updated_layer_path }.into());
+							}
+						}
 					}
 
 					let mut responses: Vec<DocumentResponse> = vec![];
@@ -780,6 +781,7 @@ impl Document {
 						let res = self.handle_operation(operation, render_data).ok().flatten().unwrap_or_default();
 						responses.extend(res);
 					}
+					debug!("AFTER: {:?}", &new_path);
 
 					responses.extend([DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }]);
 					responses.extend(update_thumbnails_upstream(path.as_slice()));
@@ -1195,11 +1197,18 @@ pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64)
 	}
 }
 
-fn recursive_search(document: &mut Document, layer_path: &mut FolderLayer) {
+fn recursive_collect(document: &mut Document, layer_path: &Vec<u64>) -> Vec<Vec<u64>> {
 	// let mut responses = Vec::new();
-	debug!("LAYER PATH: {:?}", &layer_path);
-	// let children = document.folder_children_paths(&layer_path);
-	// for child in children {
+	let mut duplicated_layers = vec![];
+	let children = document.folder_children_paths(&layer_path);
+	for child in children {
+		if !document.is_folder(&child) {
+			duplicated_layers.push(child);
+		} else {
+			duplicated_layers.push(child);
+		}
+	}
+	return duplicated_layers;
 	// debug!("child: {:?}", &child);
 	// if document.is_folder(&child) {
 	// 	recursive_search(document, &child);
