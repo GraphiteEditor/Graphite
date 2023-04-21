@@ -737,23 +737,55 @@ impl Document {
 				Some(responses)
 			}
 			Operation::DuplicateLayer { path } => {
-				// we need to recurse through the layer
+				debug!("path: {:?}", &path);
 				let layer = self.layer(&path)?.clone();
-				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 
-				recursive_search(self, &folder_path.to_vec());
+				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
+				debug!("folder path: {:?}", &folder_path);
+
+				let mut duplicated_layers = vec![];
+				let mut queue = vec![];
+				let layer_is_folder = (&layer).as_folder().is_ok();
+				if layer_is_folder {
+					let children = self.folder_children_paths(path.as_slice());
+					for child in children {
+						// TODO: Add recursion
+						if !self.is_folder(&child) {
+							duplicated_layers.push(child);
+							// let child_layer = self.layer(&child).unwrap();
+							// queue.push(Operation::DuplicateLayer { path: child, new_path: None }.into());
+						}
+					}
+				}
+				// ISSUE: When recursively calling duplicate layer, new path is NOT the new duplicated folder its the OG selected folder
+				// When we call the recursive operation, at that time we don't know what the new layer id is
+
 				let folder = self.folder_mut(folder_path)?;
 
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
+					for layer in duplicated_layers {
+						debug!("new_path: {:?}", &new_path);
+						debug!("sub: {:?}", layer.to_vec());
+
+						// 	let new_layer_path = [new_path.clone(), layer[new_path.len()..].to_vec()].concat();
+
+						// We need to loop through each layer we need to replace the id that equals new_path + 1
+						// use then send a operation of the updated path
+						// for id in layer {}
+					}
+
+					let mut responses: Vec<DocumentResponse> = vec![];
+					for operation in queue {
+						let res = self.handle_operation(operation, render_data).ok().flatten().unwrap_or_default();
+						responses.extend(res);
+					}
+
+					responses.extend([DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }]);
+					responses.extend(update_thumbnails_upstream(path.as_slice()));
+
 					self.mark_as_dirty(folder_path)?;
-					Some(
-						[
-							vec![DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }],
-							update_thumbnails_upstream(path.as_slice()),
-						]
-						.concat(),
-					)
+					Some(responses)
 				} else {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
@@ -1163,25 +1195,26 @@ pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64)
 	}
 }
 
-fn recursive_search(document: &mut Document, layer_path: &Vec<u64>) {
+fn recursive_search(document: &mut Document, layer_path: &mut FolderLayer) {
 	// let mut responses = Vec::new();
-	let children = document.folder_children_paths(&layer_path);
-	for child in children {
-		debug!("child: {:?}", &child);
-		if document.is_folder(&child) {
-			recursive_search(document, &child);
-		}
-		// Add layer here; layer = child
-		// dont we need to change the layer/child id before pushing it to the duplicate folder
-		//otherwise we're adding the same original layer IDs to the new duplicated folder (layer_path)
+	debug!("LAYER PATH: {:?}", &layer_path);
+	// let children = document.folder_children_paths(&layer_path);
+	// for child in children {
+	// debug!("child: {:?}", &child);
+	// if document.is_folder(&child) {
+	// 	recursive_search(document, &child);
+	// }
+	// Add layer here; layer = child
+	// dont we need to change the layer/child id before pushing it to the duplicate folder
+	//otherwise we're adding the same original layer IDs to the new duplicated folder (layer_path)
 
-		//cant use docmessages so i created a docresponse that calls this docmessage::MoveSelectedLayers in docmessagehandler
-		// too tired to even test this but maybe this makes sense?
-		DocumentResponse::MoveSelectedLayersTo {
-			folder_path: layer_path.to_vec(),
-			insert_index: -1,
-			reverse_index: false,
-		};
-	}
+	//cant use docmessages so i created a docresponse that calls this docmessage::MoveSelectedLayers in docmessagehandler
+	// too tired to even test this but maybe this makes sense?
+	// DocumentResponse::MoveSelectedLayersTo {
+	// 	folder_path: layer_path.to_vec(),
+	// 	insert_index: -1,
+	// 	reverse_index: false,
+	// };
+	// }
 	// each layer thats not a folder will get pushed to its
 }

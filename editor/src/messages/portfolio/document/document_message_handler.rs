@@ -531,6 +531,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				insert_index,
 				reverse_index,
 			} => {
+				debug!("here");
 				let selected_layers = self.selected_layers().collect::<Vec<_>>();
 
 				// Prevent trying to insert into self
