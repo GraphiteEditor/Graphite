@@ -18,6 +18,8 @@ pub mod value;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+pub mod storage;
+
 pub mod raster;
 #[cfg(feature = "alloc")]
 pub mod transform;

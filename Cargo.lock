@@ -4045,9 +4045,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19bd20655904cb6136aeb82da8fd21bcc0ffca973d2794da8acc530efd66b854"
+checksum = "3197bd4c021c2dfc0f9dfb356312c8f7842d972d5545c308ad86422c2e2d3e66"
 dependencies = [
  "bitflags",
  "glam",
@@ -4058,9 +4058,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16e4c2790b4cac7b2f81037c3108e81aecd7713a975ded4f400a1b05fe4168dd"
+checksum = "bbaffad626ab9d3ac61c4b74b5d51cb52f1939a8041d7ac09ec828eb4ad44d72"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4070,9 +4070,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a8f7324f64b41beeaae97030f6128ad72747466b4c03459c3714adb84bc6f63"
+checksum = "ab83875e851bc803c687024d2d950730f350c0073714b95b3a6b1d22e9eac42a"
 
 [[package]]
 name = "stable_deref_trait"

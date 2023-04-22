@@ -3,6 +3,7 @@ use crate::Node;
 
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "spirv")]
@@ -458,7 +459,9 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum RedGreenBlue {
 	Red,
 	Green,
@@ -543,7 +546,9 @@ fn channel_mixer_node(
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum RelativeAbsolute {
 	Relative,
 	Absolute,
@@ -559,7 +564,9 @@ impl core::fmt::Display for RelativeAbsolute {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum SelectiveColorChoice {
 	Reds,
 	Yellows,

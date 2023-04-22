@@ -73,14 +73,13 @@ pub fn construct_argument(input: &ShaderInput<()>, position: u32) -> String {
 		ShaderInput::UniformBuffer(_, ty) => {
 			format!("#[spirv(uniform, descriptor_set = 0, binding = {})] i{}: &[{}]", position, position, ty,)
 		}
-		ShaderInput::StorageBuffer(_, ty) | ShaderInput::OutputBuffer(_, ty) | ShaderInput::ReadBackBuffer(_, ty) => {
+		ShaderInput::StorageBuffer(_, ty) | ShaderInput::ReadBackBuffer(_, ty) => {
 			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &[{}]", position, position, ty,)
 		}
 		ShaderInput::OutputBuffer(_, ty) => {
 			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &mut[{}]", position, position, ty,)
 		}
 		ShaderInput::WorkGroupMemory(_, ty) => format!("#[spirv(workgroup_memory] i{}: {}", position, ty,),
-		_ => todo!(),
 	}
 }
 
@@ -166,14 +165,15 @@ pub fn serialize_gpu(network: &ProtoNetwork, io: &ShaderIO) -> anyhow::Result<St
 use spirv_builder::{MetadataPrintout, SpirvBuilder, SpirvMetadata};
 pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder::SpirvBuilderError> {
 	dbg!(&dir);
-	let result = SpirvBuilder::new(dir, "spirv-unknown-spv1.5")
+	let result = SpirvBuilder::new(dir, "spirv-unknown-vulkan1.2")
 		.print_metadata(MetadataPrintout::DependencyOnly)
 		.multimodule(false)
 		.preserve_bindings(true)
 		.release(true)
-		//.relax_struct_store(true)
-		//.relax_block_layout(true)
 		.spirv_metadata(SpirvMetadata::Full)
+		.extra_arg("no-early-report-zombies")
+		.extra_arg("no-infer-storage-classes")
+		.extra_arg("spirt-passes=qptr")
 		.build()?;
 
 	Ok(result)

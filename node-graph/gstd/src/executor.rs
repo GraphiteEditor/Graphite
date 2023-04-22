@@ -53,7 +53,7 @@ pub struct MapGpuSingleImageNode<N> {
 }
 
 #[node_macro::node_fn(MapGpuSingleImageNode)]
-fn map_gpu_single_image(input: Image, node: String) -> Image {
+fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 	use graph_craft::document::*;
 	use graph_craft::NodeIdentifier;
 
