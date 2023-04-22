@@ -18,13 +18,13 @@
 # dependencies not shared by any other crates, would be ignored, as the target
 # list here is effectively saying which targets you are building for.
 targets = [
-    # The triple can be any string, but only the target triples built in to
-    # rustc (as of 1.40) can be checked against actual config expressions
-    #{ triple = "x86_64-unknown-linux-musl" },
-    # You can also specify which target_features you promise are enabled for a
-    # particular target. target_features are currently not validated against
-    # the actual valid features supported by the target architecture.
-    #{ triple = "wasm32-unknown-unknown", features = ["atomics"] },
+	# The triple can be any string, but only the target triples built in to
+	# rustc (as of 1.40) can be checked against actual config expressions
+	#{ triple = "x86_64-unknown-linux-musl" },
+	# You can also specify which target_features you promise are enabled for a
+	# particular target. target_features are currently not validated against
+	# the actual valid features supported by the target architecture.
+	#{ triple = "wasm32-unknown-unknown", features = ["atomics"] },
 ]
 
 # This section is considered when running `cargo deny check advisories`
@@ -48,7 +48,7 @@ notice = "warn"
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    #"RUSTSEC-0000-0000",
+	#"RUSTSEC-0000-0000",
 	"RUSTSEC-2020-0071", # This has been fixed in the version of chrono we use
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
@@ -71,25 +71,25 @@ unlicensed = "deny"
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 allow = [
-    "MIT",
-    "MIT-0",
-    "Apache-2.0",
-    "BSD-3-Clause",
-    "BSD-2-Clause",
-    "Zlib",
+	"MIT",
+	"MIT-0",
+	"Apache-2.0",
+	"BSD-3-Clause",
+	"BSD-2-Clause",
+	"Zlib",
 	"Unicode-DFS-2016",
 	"ISC",
 	"MPL-2.0",
 	"CC0-1.0",
 	"OpenSSL",
 	"BSL-1.0",
-    "Apache-2.0 WITH LLVM-exception",
+	"Apache-2.0 WITH LLVM-exception",
 ]
 # List of explicitly disallowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 deny = [
-    #"Nokia",
+	#"Nokia",
 ]
 # Lint level for licenses considered copyleft
 copyleft = "deny"
@@ -113,9 +113,9 @@ confidence-threshold = 0.8
 # Allow 1 or more licenses on a per-crate basis, so that particular licenses
 # aren't accepted for every possible crate as with the normal allow list
 exceptions = [
-    # Each entry is the crate and version constraint, and its specific allow
-    # list
-    #{ allow = ["Zlib"], name = "adler32", version = "*" },
+	# Each entry is the crate and version constraint, and its specific allow
+	# list
+	#{ allow = ["Zlib"], name = "adler32", version = "*" },
 ]
 
 # Some crates don't have (easily) machine readable licensing information,
@@ -134,8 +134,8 @@ expression = "MIT AND ISC AND OpenSSL"
 # and the crate will be checked normally, which may produce warnings or errors
 # depending on the rest of your configuration
 license-files = [
-    # Each entry is a crate relative path, and the (opaque) hash of its contents
-    { path = "LICENSE", hash = 0xbd0eed23 }
+	# Each entry is a crate relative path, and the (opaque) hash of its contents
+	{ path = "LICENSE", hash = 0xbd0eed23 }
 ]
 
 [licenses.private]
@@ -146,7 +146,7 @@ ignore = false
 # is only published to private registries, and ignore is true, the crate will
 # not have its license(s) checked
 registries = [
-    #"https://sekretz.com/registry
+	#"https://sekretz.com/registry
 ]
 
 # This section is considered when running `cargo deny check bans`.
@@ -165,29 +165,29 @@ wildcards = "allow"
 highlight = "all"
 # List of crates that are allowed. Use with care!
 allow = [
-    #{ name = "ansi_term", version = "=0.11.0" },
+	#{ name = "ansi_term", version = "=0.11.0" },
 ]
 # List of crates to deny
 deny = [
-    # Each entry the name of a crate and a version range. If version is
-    # not specified, all versions will be matched.
-    #{ name = "ansi_term", version = "=0.11.0" },
-    #
-    # Wrapper crates can optionally be specified to allow the crate when it
-    # is a direct dependency of the otherwise banned crate
-    #{ name = "ansi_term", version = "=0.11.0", wrappers = [] },
+	# Each entry the name of a crate and a version range. If version is
+	# not specified, all versions will be matched.
+	#{ name = "ansi_term", version = "=0.11.0" },
+	#
+	# Wrapper crates can optionally be specified to allow the crate when it
+	# is a direct dependency of the otherwise banned crate
+	#{ name = "ansi_term", version = "=0.11.0", wrappers = [] },
 ]
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
-    #{ name = "ansi_term", version = "=0.11.0" },
-    { name = "cfg-if", version = "=0.1.10" },
+	#{ name = "ansi_term", version = "=0.11.0" },
+	{ name = "cfg-if", version = "=0.1.10" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
 # dependencies starting at the specified crate, up to a certain depth, which is
 # by default infinite
 skip-tree = [
-    #{ name = "ansi_term", version = "=0.11.0", depth = 20 },
+	#{ name = "ansi_term", version = "=0.11.0", depth = 20 },
 ]
 
 # This section is considered when running `cargo deny check sources`.

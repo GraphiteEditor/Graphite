@@ -458,7 +458,6 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	}
 }
 
-#[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
@@ -545,7 +544,6 @@ fn channel_mixer_node(
 	color.to_linear_srgb()
 }
 
-#[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
@@ -804,10 +802,10 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 }
 
-#[cfg(not(target_arch = "spirv"))]
+#[cfg(feature = "alloc")]
 pub use index_node::IndexNode;
 
-#[cfg(not(target_arch = "spirv"))]
+#[cfg(feature = "alloc")]
 mod index_node {
 	use crate::raster::{Color, ImageFrame};
 	use crate::Node;

@@ -1,9 +1,10 @@
+use graph_craft::proto::ProtoNetwork;
+use graphene_core::*;
+
 use anyhow::Result;
 use dyn_any::StaticType;
 use futures::Future;
 use glam::UVec3;
-use graph_craft::proto::ProtoNetwork;
-use graphene_core::*;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::pin::Pin;
@@ -45,7 +46,7 @@ pub enum GPUConstant {
 	WorkGroupInvocationId,
 	WorkGroupSize,
 	NumWorkGroups,
-	GlobalInvokationId,
+	GlobalInvocationId,
 	GlobalSize,
 }
 
@@ -60,7 +61,7 @@ impl GPUConstant {
 			GPUConstant::WorkGroupInvocationId => concrete!(UVec3),
 			GPUConstant::WorkGroupSize => concrete!(u32),
 			GPUConstant::NumWorkGroups => concrete!(u32),
-			GPUConstant::GlobalInvokationId => concrete!(UVec3),
+			GPUConstant::GlobalInvocationId => concrete!(UVec3),
 			GPUConstant::GlobalSize => concrete!(UVec3),
 		}
 	}
@@ -71,8 +72,7 @@ impl GPUConstant {
 pub enum ShaderInput<BufferHandle> {
 	UniformBuffer(BufferHandle, Type),
 	StorageBuffer(BufferHandle, Type),
-	/// A struct representing a work group memory buffer.
-	/// This can not be accessed by the CPU.
+	/// A struct representing a work group memory buffer. This cannot be accessed by the CPU.
 	WorkGroupMemory(usize, Type),
 	Constant(GPUConstant),
 	OutputBuffer(BufferHandle, Type),
@@ -131,7 +131,7 @@ pub trait ToStorageBuffer: StaticType {
 	fn to_bytes(&self) -> Cow<[u8]>;
 }
 
-/// Collection of all arguments that are passed to the shader
+/// Collection of all arguments that are passed to the shader.
 pub struct Bindgroup<E: GpuExecutor + ?Sized> {
 	pub buffers: Vec<ShaderInput<E::BufferHandle>>,
 }
@@ -144,13 +144,14 @@ pub struct PipelineLayout<E: GpuExecutor + ?Sized> {
 	pub output_buffer: ShaderInput<E::BufferHandle>,
 }
 
-/// Extracts arguments from the function arguments and wraps them in a node
+/// Extracts arguments from the function arguments and wraps them in a node.
 pub struct ShaderInputNode<T> {
 	data: T,
 }
 
 impl<'i, T: 'i> Node<'i, ()> for ShaderInputNode<T> {
 	type Output = &'i T;
+
 	fn eval(&'i self, _: ()) -> Self::Output {
 		&self.data
 	}
@@ -247,13 +248,11 @@ fn execute_compute_pipeline_node<E: GpuExecutor>(encoder: E::CommandBuffer, exec
 	executor.execute_compute_pipeline(encoder).unwrap();
 }
 
-pub struct ReadOutputBufferNode<Executor> {
-	executor: Executor,
-}
-
 // TODO
-/*
-#[node_macro::node_fn(ReadOutputBufferNode)]
-fn read_output_buffer_node<E: GpuExecutor>(buffer: E::BufferHandle, executor: &'any_input mut E) -> Vec<u8> {
-	executor.read_output_buffer(buffer).await.unwrap()
-}*/
+// pub struct ReadOutputBufferNode<Executor> {
+// 	executor: Executor,
+// }
+// #[node_macro::node_fn(ReadOutputBufferNode)]
+// fn read_output_buffer_node<E: GpuExecutor>(buffer: E::BufferHandle, executor: &'any_input mut E) -> Vec<u8> {
+// 	executor.read_output_buffer(buffer).await.unwrap()
+// }

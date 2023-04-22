@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
-
 use gpu_executor::{GPUConstant, ShaderIO, ShaderInput, SpirVCompiler};
 use graph_craft::proto::*;
 use graphene_core::Cow;
+
+use std::path::{Path, PathBuf};
 use tera::Context;
 
 fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
@@ -26,10 +26,10 @@ impl Metadata {
 	}
 }
 
-pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &Path, io: &ShaderIO) -> anyhow::Result<()> {
+pub fn create_files(metadata: &Metadata, network: &ProtoNetwork, compile_dir: &Path, io: &ShaderIO) -> anyhow::Result<()> {
 	let src = compile_dir.join("src");
 	let cargo_file = compile_dir.join("Cargo.toml");
-	let cargo_toml = create_cargo_toml(matadata)?;
+	let cargo_toml = create_cargo_toml(metadata)?;
 	std::fs::write(cargo_file, cargo_toml)?;
 
 	let toolchain_file = compile_dir.join("rust-toolchain.toml");
@@ -62,7 +62,7 @@ fn constant_attribute(constant: &GPUConstant) -> &'static str {
 		GPUConstant::WorkGroupInvocationId => "local_invocation_id",
 		GPUConstant::WorkGroupSize => todo!(),
 		GPUConstant::NumWorkGroups => "num_workgroups",
-		GPUConstant::GlobalInvokationId => "global_invocation_id",
+		GPUConstant::GlobalInvocationId => "global_invocation_id",
 		GPUConstant::GlobalSize => todo!(),
 	}
 }
@@ -124,8 +124,8 @@ pub fn serialize_gpu(network: &ProtoNetwork, io: &ShaderIO) -> anyhow::Result<St
 	}
 	for id in network.inputs.iter() {
 		let Some((_, node)) = network.nodes.iter().find(|(i, _)| i == id) else {
-            anyhow::bail!("Input node not found");
-        };
+			anyhow::bail!("Input node not found");
+		};
 		let fqn = &node.identifier.name;
 		let id = nid(id);
 		input_nodes.push(Node {
@@ -181,7 +181,6 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 
 #[cfg(test)]
 mod test {
-
 	#[test]
 	fn test_create_cargo_toml() {
 		let cargo_toml = super::create_cargo_toml(&super::Metadata {

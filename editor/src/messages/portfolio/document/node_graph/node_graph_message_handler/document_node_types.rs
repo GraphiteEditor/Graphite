@@ -1018,8 +1018,8 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 
 	// if the network has no network inputs, it doesn't need to be wrapped in a scope either
 	let Some(input_type) = input else {
-            return network;
-    };
+		return network;
+	};
 
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),

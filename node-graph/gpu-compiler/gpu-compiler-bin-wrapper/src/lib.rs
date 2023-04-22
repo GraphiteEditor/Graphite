@@ -1,5 +1,6 @@
 use gpu_executor::ShaderIO;
 use graph_craft::{proto::ProtoNetwork, Type};
+
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
@@ -50,10 +51,10 @@ pub struct CompileRequest {
 impl CompileRequest {
 	pub fn new(network: ProtoNetwork, input_types: Vec<Type>, output_type: Type, io: ShaderIO) -> Self {
 		// TODO: add type checking
-		for (input, buffer) in input_types.iter().zip(io.inputs.iter()) {
-			//assert_eq!(input, &buffer.ty());
-		}
-		//assert_eq!(output_type, io.output.ty());
+		// for (input, buffer) in input_types.iter().zip(io.inputs.iter()) {
+		// 	assert_eq!(input, &buffer.ty());
+		// }
+		// assert_eq!(output_type, io.output.ty());
 		Self {
 			network,
 			input_types,

@@ -1,33 +1,32 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
-use gpu_executor::ShaderIO;
-use gpu_executor::ShaderInput;
+use gpu_executor::{ShaderIO, ShaderInput};
 use graph_craft::concrete;
 use graph_craft::document::*;
-
 use graph_craft::*;
+
 use std::borrow::Cow;
 use std::time::Duration;
 
 fn main() {
 	let client = reqwest::blocking::Client::new();
 
-	let network = NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(0, 0)],
-		disabled: vec![],
-		previous_outputs: None,
-		nodes: [(
-			0,
-			DocumentNode {
-				name: "Inc".into(),
-				inputs: vec![NodeInput::Network(concrete!(u32))],
-				implementation: DocumentNodeImplementation::Network(add_network()),
-				metadata: DocumentNodeMetadata::default(),
-			},
-		)]
-		.into_iter()
-		.collect(),
-	};
+	// let network = NodeNetwork {
+	// 	inputs: vec![0],
+	// 	outputs: vec![NodeOutput::new(0, 0)],
+	// 	disabled: vec![],
+	// 	previous_outputs: None,
+	// 	nodes: [(
+	// 		0,
+	// 		DocumentNode {
+	// 			name: "Inc".into(),
+	// 			inputs: vec![NodeInput::Network(concrete!(u32))],
+	// 			implementation: DocumentNodeImplementation::Network(add_network()),
+	// 			metadata: DocumentNodeMetadata::default(),
+	// 		},
+	// 	)]
+	// 	.into_iter()
+	// 	.collect(),
+	// };
 	let network = add_network();
 	let compiler = graph_craft::executor::Compiler {};
 	let proto_network = compiler.compile_single(network, true).unwrap();
@@ -62,16 +61,16 @@ fn add_network() -> NodeNetwork {
 					metadata: DocumentNodeMetadata::default(),
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 				},
-			), /*,
-			   (
-				   1,
-				   DocumentNode {
-					   name: "Add".into(),
-					   inputs: vec![NodeInput::node(0, 0)],
-					   metadata: DocumentNodeMetadata::default(),
-					   implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode")),
-				   },
-			   ),*/
+			),
+			// (
+			// 	1,
+			// 	DocumentNode {
+			// 		name: "Add".into(),
+			// 		inputs: vec![NodeInput::node(0, 0)],
+			// 		metadata: DocumentNodeMetadata::default(),
+			// 		implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode")),
+			// 	},
+			// ),
 		]
 		.into_iter()
 		.collect(),

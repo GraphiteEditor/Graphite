@@ -1,8 +1,7 @@
 use crate::Node;
-use core::{
-	marker::PhantomData,
-	ops::{DerefMut, Index, IndexMut},
-};
+
+use core::marker::PhantomData;
+use core::ops::{DerefMut, Index, IndexMut};
 
 struct SetNode<S, I, Storage, Index> {
 	storage: Storage,

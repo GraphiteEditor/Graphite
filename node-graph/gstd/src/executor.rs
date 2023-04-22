@@ -1,9 +1,10 @@
-use gpu_executor::ShaderIO;
+use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::raster::*;
 use graphene_core::value::ValueNode;
 use graphene_core::*;
+use wgpu_executor::NewExecutor;
 
 use bytemuck::Pod;
 use core::marker::PhantomData;
@@ -14,7 +15,7 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 	io: ShaderIO,
 }
 
-// Move to graph-craft
+// TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
 fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> compilation_client::Shader {
 	let compiler = graph_craft::executor::Compiler {};
@@ -31,9 +32,6 @@ fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io
 pub struct MapGpuNode<Shader> {
 	shader: Shader,
 }
-use gpu_executor::GpuExecutor;
-use gpu_executor::ShaderInput;
-use wgpu_executor::NewExecutor;
 
 #[node_macro::node_fn(MapGpuNode)]
 fn map_gpu(inputs: Vec<ShaderInput<<NewExecutor as GpuExecutor>::BufferHandle>>, shader: &'any_input compilation_client::Shader) {
@@ -43,13 +41,12 @@ fn map_gpu(inputs: Vec<ShaderInput<<NewExecutor as GpuExecutor>::BufferHandle>>,
 		let buffer = executor.create_buffer(input.size).unwrap();
 		executor.write_buffer(buffer, input.data).unwrap();
 	}
-	/*let executor: GpuExecutor= GpuExecutor::new(Context::new_sync().unwrap(), shader.into(), "gpu::eval".into()).unwrap();
+	todo!();
+	let executor: GpuExecutor = GpuExecutor::new(Context::new_sync().unwrap(), shader.into(), "gpu::eval".into()).unwrap();
 	let data: Vec<_> = input.into_iter().collect();
 	let result = executor.execute(Box::new(data)).unwrap();
 	let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
 	*result
-	*/
-	todo!()
 }
 
 pub struct MapGpuSingleImageNode<N> {

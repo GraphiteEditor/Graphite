@@ -32,7 +32,7 @@ impl core::fmt::Display for ProtoNetwork {
 		f.write_str("Proto Network with nodes: ")?;
 		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
 			f.write_str(&"\t".repeat(indent))?;
-			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else{
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;

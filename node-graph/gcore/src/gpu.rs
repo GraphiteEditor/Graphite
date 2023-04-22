@@ -1,7 +1,7 @@
+use crate::{raster::Sample, Color};
+
 use bytemuck::{Pod, Zeroable};
 use spirv_std::image::{Image2d, SampledImage};
-
-use crate::{raster::Sample, Color};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]

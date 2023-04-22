@@ -1,15 +1,16 @@
 mod context;
 mod executor;
 
-use std::pin::Pin;
-
-use anyhow::{bail, Result};
 pub use context::Context;
 pub use executor::GpuExecutor;
-use futures::Future;
 use gpu_executor::{Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::Type;
-use wgpu::{util::DeviceExt, Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
+
+use anyhow::{bail, Result};
+use futures::Future;
+use std::pin::Pin;
+use wgpu::util::DeviceExt;
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
 
 #[derive(Debug, Clone)]
 pub struct NewExecutor {
@@ -158,7 +159,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 				#[cfg(feature = "profiling")]
 				nvtx::range_pop!();
 
-				if let Some(Ok(())) = result {
+				if result == Some(Ok(())) {
 					// Gets contents of buffer
 					let data = buffer_slice.get_mapped_range();
 					// Since contents are got in bytes, this converts these bytes back to u32

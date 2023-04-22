@@ -739,8 +739,8 @@ impl NodeNetwork {
 				DocumentNodeImplementation::Extract => {
 					assert_eq!(node.inputs.len(), 1);
 					let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
-                        panic!("Extract node has no input");
-                    };
+						panic!("Extract node has no input");
+					};
 					assert_eq!(output_index, 0);
 					assert!(lambda);
 					let input_node = self.nodes.get_mut(&node_id).unwrap();
