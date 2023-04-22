@@ -8,7 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
-use graphene_core::raster::{BlendMode, Color, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, Color, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 
 use super::document_node_types::NodePropertiesContext;
@@ -546,6 +546,7 @@ pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId,
 }
 
 pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
 	let is_monochrome = if let &NodeInput::Value {
@@ -558,57 +559,138 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 		false
 	};
 
+	// Output channel choice
 	let output_channel_index = 18;
 	let mut output_channel = vec![WidgetHolder::text_widget("Output Channel"), WidgetHolder::unrelated_separator()];
 	add_blank_assist(&mut output_channel);
 	if let &NodeInput::Value {
-		tagged_value: TaggedValue::U32(red_green_blue_index),
+		tagged_value: TaggedValue::RedGreenBlue(choice),
 		exposed: false,
 	} = &document_node.inputs[output_channel_index]
 	{
-		let entries = [("Red", 0), ("Green", 1), ("Blue", 2)]
-			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::U32(val), node_id, output_channel_index)))
-			.collect();
-		output_channel.extend([RadioInput::new(entries).selected_index(red_green_blue_index).widget_holder()]);
+		let entries = vec![
+			RadioEntryData::new(RedGreenBlue::Red.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Red), node_id, output_channel_index)),
+			RadioEntryData::new(RedGreenBlue::Green.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Green), node_id, output_channel_index)),
+			RadioEntryData::new(RedGreenBlue::Blue.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Blue), node_id, output_channel_index)),
+		];
+		output_channel.extend([RadioInput::new(entries).selected_index(choice as u32).widget_holder()]);
 	};
-
 	let is_output_channel = if let &NodeInput::Value {
-		tagged_value: TaggedValue::U32(red_green_blue_index),
+		tagged_value: TaggedValue::RedGreenBlue(choice),
 		..
 	} = &document_node.inputs[output_channel_index]
 	{
-		red_green_blue_index
+		choice
 	} else {
 		warn!("Channel Mixer node properties panel could not be displayed.");
 		return vec![];
 	};
 
+	// Channel values
 	let (r, g, b, c) = match (is_monochrome, is_output_channel) {
 		(true, _) => ((2, "Red", 40.), (3, "Green", 40.), (4, "Blue", 20.), (5, "Constant", 0.)),
-		(false, 0) => ((6, "(Red) Red", 100.), (7, "(Red) Green", 0.), (8, "(Red) Blue", 0.), (9, "(Red) Constant", 0.)),
-		(false, 1) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
-		(false, 2) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
-		_ => unreachable!(),
+		(false, RedGreenBlue::Red) => ((6, "(Red) Red", 100.), (7, "(Red) Green", 0.), (8, "(Red) Blue", 0.), (9, "(Red) Constant", 0.)),
+		(false, RedGreenBlue::Green) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
+		(false, RedGreenBlue::Blue) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
 	};
-
 	let red = number_widget(document_node, node_id, r.0, r.1, NumberInput::default().min(-200.).max(200.).value(Some(r.2)).unit("%"), true);
 	let green = number_widget(document_node, node_id, g.0, g.1, NumberInput::default().min(-200.).max(200.).value(Some(g.2)).unit("%"), true);
 	let blue = number_widget(document_node, node_id, b.0, b.1, NumberInput::default().min(-200.).max(200.).value(Some(b.2)).unit("%"), true);
 	let constant = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-200.).max(200.).value(Some(c.2)).unit("%"), true);
 
+	// Monochrome
 	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
+	// Output channel choice
 	if !is_monochrome {
 		layout.push(LayoutGroup::Row { widgets: output_channel });
 	};
+	// Channel values
 	layout.extend([
-		// Gray output
 		LayoutGroup::Row { widgets: red },
 		LayoutGroup::Row { widgets: green },
 		LayoutGroup::Row { widgets: blue },
 		LayoutGroup::Row { widgets: constant },
 	]);
 	layout
+}
+
+pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	// Colors choice
+	let colors_index = 38;
+	let mut colors = vec![WidgetHolder::text_widget("Colors"), WidgetHolder::unrelated_separator()];
+	add_blank_assist(&mut colors);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::SelectiveColorChoice(choice),
+		exposed: false,
+	} = &document_node.inputs[colors_index]
+	{
+		use SelectiveColorChoice::*;
+		let entries = [vec![Reds, Yellows, Greens, Cyans, Blues, Magentas], vec![Whites, Neutrals, Blacks]]
+			.into_iter()
+			.map(|section| {
+				section
+					.into_iter()
+					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(choice), node_id, colors_index)))
+					.collect()
+			})
+			.collect();
+		colors.extend([DropdownInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
+	};
+	let colors_choice_index = if let &NodeInput::Value {
+		tagged_value: TaggedValue::SelectiveColorChoice(choice),
+		..
+	} = &document_node.inputs[colors_index]
+	{
+		choice
+	} else {
+		warn!("Selective Color node properties panel could not be displayed.");
+		return vec![];
+	};
+
+	// CMYK
+	let (c, m, y, k) = match colors_choice_index {
+		SelectiveColorChoice::Reds => ((2, "(Reds) Cyan"), (3, "(Reds) Magenta"), (4, "(Reds) Yellow"), (5, "(Reds) Black")),
+		SelectiveColorChoice::Yellows => ((6, "(Yellows) Cyan"), (7, "(Yellows) Magenta"), (8, "(Yellows) Yellow"), (9, "(Yellows) Black")),
+		SelectiveColorChoice::Greens => ((10, "(Greens) Cyan"), (11, "(Greens) Magenta"), (12, "(Greens) Yellow"), (13, "(Greens) Black")),
+		SelectiveColorChoice::Cyans => ((14, "(Cyans) Cyan"), (15, "(Cyans) Magenta"), (16, "(Cyans) Yellow"), (17, "(Cyans) Black")),
+		SelectiveColorChoice::Blues => ((18, "(Blues) Cyan"), (19, "(Blues) Magenta"), (20, "(Blues) Yellow"), (21, "(Blues) Black")),
+		SelectiveColorChoice::Magentas => ((22, "(Magentas) Cyan"), (23, "(Magentas) Magenta"), (24, "(Magentas) Yellow"), (25, "(Magentas) Black")),
+		SelectiveColorChoice::Whites => ((26, "(Whites) Cyan"), (27, "(Whites) Magenta"), (28, "(Whites) Yellow"), (29, "(Whites) Black")),
+		SelectiveColorChoice::Neutrals => ((30, "(Neutrals) Cyan"), (31, "(Neutrals) Magenta"), (32, "(Neutrals) Yellow"), (33, "(Neutrals) Black")),
+		SelectiveColorChoice::Blacks => ((34, "(Blacks) Cyan"), (35, "(Blacks) Magenta"), (36, "(Blacks) Yellow"), (37, "(Blacks) Black")),
+	};
+	let cyan = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let magenta = number_widget(document_node, node_id, m.0, m.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let yellow = number_widget(document_node, node_id, y.0, y.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let black = number_widget(document_node, node_id, k.0, k.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
+
+	// Mode
+	let mode_index = 1;
+	let mut mode = start_widgets(document_node, node_id, mode_index, "Mode", FrontendGraphDataType::General, true);
+	mode.push(WidgetHolder::unrelated_separator());
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::RelativeAbsolute(relative_or_absolute),
+		exposed: false,
+	} = &document_node.inputs[mode_index]
+	{
+		let entries = vec![
+			RadioEntryData::new("Relative").on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, mode_index)),
+			RadioEntryData::new("Absolute").on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, mode_index)),
+		];
+		mode.push(RadioInput::new(entries).selected_index(relative_or_absolute as u32).widget_holder());
+	};
+
+	vec![
+		// Colors choice
+		LayoutGroup::Row { widgets: colors },
+		// CMYK
+		LayoutGroup::Row { widgets: cyan },
+		LayoutGroup::Row { widgets: magenta },
+		LayoutGroup::Row { widgets: yellow },
+		LayoutGroup::Row { widgets: black },
+		// Mode
+		LayoutGroup::Row { widgets: mode },
+	]
 }
 
 #[cfg(feature = "gpu")]

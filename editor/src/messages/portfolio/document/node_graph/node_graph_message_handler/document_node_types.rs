@@ -7,7 +7,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
@@ -696,10 +696,71 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("(Blue) Blue", TaggedValue::F64(100.), false),
 				DocumentInputType::value("(Blue) Constant", TaggedValue::F64(0.), false),
 				// Display-only properties (not used within the node)
-				DocumentInputType::value("Output Channel", TaggedValue::U32(0), false),
+				DocumentInputType::value("Output Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_channel_mixer_properties,
+		},
+		DocumentNodeType {
+			name: "Selective Color",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto(
+				"graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>",
+			),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				// Mode
+				DocumentInputType::value("Mode", TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), false),
+				// Reds
+				DocumentInputType::value("(Reds) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Black", TaggedValue::F64(0.), false),
+				// Yellows
+				DocumentInputType::value("(Yellows) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Black", TaggedValue::F64(0.), false),
+				// Greens
+				DocumentInputType::value("(Greens) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Black", TaggedValue::F64(0.), false),
+				// Cyans
+				DocumentInputType::value("(Cyans) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Black", TaggedValue::F64(0.), false),
+				// Blues
+				DocumentInputType::value("(Blues) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Black", TaggedValue::F64(0.), false),
+				// Magentas
+				DocumentInputType::value("(Magentas) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Black", TaggedValue::F64(0.), false),
+				// Whites
+				DocumentInputType::value("(Whites) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Black", TaggedValue::F64(0.), false),
+				// Neutrals
+				DocumentInputType::value("(Neutrals) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Black", TaggedValue::F64(0.), false),
+				// Blacks
+				DocumentInputType::value("(Blacks) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Black", TaggedValue::F64(0.), false),
+				// Display-only properties (not used within the node)
+				DocumentInputType::value("Colors", TaggedValue::SelectiveColorChoice(SelectiveColorChoice::Reds), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::adjust_selective_color_properties,
 		},
 		DocumentNodeType {
 			name: "Opacity",

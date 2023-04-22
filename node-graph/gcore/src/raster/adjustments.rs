@@ -3,6 +3,7 @@ use crate::Node;
 
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
+use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -456,6 +457,24 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	}
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+pub enum RedGreenBlue {
+	Red,
+	Green,
+	Blue,
+}
+
+impl core::fmt::Display for RedGreenBlue {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			RedGreenBlue::Red => write!(f, "Red"),
+			RedGreenBlue::Green => write!(f, "Green"),
+			RedGreenBlue::Blue => write!(f, "Blue"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, MonochromeC, RedR, RedG, RedB, RedC, GreenR, GreenG, GreenB, GreenC, BlueR, BlueG, BlueB, BlueC> {
 	monochrome: Monochrome,
@@ -519,6 +538,209 @@ fn channel_mixer_node(
 
 		Color::from_rgbaf32_unchecked(red, green, blue, a)
 	};
+
+	color.to_linear_srgb()
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+pub enum RelativeAbsolute {
+	Relative,
+	Absolute,
+}
+
+impl core::fmt::Display for RelativeAbsolute {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			RelativeAbsolute::Relative => write!(f, "Relative"),
+			RelativeAbsolute::Absolute => write!(f, "Absolute"),
+		}
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+pub enum SelectiveColorChoice {
+	Reds,
+	Yellows,
+	Greens,
+	Cyans,
+	Blues,
+	Magentas,
+	Whites,
+	Neutrals,
+	Blacks,
+}
+
+impl core::fmt::Display for SelectiveColorChoice {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			SelectiveColorChoice::Reds => write!(f, "Reds"),
+			SelectiveColorChoice::Yellows => write!(f, "Yellows"),
+			SelectiveColorChoice::Greens => write!(f, "Greens"),
+			SelectiveColorChoice::Cyans => write!(f, "Cyans"),
+			SelectiveColorChoice::Blues => write!(f, "Blues"),
+			SelectiveColorChoice::Magentas => write!(f, "Magentas"),
+			SelectiveColorChoice::Whites => write!(f, "Whites"),
+			SelectiveColorChoice::Neutrals => write!(f, "Neutrals"),
+			SelectiveColorChoice::Blacks => write!(f, "Blacks"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SelectiveColorNode<Absolute, RC, RM, RY, RK, YC, YM, YY, YK, GC, GM, GY, GK, CC, CM, CY, CK, BC, BM, BY, BK, MC, MM, MY, MK, WC, WM, WY, WK, NC, NM, NY, NK, KC, KM, KY, KK> {
+	mode: Absolute,
+	r_c: RC,
+	r_m: RM,
+	r_y: RY,
+	r_k: RK,
+	y_c: YC,
+	y_m: YM,
+	y_y: YY,
+	y_k: YK,
+	g_c: GC,
+	g_m: GM,
+	g_y: GY,
+	g_k: GK,
+	c_c: CC,
+	c_m: CM,
+	c_y: CY,
+	c_k: CK,
+	b_c: BC,
+	b_m: BM,
+	b_y: BY,
+	b_k: BK,
+	m_c: MC,
+	m_m: MM,
+	m_y: MY,
+	m_k: MK,
+	w_c: WC,
+	w_m: WM,
+	w_y: WY,
+	w_k: WK,
+	n_c: NC,
+	n_m: NM,
+	n_y: NY,
+	n_k: NK,
+	k_c: KC,
+	k_m: KM,
+	k_y: KY,
+	k_k: KK,
+}
+
+// Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
+#[node_macro::node_fn(SelectiveColorNode)]
+fn selective_color_node(
+	color: Color,
+	mode: RelativeAbsolute,
+	r_c: f64,
+	r_m: f64,
+	r_y: f64,
+	r_k: f64,
+	y_c: f64,
+	y_m: f64,
+	y_y: f64,
+	y_k: f64,
+	g_c: f64,
+	g_m: f64,
+	g_y: f64,
+	g_k: f64,
+	c_c: f64,
+	c_m: f64,
+	c_y: f64,
+	c_k: f64,
+	b_c: f64,
+	b_m: f64,
+	b_y: f64,
+	b_k: f64,
+	m_c: f64,
+	m_m: f64,
+	m_y: f64,
+	m_k: f64,
+	w_c: f64,
+	w_m: f64,
+	w_y: f64,
+	w_k: f64,
+	n_c: f64,
+	n_m: f64,
+	n_y: f64,
+	n_k: f64,
+	k_c: f64,
+	k_m: f64,
+	k_y: f64,
+	k_k: f64,
+) -> Color {
+	let color = color.to_gamma_srgb();
+
+	let (r, g, b, a) = color.components();
+
+	let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
+	let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
+	let med = |a: f32, b: f32, c: f32| a + b + c - min(a, b, c) - max(a, b, c);
+
+	let max_channel = max(r, g, b);
+	let min_channel = min(r, g, b);
+
+	let pixel_color_range = |choice| match choice {
+		SelectiveColorChoice::Reds => max_channel == r,
+		SelectiveColorChoice::Yellows => min_channel == b,
+		SelectiveColorChoice::Greens => max_channel == g,
+		SelectiveColorChoice::Cyans => min_channel == r,
+		SelectiveColorChoice::Blues => max_channel == b,
+		SelectiveColorChoice::Magentas => min_channel == g,
+		SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
+		SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
+		SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
+	};
+
+	let color_parameter_group_scale_factor_rgb = max(r, g, b) - med(r, g, b);
+	let color_parameter_group_scale_factor_cmy = med(r, g, b) - min(r, g, b);
+
+	// Used to apply the r, g, or b channel slope (by multiplying it by 1) in relative mode, or no slope (by multiplying it by 0) in absolute mode
+	let (slope_r, slope_g, slope_b) = match mode {
+		RelativeAbsolute::Relative => (r - 1., g - 1., b - 1.),
+		RelativeAbsolute::Absolute => (-1., -1., -1.),
+	};
+
+	let (sum_r, sum_g, sum_b) = [
+		(SelectiveColorChoice::Reds, (r_c, r_m, r_y, r_k)),
+		(SelectiveColorChoice::Yellows, (y_c, y_m, y_y, y_k)),
+		(SelectiveColorChoice::Greens, (g_c, g_m, g_y, g_k)),
+		(SelectiveColorChoice::Cyans, (c_c, c_m, c_y, c_k)),
+		(SelectiveColorChoice::Blues, (b_c, b_m, b_y, b_k)),
+		(SelectiveColorChoice::Magentas, (m_c, m_m, m_y, m_k)),
+		(SelectiveColorChoice::Whites, (w_c, w_m, w_y, w_k)),
+		(SelectiveColorChoice::Neutrals, (n_c, n_m, n_y, n_k)),
+		(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
+	]
+	.into_iter()
+	.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
+		// Skip this color parameter group...
+		// ...if it's unchanged from the default of zero offset on all CMYK paramters, or...
+		// ...if this pixel's color isn't in the range affected by this color parameter group
+		if (c < f64::EPSILON && m < f64::EPSILON && y < f64::EPSILON && k < f64::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+			return acc;
+		}
+
+		let (c, m, y, k) = (c as f32 / 100., m as f32 / 100., y as f32 / 100., k as f32 / 100.);
+
+		let color_parameter_group_scale_factor = match color_parameter_group {
+			SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
+			SelectiveColorChoice::Cyans | SelectiveColorChoice::Magentas | SelectiveColorChoice::Yellows => color_parameter_group_scale_factor_cmy,
+			SelectiveColorChoice::Whites => min(r, g, b) * 2. - 1.,
+			SelectiveColorChoice::Neutrals => 1. - ((max(r, g, b) - 0.5).abs() + (min(r, g, b) - 0.5).abs()),
+			SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
+		};
+
+		let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
+		let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
+		let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+
+		(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
+	});
+
+	let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
 
 	color.to_linear_srgb()
 }
