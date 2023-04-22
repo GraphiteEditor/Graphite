@@ -2,7 +2,7 @@ use super::DocumentNode;
 use crate::executor::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, ColorChannel, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
 
 pub use dyn_any::StaticType;
@@ -31,6 +31,7 @@ pub enum TaggedValue {
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
+	ColorChannel(ColorChannel),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
@@ -85,6 +86,7 @@ impl Hash for TaggedValue {
 			Self::Color(c) => c.hash(state),
 			Self::Subpaths(s) => s.iter().for_each(|subpath| subpath.hash(state)),
 			Self::RcSubpath(s) => s.hash(state),
+			Self::ColorChannel(c) => c.hash(state),
 			Self::BlendMode(b) => b.hash(state),
 			Self::LuminanceCalculation(l) => l.hash(state),
 			Self::ImaginateSamplingMethod(m) => m.hash(state),
@@ -153,6 +155,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Color(x) => Box::new(x),
 			TaggedValue::Subpaths(x) => Box::new(x),
 			TaggedValue::RcSubpath(x) => Box::new(x),
+			TaggedValue::ColorChannel(x) => Box::new(x),
 			TaggedValue::BlendMode(x) => Box::new(x),
 			TaggedValue::LuminanceCalculation(x) => Box::new(x),
 			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
@@ -215,6 +218,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpaths(_) => concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
+			TaggedValue::ColorChannel(_) => concrete!(ColorChannel),
 			TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
 			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
