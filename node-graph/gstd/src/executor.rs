@@ -28,17 +28,21 @@ fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io
 	bytes
 }
 
-pub struct MapGpuNode<O, Shader> {
+pub struct MapGpuNode<Shader> {
 	shader: Shader,
-	_o: PhantomData<O>,
 }
+use gpu_executor::GpuExecutor;
+use gpu_executor::ShaderInput;
+use wgpu_executor::NewExecutor;
 
-#[node_macro::node_fn(MapGpuNode<_O>)]
-fn map_gpu<I: IntoIterator<Item = S>, S: StaticTypeSized + Sync + Send + Pod, _O: StaticTypeSized + Sync + Send + Pod>(input: I, shader: &'any_input compilation_client::Shader) -> Vec<_O> {
-	use gpu_executor::GpuExecutor;
+#[node_macro::node_fn(MapGpuNode)]
+fn map_gpu(inputs: Vec<ShaderInput<<NewExecutor as GpuExecutor>::BufferHandle>>, shader: &'any_input compilation_client::Shader) {
 	use graph_craft::executor::Executor;
-	use wgpu_executor::NewExecutor;
 	let executor = NewExecutor::new().unwrap();
+	for input in shader.inputs.iter() {
+		let buffer = executor.create_buffer(input.size).unwrap();
+		executor.write_buffer(buffer, input.data).unwrap();
+	}
 	/*let executor: GpuExecutor= GpuExecutor::new(Context::new_sync().unwrap(), shader.into(), "gpu::eval".into()).unwrap();
 	let data: Vec<_> = input.into_iter().collect();
 	let result = executor.execute(Box::new(data)).unwrap();
