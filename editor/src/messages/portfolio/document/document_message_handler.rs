@@ -349,6 +349,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
+				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
+				self.layer_range_selection_reference.clear();
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
@@ -1040,7 +1042,7 @@ impl DocumentMessageHandler {
 		let primary_input_type = node_network.input_types().next().clone();
 		let response = match primary_input_type {
 			// Only calclate the frame if the primary input is an image
-			Some(ty) if ty == concrete!(ImageFrame) => {
+			Some(ty) if ty == concrete!(ImageFrame<Color>) => {
 				// Calculate the size of the region to be exported
 				let old_transforms = self.remove_document_transform();
 				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();

@@ -3,6 +3,7 @@ use crate::Node;
 
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
+use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -166,9 +167,6 @@ pub struct LuminanceNode<LuminanceCalculation> {
 
 #[node_macro::node_fn(LuminanceNode)]
 fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
-
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
 		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
@@ -176,10 +174,6 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
 		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
-
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let luminance = Color::linear_to_srgb(luminance);
-
 	color.map_rgb(|_| luminance)
 }
 
@@ -195,6 +189,8 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
 fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
+	let color = color.to_gamma_srgb();
+
 	// Input Range (Range: 0-1)
 	let input_shadows = (input_start / 100.) as f32;
 	let input_midtones = (input_mid / 100.) as f32;
@@ -230,7 +226,9 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 	let color = color.gamma(gamma);
 
 	// Output levels (Range: 0-1)
-	color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums)
+	let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -248,6 +246,8 @@ pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 // Works the same for gamma and linear color
 #[node_macro::node_fn(GrayscaleNode)]
 fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
+	let color = color.to_gamma_srgb();
+
 	let reds = reds as f32 / 100.;
 	let yellows = yellows as f32 / 100.;
 	let greens = greens as f32 / 100.;
@@ -275,7 +275,9 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, gree
 	let luminance = gray_base + additional;
 
 	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
-	tint.with_luminance(luminance)
+	let color = tint.with_luminance(luminance);
+
+	color.to_linear_srgb()
 }
 
 #[cfg(not(target_arch = "spirv"))]
@@ -295,13 +297,20 @@ mod hue_shift {
 
 	#[node_macro::node_fn(HueSaturationNode)]
 	fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
+		let color = color.to_gamma_srgb();
+
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
-		Color::from_hsla(
+
+		let color = Color::from_hsla(
 			(hue + hue_shift as f32 / 360.) % 1.,
+			// TODO: Improve the way saturation works (it's slightly off)
 			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+			// TODO: Fix the way lightness works (it's very off)
 			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
 			alpha,
-		)
+		);
+
+		color.to_linear_srgb()
 	}
 }
 
@@ -310,7 +319,11 @@ pub struct InvertRGBNode;
 
 #[node_macro::node_fn(InvertRGBNode)]
 fn invert_image(color: Color) -> Color {
-	color.map_rgb(|c| color.a() - c)
+	let color = color.to_gamma_srgb();
+
+	let color = color.map_rgb(|c| color.a() - c);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -324,9 +337,6 @@ pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
 	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
 	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
-
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
 
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
@@ -349,17 +359,11 @@ pub struct BlendNode<BlendMode, Opacity> {
 	opacity: Opacity,
 }
 
-impl<Opacity: dyn_any::StaticTypeSized, Blend: dyn_any::StaticTypeSized> StaticType for BlendNode<Blend, Opacity> {
-	type Static = BlendNode<Blend::Static, Opacity::Static>;
-}
-
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
 	let opacity = opacity / 100.;
 
 	let (foreground, background) = input;
-	let foreground = foreground.to_linear_srgb();
-	let background = background.to_linear_srgb();
 
 	let target_color = match blend_mode {
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
@@ -394,10 +398,7 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
 	};
 
-	let multiplied_target_color = target_color.to_associated_alpha(opacity as f32);
-	let blended = background.alpha_blend(multiplied_target_color);
-
-	blended.to_gamma_srgb()
+	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -405,13 +406,10 @@ pub struct VibranceNode<Vibrance> {
 	vibrance: Vibrance,
 }
 
-// From https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// Modified from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
-
 	let vibrance = vibrance as f32 / 100.;
 	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 	// So this scales the 0% to -50% range to 0% to -100%.
@@ -446,7 +444,7 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	};
 	let altered_color = altered_color.to_gamma_srgb();
 
-	let altered_color = if vibrance >= 0. {
+	if vibrance >= 0. {
 		altered_color
 	} else {
 		// TODO: The result ends up a bit darker than it should be, further investigation is needed
@@ -456,10 +454,295 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
 		let factor = -slowed_vibrance;
 		altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+pub enum RedGreenBlue {
+	Red,
+	Green,
+	Blue,
+}
+
+impl core::fmt::Display for RedGreenBlue {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			RedGreenBlue::Red => write!(f, "Red"),
+			RedGreenBlue::Green => write!(f, "Green"),
+			RedGreenBlue::Blue => write!(f, "Blue"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, MonochromeC, RedR, RedG, RedB, RedC, GreenR, GreenG, GreenB, GreenC, BlueR, BlueG, BlueB, BlueC> {
+	monochrome: Monochrome,
+	monochrome_r: MonochromeR,
+	monochrome_g: MonochromeG,
+	monochrome_b: MonochromeB,
+	monochrome_c: MonochromeC,
+	red_r: RedR,
+	red_g: RedG,
+	red_b: RedB,
+	red_c: RedC,
+	green_r: GreenR,
+	green_g: GreenG,
+	green_b: GreenB,
+	green_c: GreenC,
+	blue_r: BlueR,
+	blue_g: BlueG,
+	blue_b: BlueB,
+	blue_c: BlueC,
+}
+
+#[node_macro::node_fn(ChannelMixerNode)]
+fn channel_mixer_node(
+	color: Color,
+	monochrome: bool,
+	monochrome_r: f64,
+	monochrome_g: f64,
+	monochrome_b: f64,
+	monochrome_c: f64,
+	red_r: f64,
+	red_g: f64,
+	red_b: f64,
+	red_c: f64,
+	green_r: f64,
+	green_g: f64,
+	green_b: f64,
+	green_c: f64,
+	blue_r: f64,
+	blue_g: f64,
+	blue_b: f64,
+	blue_c: f64,
+) -> Color {
+	let color = color.to_gamma_srgb();
+
+	let (r, g, b, a) = color.components();
+
+	let color = if monochrome {
+		let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
+
+		let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
+
+		Color::from_rgbaf32_unchecked(gray, gray, gray, a)
+	} else {
+		let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
+		let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
+		let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
+
+		let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
+		let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
+		let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
+
+		Color::from_rgbaf32_unchecked(red, green, blue, a)
 	};
 
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	altered_color.to_gamma_srgb()
+	color.to_linear_srgb()
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+pub enum RelativeAbsolute {
+	Relative,
+	Absolute,
+}
+
+impl core::fmt::Display for RelativeAbsolute {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			RelativeAbsolute::Relative => write!(f, "Relative"),
+			RelativeAbsolute::Absolute => write!(f, "Absolute"),
+		}
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+pub enum SelectiveColorChoice {
+	Reds,
+	Yellows,
+	Greens,
+	Cyans,
+	Blues,
+	Magentas,
+	Whites,
+	Neutrals,
+	Blacks,
+}
+
+impl core::fmt::Display for SelectiveColorChoice {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			SelectiveColorChoice::Reds => write!(f, "Reds"),
+			SelectiveColorChoice::Yellows => write!(f, "Yellows"),
+			SelectiveColorChoice::Greens => write!(f, "Greens"),
+			SelectiveColorChoice::Cyans => write!(f, "Cyans"),
+			SelectiveColorChoice::Blues => write!(f, "Blues"),
+			SelectiveColorChoice::Magentas => write!(f, "Magentas"),
+			SelectiveColorChoice::Whites => write!(f, "Whites"),
+			SelectiveColorChoice::Neutrals => write!(f, "Neutrals"),
+			SelectiveColorChoice::Blacks => write!(f, "Blacks"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SelectiveColorNode<Absolute, RC, RM, RY, RK, YC, YM, YY, YK, GC, GM, GY, GK, CC, CM, CY, CK, BC, BM, BY, BK, MC, MM, MY, MK, WC, WM, WY, WK, NC, NM, NY, NK, KC, KM, KY, KK> {
+	mode: Absolute,
+	r_c: RC,
+	r_m: RM,
+	r_y: RY,
+	r_k: RK,
+	y_c: YC,
+	y_m: YM,
+	y_y: YY,
+	y_k: YK,
+	g_c: GC,
+	g_m: GM,
+	g_y: GY,
+	g_k: GK,
+	c_c: CC,
+	c_m: CM,
+	c_y: CY,
+	c_k: CK,
+	b_c: BC,
+	b_m: BM,
+	b_y: BY,
+	b_k: BK,
+	m_c: MC,
+	m_m: MM,
+	m_y: MY,
+	m_k: MK,
+	w_c: WC,
+	w_m: WM,
+	w_y: WY,
+	w_k: WK,
+	n_c: NC,
+	n_m: NM,
+	n_y: NY,
+	n_k: NK,
+	k_c: KC,
+	k_m: KM,
+	k_y: KY,
+	k_k: KK,
+}
+
+// Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
+#[node_macro::node_fn(SelectiveColorNode)]
+fn selective_color_node(
+	color: Color,
+	mode: RelativeAbsolute,
+	r_c: f64,
+	r_m: f64,
+	r_y: f64,
+	r_k: f64,
+	y_c: f64,
+	y_m: f64,
+	y_y: f64,
+	y_k: f64,
+	g_c: f64,
+	g_m: f64,
+	g_y: f64,
+	g_k: f64,
+	c_c: f64,
+	c_m: f64,
+	c_y: f64,
+	c_k: f64,
+	b_c: f64,
+	b_m: f64,
+	b_y: f64,
+	b_k: f64,
+	m_c: f64,
+	m_m: f64,
+	m_y: f64,
+	m_k: f64,
+	w_c: f64,
+	w_m: f64,
+	w_y: f64,
+	w_k: f64,
+	n_c: f64,
+	n_m: f64,
+	n_y: f64,
+	n_k: f64,
+	k_c: f64,
+	k_m: f64,
+	k_y: f64,
+	k_k: f64,
+) -> Color {
+	let color = color.to_gamma_srgb();
+
+	let (r, g, b, a) = color.components();
+
+	let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
+	let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
+	let med = |a: f32, b: f32, c: f32| a + b + c - min(a, b, c) - max(a, b, c);
+
+	let max_channel = max(r, g, b);
+	let min_channel = min(r, g, b);
+
+	let pixel_color_range = |choice| match choice {
+		SelectiveColorChoice::Reds => max_channel == r,
+		SelectiveColorChoice::Yellows => min_channel == b,
+		SelectiveColorChoice::Greens => max_channel == g,
+		SelectiveColorChoice::Cyans => min_channel == r,
+		SelectiveColorChoice::Blues => max_channel == b,
+		SelectiveColorChoice::Magentas => min_channel == g,
+		SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
+		SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
+		SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
+	};
+
+	let color_parameter_group_scale_factor_rgb = max(r, g, b) - med(r, g, b);
+	let color_parameter_group_scale_factor_cmy = med(r, g, b) - min(r, g, b);
+
+	// Used to apply the r, g, or b channel slope (by multiplying it by 1) in relative mode, or no slope (by multiplying it by 0) in absolute mode
+	let (slope_r, slope_g, slope_b) = match mode {
+		RelativeAbsolute::Relative => (r - 1., g - 1., b - 1.),
+		RelativeAbsolute::Absolute => (-1., -1., -1.),
+	};
+
+	let (sum_r, sum_g, sum_b) = [
+		(SelectiveColorChoice::Reds, (r_c, r_m, r_y, r_k)),
+		(SelectiveColorChoice::Yellows, (y_c, y_m, y_y, y_k)),
+		(SelectiveColorChoice::Greens, (g_c, g_m, g_y, g_k)),
+		(SelectiveColorChoice::Cyans, (c_c, c_m, c_y, c_k)),
+		(SelectiveColorChoice::Blues, (b_c, b_m, b_y, b_k)),
+		(SelectiveColorChoice::Magentas, (m_c, m_m, m_y, m_k)),
+		(SelectiveColorChoice::Whites, (w_c, w_m, w_y, w_k)),
+		(SelectiveColorChoice::Neutrals, (n_c, n_m, n_y, n_k)),
+		(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
+	]
+	.into_iter()
+	.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
+		// Skip this color parameter group...
+		// ...if it's unchanged from the default of zero offset on all CMYK paramters, or...
+		// ...if this pixel's color isn't in the range affected by this color parameter group
+		if (c < f64::EPSILON && m < f64::EPSILON && y < f64::EPSILON && k < f64::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+			return acc;
+		}
+
+		let (c, m, y, k) = (c as f32 / 100., m as f32 / 100., y as f32 / 100., k as f32 / 100.);
+
+		let color_parameter_group_scale_factor = match color_parameter_group {
+			SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
+			SelectiveColorChoice::Cyans | SelectiveColorChoice::Magentas | SelectiveColorChoice::Yellows => color_parameter_group_scale_factor_cmy,
+			SelectiveColorChoice::Whites => min(r, g, b) * 2. - 1.,
+			SelectiveColorChoice::Neutrals => 1. - ((max(r, g, b) - 0.5).abs() + (min(r, g, b) - 0.5).abs()),
+			SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
+		};
+
+		let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
+		let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
+		let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+
+		(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
+	});
+
+	let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -479,13 +762,18 @@ pub struct PosterizeNode<P> {
 }
 
 // Based on http://www.axiomx.com/posterize.htm
+// This algorithm is perfectly accurate.
 #[node_macro::node_fn(PosterizeNode)]
 fn posterize(color: Color, posterize_value: f64) -> Color {
+	let color = color.to_gamma_srgb();
+
 	let posterize_value = posterize_value as f32;
 	let number_of_areas = posterize_value.recip();
 	let size_of_areas = (posterize_value - 1.).recip();
 	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-	color.map_rgb(channel)
+	let color = color.map_rgb(channel);
+
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -498,18 +786,28 @@ pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node_fn(ExposureNode)]
 fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	let color = color.to_linear_srgb();
-
-	let result = color
+	let adjusted = color
 		// Exposure
 		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
 		// Offset
 		.map_rgb(|c: f32| c + offset as f32)
 		// Gamma correction
-		.gamma(gamma_correction as f32)
-		.map_rgb(|c: f32| c.clamp(0., 1.));
+		.gamma(gamma_correction as f32);
 
-	// TODO: Remove conversion to linear when the whole node graph uses linear color
-	result.to_gamma_srgb()
+	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+}
+
+#[derive(Debug)]
+pub struct IndexNode<Index> {
+	pub index: Index,
+}
+
+#[node_macro::node_fn(IndexNode)]
+pub fn index_node(input: Vec<super::ImageFrame<Color>>, index: u32) -> super::ImageFrame<Color> {
+	if (index as usize) < input.len() {
+		input[index as usize].clone()
+	} else {
+		warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
+		super::ImageFrame::empty()
+	}
 }

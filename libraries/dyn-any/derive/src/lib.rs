@@ -46,7 +46,7 @@ pub fn system_desc_derive(input: TokenStream) -> TokenStream {
 
 	let old_params = &generics.params.iter().collect::<Vec<_>>();
 	quote! {
-		impl<'dyn_any, #(#old_params,)*> StaticType for #struct_name <#(#dyn_params,)*> {
+		unsafe impl<'dyn_any, #(#old_params,)*> StaticType for #struct_name <#(#dyn_params,)*> {
 			type Static =  #struct_name <#(#static_params,)*>;
 		}
 	}

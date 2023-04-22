@@ -12,6 +12,7 @@ use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
 use graphene_core::raster::Image;
+use graphene_core::Color;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -122,7 +123,7 @@ pub enum DocumentMessage {
 		resize_opposite_corner: Key,
 	},
 	PasteImage {
-		image: Image,
+		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
 	},
 	Redo,

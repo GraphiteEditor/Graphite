@@ -539,7 +539,15 @@ impl Fsm for SelectToolFsmState {
 							let document = &document.document_legacy;
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, selected, responses, document);
+							let mut selected = Selected::new(
+								&mut bounds.original_transforms,
+								&mut bounds.center_of_transformation,
+								selected,
+								responses,
+								document,
+								None,
+								&ToolType::Select,
+							);
 							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
 
@@ -549,7 +557,15 @@ impl Fsm for SelectToolFsmState {
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
+							let mut selected = Selected::new(
+								&mut bounds.original_transforms,
+								&mut bounds.center_of_transformation,
+								&selected,
+								responses,
+								&document.document_legacy,
+								None,
+								&ToolType::Select,
+							);
 
 							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 						}
@@ -650,10 +666,10 @@ impl Fsm for SelectToolFsmState {
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
 							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
-							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
+							let (delta, mut _pivot) = movement.bounds_to_scale_transform(position, size);
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 
 							selected.update_transforms(delta);
 						}
@@ -679,7 +695,15 @@ impl Fsm for SelectToolFsmState {
 						let delta = DAffine2::from_angle(snapped_angle);
 
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut bounds.center_of_transformation, &selected, responses, &document.document_legacy);
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&selected,
+							responses,
+							&document.document_legacy,
+							None,
+							&ToolType::Select,
+						);
 
 						selected.update_transforms(delta);
 					}
@@ -874,6 +898,8 @@ impl Fsm for SelectToolFsmState {
 							&selected,
 							responses,
 							&document.document_legacy,
+							None,
+							&ToolType::Select,
 						);
 
 						selected.revert_operation();
