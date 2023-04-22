@@ -228,8 +228,7 @@ pub struct ExtractChannelNode<ColorChannel> {
 
 #[node_macro::node_fn(ExtractChannelNode)]
 fn extract_channel_node(color: Color, channel: ColorChannel) -> Color {
-	let extracted_color = 1.
-		- match channel {
+	let extracted_color = match channel {
 			ColorChannel::Alpha => color.a(),
 			ColorChannel::Red => color.r(),
 			ColorChannel::Green => color.g(),
