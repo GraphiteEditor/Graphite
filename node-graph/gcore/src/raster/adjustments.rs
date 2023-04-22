@@ -74,7 +74,7 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 26] {
+	pub fn list() -> [BlendMode; 30] {
 		[
 			BlendMode::Normal,
 			BlendMode::Multiply,
@@ -102,6 +102,10 @@ impl BlendMode {
 			BlendMode::Saturation,
 			BlendMode::Color,
 			BlendMode::Luminosity,
+            BlendMode::InsertAlpha,
+            BlendMode::InsertRed,
+            BlendMode::InsertGreen,
+            BlendMode::InsertBlue,
 		]
 	}
 }
@@ -149,6 +153,12 @@ pub enum BlendMode {
 	Saturation,
 	Color,
 	Luminosity,
+
+    // Other Stuff
+    InsertAlpha,
+    InsertRed,
+    InsertGreen,
+    InsertBlue,
 }
 
 impl core::fmt::Display for BlendMode {
@@ -185,6 +195,11 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Saturation => write!(f, "Saturation"),
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
+
+            BlendMode::InsertAlpha => write!(f, "Insert Alpha"),
+            BlendMode::InsertRed => write!(f, "Insert Red"),
+            BlendMode::InsertGreen => write!(f, "Insert Green"),
+            BlendMode::InsertBlue => write!(f, "Insert Blue"),
 		}
 	}
 }
@@ -442,6 +457,11 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
+
+        BlendMode::InsertAlpha => foreground.with_alpha(background.a()),
+        BlendMode::InsertRed => foreground.with_red(background.r()),
+        BlendMode::InsertGreen => foreground.with_green(background.g()),
+        BlendMode::InsertBlue => foreground.with_blue(background.b()),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))

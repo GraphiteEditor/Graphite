@@ -360,6 +360,42 @@ impl Color {
 		Color::from_hsla(hue, saturation, lightness, alpha)
 	}
 
+    pub fn with_alpha(&self, alpha: f32) -> Color {
+        Color {
+            red: self.red,
+            green: self.green,
+            blue: self.blue,
+            alpha,
+        }
+    }
+
+    pub fn with_red(&self, red: f32) -> Color {
+        Color {
+            red,
+            green: self.green,
+            blue: self.blue,
+            alpha: self.alpha,
+        }
+    }
+
+    pub fn with_green(&self, green: f32) -> Color {
+        Color {
+            red: self.red,
+            green,
+            blue: self.blue,
+            alpha: self.alpha,
+        }
+    }
+
+    pub fn with_blue(&self, blue: f32) -> Color {
+        Color {
+            red: self.red,
+            green: self.green,
+            blue,
+            alpha: self.alpha,
+        }
+    }
+
 	pub fn blend_normal(_c_b: f32, c_s: f32) -> f32 {
 		c_s
 	}
