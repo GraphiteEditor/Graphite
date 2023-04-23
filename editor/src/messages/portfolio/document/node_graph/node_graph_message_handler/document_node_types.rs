@@ -499,18 +499,24 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Channel Extraction (RGB)",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1, 2, 3],
+				inputs: vec![0, 2, 3, 4],
 				outputs: vec![
-                    NodeOutput::new(0, 0),
-                    NodeOutput::new(1, 1),
-                    NodeOutput::new(2, 2),
-                    NodeOutput::new(3, 3),
+                    NodeOutput::new(1, 0),
+                    NodeOutput::new(2, 0),
+                    NodeOutput::new(3, 0),
+                    NodeOutput::new(4, 0),
                 ],
 				nodes: [
+                    DocumentNode {
+                        name: "Identity".to_string(),
+                        inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+                        implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+                        metadata: Default::default(),
+                    },
 					DocumentNode {
 						name: "AlphaNode".to_string(),
 						inputs: vec![
-                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::node(0, 0),
                             NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Alpha), false),
                             NodeInput::value(TaggedValue::Bool(true), true),
                         ],
@@ -520,7 +526,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "RedNode".to_string(),
 						inputs: vec![
-                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::node(0, 0),
                             NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Red), false),
                             NodeInput::Network(concrete!(bool)),
                         ],
@@ -530,7 +536,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "GreenNode".to_string(),
 						inputs: vec![
-                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::node(0, 0),
                             NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Green), false),
                             NodeInput::Network(concrete!(bool)),
                         ],
@@ -540,7 +546,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "BlueNode".to_string(),
 						inputs: vec![
-                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::node(0, 0),
                             NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Blue), false),
                             NodeInput::Network(concrete!(bool)),
                         ],

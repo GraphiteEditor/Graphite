@@ -624,9 +624,9 @@ pub fn channel_extraction_properties(document_node: &DocumentNode, node_id: Node
 
 pub fn multi_channel_extraction_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![
-        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 1, "Monochrome red output", true) },
-        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 2, "Monochrome green output", true) },
-        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 3, "Monochrome blue output", true) },
+        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 1, "Grayscale R channel", true) },
+        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 2, "Grayscale G channel", true) },
+        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 3, "Grayscale B channel", true) },
     ]
 }
 
