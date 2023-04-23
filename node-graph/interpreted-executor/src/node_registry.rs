@@ -5,6 +5,7 @@ use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
+use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
 use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
@@ -40,23 +41,6 @@ macro_rules! construct_node {
 	}}
 }
 
-macro_rules! node_io {
-	($path:ty, $input:ty, [$($type:ty),*]) => {
-        {
-            let node = IdNode::new().into_type_erased();
-            let node = NodeContainer::new(node, vec![]);
-            let _node = unsafe { node.erase_lifetime().static_ref() };
-            let node = <$path>::new($(
-                graphene_std::any::input_node::<$type>(_node)
-            ),*);
-            let params = vec![$(value_fn!($type)),*];
-            let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
-            node_io.input = concrete!(<$input as StaticType>::Static);
-            node_io
-        }
-    }
-}
-
 macro_rules! register_node {
 	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
 		vec![
@@ -68,14 +52,23 @@ macro_rules! register_node {
 				Box::pin(any)
 			},
 			{
-                node_io!($path, $input, [$($type), *])
+				let node = IdNode::new().into_type_erased();
+				let node = NodeContainer::new(node, vec![]);
+				let _node = unsafe { node.erase_lifetime().static_ref() };
+				let node = <$path>::new($(
+					graphene_std::any::input_node::<$type>(_node)
+				),*);
+				let params = vec![$(value_fn!($type)),*];
+				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
+				node_io.input = concrete!(<$input as StaticType>::Static);
+				node_io
 			},
 		)
 		]
 	};
 }
 macro_rules! raster_node {
-	($path:ty, $color:ty, params: [$($type:ty),*]) => {
+	($path:ty, params: [$($type:ty),*]) => {
 		vec![
 		(
 			NodeIdentifier::new(stringify!($path)),
@@ -85,7 +78,8 @@ macro_rules! raster_node {
 				Box::pin(any)
 			},
 			{
-                node_io!($path, $color, [$($type), *])
+				let params = vec![$(value_fn!($type)),*];
+				NodeIOTypes::new(concrete!(Color), concrete!(Color), params)
 			},
 		),
 		(
@@ -93,11 +87,12 @@ macro_rules! raster_node {
 			|args| {
 				let node = construct_node!(args, $path, [$($type),*]);
 				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-				let any: DynAnyNode<Image<$color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+				let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
 				Box::pin(any)
 			},
 			{
-                node_io!($path, $color, [$($type), *])
+				let params = vec![$(value_fn!($type)),*];
+				NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), params)
 			},
 		),
 		(
@@ -105,11 +100,12 @@ macro_rules! raster_node {
 			|args| {
 				let node = construct_node!(args, $path, [$($type),*]);
 				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-				let any: DynAnyNode<ImageFrame<$color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+				let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
 				Box::pin(any)
 			},
 			{
-                node_io!($path, $color, [$($type), *])
+				let params = vec![$(value_fn!($type)),*];
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), params)
 			},
 		)
 		]
@@ -144,7 +140,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::SomeNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::raster::DownresNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
-		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
@@ -221,8 +216,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 		)],
 		// Filters
-		raster_node!(graphene_core::raster::LuminanceNode<_>, Color, params: [LuminanceCalculation]),
-		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, Color, params: [f64, f64, f64, f64, f64]),
+		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
+		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
 		vec![
@@ -258,19 +253,17 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>), value_fn!(f64)]),
 			),
 		],
-		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, Color, params: [Color, f64, f64, f64, f64, f64, f64]),
-		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, Color, params: [f64, f64, f64]),
-		raster_node!(graphene_core::raster::InvertRGBNode, Color, params: []),
-		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, Color, params: [f64, f64, LuminanceCalculation]),
-		raster_node!(graphene_core::raster::VibranceNode<_>, Color, params: [f64]),
+		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
+		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
+		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
+		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f64, f64, LuminanceCalculation]),
+		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
 		raster_node!(
 			graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,
-			Color,
 			params: [bool, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64]
 		),
 		raster_node!(
 			graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,
-			Color,
 			params: [RelativeAbsolute, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64]
 		),
 		vec![(
@@ -298,9 +291,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(f64), value_fn!(f64), value_fn!(bool)]),
 		)],
-		raster_node!(graphene_core::raster::OpacityNode<_>, Color, params: [f64]),
-		raster_node!(graphene_core::raster::PosterizeNode<_>, Color, params: [f64]),
-		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, Color, params: [f64, f64, f64]),
+		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
+		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
+		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
 		vec![
 			(
 				NodeIdentifier::new("graphene_std::memo::LetNode<_>"),
@@ -477,8 +470,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
-		raster_node!(graphene_core::quantization::QuantizeNode<_>, Color, params: [QuantizationChannels]),
-		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, Color, params: [QuantizationChannels]),
+		raster_node!(graphene_core::quantization::QuantizeNode<_>, params: [QuantizationChannels]),
+		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, params: [QuantizationChannels]),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f64, DVec2, DVec2, DVec2]),
