@@ -13,6 +13,9 @@ env:
 jobs:
   build:
     runs-on: self-hosted
+    permissions:
+      contents: read
+      deployments: write
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
@@ -40,10 +43,20 @@ jobs:
     - name: 🌐 Build Graphite web code
       env:
         NODE_ENV: production
-        SKIP_CARGO_ABOUT: true
+        SKIP_CARGO_ABOUT: false
       run: |
         cd frontend
         mold -run npm run build
+
+      - name: Publish
+        uses: cloudflare/pages-action@1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: direct-upload # e.g. 'my-project'
+          directory: frontend/dist # e.g. 'dist'
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
 
     - name: 👕 Lint Graphite web formatting
       env:
