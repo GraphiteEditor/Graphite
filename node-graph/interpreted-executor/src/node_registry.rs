@@ -478,7 +478,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
 		raster_node!(graphene_core::quantization::QuantizeNode<_>, Color, params: [QuantizationChannels]),
-		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, Color,  params: [QuantizationChannels]),
+		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, Color, params: [QuantizationChannels]),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f64, DVec2, DVec2, DVec2]),
