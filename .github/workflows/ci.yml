@@ -53,7 +53,7 @@ jobs:
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        projectName: direct-upload # e.g. 'my-project'
+        projectName: graphite-dev # e.g. 'my-project'
         directory: frontend/dist # e.g. 'dist'
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
