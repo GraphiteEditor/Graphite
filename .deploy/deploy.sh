@@ -23,9 +23,9 @@ mv cargo-about-0.5.5-x86_64-unknown-linux-musl/cargo-about /opt/buildhome/.cargo
 
 # Install the wasm-pack Rust dependency that's used during the build process
 echo 📦 Install wasm-pack
-wget "https://github.com/rustwasm/wasm-pack/releases/download/v0.11.0/wasm-pack-v0.11.0-x86_64-unknown-linux-musl.tar.gz"
-tar -xzf wasm-pack-v0.11.0-x86_64-unknown-linux-musl.tar.gz
-mv wasm-pack-v0.11.0-x86_64-unknown-linux-musl/wasm-pack /opt/buildhome/.cargo/bin
+wget "https://github.com/rustwasm/wasm-pack/releases/download/v0.10.3/wasm-pack-v0.10.3-x86_64-unknown-linux-musl.tar.gz"
+tar -xzf wasm-pack-v0.10.3-x86_64-unknown-linux-musl.tar.gz
+mv wasm-pack-v0.10.3-x86_64-unknown-linux-musl/wasm-pack /opt/buildhome/.cargo/bin
 
 wasm-pack --version
 
