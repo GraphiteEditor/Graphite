@@ -58,7 +58,6 @@ jobs:
     - name: 🌐 Build Graphite web code
       env:
         NODE_ENV: production
-        SKIP_CARGO_ABOUT: false
       run: |
         cd frontend
         mold -run npm run build
