@@ -2,6 +2,9 @@ use crate::raster::Color;
 use crate::Node;
 use dyn_any::{DynAny, StaticType};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::Float;
+
 #[derive(Clone, Debug, DynAny, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Quantization {

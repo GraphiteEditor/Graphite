@@ -11,41 +11,58 @@ license = "MIT OR Apache-2.0"
 [features]
 memoization = ["once_cell"]
 default = ["memoization"]
-gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client"]
+gpu = [
+	"graphene-core/gpu",
+	"gpu-compiler-bin-wrapper",
+	"compilation-client",
+	"gpu-executor",
+]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
 
 
 [dependencies]
-autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = ["fitting"] }
-graphene-core = {path = "../gcore", features = ["async", "std", "serde" ], default-features = false}
-borrow_stack = {path = "../borrow_stack"}
-dyn-any = {path = "../../libraries/dyn-any", features = ["derive"]}
-graph-craft = {path = "../graph-craft"}
-vulkan-executor = {path = "../vulkan-executor", optional = true}
-wgpu-executor = {path = "../wgpu-executor", optional = true}
-gpu-compiler-bin-wrapper = {path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true}
-compilation-client = {path = "../compilation-client", optional = true}
-bytemuck = {version = "1.8"  }
+autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
+	"fitting",
+] }
+graphene-core = { path = "../gcore", features = [
+	"async",
+	"std",
+	"serde",
+], default-features = false }
+borrow_stack = { path = "../borrow_stack" }
+dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
+graph-craft = { path = "../graph-craft" }
+vulkan-executor = { path = "../vulkan-executor", optional = true }
+wgpu-executor = { path = "../wgpu-executor", optional = true, version = "0.1.0" }
+gpu-executor = { path = "../gpu-executor", optional = true }
+gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
+compilation-client = { path = "../compilation-client", optional = true }
+bytemuck = { version = "1.8" }
 tempfile = "3"
-once_cell = {version= "1.10", optional = true}
+once_cell = { version = "1.10", optional = true }
 #pretty-token-stream = {path = "../../pretty-token-stream"}
-syn = {version = "1.0", default-features = false, features = ["parsing", "printing"]}
-proc-macro2 = {version = "1.0", default-features = false, features = ["proc-macro"]}
-quote = {version = "1.0", default-features = false }
+syn = { version = "1.0", default-features = false, features = [
+	"parsing",
+	"printing",
+] }
+proc-macro2 = { version = "1.0", default-features = false, features = [
+	"proc-macro",
+] }
+quote = { version = "1.0", default-features = false }
 image = { version = "*", default-features = false }
 dyn-clone = "1.0"
 
 log = "0.4"
-bezier-rs = { path = "../../libraries/bezier-rs" , features = ["serde"] }
+bezier-rs = { path = "../../libraries/bezier-rs", features = ["serde"] }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
 glam = { version = "0.22", features = ["serde"] }
-node-macro = { path="../node-macro" }
+node-macro = { path = "../node-macro" }
 boxcar = "0.1.0"
-xxhash-rust = {workspace = true}
+xxhash-rust = { workspace = true }
 
 [dependencies.serde]
 version = "1.0"

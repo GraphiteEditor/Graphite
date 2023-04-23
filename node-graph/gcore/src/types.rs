@@ -2,6 +2,7 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
+use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
@@ -28,6 +29,8 @@ macro_rules! concrete {
 		Type::Concrete(TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: Cow::Borrowed(core::any::type_name::<$type>()),
+			size: core::mem::size_of::<$type>(),
+			align: core::mem::align_of::<$type>(),
 		})
 	};
 }
@@ -65,6 +68,8 @@ pub struct TypeDescriptor {
 	#[specta(skip)]
 	pub id: Option<TypeId>,
 	pub name: Cow<'static, str>,
+	pub size: usize,
+	pub align: usize,
 }
 
 impl core::hash::Hash for TypeDescriptor {
@@ -134,6 +139,32 @@ impl Type {
 
 	pub fn function(input: &Type, output: &Type) -> Type {
 		Type::Fn(Box::new(input.clone()), Box::new(output.clone()))
+	}
+}
+
+impl Type {
+	pub fn new<T: StaticType + Sized>() -> Self {
+		Self::Concrete(TypeDescriptor {
+			id: Some(TypeId::of::<T::Static>()),
+			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
+			size: core::mem::size_of::<T>(),
+			align: core::mem::align_of::<T>(),
+		})
+	}
+	pub fn size(&self) -> Option<usize> {
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(ty) => Some(ty.size),
+			Self::Fn(_, _) => None,
+		}
+	}
+
+	pub fn align(&self) -> Option<usize> {
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(ty) => Some(ty.align),
+			Self::Fn(_, _) => None,
+		}
 	}
 }
 
