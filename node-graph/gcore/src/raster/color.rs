@@ -18,11 +18,24 @@ use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
-pub struct Luma(f32);
+pub struct Luma(pub f32);
 
 impl Luminance for Luma {
 	type LuminanceChannel = f32;
 	fn luminance(&self) -> f32 {
+		self.0
+	}
+}
+
+impl RGB for Luma {
+	type ColorChannel = f32;
+	fn red(&self) -> f32 {
+		self.0
+	}
+	fn green(&self) -> f32 {
+		self.0
+	}
+	fn blue(&self) -> f32 {
 		self.0
 	}
 }
