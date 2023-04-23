@@ -102,10 +102,10 @@ impl BlendMode {
 			BlendMode::Saturation,
 			BlendMode::Color,
 			BlendMode::Luminosity,
-            BlendMode::InsertAlpha,
-            BlendMode::InsertRed,
-            BlendMode::InsertGreen,
-            BlendMode::InsertBlue,
+			BlendMode::InsertAlpha,
+			BlendMode::InsertRed,
+			BlendMode::InsertGreen,
+			BlendMode::InsertBlue,
 		]
 	}
 }
@@ -154,11 +154,11 @@ pub enum BlendMode {
 	Color,
 	Luminosity,
 
-    // Other Stuff
-    InsertAlpha,
-    InsertRed,
-    InsertGreen,
-    InsertBlue,
+	// Other Stuff
+	InsertAlpha,
+	InsertRed,
+	InsertGreen,
+	InsertBlue,
 }
 
 impl core::fmt::Display for BlendMode {
@@ -196,10 +196,10 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
 
-            BlendMode::InsertAlpha => write!(f, "Insert Alpha"),
-            BlendMode::InsertRed => write!(f, "Insert Red"),
-            BlendMode::InsertGreen => write!(f, "Insert Green"),
-            BlendMode::InsertBlue => write!(f, "Insert Blue"),
+			BlendMode::InsertAlpha => write!(f, "Insert Alpha"),
+			BlendMode::InsertRed => write!(f, "Insert Red"),
+			BlendMode::InsertGreen => write!(f, "Insert Green"),
+			BlendMode::InsertBlue => write!(f, "Insert Blue"),
 		}
 	}
 }
@@ -224,33 +224,33 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExtractChannelNode<ColorChannel, Bool> {
 	channel: ColorChannel,
-    is_monochrome: Bool,
+	is_monochrome: Bool,
 }
 
 #[node_macro::node_fn(ExtractChannelNode)]
 fn extract_channel_node(color: Color, channel: ColorChannel, is_monochrome: bool) -> Color {
-    let extracted_value = match channel {
-        ColorChannel::Alpha => color.a(),
-        ColorChannel::Red => color.r(),
-        ColorChannel::Green => color.g(),
-        ColorChannel::Blue => color.b(),
-    };
-    let extracted_color =  color.map_rgb(|_| extracted_value);
-    if is_monochrome {
-        extracted_color
-    } else {
-        if channel == ColorChannel::Alpha {
-            Color::BLACK.with_alpha(extracted_value)
-        } else if channel == ColorChannel::Red {
-            Color::BLACK.with_red(extracted_value)
-        } else if channel == ColorChannel::Green {
-            Color::BLACK.with_green(extracted_value)
-        } else if channel == ColorChannel::Blue {
-            Color::BLACK.with_blue(extracted_value)
-        } else {
-            unreachable!()
-        }
-    }
+	let extracted_value = match channel {
+		ColorChannel::Alpha => color.a(),
+		ColorChannel::Red => color.r(),
+		ColorChannel::Green => color.g(),
+		ColorChannel::Blue => color.b(),
+	};
+	let extracted_color = color.map_rgb(|_| extracted_value);
+	if is_monochrome {
+		extracted_color
+	} else {
+		if channel == ColorChannel::Alpha {
+			Color::BLACK.with_alpha(extracted_value)
+		} else if channel == ColorChannel::Red {
+			Color::BLACK.with_red(extracted_value)
+		} else if channel == ColorChannel::Green {
+			Color::BLACK.with_green(extracted_value)
+		} else if channel == ColorChannel::Blue {
+			Color::BLACK.with_blue(extracted_value)
+		} else {
+			unreachable!()
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -473,10 +473,10 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
 
-        BlendMode::InsertAlpha => foreground.with_alpha(background.a()),
-        BlendMode::InsertRed => foreground.with_red(background.r()),
-        BlendMode::InsertGreen => foreground.with_green(background.g()),
-        BlendMode::InsertBlue => foreground.with_blue(background.b()),
+		BlendMode::InsertAlpha => foreground.with_alpha(background.a()),
+		BlendMode::InsertRed => foreground.with_red(background.r()),
+		BlendMode::InsertGreen => foreground.with_green(background.g()),
+		BlendMode::InsertBlue => foreground.with_blue(background.b()),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))

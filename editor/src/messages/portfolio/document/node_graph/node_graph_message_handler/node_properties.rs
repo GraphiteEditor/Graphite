@@ -614,20 +614,23 @@ pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 pub fn channel_extraction_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_channel = color_channel(document_node, node_id, 1, "Target Channel", true);
-    let is_monochrome = bool_widget(document_node, node_id, 2, "Monochrome", true);
+	let is_monochrome = bool_widget(document_node, node_id, 2, "Monochrome", true);
 
-	vec![
-        color_channel,
-        LayoutGroup::Row { widgets: is_monochrome },
-    ]
+	vec![color_channel, LayoutGroup::Row { widgets: is_monochrome }]
 }
 
 pub fn multi_channel_extraction_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![
-        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 1, "Grayscale R channel", true) },
-        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 2, "Grayscale G channel", true) },
-        LayoutGroup::Row { widgets: bool_widget(document_node, node_id, 3, "Grayscale B channel", true) },
-    ]
+		LayoutGroup::Row {
+			widgets: bool_widget(document_node, node_id, 1, "Grayscale R channel", true),
+		},
+		LayoutGroup::Row {
+			widgets: bool_widget(document_node, node_id, 2, "Grayscale G channel", true),
+		},
+		LayoutGroup::Row {
+			widgets: bool_widget(document_node, node_id, 3, "Grayscale B channel", true),
+		},
+	]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
