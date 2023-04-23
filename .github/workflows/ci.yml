@@ -48,15 +48,14 @@ jobs:
         cd frontend
         mold -run npm run build
 
-      - name: Publish
-        uses: cloudflare/pages-action@1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: direct-upload # e.g. 'my-project'
-          directory: frontend/dist # e.g. 'dist'
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
+    - name: Publish
+      uses: cloudflare/pages-action@1
+      with:
+        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        projectName: direct-upload # e.g. 'my-project'
+        directory: frontend/dist # e.g. 'dist'
+        gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
     - name: 👕 Lint Graphite web formatting
       env:
