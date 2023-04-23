@@ -14,6 +14,21 @@ use bytemuck::{Pod, Zeroable};
 
 use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB};
 
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+pub struct Luma(f32);
+
+impl Luminance for Luma {
+	type LuminanceChannel = f32;
+	fn luminance(&self) -> f32 {
+		self.0
+	}
+}
+
+impl Pixel for Luma {}
+
 /// Structure that represents a color.
 /// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
