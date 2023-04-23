@@ -9,7 +9,7 @@ use num_traits::{cast::cast as num_cast, Num, NumCast};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::{cast::cast as num_cast, float::Float, FromPrimitive, Num, NumCast, ToPrimitive};
 
-pub use self::color::Color;
+pub use self::color::{Color, Luma};
 
 pub mod adjustments;
 #[cfg(not(target_arch = "spirv"))]
