@@ -486,13 +486,88 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Channel Extraction",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Channel", TaggedValue::ColorChannel(ColorChannel::Alpha), false),
+				DocumentInputType::value("Make Output Monochrome", TaggedValue::Bool(true), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::channel_extraction_properties,
+		},
+		DocumentNodeType {
+			name: "Channel Extraction (RGB)",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 1, 2, 3],
+				outputs: vec![
+                    NodeOutput::new(0, 0),
+                    NodeOutput::new(1, 1),
+                    NodeOutput::new(2, 2),
+                    NodeOutput::new(3, 3),
+                ],
+				nodes: [
+					DocumentNode {
+						name: "AlphaNode".to_string(),
+						inputs: vec![
+                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Alpha), false),
+                            NodeInput::value(TaggedValue::Bool(true), true),
+                        ],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_, _>")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "RedNode".to_string(),
+						inputs: vec![
+                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Red), false),
+                            NodeInput::Network(concrete!(bool)),
+                        ],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_, _>")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "GreenNode".to_string(),
+						inputs: vec![
+                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Green), false),
+                            NodeInput::Network(concrete!(bool)),
+                        ],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_, _>")),
+						metadata: Default::default(),
+					},
+					DocumentNode {
+						name: "BlueNode".to_string(),
+						inputs: vec![
+                            NodeInput::Network(concrete!(ImageFrame<Color>)),
+                            NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Blue), false),
+                            NodeInput::Network(concrete!(bool)),
+                        ],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_, _>")),
+						metadata: Default::default(),
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Monochrome red output", TaggedValue::Bool(true), false),
+				DocumentInputType::value("Monochrome green output", TaggedValue::Bool(true), false),
+				DocumentInputType::value("Monochrome blue output", TaggedValue::Bool(true), false),
+			],
+			outputs: vec![
+                DocumentOutputType::new("Alpha Channel", FrontendGraphDataType::Raster),
+                DocumentOutputType::new("Red Channel", FrontendGraphDataType::Raster),
+                DocumentOutputType::new("Green Channel", FrontendGraphDataType::Raster),
+                DocumentOutputType::new("Blue Channel", FrontendGraphDataType::Raster),
+			],
+			properties: node_properties::multi_channel_extraction_properties,
 		},
 		DocumentNodeType {
 			name: "Gaussian Blur",
