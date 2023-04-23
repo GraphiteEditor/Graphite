@@ -160,13 +160,13 @@ unsafe impl<'a, T: StaticTypeSized> StaticType for &'a [T] {
 	type Static = &'static [<T as StaticTypeSized>::Static];
 }
 macro_rules! impl_slice {
-    ($($id:ident),*) => {
-        $(
-        unsafe impl<'a, T: StaticTypeSized> StaticType for $id<'a, T> {
-            type Static = $id<'static, <T as StaticTypeSized>::Static>;
-        }
-        )*
-    };
+	($($id:ident),*) => {
+		$(
+		unsafe impl<'a, T: StaticTypeSized> StaticType for $id<'a, T> {
+			type Static = $id<'static, <T as StaticTypeSized>::Static>;
+		}
+		)*
+	};
 }
 
 mod slice {

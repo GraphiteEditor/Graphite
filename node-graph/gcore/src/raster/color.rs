@@ -53,6 +53,7 @@ impl RGB for Color {
 }
 
 impl Pixel for Color {
+	#[cfg(not(target_arch = "spirv"))]
 	fn to_bytes(&self) -> Vec<u8> {
 		self.to_rgba8_srgb().to_vec()
 	}
@@ -121,7 +122,6 @@ impl Color {
 	/// let color = Color::from_rgbaf32(1.0, 1.0, 1.0, f32::NAN);
 	/// assert!(color == None);
 	/// ```
-	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
 		if alpha > 1. || [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
 			return None;
@@ -492,7 +492,7 @@ impl Color {
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert!(color.components() == (0.114, 0.103, 0.98, 0.97));
+	/// assert_eq!(color.components(),  (0.114, 0.103, 0.98, 0.97));
 	/// ```
 	pub fn components(&self) -> (f32, f32, f32, f32) {
 		(self.red, self.green, self.blue, self.alpha)
@@ -585,7 +585,6 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
 	/// ```
-	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
 		if color_str.len() != 8 {
 			return None;
@@ -603,7 +602,6 @@ impl Color {
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
 	/// ```
-	#[cfg(not(target_arch = "spirv"))]
 	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
 		if color_str.len() != 6 {
 			return None;

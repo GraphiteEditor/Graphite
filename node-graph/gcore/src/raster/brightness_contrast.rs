@@ -30,7 +30,7 @@ fn brightness_contrast_legacy_node(_primary: (), brightness: f32, contrast: f32)
 	let brightness = brightness / 255.;
 
 	let contrast = contrast / 100.;
-	let contrast = if contrast > 0. { (contrast * std::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+	let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
 
 	let combined = brightness * contrast + brightness - contrast / 2.;
 
@@ -172,7 +172,7 @@ fn solve_cubic_splines(cubic_spline_values: &CubicSplines) -> [f32; 4] {
 
 		// Eliminate the current column in all rows below the current one
 		for row_below_current in row + 1..4 {
-			assert!(augmented_matrix[row][row].abs() > std::f32::EPSILON);
+			assert!(augmented_matrix[row][row].abs() > core::f32::EPSILON);
 
 			let scale_factor = augmented_matrix[row_below_current][row] / augmented_matrix[row][row];
 			for col in row..5 {
@@ -184,7 +184,7 @@ fn solve_cubic_splines(cubic_spline_values: &CubicSplines) -> [f32; 4] {
 	// Gaussian elimination: back substitution
 	let mut solutions = [0.; 4];
 	for col in (0..4).rev() {
-		assert!(augmented_matrix[col][col].abs() > std::f32::EPSILON);
+		assert!(augmented_matrix[col][col].abs() > core::f32::EPSILON);
 
 		solutions[col] = augmented_matrix[col][4] / augmented_matrix[col][col];
 

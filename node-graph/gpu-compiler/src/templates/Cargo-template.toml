@@ -1,7 +1,7 @@
 [package]
+authors = [{% for author in authors %}"{{author}}", {% endfor %}]
 name = "{{name}}-node"
 version = "0.1.0"
-authors = [{%for author in authors%}"{{author}}", {%endfor%}]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
@@ -13,5 +13,7 @@ crate-type = ["dylib", "lib"]
 libm = { git = "https://github.com/rust-lang/libm", tag = "0.2.5" }
 
 [dependencies]
-spirv-std = { version = "0.5" , features= ["glam"]}
-graphene-core = {path = "{{gcore_path}}", default-features = false, features = ["gpu"]}
+spirv-std = { version = "0.7" }
+graphene-core = { path = "{{gcore_path}}", default-features = false, features = [
+	"gpu",
+] }
