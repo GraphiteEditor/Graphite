@@ -14,15 +14,14 @@ use spirv_std::num_traits::float::Float;
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
 pub enum ColorChannel {
 	#[default]
-	Alpha,
 	Red,
 	Green,
 	Blue,
 }
 
 impl ColorChannel {
-	pub fn list() -> [ColorChannel; 4] {
-		[ColorChannel::Alpha, ColorChannel::Red, ColorChannel::Green, ColorChannel::Blue]
+	pub fn list() -> [ColorChannel; 3] {
+		[ColorChannel::Red, ColorChannel::Green, ColorChannel::Blue]
 	}
 }
 
@@ -41,7 +40,6 @@ pub enum LuminanceCalculation {
 impl core::fmt::Display for ColorChannel {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
-			ColorChannel::Alpha => write!(f, "Alpha"),
 			ColorChannel::Red => write!(f, "Red"),
 			ColorChannel::Green => write!(f, "Green"),
 			ColorChannel::Blue => write!(f, "Blue"),
@@ -74,7 +72,7 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 30] {
+	pub fn list() -> [BlendMode; 29] {
 		[
 			BlendMode::Normal,
 			BlendMode::Multiply,
@@ -102,7 +100,6 @@ impl BlendMode {
 			BlendMode::Saturation,
 			BlendMode::Color,
 			BlendMode::Luminosity,
-			BlendMode::InsertAlpha,
 			BlendMode::InsertRed,
 			BlendMode::InsertGreen,
 			BlendMode::InsertBlue,
@@ -155,7 +152,6 @@ pub enum BlendMode {
 	Luminosity,
 
 	// Other Stuff
-	InsertAlpha,
 	InsertRed,
 	InsertGreen,
 	InsertBlue,
@@ -196,7 +192,6 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
 
-			BlendMode::InsertAlpha => write!(f, "Insert Alpha"),
 			BlendMode::InsertRed => write!(f, "Insert Red"),
 			BlendMode::InsertGreen => write!(f, "Insert Green"),
 			BlendMode::InsertBlue => write!(f, "Insert Blue"),
@@ -230,7 +225,6 @@ pub struct ExtractChannelNode<ColorChannel, Bool> {
 #[node_macro::node_fn(ExtractChannelNode)]
 fn extract_channel_node(color: Color, channel: ColorChannel, is_monochrome: bool) -> Color {
 	let extracted_value = match channel {
-		ColorChannel::Alpha => color.a(),
 		ColorChannel::Red => color.r(),
 		ColorChannel::Green => color.g(),
 		ColorChannel::Blue => color.b(),
@@ -239,9 +233,7 @@ fn extract_channel_node(color: Color, channel: ColorChannel, is_monochrome: bool
 	if is_monochrome {
 		extracted_color
 	} else {
-		if channel == ColorChannel::Alpha {
-			Color::BLACK.with_alpha(extracted_value)
-		} else if channel == ColorChannel::Red {
+		if channel == ColorChannel::Red {
 			Color::BLACK.with_red(extracted_value)
 		} else if channel == ColorChannel::Green {
 			Color::BLACK.with_green(extracted_value)
@@ -251,6 +243,15 @@ fn extract_channel_node(color: Color, channel: ColorChannel, is_monochrome: bool
 			unreachable!()
 		}
 	}
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractAlphaNode;
+
+#[node_macro::node_fn(ExtractAlphaNode)]
+fn extract_alpha_node(color: Color) -> Color {
+	let alpha = color.a();
+	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -473,7 +474,6 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
 
-		BlendMode::InsertAlpha => foreground.with_alpha(background.a()),
 		BlendMode::InsertRed => foreground.with_red(background.r()),
 		BlendMode::InsertGreen => foreground.with_green(background.g()),
 		BlendMode::InsertBlue => foreground.with_blue(background.b()),

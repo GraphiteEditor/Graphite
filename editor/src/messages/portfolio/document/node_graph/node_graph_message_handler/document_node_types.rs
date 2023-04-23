@@ -489,33 +489,31 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Channel", TaggedValue::ColorChannel(ColorChannel::Alpha), false),
+				DocumentInputType::value("Channel", TaggedValue::ColorChannel(ColorChannel::Red), false),
 				DocumentInputType::value("Make Output Monochrome", TaggedValue::Bool(true), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::channel_extraction_properties,
 		},
 		DocumentNodeType {
+			name: "Extract Alpha",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ExtractAlphaNode<>"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
 			name: "Channel Extraction (RGB)",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 2, 3, 4],
-				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
+				inputs: vec![0, 1, 2, 3],
+				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						metadata: Default::default(),
-					},
-					DocumentNode {
-						name: "AlphaNode".to_string(),
-						inputs: vec![
-							NodeInput::node(0, 0),
-							NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Alpha), false),
-							NodeInput::value(TaggedValue::Bool(true), true),
-						],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_, _>")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
@@ -563,7 +561,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Monochrome blue output", TaggedValue::Bool(true), false),
 			],
 			outputs: vec![
-				DocumentOutputType::new("Alpha Channel", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Red Channel", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Green Channel", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Blue Channel", FrontendGraphDataType::Raster),
