@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
