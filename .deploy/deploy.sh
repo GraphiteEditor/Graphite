@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Switch to the correct branch
 if [[ -z "${CF_PAGES_BRANCH}" ]]; then
@@ -37,7 +37,7 @@ node --version
 echo npm version:
 npm --version
 cd frontend
-npm ci --no-optional
+npm ci
 
 # Build for production
 echo 👷 Build Graphite web client
