@@ -1,6 +1,8 @@
-use std::path::Path;
-
+use gpu_executor::{GPUConstant, ShaderIO, ShaderInput, SpirVCompiler};
 use graph_craft::proto::*;
+use graphene_core::Cow;
+
+use std::path::{Path, PathBuf};
 use tera::Context;
 
 fn create_cargo_toml(metadata: &Metadata) -> Result<String, tera::Error> {
@@ -24,10 +26,10 @@ impl Metadata {
 	}
 }
 
-pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &Path, input_type: &str, output_type: &str) -> anyhow::Result<()> {
+pub fn create_files(metadata: &Metadata, network: &ProtoNetwork, compile_dir: &Path, io: &ShaderIO) -> anyhow::Result<()> {
 	let src = compile_dir.join("src");
 	let cargo_file = compile_dir.join("Cargo.toml");
-	let cargo_toml = create_cargo_toml(matadata)?;
+	let cargo_toml = create_cargo_toml(metadata)?;
 	std::fs::write(cargo_file, cargo_toml)?;
 
 	let toolchain_file = compile_dir.join("rust-toolchain.toml");
@@ -44,26 +46,100 @@ pub fn create_files(matadata: &Metadata, network: &ProtoNetwork, compile_dir: &P
 		}
 	}
 	let lib = src.join("lib.rs");
-	let shader = serialize_gpu(network, input_type, output_type)?;
-	println!("{}", shader);
+	let shader = serialize_gpu(network, io)?;
+	eprintln!("{}", shader);
 	std::fs::write(lib, shader)?;
 	Ok(())
 }
 
-pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str) -> anyhow::Result<String> {
-	assert_eq!(network.inputs.len(), 1);
+fn constant_attribute(constant: &GPUConstant) -> &'static str {
+	match constant {
+		GPUConstant::SubGroupId => "subgroup_id",
+		GPUConstant::SubGroupInvocationId => "subgroup_local_invocation_id",
+		GPUConstant::SubGroupSize => todo!(),
+		GPUConstant::NumSubGroups => "num_subgroups",
+		GPUConstant::WorkGroupId => "workgroup_id",
+		GPUConstant::WorkGroupInvocationId => "local_invocation_id",
+		GPUConstant::WorkGroupSize => todo!(),
+		GPUConstant::NumWorkGroups => "num_workgroups",
+		GPUConstant::GlobalInvocationId => "global_invocation_id",
+		GPUConstant::GlobalSize => todo!(),
+	}
+}
+
+pub fn construct_argument(input: &ShaderInput<()>, position: u32) -> String {
+	match input {
+		ShaderInput::Constant(constant) => format!("#[spirv({})] i{}: {},", constant_attribute(constant), position, constant.ty()),
+		ShaderInput::UniformBuffer(_, ty) => {
+			format!("#[spirv(uniform, descriptor_set = 0, binding = {})] i{}: &[{}]", position, position, ty,)
+		}
+		ShaderInput::StorageBuffer(_, ty) | ShaderInput::ReadBackBuffer(_, ty) => {
+			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &[{}]", position, position, ty,)
+		}
+		ShaderInput::OutputBuffer(_, ty) => {
+			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &mut[{}]", position, position, ty,)
+		}
+		ShaderInput::WorkGroupMemory(_, ty) => format!("#[spirv(workgroup_memory] i{}: {}", position, ty,),
+	}
+}
+
+struct GpuCompiler {
+	compile_dir: PathBuf,
+}
+
+impl SpirVCompiler for GpuCompiler {
+	fn compile(&self, network: ProtoNetwork, io: &ShaderIO) -> anyhow::Result<gpu_executor::Shader> {
+		let metadata = Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
+
+		create_files(&metadata, &network, &self.compile_dir, io)?;
+		let result = compile(&self.compile_dir)?;
+
+		let bytes = std::fs::read(result.module.unwrap_single())?;
+		let words = bytes.chunks(4).map(|chunk| u32::from_ne_bytes(chunk.try_into().unwrap())).collect::<Vec<_>>();
+
+		Ok(gpu_executor::Shader {
+			source: Cow::Owned(words),
+			name: "",
+			io: io.clone(),
+		})
+	}
+}
+
+pub fn serialize_gpu(network: &ProtoNetwork, io: &ShaderIO) -> anyhow::Result<String> {
 	fn nid(id: &u64) -> String {
 		format!("n{id}")
 	}
 
+	dbg!(&network);
+	dbg!(&io);
+	let inputs = io.inputs.iter().enumerate().map(|(i, input)| construct_argument(input, i as u32)).collect::<Vec<_>>();
+
 	let mut nodes = Vec::new();
+	let mut input_nodes = Vec::new();
 	#[derive(serde::Serialize)]
 	struct Node {
 		id: String,
 		fqn: String,
 		args: Vec<String>,
 	}
+	for id in network.inputs.iter() {
+		let Some((_, node)) = network.nodes.iter().find(|(i, _)| i == id) else {
+			anyhow::bail!("Input node not found");
+		};
+		let fqn = &node.identifier.name;
+		let id = nid(id);
+		input_nodes.push(Node {
+			id,
+			fqn: fqn.to_string().split("<").next().unwrap().to_owned(),
+			args: node.construction_args.new_function_args(),
+		});
+	}
+
 	for (ref id, node) in network.nodes.iter() {
+		if network.inputs.contains(id) {
+			continue;
+		}
+
 		let fqn = &node.identifier.name;
 		let id = nid(id);
 
@@ -78,8 +154,8 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 	let mut tera = tera::Tera::default();
 	tera.add_raw_template("spirv", template)?;
 	let mut context = Context::new();
-	context.insert("input_type", &input_type);
-	context.insert("output_type", &output_type);
+	context.insert("inputs", &inputs);
+	context.insert("input_nodes", &input_nodes);
 	context.insert("nodes", &nodes);
 	context.insert("last_node", &nid(&network.output));
 	context.insert("compute_threads", &64);
@@ -89,14 +165,15 @@ pub fn serialize_gpu(network: &ProtoNetwork, input_type: &str, output_type: &str
 use spirv_builder::{MetadataPrintout, SpirvBuilder, SpirvMetadata};
 pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder::SpirvBuilderError> {
 	dbg!(&dir);
-	let result = SpirvBuilder::new(dir, "spirv-unknown-spv1.5")
+	let result = SpirvBuilder::new(dir, "spirv-unknown-vulkan1.2")
 		.print_metadata(MetadataPrintout::DependencyOnly)
 		.multimodule(false)
 		.preserve_bindings(true)
 		.release(true)
-		//.relax_struct_store(true)
-		//.relax_block_layout(true)
 		.spirv_metadata(SpirvMetadata::Full)
+		.extra_arg("no-early-report-zombies")
+		.extra_arg("no-infer-storage-classes")
+		.extra_arg("spirt-passes=qptr")
 		.build()?;
 
 	Ok(result)
@@ -104,7 +181,6 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 
 #[cfg(test)]
 mod test {
-
 	#[test]
 	fn test_create_cargo_toml() {
 		let cargo_toml = super::create_cargo_toml(&super::Metadata {

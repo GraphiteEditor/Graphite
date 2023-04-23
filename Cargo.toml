@@ -15,6 +15,7 @@ members = [
 	"node-graph/compilation-client",
 	"node-graph/vulkan-executor",
 	"node-graph/wgpu-executor",
+	"node-graph/gpu-executor",
 	"node-graph/future-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",

@@ -40,7 +40,7 @@ impl<T: Clone> Clone for ValueNode<T> {
 }
 impl<T: Clone + Copy> Copy for ValueNode<T> {}
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ClonedNode<T: Clone>(pub T);
 
 impl<'i, T: Clone + 'i> Node<'i, ()> for ClonedNode<T> {
@@ -61,7 +61,22 @@ impl<T: Clone> From<T> for ClonedNode<T> {
 		ClonedNode::new(value)
 	}
 }
-impl<T: Clone + Copy> Copy for ClonedNode<T> {}
+
+#[derive(Clone, Copy)]
+pub struct CopiedNode<T: Copy>(pub T);
+
+impl<'i, T: Copy + 'i> Node<'i, ()> for CopiedNode<T> {
+	type Output = T;
+	fn eval(&'i self, _input: ()) -> Self::Output {
+		self.0
+	}
+}
+
+impl<T: Copy> CopiedNode<T> {
+	pub const fn new(value: T) -> CopiedNode<T> {
+		CopiedNode(value)
+	}
+}
 
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);

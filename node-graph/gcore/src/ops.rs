@@ -1,5 +1,5 @@
 use core::marker::PhantomData;
-use core::ops::Add;
+use core::ops::{Add, Mul};
 
 use crate::Node;
 
@@ -28,6 +28,27 @@ where
 	U: Add<T>,
 {
 	first + second
+}
+
+pub struct MulParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MulParameterNode)]
+fn flat_map<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
+where
+	U: Mul<T>,
+{
+	first * second
+}
+
+#[cfg(feature = "std")]
+struct SizeOfNode {}
+
+#[cfg(feature = "std")]
+#[node_macro::node_fn(SizeOfNode)]
+fn flat_map(ty: crate::Type) -> Option<usize> {
+	ty.size()
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
