@@ -41,8 +41,14 @@ npm ci --no-optional
 
 # Build for production
 echo 👷 Build Graphite web client
-wasm-opt --version
-apt-get install mlocate
-locate -b wasm-opt
 export NODE_ENV=production
 npm run build && mv public dist # `&&` is used here to preserve the exit code
+
+echo ls::::::
+ls -la /opt/buildhome/.cache/.wasm-pack
+echo tree::::::
+tree /opt/buildhome/.cache/.wasm-pack
+echo find::::::
+find /opt/buildhome/.cache/.wasm-pack -name "wasm-opt"
+echo wasm-opt version::::::
+/opt/buildhome/.cache/.wasm-pack/wasm-opt-fc03871f1779aa83/bin/wasm-opt --version
