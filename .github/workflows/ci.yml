@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
@@ -23,6 +24,20 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Comment deploy start
+      if: github.event_name != 'push'
+      uses: mshick/add-pr-comment@v2
+      with:
+        message-id: cloudflare-deploy
+        message: |
+          ### <span aria-hidden="true">🚧</span> Deploy Preview building...
+
+          |  Name | Link |
+          |---------------------------------|------------------------|
+          |<span aria-hidden="true">🔨</span> Latest commit | ${{ github.sha }} |
+          |<span aria-hidden="true">🔍</span> Latest deploy log | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |
+          ---
     
     - name: 🔧 Set up Node
       uses: actions/setup-node@v1
@@ -43,12 +58,12 @@ jobs:
     - name: 🌐 Build Graphite web code
       env:
         NODE_ENV: production
-        SKIP_CARGO_ABOUT: false
       run: |
         cd frontend
         mold -run npm run build
 
     - name: Publish
+      id: cloudflare
       uses: cloudflare/pages-action@1
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -56,6 +71,22 @@ jobs:
         projectName: graphite-dev # e.g. 'my-project'
         directory: frontend/dist # e.g. 'dist'
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Comment deploy url
+      uses: mshick/add-pr-comment@v2
+      with:
+        message-id: cloudflare-deploy
+        message: |
+          ### <span aria-hidden="true">✅</span> Deploy Preview ready!
+
+
+          |  Name | Link |
+          |---------------------------------|------------------------|
+          |<span aria-hidden="true">🔨</span> Latest commit | ${{ github.sha }} |
+          |<span aria-hidden="true">🔍</span> Latest deploy log | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |
+          |<span aria-hidden="true">😎</span> Deploy Preview Url | [${{ steps.cloudflare.outputs.url }}](${{ steps.cloudflare.outputs.url }}) |
+          |<span aria-hidden="true">🌳</span> Environment | ${{ steps.cloudflare.outputs.environment }} |
+          ---
 
     - name: 👕 Lint Graphite web formatting
       env:
