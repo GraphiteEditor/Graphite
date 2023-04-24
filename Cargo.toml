@@ -48,9 +48,6 @@ opt-level = 1
 [profile.dev.package.graphene-std]
 opt-level = 1
 
-[profile.dev.package.graphite-wasm]
-opt-level = 1
-
 [profile.dev.package.autoquant]
 opt-level = 3
 
@@ -60,5 +57,5 @@ opt-level = 3
 [profile.dev.package.xxhash-rust]
 opt-level = 3
 
-#[profile.dev]
-#opt-level = 3
+[profile.dev]
+opt-level = 1

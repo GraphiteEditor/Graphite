@@ -30,7 +30,7 @@ pub fn set_random_seed(seed: u64) {
 
 /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
 /// This avoids creating a json with a list millions of numbers long.
-#[wasm_bindgen(module = "@graphite/wasm-communication/editor")]
+#[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
 extern "C" {
 	fn updateImage(path: Vec<u64>, mime: String, imageData: &[u8], transform: js_sys::Float64Array, document_id: u64);
 	fn fetchImage(path: Vec<u64>, mime: String, document_id: u64, identifier: String);

@@ -185,7 +185,7 @@
 		flex-direction: column;
 	}
 
-	.widget-row {
+	.widget-row.widget-row {
 		flex: 0 0 auto;
 		display: flex;
 		min-height: 32px;

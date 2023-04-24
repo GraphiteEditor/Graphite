@@ -11,9 +11,12 @@
 		"esModuleInterop": true,
 		"allowSyntheticDefaultImports": true,
 		"sourceMap": true,
-		"baseUrl": ".",
 		"types": ["node", "svelte", "svelte/store", "svelte/motion", "svelte/transition", "svelte/animate", "svelte/easing"],
+		"baseUrl": ".",
 		"paths": {
+			"~*": ["./*"],
+			"/*": ["./*"],
+			"@graphite-frontend/*": ["./*"],
 			"@graphite/*": ["src/*"]
 		},
 		"lib": ["esnext", "dom", "dom.iterable", "scripthost"]
@@ -25,6 +28,10 @@
 			"module": "commonjs",
 			"useDefineForClassFields": false,
 			"noImplicitOverride": true
+		},
+		"moduleTypes": {
+			"webpack.config.ts": "cjs",
+			"webpack-config-scripts/**/*": "cjs"
 		}
 	}
 }
