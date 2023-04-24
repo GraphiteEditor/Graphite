@@ -6,6 +6,7 @@
 	"browserslist": "> 1.5%, last 2 versions, not dead, not ie 11, not op_mini all, not ios_saf < 13",
 	"type": "module",
 	"alias": {
+		"@graphite-frontend/*": "~/$1",
 		"@graphite/../assets/*": "~/assets/$1",
 		"@graphite/../public/*": "~/public/$1",
 		"@graphite/*": "~/src/$1"
@@ -27,7 +28,6 @@
 		"@tauri-apps/api": "^1.2.0",
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.0",
-		"postcss": "^8.4.21",
 		"reflect-metadata": "^0.1.13"
 	},
 	"devDependencies": {
@@ -41,6 +41,7 @@
 		"license-checker-webpack-plugin": "^0.2.1",
 		"parcel": "^2.8.3",
 		"parcel-transformer-svelte3-plus": "^0.2.8",
+		"postcss": "^8.4.21",
 		"process": "^0.11.10",
 		"svelte": "^3.56.0",
 		"svelte-preprocess": "^4.10.7",

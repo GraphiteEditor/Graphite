@@ -1,8 +1,8 @@
-import type WasmBindgenPackage from "../../wasm/pkg";
-import init, { setRandomSeed, wasmMemory, JsEditorHandle } from '/wasm/pkg/graphite_wasm.js';
-import { panicProxy } from "/src/utility-functions/panic-proxy";
-import { type JsMessageType } from "/src/wasm-communication/messages";
-import { createSubscriptionRouter, type SubscriptionRouter } from "/src/wasm-communication/subscription-router";
+import type WasmBindgenPackage from "@graphite-frontend/wasm/pkg";
+import init, { setRandomSeed, wasmMemory, JsEditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import { panicProxy } from "@graphite/utility-functions/panic-proxy";
+import { type JsMessageType } from "@graphite/wasm-communication/messages";
+import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/wasm-communication/subscription-router";
 
 export type WasmRawInstance = WebAssembly.Memory;
 export type WasmEditorInstance = JsEditorHandle;

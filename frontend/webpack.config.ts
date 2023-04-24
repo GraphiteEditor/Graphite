@@ -4,10 +4,9 @@ import { spawnSync } from "child_process";
 import * as webpack from "webpack";
 const LicenseCheckerWebpackPlugin = require("license-checker-webpack-plugin");
 
-
 const config: webpack.Configuration = {
 	entry: {
-		bundle: ["./src/webpack.ts"]
+		bundle: ["./src/main-webpack-licenses.ts"]
 	},
 	mode: "production",
 	resolve: {
@@ -239,10 +238,10 @@ function htmlDecode(input: string): string {
 		quot: `"`,
 	};
 
-	return input.replace(/&([^;]+);/g, (entity, entityCode: string) => {
+	return input.replace(/&([^;]+);/g, (entity: string, entityCode: string) => {
 		let match;
 
-		const maybeEntity = Object.entries(htmlEntities).find((entry) => entry[1] === entityCode);
+		const maybeEntity = Object.entries(htmlEntities).find(([key, _]) => key === entityCode);
 		if (maybeEntity) {
 			return maybeEntity[1];
 		}
