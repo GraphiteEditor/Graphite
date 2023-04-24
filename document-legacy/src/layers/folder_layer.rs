@@ -67,6 +67,11 @@ impl FolderLayer {
 	/// folder.add_layer(shape_layer.into(), None, -1);
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
+	pub fn next_assignment_id(&mut self) -> LayerId {
+		self.next_assignment_id = self.next_assignment_id + 1;
+		return self.next_assignment_id;
+	}
+
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize, path: Option<Vec<u64>>) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 

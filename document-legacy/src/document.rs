@@ -246,24 +246,6 @@ impl Document {
 		return self.folder(path.as_ref()).is_ok();
 	}
 
-	pub fn remove_duplicate_folders(&self, shallowest_common_folder: &Vec<LayerId>) {
-		debug!("folder: {:?}", &shallowest_common_folder);
-		let children = self.folder_children_paths(shallowest_common_folder);
-		debug!("children: {:?}", &children);
-		if children.len() <= 0 {
-			debug!("REMOVE EMPTY FOLDER: {:?}", &shallowest_common_folder);
-		// return
-		} else {
-			// debug!("children: {:?}", &children);
-			for child in children {
-				if self.is_folder(&child) {
-					// debug!("RECURSE");
-					self.remove_duplicate_folders(&child);
-				}
-			}
-		}
-	}
-
 	// Determines which layer is closer to the root, if path_a return true, if path_b return false
 	// Answers the question: Is A closer to the root than B?
 	pub fn layer_closer_to_root(&self, path_a: &[u64], path_b: &[u64]) -> bool {
@@ -750,45 +732,53 @@ impl Document {
 					let folder_is_empty = self.folder_children_paths(&path).is_empty();
 					if !folder_is_empty {
 						duplicated_layers = recursive_collect(self, &path);
-					} else {
-						// debug!("empty: {:?}", &path);
 					}
 				}
-				debug!("dup: {:?}", &duplicated_layers.len());
 
 				let folder = self.folder_mut(folder_path)?;
 
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
 
+					let mut responses: Vec<DocumentResponse> = vec![];
+					responses.extend([DocumentChanged, CreatedLayer { path: new_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
+					// responses.extend(update_thumbnails_upstream(path.as_slice()));
+
 					// Loop through the duplicated layers and update the layer path by swapping the path with new_path
 					// Use the updated layer path in our duplicate layer operation call
-					// let mut queue = vec![];
-					let mut responses: Vec<DocumentResponse> = vec![];
 					for layer in duplicated_layers {
-						let sub = layer[..new_path.len()].to_vec();
-						for i in 0..=new_path.clone().len() - 1 {
-							if !(new_path.clone().get(i).unwrap() == sub.get(i).unwrap()) {
-								let updated_layer_path = [new_path.clone(), layer[new_path.len()..].to_vec()].concat();
-								// Note: Here we need to call folder.add_layer on the updated_layer_paths'.
-								// Can't figure out how to make a Layer object with the updated layer path
-								// let update_layer = self.layer(&updated_layer_path).unwrap();
-								// folder.add_layer(*update_layer, None, -1, None);
-								// queue.push(Operation::Cr { path: updated_layer_path }.into());
-								responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path }, FolderChanged { path: folder_path.to_vec() }]);
+						// {1/2/3}
+						let cloned_new_path = new_path.clone();
+						let sub = layer[..cloned_new_path.len()].to_vec();
+						let mut new_sub_path: Vec<u64> = vec![];
+
+						debug!("layer: {:?}", &layer);
+						// debug!("sub layer: {:?}", &sub);
+						// debug!("new path: {:?}", &new_path);
+
+						for i in 0..=cloned_new_path.len() - 1 {
+							// 1, 2, 3
+
+							if !(cloned_new_path.get(i).unwrap() == sub.get(i).unwrap()) {
+								new_sub_path.push(folder.next_assignment_id());
+								// responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
+								// responses.extend(update_thumbnails_upstream(path.as_slice()));
 							}
 						}
+						// debug!("new sub layer: {:?}", &new_sub_path);
+						let updated_layer_path = [cloned_new_path.clone(), new_sub_path].concat();
+						debug!("updated: {:?}", &updated_layer_path);
+						responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
 					}
 
-					// let mut responses: Vec<DocumentResponse> = vec![];
 					// for operation in queue {
 					// 	let res = self.handle_operation(operation, render_data).ok().flatten().unwrap_or_default();
 					// 	responses.extend(res);
 					// }
-					// debug!("AFTER: {:?}", &new_path);
 
-					responses.extend([DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }]);
-					responses.extend(update_thumbnails_upstream(path.as_slice()));
+					// responses.extend([DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }]);
+					// responses.extend(update_thumbnails_upstream(path.as_slice()));
+					debug!("RES: {:?}", &responses);
 
 					self.mark_as_dirty(folder_path)?;
 					Some(responses)
