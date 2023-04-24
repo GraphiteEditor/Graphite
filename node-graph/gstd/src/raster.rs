@@ -225,7 +225,7 @@ fn mask_image<
 	// Input image
 	Input: Transform + RasterMut<Pixel = _P>,
 	// Stencil
-	Stencil: Sample<Pixel = _S> + Transform,
+	Stencil: Transform + Sample<Pixel = _S>,
 >(
 	mut image: Input,
 	stencil: Stencil,
