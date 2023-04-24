@@ -37,6 +37,9 @@ xxhash-rust = { version = "0.8.4", features = ["xxh3"] }
 [profile.dev.package.graphite-editor]
 opt-level = 1
 
+[profile.dev.package.interpreted-executor]
+opt-level = 1
+
 [profile.dev.package.graphene-core]
 opt-level = 1
 
