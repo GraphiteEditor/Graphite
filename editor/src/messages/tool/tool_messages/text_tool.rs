@@ -11,6 +11,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
@@ -309,12 +310,12 @@ impl TextToolData {
 		}
 	}
 
-	pub fn update_bounds(&mut self, new_text: String, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
+	pub fn update_bounds_overlay(&mut self, new_text: &str, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
 		resize_overlays(&mut self.overlays, responses, 1);
 
 		let editing_text = self.editing_text.as_ref()?;
 		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(&data));
-		let far = graphene_core::text::bounding_box(&new_text, buzz_face, editing_text.font_size, None);
+		let far = graphene_core::text::bounding_box(new_text, buzz_face, editing_text.font_size, None);
 		let quad = Quad::from_box([DVec2::ZERO, far]);
 
 		let transformed_quad = document.document_legacy.multiply_transforms(&self.layer_path).ok()? * quad;
@@ -325,6 +326,24 @@ impl TextToolData {
 			transform: transform_from_box(bounds[0], bounds[1]),
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
+		Some(())
+	}
+
+	fn get_bounds(&self, text: &str, render_data: &RenderData) -> Option<[DVec2; 2]> {
+		let editing_text = self.editing_text.as_ref()?;
+		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(&data));
+		let subpaths = graphene_core::text::to_path(&text, buzz_face, editing_text.font_size, None);
+		let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box());
+		let combined_bounds = bounds.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]).unwrap_or_default();
+		Some(combined_bounds)
+	}
+
+	fn fix_text_bounds(&self, new_text: &str, _document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
+		let layer = self.layer_path.clone();
+		let old_bounds = self.get_bounds(&self.editing_text.as_ref()?.text, render_data)?;
+		let new_bounds = self.get_bounds(new_text, render_data)?;
+		responses.add(GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds });
+
 		Some(())
 	}
 }
@@ -353,20 +372,26 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 }
 
 fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
-	let get_layer_bounds = |(layer_path, overlay_path)| {
-		document
-			.document_legacy
-			.layer(layer_path)
-			.unwrap()
-			.aabb_for_transform(document.document_legacy.multiply_transforms(layer_path).unwrap(), render_data)
-			.map(|bounds| (bounds, overlay_path))
+	let get_bounds = |layer: &Layer, path: &[LayerId], document: &DocumentMessageHandler, render_data: &RenderData| {
+		let node_graph = layer.as_node_graph().ok()?;
+		let node_id = get_text_node_id(node_graph)?;
+		let document_node = node_graph.nodes.get(&node_id)?;
+		let (text, font, font_size) = TextToolData::extract_text_node_inputs(document_node)?;
+		let buzz_face = render_data.font_cache.get(font).map(|data| load_face(&data));
+		let far = graphene_core::text::bounding_box(&text, buzz_face, font_size, None);
+		let quad = Quad::from_box([DVec2::ZERO, far]);
+		let multiplied = document.document_legacy.multiply_transforms(path).ok()? * quad;
+		Some(multiplied.bounding_box())
 	};
-	let visible_text_layers = document.selected_visible_text_layers();
-	let bounds = visible_text_layers.zip(&tool_data.overlays).filter_map(get_layer_bounds).collect::<Vec<_>>();
+	let bounds = document.selected_layers().filter_map(|path| match document.document_legacy.layer(path) {
+		Ok(layer) => get_bounds(layer, path, document, render_data),
+		Err(_) => None,
+	});
+	let bounds = bounds.collect::<Vec<_>>();
 
 	let new_len = bounds.len();
 
-	for (bounds, overlay_path) in bounds {
+	for (bounds, overlay_path) in bounds.iter().zip(&tool_data.overlays) {
 		let operation = Operation::SetLayerTransformInViewport {
 			path: overlay_path.to_vec(),
 			transform: transform_from_box(bounds[0], bounds[1]),
@@ -461,6 +486,7 @@ impl Fsm for TextToolFsmState {
 				(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 					let layer_path = tool_data.layer_path.clone();
 					let network = get_network(&layer_path, document).unwrap();
+					tool_data.fix_text_bounds(&new_text, document, render_data, responses);
 					responses.add(NodeGraphMessage::SetQualifiedInputValue {
 						layer_path,
 						node_path: vec![get_text_node_id(network).unwrap()],
@@ -475,7 +501,7 @@ impl Fsm for TextToolFsmState {
 					TextToolFsmState::Ready
 				}
 				(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
-					tool_data.update_bounds(new_text, document, render_data, responses);
+					tool_data.update_bounds_overlay(&new_text, document, render_data, responses);
 					TextToolFsmState::Editing
 				}
 				_ => self,

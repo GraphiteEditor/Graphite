@@ -245,6 +245,7 @@
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
 		textInput.contentEditable = "true";
+		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 		textInput.style.height = "auto";
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;

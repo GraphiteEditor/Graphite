@@ -732,7 +732,9 @@ impl Document {
 				let layer = self.layer_mut(&path).expect("Clearing node graph image for invalid layer");
 				match &mut layer.data {
 					LayerDataType::NodeGraphFrame(node_graph) => {
-						node_graph.cached_output_data = CachedOutputData::None;
+						if matches!(node_graph.cached_output_data, CachedOutputData::BlobURL(_)) {
+							node_graph.cached_output_data = CachedOutputData::None;
+						}
 					}
 					e => panic!("Incorrectly trying to clear the blob URL for layer of type {}", LayerDataTypeDiscriminant::from(&*e)),
 				}

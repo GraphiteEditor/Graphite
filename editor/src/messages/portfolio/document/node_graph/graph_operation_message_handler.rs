@@ -157,6 +157,21 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
+	fn update_bounds(&mut self, [old_bounds_min, old_bounds_max]: [DVec2; 2], [new_bounds_min, new_bounds_max]: [DVec2; 2]) {
+		self.modify_inputs("Transform", false, |inputs| {
+			let layer_transform = transform_utils::get_current_transform(inputs);
+			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
+
+			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
+			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
+			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
+			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
+
+			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			transform_utils::update_transform(inputs, transform);
+		});
+	}
+
 	fn vector_modify(&mut self, modification: VectorDataModification) {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
@@ -186,18 +201,7 @@ impl<'a> ModifyInputsContext<'a> {
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
 
-		self.modify_inputs("Transform", false, |inputs| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
-
-			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
-			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
-			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
-			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
-
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
-		});
+		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
 	}
 }
 
@@ -211,7 +215,11 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					responses.add(Operation::SetLayerFill { path: layer, fill });
 				}
 			}
-
+			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+					modify_inputs.update_bounds(old_bounds, new_bounds);
+				}
+			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
