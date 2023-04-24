@@ -1,3 +1,4 @@
+use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_core::{NodeIdentifier, Type};
 
@@ -20,7 +21,7 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
@@ -32,7 +33,7 @@ impl DocumentNodeMetadata {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
@@ -156,7 +157,7 @@ impl DocumentNode {
 ///
 /// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
 /// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
 	Node {
@@ -165,7 +166,7 @@ pub enum NodeInput {
 		lambda: bool,
 	},
 	Value {
-		tagged_value: crate::document::value::TaggedValue,
+		tagged_value: TaggedValue,
 		exposed: bool,
 	},
 	Network(Type),
@@ -182,7 +183,7 @@ impl NodeInput {
 	pub const fn lambda(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index, lambda: true }
 	}
-	pub const fn value(tagged_value: crate::document::value::TaggedValue, exposed: bool) -> Self {
+	pub const fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
 		Self::Value { tagged_value, exposed }
 	}
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
@@ -212,11 +213,12 @@ impl NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	Unresolved(NodeIdentifier),
+	Extract,
 }
 
 impl Default for DocumentNodeImplementation {
@@ -227,23 +229,21 @@ impl Default for DocumentNodeImplementation {
 
 impl DocumentNodeImplementation {
 	pub fn get_network(&self) -> Option<&NodeNetwork> {
-		if let DocumentNodeImplementation::Network(n) = self {
-			Some(n)
-		} else {
-			None
+		match self {
+			DocumentNodeImplementation::Network(n) => Some(n),
+			_ => None,
 		}
 	}
 
 	pub fn get_network_mut(&mut self) -> Option<&mut NodeNetwork> {
-		if let DocumentNodeImplementation::Network(n) = self {
-			Some(n)
-		} else {
-			None
+		match self {
+			DocumentNodeImplementation::Network(n) => Some(n),
+			_ => None,
 		}
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeOutput {
 	pub node_id: NodeId,
@@ -265,6 +265,21 @@ pub struct NodeNetwork {
 	pub disabled: Vec<NodeId>,
 	/// In the case where a new node is chosen as output - what was the original
 	pub previous_outputs: Option<Vec<NodeOutput>>,
+}
+
+impl std::hash::Hash for NodeNetwork {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.inputs.hash(state);
+		self.outputs.hash(state);
+		let mut nodes: Vec<_> = self.nodes.iter().collect();
+		nodes.sort_by_key(|(id, _)| *id);
+		for (id, node) in nodes {
+			id.hash(state);
+			node.hash(state);
+		}
+		self.disabled.hash(state);
+		self.previous_outputs.hash(state);
+	}
 }
 
 /// Graph modification functions
@@ -701,10 +716,41 @@ impl NodeNetwork {
 					self.flatten_with_fns(node_id, map_ids, gen_id);
 				}
 			}
-			DocumentNodeImplementation::Unresolved(_) => {}
+			DocumentNodeImplementation::Unresolved(_) => (),
+			DocumentNodeImplementation::Extract => {
+				panic!("Extract nodes should have been removed before flattening");
+			}
 		}
 		assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
 		self.nodes.insert(id, node);
+	}
+
+	pub fn resolve_extract_nodes(&mut self) {
+		let mut extraction_nodes = self
+			.nodes
+			.iter()
+			.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Extract))
+			.map(|(id, node)| (*id, node.clone()))
+			.collect::<Vec<_>>();
+		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
+
+		for (_, node) in &mut extraction_nodes {
+			match node.implementation {
+				DocumentNodeImplementation::Extract => {
+					assert_eq!(node.inputs.len(), 1);
+					let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
+						panic!("Extract node has no input");
+					};
+					assert_eq!(output_index, 0);
+					assert!(lambda);
+					let input_node = self.nodes.get_mut(&node_id).unwrap();
+					node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+					node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
+				}
+				_ => (),
+			}
+		}
+		self.nodes.extend(extraction_nodes);
 	}
 
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
@@ -799,6 +845,39 @@ mod test {
 	}
 
 	#[test]
+	fn extract_node() {
+		let id_node = DocumentNode {
+			name: "Id".into(),
+			inputs: vec![],
+			metadata: DocumentNodeMetadata::default(),
+			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+		};
+		let mut extraction_network = NodeNetwork {
+			inputs: vec![],
+			outputs: vec![NodeOutput::new(1, 0)],
+			nodes: [
+				id_node.clone(),
+				DocumentNode {
+					name: "Extract".into(),
+					inputs: vec![NodeInput::lambda(0, 0)],
+					metadata: DocumentNodeMetadata::default(),
+					implementation: DocumentNodeImplementation::Extract,
+				},
+			]
+			.into_iter()
+			.enumerate()
+			.map(|(id, node)| (id as NodeId, node))
+			.collect(),
+			..Default::default()
+		};
+		extraction_network.resolve_extract_nodes();
+		assert_eq!(extraction_network.nodes.len(), 2);
+		let inputs = extraction_network.nodes.get(&1).unwrap().inputs.clone();
+		assert_eq!(inputs.len(), 1);
+		assert!(matches!(&inputs[0], &NodeInput::Value{ tagged_value: TaggedValue::DocumentNode(ref network), ..} if network == &id_node));
+	}
+
+	#[test]
 	fn flatten_add() {
 		let mut network = NodeNetwork {
 			inputs: vec![1],
@@ -810,7 +889,7 @@ mod test {
 					inputs: vec![
 						NodeInput::Network(concrete!(u32)),
 						NodeInput::Value {
-							tagged_value: crate::document::value::TaggedValue::U32(2),
+							tagged_value: TaggedValue::U32(2),
 							exposed: false,
 						},
 					],
@@ -876,7 +955,7 @@ mod test {
 						construction_args: ConstructionArgs::Nodes(vec![]),
 					},
 				),
-				(14, ProtoNode::value(ConstructionArgs::Value(crate::document::value::TaggedValue::U32(2)))),
+				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)))),
 			]
 			.into_iter()
 			.collect(),
@@ -917,7 +996,7 @@ mod test {
 					DocumentNode {
 						name: "Value".into(),
 						inputs: vec![NodeInput::Value {
-							tagged_value: crate::document::value::TaggedValue::U32(2),
+							tagged_value: TaggedValue::U32(2),
 							exposed: false,
 						}],
 						metadata: DocumentNodeMetadata::default(),
@@ -979,10 +1058,7 @@ mod test {
 					10,
 					DocumentNode {
 						name: "Nested network".into(),
-						inputs: vec![
-							NodeInput::value(crate::document::value::TaggedValue::F32(1.), false),
-							NodeInput::value(crate::document::value::TaggedValue::F32(2.), false),
-						],
+						inputs: vec![NodeInput::value(TaggedValue::F32(1.), false), NodeInput::value(TaggedValue::F32(2.), false)],
 						metadata: DocumentNodeMetadata::default(),
 						implementation: DocumentNodeImplementation::Network(two_node_identity()),
 					},
@@ -1015,11 +1091,7 @@ mod test {
 		assert_eq!(result.nodes.keys().copied().collect::<Vec<_>>(), vec![101], "Should just call nested network");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(
-			nested_network_node.inputs,
-			vec![NodeInput::value(crate::document::value::TaggedValue::F32(2.), false)],
-			"Input should be 2"
-		);
+		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");
@@ -1038,11 +1110,7 @@ mod test {
 		for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
 			let nested_network_node = result.nodes.get(&node_id).unwrap();
 			assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-			assert_eq!(
-				nested_network_node.inputs,
-				vec![NodeInput::value(crate::document::value::TaggedValue::F32(input_value), false)],
-				"Input should be stable"
-			);
+			assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
 			let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 			assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
 			assert_eq!(inner_network.outputs, vec![NodeOutput::new(inner_id, 0)], "The output should be node id");
@@ -1061,11 +1129,7 @@ mod test {
 		assert_eq!(result_node.inputs, vec![NodeInput::node(101, 0)], "Result node should refer to duplicate node as input");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(
-			nested_network_node.inputs,
-			vec![NodeInput::value(crate::document::value::TaggedValue::F32(2.), false)],
-			"Input should be 2"
-		);
+		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
 		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");

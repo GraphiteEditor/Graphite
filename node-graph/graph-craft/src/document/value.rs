@@ -1,14 +1,16 @@
+use super::DocumentNode;
+use crate::executor::Any;
+pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+
+use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::{Color, Node, Type};
+
 pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::{Color, Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
-
-use crate::executor::Any;
-pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +56,7 @@ pub enum TaggedValue {
 	VecDVec2(Vec<DVec2>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	EditorApi(graphene_core::EditorApi<'static>),
+	DocumentNode(DocumentNode),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -122,12 +125,12 @@ impl Hash for TaggedValue {
 				}
 			}
 			Self::Segments(segments) => {
-				32.hash(state);
 				for segment in segments {
 					segment.hash(state)
 				}
 			}
 			Self::EditorApi(editor_api) => editor_api.hash(state),
+			Self::DocumentNode(document_node) => document_node.hash(state),
 		}
 	}
 }
@@ -176,6 +179,19 @@ impl<'a> TaggedValue {
 			TaggedValue::VecDVec2(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
 			TaggedValue::EditorApi(x) => Box::new(x),
+			TaggedValue::DocumentNode(x) => Box::new(x),
+		}
+	}
+
+	pub fn to_primitive_string(&self) -> String {
+		match self {
+			TaggedValue::None => "()".to_string(),
+			TaggedValue::String(x) => x.clone(),
+			TaggedValue::U32(x) => x.to_string(),
+			TaggedValue::F32(x) => x.to_string(),
+			TaggedValue::F64(x) => x.to_string(),
+			TaggedValue::Bool(x) => x.to_string(),
+			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
 
@@ -223,6 +239,7 @@ impl<'a> TaggedValue {
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
+			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 		}
 	}
 }

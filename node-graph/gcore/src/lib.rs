@@ -20,6 +20,8 @@ pub mod value;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+pub mod storage;
+
 pub mod raster;
 #[cfg(feature = "alloc")]
 pub mod transform;
@@ -46,8 +48,8 @@ pub use types::*;
 
 pub trait NodeIO<'i, Input: 'i>: 'i + Node<'i, Input>
 where
-	Self::Output: 'i + StaticType,
-	Input: 'i + StaticType,
+	Self::Output: 'i + StaticTypeSized,
+	Input: 'i + StaticTypeSized,
 {
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
@@ -56,7 +58,7 @@ where
 		core::any::type_name::<Input>()
 	}
 	fn output_type(&self) -> core::any::TypeId {
-		TypeId::of::<<Self::Output as StaticType>::Static>()
+		TypeId::of::<<Self::Output as StaticTypeSized>::Static>()
 	}
 	fn output_type_name(&self) -> &'static str {
 		core::any::type_name::<Self::Output>()
@@ -64,8 +66,8 @@ where
 	#[cfg(feature = "alloc")]
 	fn to_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes {
 		NodeIOTypes {
-			input: concrete!(<Input as StaticType>::Static),
-			output: concrete!(<Self::Output as StaticType>::Static),
+			input: concrete!(<Input as StaticTypeSized>::Static),
+			output: concrete!(<Self::Output as StaticTypeSized>::Static),
 			parameters,
 		}
 	}
@@ -73,8 +75,8 @@ where
 
 impl<'i, N: Node<'i, I>, I> NodeIO<'i, I> for N
 where
-	N::Output: 'i + StaticType,
-	I: 'i + StaticType,
+	N::Output: 'i + StaticTypeSized,
+	I: 'i + StaticTypeSized,
 {
 }
 
@@ -85,6 +87,13 @@ where
 		(**self).eval(input)
 	}
 }*/
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
 impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
@@ -94,7 +103,7 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 }
 use core::pin::Pin;
 
-use dyn_any::StaticType;
+use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
 impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
 	type Output = O;

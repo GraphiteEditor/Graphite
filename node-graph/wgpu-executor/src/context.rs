@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use wgpu::{Device, Instance, Queue};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Context {
 	pub device: Arc<Device>,
 	pub queue: Arc<Queue>,

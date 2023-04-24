@@ -7,6 +7,8 @@ use crate::document::value;
 use crate::document::NodeId;
 use dyn_any::DynAny;
 use graphene_core::*;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
@@ -16,7 +18,8 @@ pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output =
 
 pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'static>;
 
-#[derive(Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct ProtoNetwork {
 	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
@@ -29,7 +32,7 @@ impl core::fmt::Display for ProtoNetwork {
 		f.write_str("Proto Network with nodes: ")?;
 		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
 			f.write_str(&"\t".repeat(indent))?;
-			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else{
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;
@@ -70,6 +73,7 @@ impl core::fmt::Display for ProtoNetwork {
 	}
 }
 
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub enum ConstructionArgs {
 	Value(value::TaggedValue),
@@ -104,12 +108,13 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{}", n.0)).collect(),
-			ConstructionArgs::Value(value) => vec![format!("{:?}", value)],
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
+			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
 		}
 	}
 }
 
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, PartialEq, Clone)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
@@ -121,6 +126,7 @@ pub struct ProtoNode {
 /// For documentation on the meaning of the variants, see the documentation of the `NodeInput` enum
 /// in the `document` module
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProtoNodeInput {
 	None,
 	Network(Type),

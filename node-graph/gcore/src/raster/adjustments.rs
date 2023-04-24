@@ -3,6 +3,7 @@ use crate::Node;
 
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "spirv")]
@@ -457,8 +458,9 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	}
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum RedGreenBlue {
 	Red,
 	Green,
@@ -542,8 +544,9 @@ fn channel_mixer_node(
 	color.to_linear_srgb()
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum RelativeAbsolute {
 	Relative,
 	Absolute,
@@ -559,7 +562,9 @@ impl core::fmt::Display for RelativeAbsolute {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum SelectiveColorChoice {
 	Reds,
 	Yellows,
@@ -797,17 +802,26 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 }
 
-#[derive(Debug)]
-pub struct IndexNode<Index> {
-	pub index: Index,
-}
+#[cfg(feature = "alloc")]
+pub use index_node::IndexNode;
 
-#[node_macro::node_fn(IndexNode)]
-pub fn index_node(input: Vec<super::ImageFrame<Color>>, index: u32) -> super::ImageFrame<Color> {
-	if (index as usize) < input.len() {
-		input[index as usize].clone()
-	} else {
-		warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
-		super::ImageFrame::empty()
+#[cfg(feature = "alloc")]
+mod index_node {
+	use crate::raster::{Color, ImageFrame};
+	use crate::Node;
+
+	#[derive(Debug)]
+	pub struct IndexNode<Index> {
+		pub index: Index,
+	}
+
+	#[node_macro::node_fn(IndexNode)]
+	pub fn index_node(input: Vec<ImageFrame<Color>>, index: u32) -> ImageFrame<Color> {
+		if (index as usize) < input.len() {
+			input[index as usize].clone()
+		} else {
+			warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
+			ImageFrame::empty()
+		}
 	}
 }

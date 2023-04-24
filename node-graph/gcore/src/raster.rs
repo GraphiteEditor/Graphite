@@ -4,50 +4,52 @@ use crate::Node;
 
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
-use num::Num;
+#[cfg(not(target_arch = "spirv"))]
+use num_traits::{cast::cast as num_cast, Num, NumCast};
 #[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
+use spirv_std::num_traits::{cast::cast as num_cast, float::Float, FromPrimitive, Num, NumCast, ToPrimitive};
 
-pub use self::color::Color;
+pub use self::color::{Color, Luma};
 
 pub mod adjustments;
+#[cfg(not(target_arch = "spirv"))]
 pub mod brightness_contrast;
 pub mod color;
 pub use adjustments::*;
 
-pub trait Channel: Copy + Debug + num::Num + num::NumCast {
+pub trait Channel: Copy + Debug + Num + NumCast {
 	fn to_linear<Out: Linear>(self) -> Out;
 	fn from_linear<In: Linear>(linear: In) -> Self;
 	fn to_f32(self) -> f32 {
-		num::cast(self).expect("Failed to convert channel to f32")
+		num_cast(self).expect("Failed to convert channel to f32")
 	}
 	fn from_f32(value: f32) -> Self {
-		num::cast(value).expect("Failed to convert f32 to channel")
+		num_cast(value).expect("Failed to convert f32 to channel")
 	}
 	fn to_f64(self) -> f64 {
-		num::cast(self).expect("Failed to convert channel to f64")
+		num_cast(self).expect("Failed to convert channel to f64")
 	}
 	fn from_f64(value: f64) -> Self {
-		num::cast(value).expect("Failed to convert f64 to channel")
+		num_cast(value).expect("Failed to convert f64 to channel")
 	}
 	fn to_channel<Out: Channel>(self) -> Out {
-		num::cast(self).expect("Failed to convert channel to channel")
+		num_cast(self).expect("Failed to convert channel to channel")
 	}
 }
 
-pub trait Linear: num::NumCast + Num {}
+pub trait Linear: NumCast + Num {}
 impl Linear for f32 {}
 impl Linear for f64 {}
 
 impl<T: Linear + Debug + Copy> Channel for T {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
-		num::cast(self).expect("Failed to convert channel to linear")
+		num_cast(self).expect("Failed to convert channel to linear")
 	}
 
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
-		num::cast(linear).expect("Failed to convert linear to channel")
+		num_cast(linear).expect("Failed to convert linear to channel")
 	}
 }
 
@@ -58,16 +60,16 @@ struct SRGBGammaFloat(f32);
 impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
-		let channel = num::cast::<_, f32>(self).expect("Failed to convert srgb to linear");
+		let channel = num_cast::<_, f32>(self).expect("Failed to convert srgb to linear");
 		let out = if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) };
-		num::cast(out).expect("Failed to convert srgb to linear")
+		num_cast(out).expect("Failed to convert srgb to linear")
 	}
 
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
-		let linear = num::cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
+		let linear = num_cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
 		let out = if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1. / 2.4) - 0.055 };
-		num::cast(out).expect("Failed to convert linear to srgb")
+		num_cast(out).expect("Failed to convert linear to srgb")
 	}
 }
 pub trait RGBPrimaries {
@@ -98,6 +100,7 @@ impl<T> Serde for T {}
 
 // TODO: Come up with a better name for this trait
 pub trait Pixel: Clone + Pod + Zeroable {
+	#[cfg(not(target_arch = "spirv"))]
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()
 	}
@@ -107,7 +110,7 @@ pub trait Pixel: Clone + Pod + Zeroable {
 	}
 
 	fn byte_size() -> usize {
-		std::mem::size_of::<Self>()
+		core::mem::size_of::<Self>()
 	}
 }
 pub trait RGB: Pixel {
@@ -448,6 +451,8 @@ pub struct ImageSlice<'a, Pixel> {
 	pub data: &'a [Pixel],
 	#[cfg(target_arch = "spirv")]
 	pub data: &'a (),
+	#[cfg(target_arch = "spirv")]
+	pub _marker: PhantomData<Pixel>,
 }
 
 unsafe impl<P: StaticTypeSized> StaticType for ImageSlice<'_, P> {
@@ -470,19 +475,16 @@ impl<'a, P> Default for ImageSlice<'a, P> {
 			width: Default::default(),
 			height: Default::default(),
 			data: &NOTHING,
+			_marker: PhantomData,
 		}
 	}
 }
 
+#[cfg(not(target_arch = "spirv"))]
 impl<P: Copy + Debug + Pixel> Raster for ImageSlice<'_, P> {
 	type Pixel = P;
-	#[cfg(not(target_arch = "spirv"))]
 	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
 		self.data.get((x + y * self.width) as usize).copied()
-	}
-	#[cfg(target_arch = "spirv")]
-	fn get_pixel(&self, _x: u32, _y: u32) -> P {
-		Color::default()
 	}
 	fn width(&self) -> u32 {
 		self.width
@@ -605,6 +607,8 @@ pub(crate) mod image {
 		}
 	}
 
+	// TODO: Evaluate if this will be a problem for our use case.
+	/// Warning: This is an approximation of a hash, and is not guaranteed to not collide.
 	impl<P: Hash + Pixel> Hash for Image<P> {
 		fn hash<H: Hasher>(&self, state: &mut H) {
 			const HASH_SAMPLES: u64 = 1000;
@@ -661,7 +665,7 @@ pub(crate) mod image {
 			let Image { width, height, data } = self;
 
 			let to_gamma = |x| SRGBGammaFloat::from_linear(x);
-			let to_u8 = |x| (num::cast::<_, f32>(x).unwrap() * 255.) as u8;
+			let to_u8 = |x| (num_cast::<_, f32>(x).unwrap() * 255.) as u8;
 
 			let result_bytes = data
 				.into_iter()
@@ -670,7 +674,7 @@ pub(crate) mod image {
 						to_u8(to_gamma(color.r() / color.a().to_channel())),
 						to_u8(to_gamma(color.g() / color.a().to_channel())),
 						to_u8(to_gamma(color.b() / color.a().to_channel())),
-						(num::cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
+						(num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
 					]
 				})
 				.collect();
