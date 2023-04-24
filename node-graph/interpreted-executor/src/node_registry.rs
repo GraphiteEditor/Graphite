@@ -68,48 +68,59 @@ macro_rules! register_node {
 	};
 }
 macro_rules! raster_node {
-	($path:ty, params: [$($type:ty),*]) => {
-		vec![
-		(
-			NodeIdentifier::new(stringify!($path)),
-			|args| {
-				let node = construct_node!(args, $path, [$($type),*]);
-				let any: DynAnyNode<Color, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-				Box::pin(any)
-			},
-			{
-				let params = vec![$(value_fn!($type)),*];
-				NodeIOTypes::new(concrete!(Color), concrete!(Color), params)
-			},
-		),
-		(
-			NodeIdentifier::new(stringify!($path)),
-			|args| {
-				let node = construct_node!(args, $path, [$($type),*]);
-				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-				let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
-				Box::pin(any)
-			},
-			{
-				let params = vec![$(value_fn!($type)),*];
-				NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), params)
-			},
-		),
-		(
-			NodeIdentifier::new(stringify!($path)),
-			|args| {
-				let node = construct_node!(args, $path, [$($type),*]);
-				let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-				let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
-				Box::pin(any)
-			},
-			{
-				let params = vec![$(value_fn!($type)),*];
-				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), params)
-			},
-		)
-		]
-	}
+	($path:ty, params: [$($type:ty),*]) => {{
+		// this function could also be inlined but serves as a workaround for
+		// [wasm-pack#981](https://github.com/rustwasm/wasm-pack/issues/981).
+		// The non-inlining function leads to fewer locals in the resulting
+		// wasm binary. This issue currently only applies to debug builds, so
+		// we guard inlining to only happen on production builds for
+		// optimization purposes.
+		#[cfg_attr(debug_assertions, inline(never))]
+		#[cfg_attr(not(debug_assertions), inline)]
+		fn generate_triples() -> Vec<(NodeIdentifier, NodeConstructor, NodeIOTypes)> {
+			vec![
+			(
+				NodeIdentifier::new(stringify!($path)),
+				|args| {
+					let node = construct_node!(args, $path, [$($type),*]);
+					let any: DynAnyNode<Color, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					Box::pin(any)
+				},
+				{
+					let params = vec![$(value_fn!($type)),*];
+					NodeIOTypes::new(concrete!(Color), concrete!(Color), params)
+				},
+			),
+			(
+				NodeIdentifier::new(stringify!($path)),
+				|args| {
+					let node = construct_node!(args, $path, [$($type),*]);
+					let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
+					let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+					Box::pin(any)
+				},
+				{
+					let params = vec![$(value_fn!($type)),*];
+					NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), params)
+				},
+			),
+			(
+				NodeIdentifier::new(stringify!($path)),
+				|args| {
+					let node = construct_node!(args, $path, [$($type),*]);
+					let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+					Box::pin(any)
+				},
+				{
+					let params = vec![$(value_fn!($type)),*];
+					NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), params)
+				},
+			)
+			]
+		}
+		generate_triples()
+	}};
 }
 
 //TODO: turn into hashmap
