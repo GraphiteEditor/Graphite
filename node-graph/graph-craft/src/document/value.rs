@@ -53,6 +53,7 @@ pub enum TaggedValue {
 	Font(graphene_core::text::Font),
 	VecDVec2(Vec<DVec2>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
+	EditorApi(graphene_core::EditorApi<'static>),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -126,6 +127,7 @@ impl Hash for TaggedValue {
 					segment.hash(state)
 				}
 			}
+			Self::EditorApi(editor_api) => editor_api.hash(state),
 		}
 	}
 }
@@ -173,6 +175,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Font(x) => Box::new(x),
 			TaggedValue::VecDVec2(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
+			TaggedValue::EditorApi(x) => Box::new(x),
 		}
 	}
 
@@ -219,6 +222,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
+			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 		}
 	}
 }

@@ -163,8 +163,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(1, 0)],
 				nodes: [DocumentNode {
 					name: "Identity".to_string(),
-					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+					inputs: vec![NodeInput::Network(concrete!(EditorApi))],
+					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ExtractImageFrame")),
 					metadata: Default::default(),
 				}]
 				.into_iter()
@@ -196,7 +196,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						metadata: Default::default(),
 					},
@@ -229,7 +229,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				default: NodeInput::value(TaggedValue::EditorApi(EditorApi::empty()), true),
 			}],
 			outputs: vec![
 				DocumentOutputType {
@@ -834,8 +834,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Text",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _, _>"),
 			inputs: vec![
+				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("hello world".to_string()), false),
 				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
 				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
@@ -1134,6 +1135,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 		nodes: [
 			text_generator.to_document_node(
 				[
+					NodeInput::Network(concrete!(graphene_core::EditorApi)),
 					NodeInput::value(TaggedValue::String(text), false),
 					NodeInput::value(TaggedValue::Font(font), false),
 					NodeInput::value(TaggedValue::F64(size), false),

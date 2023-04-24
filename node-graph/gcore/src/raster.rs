@@ -530,7 +530,7 @@ fn dimensions_node<_P>(input: ImageSlice<'input, _P>) -> (u32, u32) {
 #[cfg(feature = "alloc")]
 pub use image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode};
 #[cfg(feature = "alloc")]
-mod image {
+pub(crate) mod image {
 	use super::{Color, ImageSlice};
 	use crate::Node;
 	use alloc::vec::Vec;
@@ -802,6 +802,53 @@ mod image {
 		fn hash<H: Hasher>(&self, state: &mut H) {
 			self.image.hash(state);
 			self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+
+	use crate::text::FontCache;
+	#[derive(Clone, Debug, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct EditorApi<'a> {
+		#[cfg_attr(feature = "serde", serde(skip))]
+		pub image_frame: Option<&'a ImageFrame<Color>>,
+		#[cfg_attr(feature = "serde", serde(skip))]
+		pub font_cache: Option<&'a FontCache>,
+	}
+
+	unsafe impl StaticType for EditorApi<'_> {
+		type Static = EditorApi<'static>;
+	}
+
+	impl EditorApi<'_> {
+		pub fn empty() -> Self {
+			Self { image_frame: None, font_cache: None }
+		}
+	}
+
+	impl<'a> AsRef<EditorApi<'a>> for EditorApi<'a> {
+		fn as_ref(&self) -> &EditorApi<'a> {
+			self
+		}
+	}
+
+	impl Hash for EditorApi<'_> {
+		fn hash<H: Hasher>(&self, state: &mut H) {
+			self.image_frame.hash(state);
+		}
+	}
+
+	pub struct ExtractImageFrame;
+
+	impl<'a: 'input, 'input> Node<'input, EditorApi<'a>> for ExtractImageFrame {
+		type Output = ImageFrame<Color>;
+		fn eval(&'input self, editor_api: EditorApi<'a>) -> Self::Output {
+			editor_api.image_frame.cloned().unwrap_or(ImageFrame::empty())
+		}
+	}
+
+	impl ExtractImageFrame {
+		pub fn new() -> Self {
+			Self
 		}
 	}
 }

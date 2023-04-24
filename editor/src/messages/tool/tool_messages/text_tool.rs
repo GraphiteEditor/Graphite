@@ -254,9 +254,9 @@ impl TextToolData {
 		responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 	}
 	fn extract_text_node_inputs(node: &DocumentNode) -> Option<(&String, &Font, f64)> {
-		let NodeInput::Value{tagged_value:TaggedValue::String(text),..} =& node.inputs[0] else { return None; };
-		let NodeInput::Value{tagged_value:TaggedValue::Font(font),..} =& node.inputs[1] else { return None; };
-		let NodeInput::Value{tagged_value:TaggedValue::F64(font_size),..} =& node.inputs[2] else { return None; };
+		let NodeInput::Value { tagged_value: TaggedValue::String(text), .. } = &node.inputs[1] else { return None; };
+		let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = &node.inputs[2] else { return None; };
+		let NodeInput::Value { tagged_value: TaggedValue::F64(font_size), .. } = &node.inputs[3] else { return None; };
 		Some((text, font, *font_size))
 	}
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> TextToolFsmState {
@@ -464,7 +464,7 @@ impl Fsm for TextToolFsmState {
 					responses.add(NodeGraphMessage::SetQualifiedInputValue {
 						layer_path,
 						node_path: vec![get_text_node_id(network).unwrap()],
-						input_index: 0,
+						input_index: 1,
 						value: TaggedValue::String(new_text),
 					});
 

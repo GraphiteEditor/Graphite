@@ -54,8 +54,7 @@ impl Subpath {
 				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
 			}
 			if subpath.closed() {
-				let group = subpath.manipulator_groups()[0];
-				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
+				groups.push(ManipulatorGroup::closed());
 			}
 		}
 		Self(groups)

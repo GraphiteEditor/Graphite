@@ -11,6 +11,7 @@ use graph_craft::imaginate_input::*;
 use graphene_core::raster::{BlendMode, Color, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
+use graphene_core::EditorApi;
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -877,9 +878,9 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let text = text_area_widget(document_node, node_id, 0, "Text", true);
-	let (font, style) = font_inputs(document_node, node_id, 1, "Font", "Style", true);
-	let size = number_widget(document_node, node_id, 2, "Size", NumberInput::default().unit(" px").min(1.), true);
+	let text = text_area_widget(document_node, node_id, 1, "Text", true);
+	let (font, style) = font_inputs(document_node, node_id, 2, "Font", "Style", true);
+	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
 
 	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
 	if let Some(style) = style {
@@ -1140,9 +1141,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	// Create the input to the graph using an empty image
-	let image_frame = std::borrow::Cow::Owned(graphene_core::raster::ImageFrame {
-		image: graphene_core::raster::Image::empty(),
-		transform: glam::DAffine2::IDENTITY,
+	let image_frame = std::borrow::Cow::Owned(EditorApi {
+		image_frame: None,
+		font_cache: Some(&context.persistent_data.font_cache),
 	});
 	// Compute the transform input to the node graph frame
 	let image_frame: graphene_core::raster::ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
