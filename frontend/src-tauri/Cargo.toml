@@ -23,11 +23,9 @@ graphite-editor = { version = "0.0.0", path = "../../editor" }
 chrono = "^0.4.23"
 tokio = {version ="1", features = ["full"] }
 ron = "0.8"
-
 log = "0.4"
 fern = {version = "0.6", features = ["colored"] }
 futures = "0.3.25"
-
 
 [features]
 gpu = ["graphite-editor/gpu"]
@@ -37,4 +35,4 @@ quantization = ["graphite-editor/quantization"]
 default = [ "custom-protocol" ]
 # this feature is used for production builds where `devPath` points to the filesystem
 # DO NOT remove this
-custom-protocol = [ "tauri/custom-protocol" ]
+custom-protocol = ["tauri/custom-protocol"]
