@@ -1,0 +1,8 @@
+{
+	"description": "A convenience package for calling the real package.json in ./frontend",
+	"private": true,
+	"scripts": {
+		"start": "cd frontend && npm start",
+		"serve": "cd frontend && npm start"
+	}
+}
