@@ -65,3 +65,15 @@ impl FontCache {
 		self.preview_urls.get(font)
 	}
 }
+
+impl core::hash::Hash for FontCache {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.preview_urls.len().hash(state);
+		self.preview_urls.iter().for_each(|(font, url)| {
+			font.hash(state);
+			url.hash(state)
+		});
+		self.font_file_data.len().hash(state);
+		self.font_file_data.keys().for_each(|font| font.hash(state));
+	}
+}

@@ -804,13 +804,14 @@ pub(crate) mod image {
 
 	impl<P: Hash + Pixel> Hash for ImageFrame<P> {
 		fn hash<H: Hasher>(&self, state: &mut H) {
+			self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+			0.hash(state);
 			self.image.hash(state);
-			self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
 
 	use crate::text::FontCache;
-	#[derive(Clone, Debug, PartialEq)]
+	#[derive(Clone, Debug, Hash, PartialEq)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct EditorApi<'a> {
 		#[cfg_attr(feature = "serde", serde(skip))]
@@ -832,12 +833,6 @@ pub(crate) mod image {
 	impl<'a> AsRef<EditorApi<'a>> for EditorApi<'a> {
 		fn as_ref(&self) -> &EditorApi<'a> {
 			self
-		}
-	}
-
-	impl Hash for EditorApi<'_> {
-		fn hash<H: Hasher>(&self, state: &mut H) {
-			self.image_frame.hash(state);
 		}
 	}
 

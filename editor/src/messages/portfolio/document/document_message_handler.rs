@@ -1040,36 +1040,39 @@ impl DocumentMessageHandler {
 		};
 
 		// Find the primary input type of the node graph
-		let primary_input_type = node_network.input_types().next().clone();
-		let response = match primary_input_type {
-			// Only calclate the frame if the primary input is an image
-			Some(ty) if ty == concrete!(EditorApi) => {
-				// Calculate the size of the region to be exported
-				let old_transforms = self.remove_document_transform();
-				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
-				let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+		let input_frame = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame");
+		let input_node_id = input_frame.map(|(&id, _)| id);
+		let primary_input_type = input_node_id.filter(|&target_node_id| node_network.connected_to_output(target_node_id, true));
 
-				let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-				self.restore_document_transform(old_transforms);
+		// Only calclate the frame if the primary input is an image
+		let response = if primary_input_type.is_some() {
+			// Calculate the size of the region to be exported
+			let old_transforms = self.remove_document_transform();
+			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
+			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
-				FrontendMessage::TriggerNodeGraphFrameGenerate {
-					document_id,
-					layer_path,
-					svg,
-					size,
-					imaginate_node,
-				}
-				.into()
+			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			self.restore_document_transform(old_transforms);
+
+			FrontendMessage::TriggerNodeGraphFrameGenerate {
+				document_id,
+				layer_path,
+				svg,
+				size,
+				imaginate_node,
 			}
-			// Skip processing under node graph frame input if not connected
-			_ => PortfolioMessage::ProcessNodeGraphFrame {
+			.into()
+		}
+		// Skip processing under node graph frame input if not connected
+		else {
+			PortfolioMessage::ProcessNodeGraphFrame {
 				document_id,
 				layer_path,
 				image_data: Default::default(),
 				size: (0, 0),
 				imaginate_node,
 			}
-			.into(),
+			.into()
 		};
 		Some(response)
 	}
