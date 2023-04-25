@@ -97,6 +97,7 @@ impl FolderLayer {
 				}
 				None => (),
 			}
+			// debug!("FOLDER FUNC ID: {:?}", id);
 			self.layers.insert(insert_index as usize, layer);
 			self.layer_ids.insert(insert_index as usize, id);
 

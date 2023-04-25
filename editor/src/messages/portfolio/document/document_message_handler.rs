@@ -147,7 +147,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 										warn!("CreatedLayer overrides existing layer metadata.");
 									}
 									self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
-
 									responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
 									self.layer_range_selection_reference = path.clone();
 									responses.push_back(
@@ -517,7 +516,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					.into(),
 				);
-				debug!("a");
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
@@ -1399,6 +1397,7 @@ impl DocumentMessageHandler {
 
 	/// Returns the paths to all layers in order
 	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
+		// debug!("LAYERS: {:?}", paths.cloned().collect());
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices

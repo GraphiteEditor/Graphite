@@ -727,6 +727,7 @@ impl Document {
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 
 				let mut duplicated_layers: Vec<Vec<u64>> = vec![];
+
 				let layer_is_folder = (&layer).as_folder().is_ok();
 				if layer_is_folder {
 					let folder_is_empty = self.folder_children_paths(&path).is_empty();
@@ -734,11 +735,14 @@ impl Document {
 						duplicated_layers = recursive_collect(self, &path);
 					}
 				}
+				let duplicated_layers_objects: Vec<Layer> = duplicated_layers.iter().map(|p| self.layer(p.as_slice()).unwrap()).cloned().collect();
 
 				let folder = self.folder_mut(folder_path)?;
 
 				if let Some(new_layer_id) = folder.add_layer(layer, None, -1, Some(path.clone())) {
+					let folder = self.folder(folder_path)?;
 					let new_path = [folder_path, &[new_layer_id]].concat();
+					let new_folder = self.folder_mut(new_path.clone().as_slice())?;
 
 					let mut responses: Vec<DocumentResponse> = vec![];
 					responses.extend([DocumentChanged, CreatedLayer { path: new_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
@@ -746,29 +750,29 @@ impl Document {
 
 					// Loop through the duplicated layers and update the layer path by swapping the path with new_path
 					// Use the updated layer path in our duplicate layer operation call
+					let mut counter = 0;
 					for layer in duplicated_layers {
-						// {1/2/3}
+						// let new_folder = self.folder(new_path.clone().as_slice())?;
 						let cloned_new_path = new_path.clone();
 						let sub = layer[..cloned_new_path.len()].to_vec();
 						let mut new_sub_path: Vec<u64> = vec![];
 
-						debug!("layer: {:?}", &layer);
-						// debug!("sub layer: {:?}", &sub);
-						// debug!("new path: {:?}", &new_path);
-
 						for i in 0..=cloned_new_path.len() - 1 {
-							// 1, 2, 3
-
 							if !(cloned_new_path.get(i).unwrap() == sub.get(i).unwrap()) {
-								new_sub_path.push(folder.next_assignment_id());
-								// responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
-								// responses.extend(update_thumbnails_upstream(path.as_slice()));
+								let random_id = new_folder.next_assignment_id();
+								// debug!("r id: {:?}", random_id);
+								new_sub_path.push(random_id);
 							}
 						}
-						// debug!("new sub layer: {:?}", &new_sub_path);
 						let updated_layer_path = [cloned_new_path.clone(), new_sub_path].concat();
-						debug!("updated: {:?}", &updated_layer_path);
+						debug!("updated layer path: {:?}", &updated_layer_path);
+						let updated_layer: Layer = duplicated_layers_objects.get(counter).unwrap().clone();
+
+						// let new_folder = self.folder(new_path.clone().as_slice())?;
+						let x = new_folder.add_layer(updated_layer, None, -1, None).unwrap();
+						debug!("x: {:?}", &x);
 						responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
+						counter = counter + 1;
 					}
 
 					// for operation in queue {
@@ -778,7 +782,7 @@ impl Document {
 
 					// responses.extend([DocumentChanged, CreatedLayer { path: new_path }, FolderChanged { path: folder_path.to_vec() }]);
 					// responses.extend(update_thumbnails_upstream(path.as_slice()));
-					debug!("RES: {:?}", &responses);
+					// debug!("RES: {:?}", &responses);
 
 					self.mark_as_dirty(folder_path)?;
 					Some(responses)
