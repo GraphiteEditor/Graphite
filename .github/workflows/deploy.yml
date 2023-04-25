@@ -1,0 +1,56 @@
+name: Deploy release
+
+on:
+  push:
+    tags:
+      - 'latest-stable'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: 🔧 Set up Node
+      uses: actions/setup-node@v1
+      with:
+        node-version: '16.x'
+
+    - name: 🚧 Install Node dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: 🔼 Update Rust to latest stable
+      run: |
+        rustc --version
+        rustup update stable
+        rustc --version
+
+    - name: 🌐 Build Graphite web code
+      env:
+        NODE_ENV: production
+      run: |
+        cd frontend
+        mold -run npm run build
+
+    - name: Publish
+      id: cloudflare
+      uses: cloudflare/pages-action@1
+      with:
+        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        projectName: graphite-editor
+        directory: frontend/dist
+        gitHubToken: ${{ secrets.GITHUB_TOKEN }}

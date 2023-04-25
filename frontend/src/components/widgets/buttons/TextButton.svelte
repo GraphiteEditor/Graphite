@@ -76,7 +76,7 @@
 			}
 		}
 
-		& + .text-button {
+		&.text-button + .text-button {
 			margin-left: 8px;
 		}
 

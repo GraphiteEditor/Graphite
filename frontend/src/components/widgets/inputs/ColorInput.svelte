@@ -13,8 +13,8 @@
 	let open = false;
 
 	export let value: Color;
-	export let noTransparency = false; // TODO: Rename to allowTransparency, also implement allowNone
-	export let disabled = false; // TODO: Design and implement
+	// export let noTransparency = false; // TODO: Rename to allowTransparency, also implement allowNone
+	// export let disabled = false; // TODO: Design and implement
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
 

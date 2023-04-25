@@ -1,3 +1,6 @@
 node_modules/
 wasm/pkg/
 public/build/
+dist/**
+!dist/.git-keep-directory
+.parcel-cache
