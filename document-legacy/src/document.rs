@@ -430,28 +430,27 @@ impl Document {
 	}
 
 	/// Marks all decendants of the specified [Layer] of a specific [LayerDataType] as dirty
-	fn mark_layers_of_type_as_dirty(root: &mut Layer, data_type: LayerDataTypeDiscriminant) -> bool {
+	fn mark_text_as_dirty(root: &mut Layer) -> bool {
 		if let LayerDataType::Folder(folder) = &mut root.data {
 			let mut dirty = false;
 			for layer in folder.layers_mut() {
-				dirty = Self::mark_layers_of_type_as_dirty(layer, data_type) || dirty;
+				dirty = Self::mark_text_as_dirty(layer) || dirty;
 			}
 			root.cache_dirty = dirty;
 		}
-		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
-			root.cache_dirty = true;
-			todo!()
-			// if let LayerDataType::Text(text) = &mut root.data {
-			// 	text.cached_path = None;
-			// }
+		if let LayerDataType::NodeGraphFrame(graph_frame) = &mut root.data {
+			if graph_frame.network.nodes.values().any(|node| node.name == "Text") {
+				graph_frame.cached_output_data = CachedOutputData::None;
+				root.cache_dirty = true;
+			}
 		}
 
 		root.cache_dirty
 	}
 
 	/// Marks all layers in the [Document] of a specific [LayerDataType] as dirty
-	pub fn mark_all_layers_of_type_as_dirty(&mut self, data_type: LayerDataTypeDiscriminant) -> bool {
-		Self::mark_layers_of_type_as_dirty(&mut self.root, data_type)
+	pub fn mark_all_text_as_dirty(&mut self) -> bool {
+		Self::mark_text_as_dirty(&mut self.root)
 	}
 
 	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {

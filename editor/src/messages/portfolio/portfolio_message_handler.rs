@@ -209,7 +209,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.persistent_data.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
 
 				if let Some(document) = self.active_document_mut() {
-					document.document_legacy.mark_all_layers_of_type_as_dirty(LayerDataTypeDiscriminant::Text);
+					document.document_legacy.mark_all_text_as_dirty();
 					responses.push_back(DocumentMessage::RenderDocument.into());
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
