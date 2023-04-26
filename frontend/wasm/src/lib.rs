@@ -25,7 +25,7 @@ thread_local! {
 
 /// Initialize the backend
 #[wasm_bindgen(start)]
-pub fn init() {
+pub fn init_graphite() {
 	// Set up the panic hook
 	panic::set_hook(Box::new(panic_hook));
 

@@ -336,12 +336,12 @@
 	}
 
 	function doubleClick(e: MouseEvent) {
-		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		const nodeId = node?.getAttribute("data-node") || undefined;
-		if (nodeId) {
-			const id = BigInt(nodeId);
-			editor.instance.doubleClickNode(id);
-		}
+		// const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+		// const nodeId = node?.getAttribute("data-node") || undefined;
+		// if (nodeId) {
+		// 	const id = BigInt(nodeId);
+		// 	editor.instance.doubleClickNode(id);
+		// }
 	}
 
 	function pointerMove(e: PointerEvent) {

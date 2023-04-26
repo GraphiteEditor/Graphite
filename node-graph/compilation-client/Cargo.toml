@@ -9,9 +9,18 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 #tokio = { version = "1.0", features = ["full"] }
 serde_json = "1.0"
-graph-craft = { version = "0.1.0", path = "../graph-craft", features = ["serde"] }
+graph-craft = { version = "0.1.0", path = "../graph-craft", features = [
+	"serde",
+] }
+gpu-executor = { version = "0.1.0", path = "../gpu-executor" }
 gpu-compiler-bin-wrapper = { version = "0.1.0", path = "../gpu-compiler/gpu-compiler-bin-wrapper" }
 tempfile = "3.3.0"
 anyhow = "1.0.68"
-reqwest = { version = "0.11", features = ["blocking", "serde_json", "json", "rustls", "rustls-tls"] }
-future-executor = {path = "../future-executor"}
+reqwest = { version = "0.11", features = [
+	"blocking",
+	"serde_json",
+	"json",
+	"rustls",
+	"rustls-tls",
+] }
+future-executor = { path = "../future-executor" }

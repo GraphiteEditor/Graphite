@@ -24,7 +24,7 @@ pub struct PathTool {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -43,6 +43,10 @@ pub enum PathToolMessage {
 		shift_mirror_distance: Key,
 	},
 	InsertPoint,
+	NudgeSelectedPoints {
+		delta_x: f64,
+		delta_y: f64,
+	},
 	PointerMove {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
@@ -77,6 +81,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				InsertPoint,
 				DragStart,
 				Delete,
+				NudgeSelectedPoints,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
@@ -108,7 +113,6 @@ enum PathToolFsmState {
 #[derive(Default)]
 struct PathToolData {
 	snap_manager: SnapManager,
-
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
@@ -203,6 +207,7 @@ impl Fsm for PathToolFsmState {
 
 						let include_handles: Vec<_> = selected_layers.iter().map(|x| x.as_slice()).collect();
 						tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
+
 						tool_data.drag_start_pos = input.mouse.position;
 						tool_data.previous_mouse_position = input.mouse.position - selected_points.offset;
 
@@ -241,9 +246,11 @@ impl Fsm for PathToolFsmState {
 								responses.push_back(DocumentMessage::DeselectAllLayers.into());
 							}
 						}
+
 						PathToolFsmState::Ready
 					}
 				}
+
 				// Dragging
 				(
 					PathToolFsmState::Dragging,
@@ -282,6 +289,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.previous_mouse_position = snapped_position;
 					PathToolFsmState::Dragging
 				}
+
 				// Mouse up
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
 					let nearest_point = shape_editor
@@ -335,6 +343,10 @@ impl Fsm for PathToolFsmState {
 						shift_mirror_distance: _,
 					},
 				) => self,
+				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
+					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
+					PathToolFsmState::Ready
+				}
 			}
 		} else {
 			self
@@ -346,8 +358,8 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected (coming soon)"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected (coming soon)")]),
+				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 			]),
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),

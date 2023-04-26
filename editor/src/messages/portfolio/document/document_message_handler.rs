@@ -1119,7 +1119,7 @@ impl DocumentMessageHandler {
 		let primary_input_type = node_network.input_types().next().clone();
 		let response = match primary_input_type {
 			// Only calclate the frame if the primary input is an image
-			Some(ty) if ty == concrete!(ImageFrame) => {
+			Some(ty) if ty == concrete!(ImageFrame<Color>) => {
 				// Calculate the size of the region to be exported
 				let old_transforms = self.remove_document_transform();
 				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
@@ -1679,7 +1679,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, document_id: u64) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, _document_id: u64) {
 		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, fonts: &mut HashSet<Font>) {
 			match data {
 				LayerDataType::Folder(folder) => {

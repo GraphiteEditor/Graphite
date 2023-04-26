@@ -20,4 +20,6 @@ pub mod quantization;
 
 pub use graphene_core::*;
 
+pub mod image_segmentation;
+
 pub mod brush;

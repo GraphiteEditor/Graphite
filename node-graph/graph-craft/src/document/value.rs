@@ -1,14 +1,16 @@
+use super::DocumentNode;
+use crate::executor::Any;
+pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+
+use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::{Color, Node, Type};
+
 pub use dyn_any::StaticType;
 use dyn_any::{DynAny, Upcast};
 use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::{Node, Type};
 use std::hash::Hash;
 pub use std::sync::Arc;
-
-use crate::executor::Any;
-pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
@@ -23,9 +25,9 @@ pub enum TaggedValue {
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
-	Image(graphene_core::raster::Image),
-	RcImage(Option<Arc<graphene_core::raster::Image>>),
-	ImageFrame(graphene_core::raster::ImageFrame),
+	Image(graphene_core::raster::Image<Color>),
+	RcImage(Option<Arc<graphene_core::raster::Image<Color>>>),
+	ImageFrame(graphene_core::raster::ImageFrame<Color>),
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
@@ -39,6 +41,9 @@ pub enum TaggedValue {
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	VecF32(Vec<f32>),
+	RedGreenBlue(graphene_core::raster::RedGreenBlue),
+	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
+	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),
@@ -48,6 +53,8 @@ pub enum TaggedValue {
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	VecDVec2(Vec<DVec2>),
+	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
+	DocumentNode(DocumentNode),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -91,6 +98,9 @@ impl Hash for TaggedValue {
 			Self::Fill(fill) => fill.hash(state),
 			Self::Stroke(stroke) => stroke.hash(state),
 			Self::VecF32(vec_f32) => vec_f32.iter().for_each(|val| val.to_bits().hash(state)),
+			Self::RedGreenBlue(red_green_blue) => red_green_blue.hash(state),
+			Self::RelativeAbsolute(relative_absolute) => relative_absolute.hash(state),
+			Self::SelectiveColorChoice(selective_color_choice) => selective_color_choice.hash(state),
 			Self::LineCap(line_cap) => line_cap.hash(state),
 			Self::LineJoin(line_join) => line_join.hash(state),
 			Self::FillType(fill_type) => fill_type.hash(state),
@@ -110,6 +120,14 @@ impl Hash for TaggedValue {
 				for dvec2 in vec_dvec2 {
 					dvec2.to_array().iter().for_each(|x| x.to_bits().hash(state));
 				}
+			}
+			Self::Segments(segments) => {
+				for segment in segments {
+					segment.hash(state)
+				}
+			}
+			Self::DocumentNode(document_node) => {
+				document_node.hash(state);
 			}
 		}
 	}
@@ -144,6 +162,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Fill(x) => Box::new(x),
 			TaggedValue::Stroke(x) => Box::new(x),
 			TaggedValue::VecF32(x) => Box::new(x),
+			TaggedValue::RedGreenBlue(x) => Box::new(x),
+			TaggedValue::RelativeAbsolute(x) => Box::new(x),
+			TaggedValue::SelectiveColorChoice(x) => Box::new(x),
 			TaggedValue::LineCap(x) => Box::new(x),
 			TaggedValue::LineJoin(x) => Box::new(x),
 			TaggedValue::FillType(x) => Box::new(x),
@@ -153,6 +174,20 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(x) => Box::new(x),
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::VecDVec2(x) => Box::new(x),
+			TaggedValue::Segments(x) => Box::new(x),
+			TaggedValue::DocumentNode(x) => Box::new(x),
+		}
+	}
+
+	pub fn to_primitive_string(&self) -> String {
+		match self {
+			TaggedValue::None => "()".to_string(),
+			TaggedValue::String(x) => x.clone(),
+			TaggedValue::U32(x) => x.to_string(),
+			TaggedValue::F32(x) => x.to_string(),
+			TaggedValue::F64(x) => x.to_string(),
+			TaggedValue::Bool(x) => x.to_string(),
+			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
 
@@ -168,9 +203,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Bool(_) => concrete!(bool),
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
-			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image),
-			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image>>),
-			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame),
+			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
+			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image<Color>>>),
+			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame<Color>),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpaths(_) => concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
 			TaggedValue::RcSubpath(_) => concrete!(Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
@@ -185,6 +220,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Fill(_) => concrete!(graphene_core::vector::style::Fill),
 			TaggedValue::Stroke(_) => concrete!(graphene_core::vector::style::Stroke),
 			TaggedValue::VecF32(_) => concrete!(Vec<f32>),
+			TaggedValue::RedGreenBlue(_) => concrete!(graphene_core::raster::RedGreenBlue),
+			TaggedValue::RelativeAbsolute(_) => concrete!(graphene_core::raster::RelativeAbsolute),
+			TaggedValue::SelectiveColorChoice(_) => concrete!(graphene_core::raster::SelectiveColorChoice),
 			TaggedValue::LineCap(_) => concrete!(graphene_core::vector::style::LineCap),
 			TaggedValue::LineJoin(_) => concrete!(graphene_core::vector::style::LineJoin),
 			TaggedValue::FillType(_) => concrete!(graphene_core::vector::style::FillType),
@@ -194,6 +232,8 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
+			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
+			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 		}
 	}
 }
@@ -204,7 +244,7 @@ pub struct UpcastNode {
 impl<'input> Node<'input, Box<dyn DynAny<'input> + 'input>> for UpcastNode {
 	type Output = Box<dyn DynAny<'input> + 'input>;
 
-	fn eval<'s: 'input>(&'s self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
+	fn eval(&'input self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
 		self.value.clone().to_any()
 	}
 }

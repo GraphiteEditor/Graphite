@@ -7,7 +7,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation};
+use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
@@ -113,8 +113,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Downres".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode")),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode<_>")),
 						metadata: Default::default(),
 					},
 					DocumentNode {
@@ -160,7 +160,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(1, 0)],
 				nodes: [DocumentNode {
 					name: "Identity".to_string(),
-					inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
+					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 					metadata: Default::default(),
 				}]
@@ -174,7 +174,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(ImageFrame)),
+					default: NodeInput::Network(concrete!(ImageFrame<Color>)),
 				},
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 			],
@@ -193,7 +193,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame))],
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						metadata: Default::default(),
 					},
@@ -277,7 +277,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Image Frame",
 			category: "General",
-			identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_>"),
+			identifier: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::Image(Image::empty()), true),
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
@@ -288,7 +288,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Mask",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_>"),
+			identifier: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -366,32 +366,32 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "Reds",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(40.), false),
 				},
 				DocumentInputType {
 					name: "Yellows",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(60.), false),
 				},
 				DocumentInputType {
 					name: "Greens",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(40.), false),
 				},
 				DocumentInputType {
 					name: "Cyans",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(60.), false),
 				},
 				DocumentInputType {
 					name: "Blues",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(20.), false),
 				},
 				DocumentInputType {
 					name: "Magentas",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F64(80.), false),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -419,7 +419,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::Network(concrete!(Image))],
+							inputs: vec![NodeInput::Network(concrete!(Image<Color>))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},
@@ -489,7 +489,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						0,
 						DocumentNode {
 							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(concrete!(ImageFrame))],
+							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(concrete!(ImageFrame<Color>))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 							metadata: Default::default(),
 						},
@@ -633,14 +633,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Brightness/Contrast",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Brightness", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Contrast", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Use Legacy", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::brighten_image_properties,
+			properties: node_properties::brightness_contrast_properties,
 		},
 		DocumentNodeType {
 			name: "Threshold",
@@ -665,6 +666,101 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_vibrance_properties,
+		},
+		DocumentNodeType {
+			name: "Channel Mixer",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				// Monochrome toggle
+				DocumentInputType::value("Monochrome", TaggedValue::Bool(false), false),
+				// Monochrome
+				DocumentInputType::value("Red", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Green", TaggedValue::F64(40.), false),
+				DocumentInputType::value("Blue", TaggedValue::F64(20.), false),
+				DocumentInputType::value("Constant", TaggedValue::F64(0.), false),
+				// Red output channel
+				DocumentInputType::value("(Red) Red", TaggedValue::F64(100.), false),
+				DocumentInputType::value("(Red) Green", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Red) Blue", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Red) Constant", TaggedValue::F64(0.), false),
+				// Green output channel
+				DocumentInputType::value("(Green) Red", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Green) Green", TaggedValue::F64(100.), false),
+				DocumentInputType::value("(Green) Blue", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Green) Constant", TaggedValue::F64(0.), false),
+				// Blue output channel
+				DocumentInputType::value("(Blue) Red", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blue) Green", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blue) Blue", TaggedValue::F64(100.), false),
+				DocumentInputType::value("(Blue) Constant", TaggedValue::F64(0.), false),
+				// Display-only properties (not used within the node)
+				DocumentInputType::value("Output Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::adjust_channel_mixer_properties,
+		},
+		DocumentNodeType {
+			name: "Selective Color",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto(
+				"graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>",
+			),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				// Mode
+				DocumentInputType::value("Mode", TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), false),
+				// Reds
+				DocumentInputType::value("(Reds) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Black", TaggedValue::F64(0.), false),
+				// Yellows
+				DocumentInputType::value("(Yellows) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Black", TaggedValue::F64(0.), false),
+				// Greens
+				DocumentInputType::value("(Greens) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Black", TaggedValue::F64(0.), false),
+				// Cyans
+				DocumentInputType::value("(Cyans) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Black", TaggedValue::F64(0.), false),
+				// Blues
+				DocumentInputType::value("(Blues) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Black", TaggedValue::F64(0.), false),
+				// Magentas
+				DocumentInputType::value("(Magentas) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Black", TaggedValue::F64(0.), false),
+				// Whites
+				DocumentInputType::value("(Whites) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Black", TaggedValue::F64(0.), false),
+				// Neutrals
+				DocumentInputType::value("(Neutrals) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Black", TaggedValue::F64(0.), false),
+				// Blacks
+				DocumentInputType::value("(Blacks) Cyan", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Magenta", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Black", TaggedValue::F64(0.), false),
+				// Display-only properties (not used within the node)
+				DocumentInputType::value("Colors", TaggedValue::SelectiveColorChoice(SelectiveColorChoice::Reds), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::adjust_selective_color_properties,
 		},
 		DocumentNodeType {
 			name: "Opacity",
@@ -734,18 +830,29 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Transform",
-			category: "Vector",
+			category: "Transform",
 			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _>"),
 			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
 			properties: node_properties::transform_properties,
+		},
+		DocumentNodeType {
+			name: "SetTransform",
+			category: "Transform",
+			identifier: NodeImplementation::proto("graphene_core::transform::SetTransformNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
+			],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Fill",
@@ -780,6 +887,28 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::stroke_properties,
+		},
+		DocumentNodeType {
+			name: "Image Segmentation",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Mask", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Segments", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
+			name: "Index",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::IndexNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Segmentation", TaggedValue::Segments(vec![ImageFrame::empty()]), true),
+				DocumentInputType::value("Index", TaggedValue::U32(0), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::index_node_properties,
 		},
 	]
 }
@@ -889,8 +1018,8 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 
 	// if the network has no network inputs, it doesn't need to be wrapped in a scope either
 	let Some(input_type) = input else {
-            return network;
-    };
+		return network;
+	};
 
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
