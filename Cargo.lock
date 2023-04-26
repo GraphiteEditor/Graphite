@@ -298,6 +298,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "serde",
+ "specta",
 ]
 
 [[package]]

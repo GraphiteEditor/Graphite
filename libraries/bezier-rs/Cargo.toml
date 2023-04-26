@@ -13,8 +13,12 @@ homepage = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/bez
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/bezier-rs"
 documentation = "https://graphite.rs/libraries/bezier-rs/"
 
+[features]
+specta = ["dep:specta"]
+
 [dependencies]
 glam = { version = "0.22", features = ["serde"] }
 
+specta = { workspace = true, optional = true }
 dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
