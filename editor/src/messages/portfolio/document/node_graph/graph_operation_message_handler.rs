@@ -173,6 +173,11 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn vector_modify(&mut self, modification: VectorDataModification) {
+		// TODO: Allow modifying a graph with a "Text" node.
+		if self.network.nodes.values().any(|node| node.name == "Text") {
+			return;
+		}
+
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 
