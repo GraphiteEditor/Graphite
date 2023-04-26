@@ -80,3 +80,12 @@ impl bezier_rs::Identifier for ManipulatorGroupId {
 		Self(generate_uuid())
 	}
 }
+
+impl ManipulatorGroupId {
+	pub const ZERO: ManipulatorGroupId = ManipulatorGroupId(0);
+
+	pub fn next(&mut self) -> Self {
+		self.0 += 1;
+		Self(self.0 - 1)
+	}
+}
