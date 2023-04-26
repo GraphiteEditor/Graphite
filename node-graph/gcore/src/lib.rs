@@ -39,6 +39,10 @@ pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
 	fn reset(self: Pin<&mut Self>) {}
+	#[cfg(feature = "alloc")]
+	fn serialize(&self) -> Option<String> {
+		None
+	}
 }
 
 #[cfg(feature = "alloc")]

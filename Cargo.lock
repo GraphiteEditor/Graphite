@@ -1672,6 +1672,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde",
+ "serde_json",
  "syn 1.0.109",
  "tempfile",
  "vulkan-executor",
