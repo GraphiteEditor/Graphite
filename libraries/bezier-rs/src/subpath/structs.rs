@@ -24,7 +24,7 @@ impl Identifier for EmptyId {
 }
 
 /// Structure used to represent a single anchor with up to two optional associated handles along a `Subpath`
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorGroup<ManipulatorGroupId: crate::Identifier> {
 	pub anchor: DVec2,

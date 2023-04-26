@@ -695,8 +695,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
 			RenderDocument => {
 				responses.push_back(
-					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.document_legacy.render_root(&render_data),
+					FrontendMessage::UpdateNodeGraphDocument {
+						document: self.document_legacy.clone(),
 					}
 					.into(),
 				);

@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 /// This does not technically need to be unique globally, only within a folder.
 pub type LayerId = u64;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct Document {
 	/// The root layer, usually a [FolderLayer](layers::folder_layer::FolderLayer) that contains all other [Layers](layers::layer_info::Layer).
 	pub root: Layer,

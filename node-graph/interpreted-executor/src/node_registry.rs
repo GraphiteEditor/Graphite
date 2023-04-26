@@ -477,6 +477,16 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 				NodeIOTypes::new(concrete!(()), concrete!(&Vec<DVec2>), vec![value_fn!(Vec<DVec2>)]),
 			),
+			(
+				NodeIdentifier::new("graphene_std::memo::MonitorNode"),
+				|args| {
+					let input: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+					let node: MonitorNodeNode<ImageFrame<Color>, _> = graphene_std::memo::MonitorNode::new(input);
+					let any = DynAnyRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(()), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
+			),
 		],
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),

@@ -11,7 +11,10 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [dependencies]
-graph-craft = { path = "../node-graph/graph-craft", features = ["serde"] }
+graph-craft = { path = "../node-graph/graph-craft", features = [
+	"serde",
+	"specta",
+] }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 graphene-core = { path = "../node-graph/gcore", features = ["serde"] }
 image = { version = "0.24", default-features = false }

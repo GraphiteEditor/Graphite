@@ -5,6 +5,7 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use document_legacy::document::Document;
 use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
@@ -19,7 +20,10 @@ use graphene_core::raster::color::Color;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use wasm_bindgen::prelude::*;
+
+static DOUBLE_BUFFER: Mutex<Option<Document>> = Mutex::new(None);
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -111,23 +115,30 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
 		// Special case for update image data to avoid serialization times.
-		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
-			for image in image_data {
-				#[cfg(not(feature = "tauri"))]
-				{
-					let transform = if let Some(transform_val) = image.transform {
-						let transform = js_sys::Float64Array::new_with_length(6);
-						transform.copy_from(&transform_val);
-						transform
-					} else {
-						js_sys::Float64Array::default()
-					};
-					updateImage(image.path, image.mime, &image.image_data, transform, document_id);
+		match message {
+			FrontendMessage::UpdateImageData { document_id, image_data } => {
+				for image in image_data {
+					#[cfg(not(feature = "tauri"))]
+					{
+						let transform = if let Some(transform_val) = image.transform {
+							let transform = js_sys::Float64Array::new_with_length(6);
+							transform.copy_from(&transform_val);
+							transform
+						} else {
+							js_sys::Float64Array::default()
+						};
+						updateImage(image.path, image.mime, &image.image_data, transform, document_id);
+					}
+					#[cfg(feature = "tauri")]
+					fetchImage(image.path.clone(), image.mime, document_id, format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id));
 				}
-				#[cfg(feature = "tauri")]
-				fetchImage(image.path.clone(), image.mime, document_id, format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id));
+				return;
 			}
-			return;
+			FrontendMessage::UpdateNodeGraphDocument { document } => {
+				let mut guard = DOUBLE_BUFFER.lock().unwrap();
+				*guard = Some(document);
+			}
+			_ => (),
 		}
 		if let FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer } = message {
 			message = FrontendMessage::UpdateDocumentLayerTreeStructureJs { data_buffer: data_buffer.into() };
@@ -180,6 +191,12 @@ impl JsEditorHandle {
 				log::error!("tauri response: {:?}\n{:?}", error, _message);
 			}
 		}
+	}
+
+	#[wasm_bindgen(js_name = renderFrame)]
+	pub fn render_frame(&self, title: String, description: String) {
+		let message = DialogMessage::DisplayDialogError { title, description };
+		self.dispatch(message);
 	}
 
 	/// Displays a dialog with an error message

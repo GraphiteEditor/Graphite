@@ -21,8 +21,9 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
+#[derive(Clone, Debug, PartialEq, Default, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
 }
@@ -35,6 +36,7 @@ impl DocumentNodeMetadata {
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
@@ -159,6 +161,7 @@ impl DocumentNode {
 /// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
 #[derive(Debug, Clone, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum NodeInput {
 	Node {
 		node_id: NodeId,
@@ -215,6 +218,7 @@ impl NodeInput {
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	Unresolved(NodeIdentifier),
@@ -243,8 +247,9 @@ impl DocumentNodeImplementation {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NodeOutput {
 	pub node_id: NodeId,
 	pub node_output_index: usize,
@@ -257,6 +262,7 @@ impl NodeOutput {
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub outputs: Vec<NodeOutput>,

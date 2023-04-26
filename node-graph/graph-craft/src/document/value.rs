@@ -15,6 +15,7 @@ pub use std::sync::Arc;
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum TaggedValue {
 	None,
 	String(String),

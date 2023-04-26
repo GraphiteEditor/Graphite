@@ -12,7 +12,7 @@ use std::fmt::{Debug, Formatter, Result};
 use std::ops::{Index, IndexMut};
 
 /// Structure used to represent a path composed of [Bezier] curves.
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Subpath<ManipulatorGroupId: crate::Identifier> {
 	manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>,

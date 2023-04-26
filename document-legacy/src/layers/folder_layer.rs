@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// A layer that encapsulates other layers, including potentially more folders.
 /// The contained layers are rendered in the same order they are
 /// stored in the [layers](FolderLayer::layers) field.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default, specta::Type)]
 pub struct FolderLayer {
 	/// The ID that will be assigned to the next layer that is added to the folder
 	next_assignment_id: LayerId,
@@ -47,6 +47,14 @@ impl LayerData for FolderLayer {
 }
 
 impl FolderLayer {
+	pub const fn new() -> Self {
+		Self {
+			next_assignment_id: 0,
+			layer_ids: Vec::new(),
+			layers: Vec::new(),
+		}
+	}
+
 	/// When a insertion ID is provided, try to insert the layer with the given ID.
 	/// If that ID is already used, return `None`.
 	/// When no insertion ID is provided, search for the next free ID and insert it with that.

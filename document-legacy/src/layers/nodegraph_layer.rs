@@ -17,7 +17,7 @@ pub enum CachedOutputData {
 	VectorPath(Box<VectorData>),
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct NodeGraphFrameLayer {
 	/// The document node network that this layer contains
 	pub network: graph_craft::document::NodeNetwork,
