@@ -12,10 +12,11 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::NodeInput;
 use graphene_core::raster::Image;
 use graphene_core::text::Font;
 
@@ -206,13 +207,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				data,
 				is_default,
 			} => {
-				self.persistent_data.font_cache.insert(Font::new(font_family, font_style), preview_url, data, is_default);
+				let font = Font::new(font_family, font_style);
 
 				if let Some(document) = self.active_document_mut() {
-					document.document_legacy.mark_all_text_as_dirty();
+					Self::uploaded_new_font(document, &font, responses);
 					responses.push_back(DocumentMessage::RenderDocument.into());
 					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
 				}
+
+				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				self.persistent_data.imaginate_server_status = ImaginateServerStatus::Checking;
@@ -687,5 +690,32 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
+	}
+
+	fn uploaded_new_font(document: &mut DocumentMessageHandler, target_font: &Font, responses: &mut VecDeque<Message>) {
+		let mut stack = vec![(&document.document_legacy.root, Vec::new())];
+
+		while let Some((layer, layer_path)) = stack.pop() {
+			match &layer.data {
+				LayerDataType::Folder(folder) => stack.extend(folder.layers.iter().zip(folder.layer_ids.iter().map(|id| {
+					let mut x = layer_path.clone();
+					x.push(*id);
+					x
+				}))),
+				LayerDataType::NodeGraphFrame(graph_frame) => {
+					let input_is_font = |input: &NodeInput| {
+						let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = input else {
+							return false;
+						};
+						font == target_font
+					};
+					let should_rerender = graph_frame.network.nodes.values().any(|node| node.inputs.iter().any(input_is_font));
+					if should_rerender {
+						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+					}
+				}
+				_ => {}
+			}
+		}
 	}
 }

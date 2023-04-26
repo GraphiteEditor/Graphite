@@ -33,10 +33,7 @@ use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::ImageFrame;
-use graphene_core::Cow;
-use graphene_core::EditorApi;
 
 use glam::{DAffine2, DVec2};
 use graphene_core::text::Font;

@@ -429,30 +429,6 @@ impl Document {
 		Ok(())
 	}
 
-	/// Marks all decendants of the specified [Layer] of a specific [LayerDataType] as dirty
-	fn mark_text_as_dirty(root: &mut Layer) -> bool {
-		if let LayerDataType::Folder(folder) = &mut root.data {
-			let mut dirty = false;
-			for layer in folder.layers_mut() {
-				dirty = Self::mark_text_as_dirty(layer) || dirty;
-			}
-			root.cache_dirty = dirty;
-		}
-		if let LayerDataType::NodeGraphFrame(graph_frame) = &mut root.data {
-			if graph_frame.network.nodes.values().any(|node| node.name == "Text") {
-				graph_frame.cached_output_data = CachedOutputData::None;
-				root.cache_dirty = true;
-			}
-		}
-
-		root.cache_dirty
-	}
-
-	/// Marks all layers in the [Document] of a specific [LayerDataType] as dirty
-	pub fn mark_all_text_as_dirty(&mut self) -> bool {
-		Self::mark_text_as_dirty(&mut self.root)
-	}
-
 	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {
 		let mut root = &self.root;
 		let mut transforms = vec![self.root.transform];
