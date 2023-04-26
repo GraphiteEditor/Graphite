@@ -27,7 +27,13 @@ npm install
 
 You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. (If you prefer to install this manually, get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --no-optional` instead.)
 
-To run the project while developing:
+One tool in the Rust ecosystem does need to be installed:
+
+```
+cargo install cargo-watch
+```
+
+That's it! Now, to run the project while developing, just execute:
 ```
 npm start
 ```
