@@ -148,6 +148,9 @@ pub enum FrontendMessage {
 	UpdateDocumentArtboards {
 		svg: String,
 	},
+	UpdateDocumentArtwork {
+		svg: String,
+	},
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -223,9 +226,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
-	},
-	UpdateNodeGraphDocument {
-		document: document_legacy::document::Document,
 	},
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
