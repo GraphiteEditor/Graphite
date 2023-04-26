@@ -360,12 +360,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentStructureChanged => {
+				debug!("DocumentStructureChanged");
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
 			DuplicateSelectedLayers => {
-				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.backup(responses);
+				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
+				self.layer_range_selection_reference.clear();
 				for path in self.selected_layers_sorted() {
 					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
@@ -426,6 +428,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			FolderChanged { affected_folder_path } => {
+				debug!("FOLDER CHANGED: {:?}", &affected_folder_path);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
@@ -793,6 +796,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			RollbackTransaction => {
+				debug!("3");
 				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
@@ -918,6 +922,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
+				debug!("2");
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
@@ -982,6 +987,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			StartTransaction => self.backup(responses),
 			ToggleLayerExpansion { layer_path } => {
+				debug!("ToggleLayerExpansion: {:?}", &layer_path);
 				self.layer_metadata_mut(&layer_path).expanded ^= true;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
@@ -1235,6 +1241,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn is_unmodified_default(&self) -> bool {
+		debug!("3");
 		self.serialize_root().len() == Self::default().serialize_root().len()
 			&& self.document_undo_history.is_empty()
 			&& self.document_redo_history.is_empty()
@@ -1333,6 +1340,8 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: &FolderLayer, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
+		debug!("path: {:?}", &path);
+		debug!("folder.layerIDS: {:?}", &folder.layer_ids);
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
 			data.push(*id);
 			space += 1;
@@ -1343,6 +1352,7 @@ impl DocumentMessageHandler {
 					self.serialize_structure(folder, structure, data, path);
 					space = 0;
 				}
+				// debug!("after");
 				path.pop();
 			}
 		}
@@ -1382,6 +1392,7 @@ impl DocumentMessageHandler {
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
 	/// ```
 	pub fn serialize_root(&self) -> Vec<u64> {
+		debug!("serialize root");
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		self.serialize_structure(self.document_legacy.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
@@ -1624,6 +1635,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
+		// debug!("layer_panel_entry_from_path: {:?}", &path);
 		let layer_metadata = self.layer_metadata(path);
 		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.document_legacy.root.transform.inverse())).ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;

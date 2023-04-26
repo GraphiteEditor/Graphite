@@ -68,7 +68,9 @@ impl FolderLayer {
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
 	pub fn next_assignment_id(&mut self) -> LayerId {
-		self.next_assignment_id = self.next_assignment_id + 1;
+		while self.layer_ids.contains(&self.next_assignment_id) {
+			self.next_assignment_id += 1;
+		}
 		return self.next_assignment_id;
 	}
 
