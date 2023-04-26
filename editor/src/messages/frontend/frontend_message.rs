@@ -40,6 +40,9 @@ pub enum FrontendMessage {
 		url: String,
 		transform: [f64; 6],
 	},
+	DisplayEditableTextboxTransform {
+		transform: [f64; 6],
+	},
 	DisplayRemoveEditableTextbox,
 
 	// Trigger prefix: cause a browser API to do something

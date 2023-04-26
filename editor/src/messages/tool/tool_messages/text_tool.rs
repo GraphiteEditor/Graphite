@@ -171,7 +171,7 @@ impl ToolTransition for TextTool {
 		EventToMessageMap {
 			document_dirty: Some(TextToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(TextToolMessage::Abort.into()),
-			selection_changed: None,
+			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
 		}
 	}
 }
@@ -196,6 +196,7 @@ struct TextToolData {
 	layer_path: Vec<LayerId>,
 	overlays: Vec<Vec<LayerId>>,
 	editing_text: Option<EditingText>,
+	new_text: String,
 }
 
 impl TextToolData {
@@ -237,6 +238,7 @@ impl TextToolData {
 			color,
 			transform,
 		});
+		self.new_text = text.clone();
 		Some(())
 	}
 	fn start_editing_layer(&mut self, layer_path: &[LayerId], tool_state: TextToolFsmState, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
@@ -310,12 +312,12 @@ impl TextToolData {
 		}
 	}
 
-	pub fn update_bounds_overlay(&mut self, new_text: &str, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
+	pub fn update_bounds_overlay(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
 		resize_overlays(&mut self.overlays, responses, 1);
 
 		let editing_text = self.editing_text.as_ref()?;
 		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(&data));
-		let far = graphene_core::text::bounding_box(new_text, buzz_face, editing_text.font_size, None);
+		let far = graphene_core::text::bounding_box(&self.new_text, buzz_face, editing_text.font_size, None);
 		let quad = Quad::from_box([DVec2::ZERO, far]);
 
 		let transformed_quad = document.document_legacy.multiply_transforms(&self.layer_path).ok()? * quad;
@@ -444,6 +446,13 @@ impl Fsm for TextToolFsmState {
 		} = transition_data;
 		if let ToolMessage::Text(event) = event {
 			match (self, event) {
+				(TextToolFsmState::Editing, TextToolMessage::DocumentIsDirty) => {
+					responses.add(FrontendMessage::DisplayEditableTextboxTransform {
+						transform: document.document_legacy.multiply_transforms(&tool_data.layer_path).ok().unwrap_or_default().to_cols_array(),
+					});
+					tool_data.update_bounds_overlay(document, render_data, responses);
+					TextToolFsmState::Editing
+				}
 				(state, TextToolMessage::DocumentIsDirty) => {
 					update_overlays(document, tool_data, responses, render_data);
 
@@ -457,6 +466,7 @@ impl Fsm for TextToolFsmState {
 						font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 						color: global_tool_data.primary_color,
 					});
+					tool_data.new_text = String::new();
 					tool_data.layer_path = document.get_path_for_new_layer();
 
 					tool_data.interact(state, input.mouse.position, document, &render_data, responses)
@@ -501,7 +511,8 @@ impl Fsm for TextToolFsmState {
 					TextToolFsmState::Ready
 				}
 				(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
-					tool_data.update_bounds_overlay(&new_text, document, render_data, responses);
+					tool_data.new_text = new_text;
+					tool_data.update_bounds_overlay(document, render_data, responses);
 					TextToolFsmState::Editing
 				}
 				_ => self,

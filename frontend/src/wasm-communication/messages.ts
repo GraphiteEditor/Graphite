@@ -710,6 +710,10 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly transform!: number[];
 }
 
+export class DisplayEditableTextboxTransform extends JsMessage {
+	readonly transform!: number[];
+}
+
 export class UpdateImageData extends JsMessage {
 	readonly documentId!: bigint;
 
@@ -1388,6 +1392,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
+	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerImaginateCheckServerStatus,

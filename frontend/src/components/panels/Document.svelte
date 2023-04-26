@@ -7,6 +7,7 @@
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
 		TriggerViewportResize,
@@ -367,6 +368,9 @@
 			await tick();
 
 			displayEditableTextbox(data);
+		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
+			textInputMatrix = data.transform;
 		});
 		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
 			await tick();
