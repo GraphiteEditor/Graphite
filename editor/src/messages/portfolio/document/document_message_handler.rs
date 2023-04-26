@@ -1036,12 +1036,13 @@ impl DocumentMessageHandler {
 			return None;
 		};
 
-		// Find the primary input type of the node graph
+		// Check if we we use the "Input Frame" node.
+		// TODO: Remove once rasterisation is moved into a node.
 		let input_frame = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame");
 		let input_node_id = input_frame.map(|(&id, _)| id);
 		let primary_input_type = input_node_id.filter(|&target_node_id| node_network.connected_to_output(target_node_id, true));
 
-		// Only calclate the frame if the primary input is an image
+		// Only calculate the frame if the primary input is an image
 		let response = if primary_input_type.is_some() {
 			// Calculate the size of the region to be exported
 			let old_transforms = self.remove_document_transform();
