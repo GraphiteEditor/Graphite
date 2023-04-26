@@ -428,7 +428,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			FolderChanged { affected_folder_path } => {
-				debug!("FOLDER CHANGED: {:?}", &affected_folder_path);
+				// debug!("FOLDER CHANGED: {:?}", &affected_folder_path);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
@@ -796,7 +796,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			RollbackTransaction => {
-				debug!("3");
 				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
@@ -922,7 +921,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				);
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
-				debug!("2");
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
@@ -1241,7 +1239,6 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn is_unmodified_default(&self) -> bool {
-		debug!("3");
 		self.serialize_root().len() == Self::default().serialize_root().len()
 			&& self.document_undo_history.is_empty()
 			&& self.document_redo_history.is_empty()
@@ -1340,17 +1337,25 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: &FolderLayer, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		debug!("path: {:?}", &path);
-		debug!("folder.layerIDS: {:?}", &folder.layer_ids);
+		debug!("serialize_structure");
+		// debug!("path: {:?}", &path);
+		// debug!("folder.layerIDS: {:?}", &folder.layer_ids);
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
+			debug!("folder layer ids: {:?}", &folder.layer_ids);
+			// debug!("ID PUSHED TO PATH: {:?}", &id);
+			// debug!("path: {:?}", &path);
 			data.push(*id);
 			space += 1;
 			if let LayerDataType::Folder(ref folder) = layer.data {
 				path.push(*id);
+				debug!("path: {:?}", &path);
 				if self.layer_metadata(path).expanded {
+					debug!("recurse");
 					structure.push(space);
 					self.serialize_structure(folder, structure, data, path);
 					space = 0;
+				} else {
+					debug!("POOP");
 				}
 				// debug!("after");
 				path.pop();

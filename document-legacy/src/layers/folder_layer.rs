@@ -93,6 +93,7 @@ impl FolderLayer {
 		}
 
 		let id = self.next_assignment_id;
+		debug!("FOLDER ID TO BE INSERTED: {:?}", &id);
 		self.layers.insert(insert_index as usize, layer);
 		self.layer_ids.insert(insert_index as usize, id);
 

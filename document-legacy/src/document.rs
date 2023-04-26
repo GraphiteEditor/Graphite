@@ -728,14 +728,14 @@ impl Document {
 
 				let mut duplicated_layers: Vec<Vec<u64>> = vec![];
 
-				// let layer_is_folder = (&layer).as_folder().is_ok();
-				// if layer_is_folder {
-				// 	let folder_is_empty = self.folder_children_paths(&path).is_empty();
-				// 	if !folder_is_empty {
-				// 		duplicated_layers = recursive_collect(self, &path);
-				// 	}
-				// }
-				// let duplicated_layers_objects: Vec<Layer> = duplicated_layers.iter().map(|p| self.layer(p.as_slice()).unwrap()).cloned().collect();
+				let layer_is_folder = (&layer).as_folder().is_ok();
+				if layer_is_folder {
+					let folder_is_empty = self.folder_children_paths(&path).is_empty();
+					if !folder_is_empty {
+						duplicated_layers = recursive_collect(self, &path);
+					}
+				}
+				let duplicated_layers_objects: Vec<Layer> = duplicated_layers.iter().map(|p| self.layer(p.as_slice()).unwrap()).cloned().collect();
 				// debug!("dup objs: {:?}", &duplicated_layers_objects);
 
 				let folder = self.folder_mut(folder_path)?;
@@ -743,49 +743,50 @@ impl Document {
 				let insert_index = folder.layer_ids.iter().position(|&id| id == selected_id).unwrap_or(0) as isize + 1;
 
 				if let Some(new_layer_id) = folder.add_layer(layer, None, insert_index, None) {
-					// let folder = self.folder(folder_path)?;
 					let new_path = [folder_path, &[new_layer_id]].concat();
 
 					let mut responses: Vec<DocumentResponse> = vec![];
 					responses.extend([DocumentChanged, CreatedLayer { path: new_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
+					debug!("root folder layer paths: {:?}", &folder.layer_ids);
 					// debug!("new path: {:?}", &new_path);
 					// debug!("folder ch: {:?}", &folder_path);
 					responses.extend(update_thumbnails_upstream(path.as_slice()));
 
-					// if layer_is_folder {
-					// let new_folder = self.folder_mut(new_path.clone().as_slice())?;
+					if layer_is_folder {
+						let new_folder = self.folder_mut(new_path.clone().as_slice())?;
 
-					// Loop through the duplicated layers and update the layer path by swapping the path with new_path
-					// Use the updated layer path in our duplicate layer operation call
-					// let mut counter = 0;
-					// for l in duplicated_layers {
-					// 	// debug!("layer: {:?}", &l);
-					// 	// let new_folder = self.folder(new_path.clone().as_slice())?;
-					// 	let cloned_new_path = new_path.clone();
-					// 	let sub = l[..cloned_new_path.len()].to_vec();
-					// 	let mut new_sub_path: Vec<u64> = vec![];
+						// Loop through the duplicated layers and update the layer path by swapping the path with new_path
+						// Use the updated layer path in our duplicate layer operation call
+						let mut counter = 0;
+						for l in duplicated_layers {
+							// debug!("layer: {:?}", &l);
+							// let new_folder = self.folder(new_path.clone().as_slice())?;
+							let cloned_new_path = new_path.clone();
+							let sub = l[..cloned_new_path.len()].to_vec();
+							let mut new_sub_path: Vec<u64> = vec![];
 
-					// 	for i in 0..=cloned_new_path.len() - 1 {
-					// 		if !(cloned_new_path.get(i).unwrap() == sub.get(i).unwrap()) {
-					// 			let random_id = new_folder.next_assignment_id();
-					// 			// debug!("r id: {:?}", random_id);
-					// 			list_of_new_ids.push(random_id);
-					// 			new_sub_path.push(random_id);
-					// 		}
-					// 	}
-					// 	let updated_layer_path = [cloned_new_path.clone(), new_sub_path].concat();
-					// 	let updated_layer: Layer = duplicated_layers_objects.get(counter).unwrap().clone();
+							for i in 0..=cloned_new_path.len() - 1 {
+								if !(cloned_new_path.get(i).unwrap() == sub.get(i).unwrap()) {
+									let random_id = new_folder.next_assignment_id();
+									// debug!("r id: {:?}", random_id);
+									// list_of_new_ids.push(random_id);
+									new_sub_path.push(random_id);
+								}
+							}
+							let updated_layer_path = [cloned_new_path.clone(), new_sub_path].concat();
+							let updated_layer: Layer = duplicated_layers_objects.get(counter).unwrap().clone();
+							debug!("updated_layer_path: {:?}", &updated_layer_path);
 
-					// 	new_folder.add_layer(updated_layer, None, -1, None).unwrap();
-					// 	responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
+							let add_layer_id = new_folder.add_layer(updated_layer, None, -1, None).unwrap();
+							debug!("new folder layer paths: {:?}", &new_folder.layer_ids);
+							debug!("add_layer_id: {:?}", &add_layer_id);
+							responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
 
-					// 	counter = counter + 1;
-					// }
-					// }
-
-					debug!("res: {:?}", &responses);
-
+							counter = counter + 1;
+						}
+					}
 					self.mark_as_dirty(folder_path)?;
+					debug!("res: {:?}", &responses);
 					Some(responses)
 				} else {
 					return Err(DocumentError::IndexOutOfBounds);
