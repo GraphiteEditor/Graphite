@@ -31,6 +31,7 @@
 		"reflect-metadata": "^0.1.13"
 	},
 	"devDependencies": {
+		"@parcel/packager-raw-url": "^2.8.3",
 		"@parcel/transformer-inline-string": "^2.8.3",
 		"@parcel/transformer-webmanifest": "^2.8.3",
 		"@types/license-checker-webpack-plugin": "^0.2.1",
