@@ -79,8 +79,8 @@ where
 impl<T, CachedNode> std::marker::Unpin for MonitorNode<T, CachedNode> {}
 
 impl<T, CachedNode> MonitorNode<T, CachedNode> {
-	pub fn new(node: CachedNode) -> CacheNode<T, CachedNode> {
-		CacheNode { cache: boxcar::Vec::new(), node }
+	pub const fn new(node: CachedNode) -> MonitorNode<T, CachedNode> {
+		MonitorNode { output: Mutex::new(None), node }
 	}
 }
 

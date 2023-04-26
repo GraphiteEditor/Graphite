@@ -8,7 +8,7 @@ use glam::{DAffine2, DVec2};
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform and some style information.
-#[derive(Clone, Debug, PartialEq, DynAny, specta::Type)]
+#[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
 	pub subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>,

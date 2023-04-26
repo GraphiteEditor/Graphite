@@ -20,7 +20,7 @@ use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 use graph_craft::proto::NodeConstructor;
 
 use graphene_core::{concrete, fn_type, generic, value_fn};
-use graphene_std::memo::{CacheNode, LetNode};
+use graphene_std::memo::{CacheNode, LetNode, MonitorNode};
 use graphene_std::raster::BlendImageTupleNode;
 
 use crate::executor::NodeContainer;
@@ -153,6 +153,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
+		register_node!(graphene_std::memo::MonitorNode<_, _>, input: (), params: [ImageFrame<Color>]),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
 		vec![(
@@ -476,16 +477,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					any.into_type_erased()
 				},
 				NodeIOTypes::new(concrete!(()), concrete!(&Vec<DVec2>), vec![value_fn!(Vec<DVec2>)]),
-			),
-			(
-				NodeIdentifier::new("graphene_std::memo::MonitorNode"),
-				|args| {
-					let input: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
-					let node: MonitorNodeNode<ImageFrame<Color>, _> = graphene_std::memo::MonitorNode::new(input);
-					let any = DynAnyRefNode::new(node);
-					any.into_type_erased()
-				},
-				NodeIOTypes::new(concrete!(()), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
 			),
 		],
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
