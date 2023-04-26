@@ -1,5 +1,5 @@
 use graphene_core::Node;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -53,6 +53,7 @@ impl<T, CachedNode> CacheNode<T, CachedNode> {
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
+pub struct MonitorNode<T, CachedNode> {
 	output: Mutex<Option<T>>,
 	node: CachedNode,
 }

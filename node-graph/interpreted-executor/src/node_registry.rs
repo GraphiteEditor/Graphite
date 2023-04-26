@@ -20,7 +20,7 @@ use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 use graph_craft::proto::NodeConstructor;
 
 use graphene_core::{concrete, fn_type, generic, value_fn};
-use graphene_std::memo::{CacheNode, LetNode, MonitorNode};
+use graphene_std::memo::{CacheNode, LetNode};
 use graphene_std::raster::BlendImageTupleNode;
 
 use crate::executor::NodeContainer;
