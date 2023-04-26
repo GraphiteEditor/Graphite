@@ -28,6 +28,7 @@ jobs:
     - name: Comment deploy start
       if: github.event_name != 'push'
       uses: mshick/add-pr-comment@v2
+      continue-on-error: true
       with:
         message-id: cloudflare-deploy
         message: |
@@ -65,6 +66,7 @@ jobs:
     - name: Publish
       id: cloudflare
       uses: cloudflare/pages-action@1
+      continue-on-error: true
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -74,6 +76,7 @@ jobs:
 
     - name: Comment deploy url
       uses: mshick/add-pr-comment@v2
+      continue-on-error: true
       with:
         message-id: cloudflare-deploy
         message: |
