@@ -157,8 +157,8 @@ fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	}
 	widgets
 }
-fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, family: &str, style: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
-	let mut first_widgets = start_widgets(document_node, node_id, index, family, FrontendGraphDataType::Color, blank_assist);
+fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
+	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let mut second_widgets = None;
 
 	let from_font_input = |font: &FontInput| TaggedValue::Font(Font::new(font.font_family.clone(), font.font_style.clone()));
@@ -175,7 +175,11 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, fami
 				.widget_holder(),
 		]);
 		second_widgets = Some(vec![
-			TextLabel::new(style).widget_holder(),
+			TextLabel::new("").widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			WidgetHolder::unrelated_separator(),
+			WidgetHolder::unrelated_separator(),
+			WidgetHolder::unrelated_separator(),
 			WidgetHolder::unrelated_separator(),
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
 				.is_style_picker(true)
@@ -879,7 +883,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
-	let (font, style) = font_inputs(document_node, node_id, 2, "Font", "Style", true);
+	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
 
 	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
