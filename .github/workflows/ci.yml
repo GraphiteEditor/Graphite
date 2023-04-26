@@ -41,6 +41,7 @@ jobs:
     
     - name: 🔧 Set up Node
       uses: actions/setup-node@v1
+      if: always()
       with:
         node-version: '16.x'
 
@@ -89,6 +90,7 @@ jobs:
           ---
 
     - name: 👕 Lint Graphite web formatting
+      if: always()
       env:
         NODE_ENV: production
       run: |
