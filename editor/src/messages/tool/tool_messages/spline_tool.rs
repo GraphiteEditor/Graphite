@@ -264,7 +264,9 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
 
 	let layer_path = tool_data.path.clone().unwrap();
+	let manipulator_groups = subpath.manipulator_groups().to_vec();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+	graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path.clone(),
