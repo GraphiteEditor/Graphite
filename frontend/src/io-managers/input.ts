@@ -71,7 +71,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		const accelKey = platformIsMac() ? e.metaKey : e.ctrlKey;
 
 		// Don't redirect user input from text entry into HTML elements
-		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(key === "Enter" && accelKey)) return false;
+		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
 
 		// Don't redirect paste
 		if (key === "KeyV" && accelKey) return false;
@@ -92,7 +92,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
 
 		// Redirect to the backend
 		return true;

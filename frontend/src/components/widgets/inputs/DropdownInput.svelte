@@ -114,6 +114,7 @@
 
 			.dropdown-icon {
 				margin: 4px;
+				margin-left: 8px;
 				flex: 0 0 auto;
 
 				& + .dropdown-label {
@@ -122,7 +123,7 @@
 			}
 
 			.dropdown-arrow {
-				margin: 6px 2px;
+				margin: 4px;
 				flex: 0 0 auto;
 			}
 
@@ -137,10 +138,6 @@
 				svg {
 					fill: var(--color-f-white);
 				}
-			}
-
-			&.open {
-				border-radius: 2px 2px 0 0;
 			}
 
 			&.disabled {

@@ -49,13 +49,17 @@ pub struct ColorInput {
 	#[widget_builder(constructor)]
 	pub value: Option<Color>,
 
-	// TODO: Add allow_none
-	#[serde(rename = "noTransparency")]
-	#[derivative(Default(value = "true"))]
-	pub no_transparency: bool, // TODO: Rename allow_transparency (and invert usages)
+	// TODO: Implement
+	// #[serde(rename = "allowTransparency")]
+	// #[derivative(Default(value = "false"))]
+	// pub allow_transparency: bool,
 
-	pub disabled: bool,
+	// TODO: Implement
+	// #[serde(rename = "allowNone")]
+	// #[derivative(Default(value = "false"))]
+	// pub allow_none: bool,
 
+	// pub disabled: bool,
 	pub tooltip: String,
 
 	#[serde(skip)]
