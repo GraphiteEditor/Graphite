@@ -19,12 +19,12 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
 
-		const panicDialog = preparePanicDialog(displayDialogPanic.header, displayDialogPanic.description, panicDetails);
-		dialogState.createPanicDialog(...panicDialog);
+		const crashDialog = prepareCrashDialog(displayDialogPanic.header, displayDialogPanic.description, panicDetails);
+		dialogState.createCrashDialog(...crashDialog);
 	});
 }
 
-function preparePanicDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
+function prepareCrashDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
 	const headerLabel: TextLabel = { kind: "TextLabel", value: header, disabled: false, bold: true, italic: false, tableAlign: false, minWidth: 0, multiline: false, tooltip: "" };
 	const detailsLabel: TextLabel = { kind: "TextLabel", value: details, disabled: false, bold: false, italic: false, tableAlign: false, minWidth: 0, multiline: true, tooltip: "" };
 
@@ -52,9 +52,9 @@ function preparePanicDialog(header: string, details: string, panicDetails: strin
 		},
 		props: { kind: "TextButton", label: "Clear Saved Data", emphasized: false, minWidth: 96 },
 	};
-	const jsCallbackBasedButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton, clearPersistedDataButton];
+	const crashDialogButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton, clearPersistedDataButton];
 
-	return ["Warning", widgets, jsCallbackBasedButtons];
+	return ["Warning", widgets, crashDialogButtons];
 }
 
 function githubUrl(panicDetails: string): string {

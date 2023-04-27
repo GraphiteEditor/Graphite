@@ -13,12 +13,8 @@
 
 	let self: FloatingMenu | undefined;
 
-	export function dismiss() {
-		dialog.dismissDialog();
-	}
-
 	onMount(() => {
-		// Focus the first button in the popup
+		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
 		const emphasizedOrFirstButton = (self?.div()?.querySelector("[data-emphasized]") || self?.div()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
 	});
@@ -34,9 +30,9 @@
 			{#if $dialog.widgets.layout.length > 0}
 				<WidgetLayout layout={$dialog.widgets} class="details" />
 			{/if}
-			{#if ($dialog.jsCallbackBasedButtons?.length || NaN) > 0}
+			{#if ($dialog.crashDialogButtons?.length || NaN) > 0}
 				<LayoutRow class="panic-buttons-row">
-					{#each $dialog.jsCallbackBasedButtons || [] as button, index (index)}
+					{#each $dialog.crashDialogButtons || [] as button, index (index)}
 						<TextButton action={() => button.callback?.()} {...button.props} />
 					{/each}
 				</LayoutRow>
