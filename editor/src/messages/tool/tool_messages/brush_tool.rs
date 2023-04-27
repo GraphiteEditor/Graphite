@@ -311,6 +311,7 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
+		..Default::default()
 	};
 	let mut network = NodeNetwork::value_network(brush_node);
 	network.push_output_node();

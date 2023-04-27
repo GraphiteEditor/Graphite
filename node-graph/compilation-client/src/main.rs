@@ -58,8 +58,8 @@ fn add_network() -> NodeNetwork {
 				DocumentNode {
 					name: "Dup".into(),
 					inputs: vec![NodeInput::value(value::TaggedValue::U32(5u32), false)],
-					metadata: DocumentNodeMetadata::default(),
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+					..Default::default()
 				},
 			),
 			// (

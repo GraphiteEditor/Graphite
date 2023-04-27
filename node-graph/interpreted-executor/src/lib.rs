@@ -61,7 +61,7 @@ mod tests {
 							name: "Cons".into(),
 							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(&u32))],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
-							metadata: DocumentNodeMetadata::default(),
+							..Default::default()
 						},
 					),
 					(
@@ -70,7 +70,7 @@ mod tests {
 							name: "Add".into(),
 							inputs: vec![NodeInput::node(0, 0)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode")),
-							metadata: DocumentNodeMetadata::default(),
+							..Default::default()
 						},
 					),
 				]
@@ -95,7 +95,7 @@ mod tests {
 						},
 					],
 					implementation: DocumentNodeImplementation::Network(add_network()),
-					metadata: DocumentNodeMetadata::default(),
+					..Default::default()
 				},
 			)]
 			.into_iter()
@@ -133,7 +133,7 @@ mod tests {
 						name: "id".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						metadata: DocumentNodeMetadata::default(),
+						..Default::default()
 					},
 				),
 				// An add node adding the result of the id node to its self
@@ -143,7 +143,7 @@ mod tests {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddParameterNode<_>")),
-						metadata: DocumentNodeMetadata::default(),
+						..Default::default()
 					},
 				),
 			]

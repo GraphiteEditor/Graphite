@@ -198,7 +198,7 @@ mod test {
 	#[test]
 	fn push_node() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)));
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
 		tree.push_node(0, val_1_protonode, &TypingContext::default()).unwrap();
 		let _node = tree.get(0).unwrap();
 		assert_eq!(tree.eval(0, ()), Some(2u32));
