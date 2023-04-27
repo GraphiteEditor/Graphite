@@ -1,12 +1,12 @@
 <script lang="ts">
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	// export let maximized = false;
+	export let maximized = false;
 </script>
 
 <LayoutRow class="window-buttons-mac">
 	<div class="close" title="Close" />
-	<div class="minimize" title="Minimize" />
+	<div class="minimize" title={maximized ? "Minimize" : "Maximize"} />
 	<div class="zoom" title="Zoom" />
 </LayoutRow>
 

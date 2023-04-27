@@ -43,10 +43,6 @@
 			dispatch("value", layerPath);
 		}
 	}
-
-	function getLayerTypeData(layerType: LayerType): LayerTypeData {
-		return layerTypeData(layerType) || { name: "Error", icon: "Info" };
-	}
 </script>
 
 <LayoutRow
@@ -62,8 +58,8 @@
 		<TextLabel italic={true}>{droppable ? "Drop" : "Drag"} Layer Here</TextLabel>
 	{:else}
 		{#if layerName !== undefined && layerType}
-			<IconLabel icon={getLayerTypeData(layerType).icon} class="layer-icon" />
-			<TextLabel italic={layerName === ""} class="layer-name">{layerName || getLayerTypeData(layerType).name}</TextLabel>
+			<IconLabel icon={layerTypeData(layerType).icon} class="layer-icon" />
+			<TextLabel italic={layerName === ""} class="layer-name">{layerName || `Untitled ${layerTypeData(layerType).name}`}</TextLabel>
 		{:else}
 			<TextLabel bold={true} italic={true} class="missing">Layer Missing</TextLabel>
 		{/if}
@@ -81,7 +77,7 @@
 
 		.drop-zone {
 			pointer-events: none;
-			border: 1px dashed var(--color-5-dullgray);
+			border: 1px dashed var(--color-4-dimgray);
 			border-radius: 1px;
 			position: absolute;
 			top: 2px;

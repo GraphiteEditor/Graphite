@@ -317,18 +317,11 @@
 				margin: 0;
 				padding: 9px 0;
 				border: none;
+				border-radius: 2px;
 				background: rgba(var(--color-1-nearblack-rgb), 0.75);
 
 				&:hover {
-					background: var(--color-6-lowergray);
-
-					&.right::before {
-						border-color: transparent transparent transparent var(--color-f-white);
-					}
-
-					&.left::after {
-						border-color: transparent var(--color-f-white) transparent transparent;
-					}
+					background: var(--color-5-dullgray);
 				}
 
 				&.right {

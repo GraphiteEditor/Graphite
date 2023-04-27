@@ -500,10 +500,6 @@
 					}
 
 					.icon-button:not(.active) {
-						.color-solid {
-							fill: var(--color-f-white);
-						}
-
 						.color-general {
 							fill: var(--color-data-general);
 						}

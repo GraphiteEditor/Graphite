@@ -412,11 +412,6 @@
 		// Floating menus begin at a z-index of 1000
 		z-index: 1000;
 		--floating-menu-content-offset: 0;
-		--floating-menu-content-border-radius: 4px;
-
-		&.bottom {
-			--floating-menu-content-border-radius: 0 0 4px 4px;
-		}
 
 		.tail {
 			width: 0;
@@ -434,7 +429,7 @@
 			.floating-menu-content {
 				background: rgba(var(--color-2-mildblack-rgb), 0.95);
 				box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
-				border-radius: var(--floating-menu-content-border-radius);
+				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
 				padding: 8px;
@@ -501,7 +496,6 @@
 
 		&.popover {
 			--floating-menu-content-offset: 10px;
-			--floating-menu-content-border-radius: 4px;
 		}
 
 		&.cursor .floating-menu-container .floating-menu-content {

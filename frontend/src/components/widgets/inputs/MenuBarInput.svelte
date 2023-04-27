@@ -128,22 +128,11 @@
 				background: none;
 				border: 0;
 				margin: 0;
-
-				svg {
-					fill: var(--color-e-nearwhite);
-				}
+				border-radius: 2px;
 
 				&:hover,
 				&.open {
-					background: var(--color-6-lowergray);
-
-					svg {
-						fill: var(--color-f-white);
-					}
-
-					span {
-						color: var(--color-f-white);
-					}
+					background: var(--color-5-dullgray);
 				}
 			}
 		}

@@ -217,7 +217,6 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 								let fill = if let Some(value) = text_input.value { value } else { Color::TRANSPARENT };
 								PropertiesPanelMessage::ModifyFill { fill: Fill::Solid(fill) }.into()
 							}),
-							no_transparency: true,
 							..Default::default()
 						})),
 					],
