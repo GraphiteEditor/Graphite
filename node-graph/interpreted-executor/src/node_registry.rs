@@ -20,7 +20,7 @@ use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 use graph_craft::proto::NodeConstructor;
 
 use graphene_core::{concrete, fn_type, generic, value_fn};
-use graphene_std::memo::{CacheNode, LetNode};
+use graphene_std::memo::{CacheNode, LetNode, MonitorNode};
 use graphene_std::raster::BlendImageTupleNode;
 
 use crate::executor::NodeContainer;
@@ -153,6 +153,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
+		register_node!(graphene_std::memo::MonitorNode<_, _>, input: (), params: [ImageFrame<Color>]),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
 		vec![(
