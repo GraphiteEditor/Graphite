@@ -50,6 +50,10 @@ impl DynamicExecutor {
 		Ok(())
 	}
 
+	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<String>> {
+		self.tree.introspect(node_path)
+	}
+
 	pub fn input_type(&self) -> Option<Type> {
 		self.typing_context.type_of(self.output).map(|node_io| node_io.input.clone())
 	}
@@ -99,6 +103,7 @@ impl NodeContainer<'static> {
 #[derive(Default, Debug, Clone)]
 pub struct BorrowTree {
 	nodes: HashMap<NodeId, Arc<RwLock<NodeContainer<'static>>>>,
+	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 
 impl BorrowTree {
@@ -123,6 +128,7 @@ impl BorrowTree {
 				node.reset();
 			}
 			old_nodes.remove(&id);
+			self.source_map.retain(|_, nid| *nid != id);
 		}
 		Ok(old_nodes.into_iter().collect())
 	}
@@ -137,6 +143,14 @@ impl BorrowTree {
 	fn store_node(&mut self, node: Arc<RwLock<NodeContainer<'static>>>, id: NodeId) -> Arc<RwLock<NodeContainer<'static>>> {
 		self.nodes.insert(id, node.clone());
 		node
+	}
+
+	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<String>> {
+		let id = self.source_map.get(node_path)?;
+		let node = self.nodes.get(id)?;
+		let reader = node.read().unwrap();
+		let node = reader.node.as_ref();
+		Some(node.serialize())
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<Arc<RwLock<NodeContainer<'static>>>> {
@@ -163,6 +177,7 @@ impl BorrowTree {
 
 	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
 		let ProtoNode { construction_args, identifier, .. } = proto_node;
+		self.source_map.insert(proto_node.document_node_path, id);
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {
