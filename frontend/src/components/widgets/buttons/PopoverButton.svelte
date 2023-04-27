@@ -49,8 +49,7 @@
 
 			&:hover,
 			&.open {
-				background: var(--color-6-lowergray);
-				fill: var(--color-f-white);
+				background: var(--color-5-dullgray);
 			}
 
 			&.disabled {

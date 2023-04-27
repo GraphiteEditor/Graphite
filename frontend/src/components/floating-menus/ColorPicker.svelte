@@ -37,8 +37,8 @@
 	const dispatch = createEventDispatcher<{ color: Color }>();
 
 	export let color: Color;
+	// export let allowTransparency = false; // TODO: Implement
 	export let allowNone = false;
-	// export let allowTransparency = false; // TODO: Implement this
 	export let direction: MenuDirection = "Bottom";
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
