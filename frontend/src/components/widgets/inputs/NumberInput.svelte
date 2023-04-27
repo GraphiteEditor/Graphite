@@ -318,7 +318,7 @@
 				padding: 9px 0;
 				border: none;
 				border-radius: 2px;
-				background: rgba(var(--color-1-nearblack-rgb), 0.75);
+				background: none;
 
 				&:hover {
 					background: var(--color-5-dullgray);
