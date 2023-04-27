@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Color, Image, ImageFrame, RasterMut};
-use graphene_core::transform::TransformMut;
+use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Raster, RasterMut, Sample};
+use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
@@ -74,6 +74,52 @@ fn vector_points(vector: VectorData) -> Vec<DVec2> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct BrushStampGenerator<P: Pixel + Alpha> {
+	color: P,
+	feather_exponent: f32,
+	transform: DAffine2,
+}
+
+impl<P: Pixel + Alpha> TransformMut for BrushStampGenerator<P> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
+	}
+}
+
+impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+
+impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
+	type Pixel = P;
+
+	fn sample(&self, position: DVec2, area: DVec2) -> Option<P> {
+		let position = self.transform.inverse().transform_point2(position);
+
+		let x1 = (position).length() as f32;
+		let x2 = (position + area).length() as f32;
+		let min = x1.min(x2);
+		let max = x1.max(x2);
+
+		let integral = |x: f32| -x.powf(1. - self.feather_exponent) / (self.feather_exponent + 1.);
+
+		let result = if max < 1. {
+			let inner = integral(min);
+			let outer = integral(max);
+			log::debug!("{:?}", outer - inner);
+			outer - inner
+		} else {
+			return None;
+		};
+
+		use graphene_core::raster::Channel;
+		Some(self.color.multiplied_alpha(P::AlphaChannel::from_f32(result as f32)))
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct BrushTextureNode<ColorNode, Hardness, Flow> {
 	pub color: ColorNode,
 	pub hardness: Hardness,
@@ -93,16 +139,13 @@ fn erase(input: (Color, Color), flow: f64) -> Color {
 }
 
 #[node_fn(BrushTextureNode)]
-fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> ImageFrame<Color> {
+fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
-	// TODO: Remove the 4px padding after figuring out why the brush stamp gets randomly offset by 1px up/down/left/right when clicking with the Brush tool
-	let dimension = diameter.ceil() as u32 + 4;
-	let center = DVec2::splat(radius + (dimension as f64 - diameter) / 2.);
 
 	// Hardness
 	let hardness = hardness / 100.;
-	let feather_exponent = 1. / (1. - hardness);
+	let feather_exponent = 1. / (1. - hardness) as f32;
 
 	// Flow
 	let flow = flow / 100.;
@@ -110,33 +153,8 @@ fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> Image
 	// Color
 	let color = color.apply_opacity(flow as f32);
 
-	// Initial transparent image
-	let mut image = Image::new(dimension, dimension, Color::TRANSPARENT);
-
-	for y in 0..dimension {
-		for x in 0..dimension {
-			let summation = MULTISAMPLE_GRID.iter().fold(0., |acc, (offset_x, offset_y)| {
-				let position = DVec2::new(x as f64 + offset_x, y as f64 + offset_y);
-				let distance = (position - center).length();
-
-				if distance < radius {
-					acc + (1. - (distance / radius).powf(feather_exponent)).clamp(0., 1.)
-				} else {
-					acc
-				}
-			});
-
-			let pixel_fill = summation / MULTISAMPLE_GRID.len() as f64;
-
-			let pixel = image.get_pixel_mut(x, y).unwrap();
-			*pixel = color.apply_opacity(pixel_fill as f32);
-		}
-	}
-
-	ImageFrame {
-		image,
-		transform: DAffine2::from_scale_angle_translation(DVec2::splat(dimension as f64), 0., -DVec2::splat(radius)),
-	}
+	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(diameter), 0., -DVec2::splat(radius));
+	BrushStampGenerator { color, feather_exponent, transform }
 }
 
 #[derive(Clone, Debug, PartialEq)]

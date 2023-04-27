@@ -139,11 +139,12 @@ where
 					to_u8(to_gamma(color.r() / color.a().to_channel())),
 					to_u8(to_gamma(color.g() / color.a().to_channel())),
 					to_u8(to_gamma(color.b() / color.a().to_channel())),
-					(num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
+					255 - (num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
 				]
 			})
 			.collect();
 
+		log::debug!("{:?}", result_bytes);
 		(result_bytes, width, height)
 	}
 }
@@ -201,7 +202,8 @@ pub struct ImageFrame<P: Pixel> {
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	type Pixel = P;
 
-	fn sample(&self, pos: DVec2) -> Option<Self::Pixel> {
+	// TODO: Improve sampling logic
+	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
 		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
 		let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);
 		if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {
