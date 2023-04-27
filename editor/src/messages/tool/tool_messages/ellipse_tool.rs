@@ -1,7 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -130,17 +129,7 @@ impl Fsm for EllipseToolFsmState {
 					let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
 					let manipulator_groups = subpath.manipulator_groups().to_vec();
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-
-					// Set the four manipulator groups to have their handle angles mirrored by default
-					for manipulator_group in manipulator_groups {
-						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.clone(),
-							modification: VectorDataModification::SetManipulatorHandleMirroring {
-								id: manipulator_group.id,
-								mirror_angle: true,
-							},
-						});
-					}
+					graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
 
 					// Set the fill color to the primary working color
 					responses.add(GraphOperationMessage::FillSet {
