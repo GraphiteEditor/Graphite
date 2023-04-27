@@ -51,11 +51,9 @@ impl<T, CachedNode> CacheNode<T, CachedNode> {
 	}
 }
 
-/// Caches the output of a given Node and acts as a proxy
+/// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
 pub struct MonitorNode<T, CachedNode> {
-	// We have to use an append only data structure to make sure the references
-	// to the cache entries are always valid
 	output: Mutex<Option<T>>,
 	node: CachedNode,
 }

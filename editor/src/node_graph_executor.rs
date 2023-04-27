@@ -12,7 +12,7 @@ use graph_craft::executor::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::vector::VectorData;
-use graphene_core::Color;
+use graphene_core::{Color, EditorApi};
 use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
@@ -25,7 +25,7 @@ pub struct NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn execute_network<'a>(&'a mut self, network: NodeNetwork, image_frame: ImageFrame<Color>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
+	fn execute_network<'a>(&'a mut self, network: NodeNetwork, editor_api: EditorApi<'a>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
 		let mut scoped_network = wrap_network_in_scope(network);
 
 		scoped_network.duplicate_outputs(&mut generate_uuid);
@@ -45,14 +45,14 @@ impl NodeGraphExecutor {
 		use graph_craft::executor::Executor;
 
 		match self.executor.input_type() {
-			Some(t) if t == concrete!(ImageFrame<Color>) => self.executor.execute(image_frame.into_dyn()).map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(EditorApi) => self.executor.execute(editor_api.into_dyn()).map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
 		}
 	}
 
 	/// Computes an input for a node in the graph
-	pub fn compute_input<T: dyn_any::StaticType>(&mut self, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, image_frame: Cow<ImageFrame<Color>>) -> Result<T, String> {
+	pub fn compute_input<T: dyn_any::StaticType>(&mut self, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, editor_api: Cow<EditorApi<'_>>) -> Result<T, String> {
 		let mut network = old_network.clone();
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
@@ -88,7 +88,7 @@ impl NodeGraphExecutor {
 			}
 		}
 
-		let boxed = self.execute_network(network, image_frame.into_owned())?;
+		let boxed = self.execute_network(network, editor_api.into_owned())?;
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
 	}
@@ -119,7 +119,7 @@ impl NodeGraphExecutor {
 		imaginate_node: Vec<NodeId>,
 		(document, document_id): (&mut DocumentMessageHandler, u64),
 		layer_path: Vec<LayerId>,
-		image_frame: ImageFrame<Color>,
+		editor_api: EditorApi<'_>,
 		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
 	) -> Result<Message, String> {
 		use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
@@ -131,31 +131,31 @@ impl NodeGraphExecutor {
 		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 		let transform = layer.transform;
 
-		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&image_frame))?;
+		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node, get("Resolution"), Cow::Borrowed(&editor_api))?;
 		let resolution = resolution.unwrap_or_else(|| {
 			let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
 			DVec2::new(x as f64, y as f64)
 		});
 
 		let parameters = ImaginateGenerationParameters {
-			seed: self.compute_input::<f64>(&network, &imaginate_node, get("Seed"), Cow::Borrowed(&image_frame))? as u64,
+			seed: self.compute_input::<f64>(&network, &imaginate_node, get("Seed"), Cow::Borrowed(&editor_api))? as u64,
 			resolution: resolution.as_uvec2().into(),
-			samples: self.compute_input::<f64>(&network, &imaginate_node, get("Samples"), Cow::Borrowed(&image_frame))? as u32,
+			samples: self.compute_input::<f64>(&network, &imaginate_node, get("Samples"), Cow::Borrowed(&editor_api))? as u32,
 			sampling_method: self
-				.compute_input::<ImaginateSamplingMethod>(&network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&image_frame))?
+				.compute_input::<ImaginateSamplingMethod>(&network, &imaginate_node, get("Sampling Method"), Cow::Borrowed(&editor_api))?
 				.api_value()
 				.to_string(),
-			text_guidance: self.compute_input(&network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&image_frame))?,
-			text_prompt: self.compute_input(&network, &imaginate_node, get("Prompt"), Cow::Borrowed(&image_frame))?,
-			negative_prompt: self.compute_input(&network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&image_frame))?,
-			image_creativity: Some(self.compute_input::<f64>(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&image_frame))? / 100.),
-			restore_faces: self.compute_input(&network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&image_frame))?,
-			tiling: self.compute_input(&network, &imaginate_node, get("Tiling"), Cow::Borrowed(&image_frame))?,
+			text_guidance: self.compute_input(&network, &imaginate_node, get("Prompt Guidance"), Cow::Borrowed(&editor_api))?,
+			text_prompt: self.compute_input(&network, &imaginate_node, get("Prompt"), Cow::Borrowed(&editor_api))?,
+			negative_prompt: self.compute_input(&network, &imaginate_node, get("Negative Prompt"), Cow::Borrowed(&editor_api))?,
+			image_creativity: Some(self.compute_input::<f64>(&network, &imaginate_node, get("Image Creativity"), Cow::Borrowed(&editor_api))? / 100.),
+			restore_faces: self.compute_input(&network, &imaginate_node, get("Improve Faces"), Cow::Borrowed(&editor_api))?,
+			tiling: self.compute_input(&network, &imaginate_node, get("Tiling"), Cow::Borrowed(&editor_api))?,
 		};
-		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&image_frame))?;
+		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node, get("Adapt Input Image"), Cow::Borrowed(&editor_api))?;
 
 		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
-			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&image_frame))?)
+			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node, get("Input Image"), Cow::Borrowed(&editor_api))?)
 		} else {
 			None
 		};
@@ -176,7 +176,7 @@ impl NodeGraphExecutor {
 		};
 
 		let mask_image = if let Some(transform) = image_transform {
-			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&image_frame))?;
+			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &imaginate_node, get("Masking Layer"), Cow::Borrowed(&editor_api))?;
 
 			// Calculate the size of the node graph frame
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
@@ -208,13 +208,13 @@ impl NodeGraphExecutor {
 			parameters: Box::new(parameters),
 			base_image: base_image.map(Box::new),
 			mask_image: mask_image.map(Box::new),
-			mask_paint_mode: if self.compute_input::<bool>(&network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&image_frame))? {
+			mask_paint_mode: if self.compute_input::<bool>(&network, &imaginate_node, get("Inpaint"), Cow::Borrowed(&editor_api))? {
 				ImaginateMaskPaintMode::Inpaint
 			} else {
 				ImaginateMaskPaintMode::Outpaint
 			},
-			mask_blur_px: self.compute_input::<f64>(&network, &imaginate_node, get("Mask Blur"), Cow::Borrowed(&image_frame))? as u32,
-			imaginate_mask_starting_fill: self.compute_input(&network, &imaginate_node, get("Mask Starting Fill"), Cow::Borrowed(&image_frame))?,
+			mask_blur_px: self.compute_input::<f64>(&network, &imaginate_node, get("Mask Blur"), Cow::Borrowed(&editor_api))? as u32,
+			imaginate_mask_starting_fill: self.compute_input(&network, &imaginate_node, get("Mask Starting Fill"), Cow::Borrowed(&editor_api))?,
 			hostname: preferences.imaginate_server_hostname.clone(),
 			refresh_frequency: preferences.imaginate_refresh_frequency,
 			document_id,
@@ -244,6 +244,10 @@ impl NodeGraphExecutor {
 		// Construct the input image frame
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
+		let editor_api = EditorApi {
+			image_frame: Some(&image_frame),
+			font_cache: Some(&persistent_data.1.font_cache),
+		};
 
 		let node_graph_frame = match &layer.data {
 			LayerDataType::NodeGraphFrame(frame) => Ok(frame),
@@ -253,11 +257,11 @@ impl NodeGraphExecutor {
 
 		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
 		if let Some(imaginate_node) = imaginate_node {
-			responses.push_back(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, image_frame, persistent_data)?);
+			responses.push_back(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, editor_api, persistent_data)?);
 			return Ok(());
 		}
 		// Execute the node graph
-		let boxed_node_graph_output = self.execute_network(network, image_frame)?;
+		let boxed_node_graph_output = self.execute_network(network, editor_api)?;
 
 		// Check if the output is vector data
 		if core::any::TypeId::of::<VectorData>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {

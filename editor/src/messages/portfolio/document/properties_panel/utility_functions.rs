@@ -4,7 +4,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, FontInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextAreaInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -13,7 +13,6 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::document::Document;
 use document_legacy::layers::layer_info::{Layer, LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, RenderData, Stroke, ViewMode};
-use document_legacy::layers::text_layer::TextLayer;
 use graphene_core::raster::color::Color;
 
 use glam::{DAffine2, DVec2};
@@ -265,11 +264,6 @@ pub fn register_artwork_layer_properties(
 					tooltip: "Shape".into(),
 					..Default::default()
 				})),
-				LayerDataType::Text(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeText".into(),
-					tooltip: "Text".into(),
-					..Default::default()
-				})),
 				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "Layer".into(),
 					tooltip: "Layer".into(),
@@ -310,14 +304,6 @@ pub fn register_artwork_layer_properties(
 			} else {
 				vec![node_section_transform(layer, persistent_data), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
-		}
-		LayerDataType::Text(text) => {
-			vec![
-				node_section_transform(layer, persistent_data),
-				node_section_font(text),
-				node_section_fill(text.path_style.fill()).expect("Text should have fill"),
-				node_section_stroke(&text.path_style.stroke().unwrap_or_default()),
-			]
 		}
 		LayerDataType::NodeGraphFrame(node_graph_frame) => {
 			let mut properties_sections = Vec::new();
@@ -515,115 +501,6 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 							.into()
 						}),
 						..NumberInput::default()
-					})),
-				],
-			},
-		],
-	}
-}
-
-fn node_section_font(layer: &TextLayer) -> LayoutGroup {
-	let font = layer.font.clone();
-	let size = layer.size;
-	LayoutGroup::Section {
-		name: "Font".into(),
-		layout: vec![
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Text".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::TextAreaInput(TextAreaInput {
-						value: layer.text.clone(),
-						on_update: WidgetCallback::new(|text_area: &TextAreaInput| PropertiesPanelMessage::ModifyText { new_text: text_area.value.clone() }.into()),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Font".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::FontInput(FontInput {
-						is_style_picker: false,
-						font_family: layer.font.font_family.clone(),
-						font_style: layer.font.font_style.clone(),
-						on_update: WidgetCallback::new(move |font_input: &FontInput| {
-							PropertiesPanelMessage::ModifyFont {
-								font_family: font_input.font_family.clone(),
-								font_style: font_input.font_style.clone(),
-								size,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Style".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::FontInput(FontInput {
-						is_style_picker: true,
-						font_family: layer.font.font_family.clone(),
-						font_style: layer.font.font_style.clone(),
-						on_update: WidgetCallback::new(move |font_input: &FontInput| {
-							PropertiesPanelMessage::ModifyFont {
-								font_family: font_input.font_family.clone(),
-								font_style: font_input.font_style.clone(),
-								size,
-							}
-							.into()
-						}),
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Size".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.size),
-						min: Some(1.),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
-							PropertiesPanelMessage::ModifyFont {
-								font_family: font.font_family.clone(),
-								font_style: font.font_style.clone(),
-								size: number_input.value.unwrap(),
-							}
-							.into()
-						}),
-						..Default::default()
 					})),
 				],
 			},

@@ -15,7 +15,11 @@ pub enum GraphOperationMessage {
 		layer: LayerIdentifier,
 		fill: Fill,
 	},
-
+	UpdateBounds {
+		layer: LayerIdentifier,
+		old_bounds: [DVec2; 2],
+		new_bounds: [DVec2; 2],
+	},
 	StrokeSet {
 		layer: LayerIdentifier,
 		stroke: Stroke,

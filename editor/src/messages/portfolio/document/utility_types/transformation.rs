@@ -327,7 +327,6 @@ impl<'a> Selected<'a> {
 						continue;
 					};
 					let Some(vector_data) = layer.as_vector_data() else {
-						warn!("Didn't find a vectordata for {:?}", layer);
 						continue;
 					};
 					let get_manipulator_point_position = |point_id: ManipulatorPointId| {

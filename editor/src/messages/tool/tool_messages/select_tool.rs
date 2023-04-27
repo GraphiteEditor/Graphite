@@ -863,9 +863,11 @@ impl Fsm for SelectToolFsmState {
 						// Check that only one layer is selected
 						if selected_layers.next().is_none() {
 							if let Ok(layer) = document.document_legacy.layer(layer_path) {
-								if let LayerDataType::Text(_) = layer.data {
-									responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-									responses.push_back(TextToolMessage::EditSelected.into());
+								if let Ok(network) = layer.as_node_graph() {
+									if network.nodes.values().any(|node| node.name == "Text") {
+										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+										responses.push_back(TextToolMessage::EditSelected.into());
+									}
 								}
 							}
 						}
@@ -1249,15 +1251,16 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 
 fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<Message>) {
 	match &intersect.data {
-		LayerDataType::Text(_) => {
-			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-			responses.push_back(TextToolMessage::Interact.into());
-		}
 		LayerDataType::Shape(_) => {
 			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
 		}
-		LayerDataType::NodeGraphFrame(frame) if frame.as_vector_data().is_some() => {
-			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+		LayerDataType::NodeGraphFrame(graph_frame) if graph_frame.as_vector_data().is_some() => {
+			if graph_frame.network.nodes.values().any(|node| node.name == "Text") {
+				responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
+				responses.push_back(TextToolMessage::EditSelected.into());
+			} else {
+				responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+			}
 		}
 		_ => {}
 	}
