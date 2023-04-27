@@ -285,10 +285,6 @@
 					flex: 0 0 auto;
 				}
 
-				.entry-icon svg {
-					fill: var(--color-e-nearwhite);
-				}
-
 				.no-icon {
 					width: 16px;
 					height: 16px;
@@ -317,25 +313,34 @@
 					height: 12px;
 				}
 
-				> .menu-list {
-					margin-right: -4px;
+				// Extend the submenu to the right by the width of the margin outside the row, since we want the submenu to line up with the edge of the menu
+				&.open {
+					// Offset by the margin distance
+					> .menu-list {
+						margin-right: -4px;
+					}
+
+					// Extend the click target by the margin distance so the user can hover to the right of the row, within the margin area, and still have the submenu open
+					&::after {
+						content: "";
+						position: absolute;
+						top: 0;
+						right: -4px;
+						width: 4px;
+						height: 100%;
+					}
 				}
 
 				&:hover,
 				&.open {
-					background: var(--color-6-lowergray);
-					color: var(--color-f-white);
-
-					.entry-icon svg {
-						fill: var(--color-f-white);
-					}
+					background: var(--color-5-dullgray);
 				}
 
 				&.active {
 					background: var(--color-e-nearwhite);
 					color: var(--color-2-mildblack);
 
-					.entry-icon svg {
+					svg {
 						fill: var(--color-2-mildblack);
 					}
 				}
