@@ -2,7 +2,7 @@ use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::text_layer::Font;
+use graphene_core::text::Font;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {

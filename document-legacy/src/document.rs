@@ -5,7 +5,6 @@ use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDi
 use crate::layers::nodegraph_layer::{CachedOutputData, NodeGraphFrameLayer};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
-use crate::layers::text_layer::{Font, TextLayer};
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -430,30 +429,6 @@ impl Document {
 		Ok(())
 	}
 
-	/// Marks all decendants of the specified [Layer] of a specific [LayerDataType] as dirty
-	fn mark_layers_of_type_as_dirty(root: &mut Layer, data_type: LayerDataTypeDiscriminant) -> bool {
-		if let LayerDataType::Folder(folder) = &mut root.data {
-			let mut dirty = false;
-			for layer in folder.layers_mut() {
-				dirty = Self::mark_layers_of_type_as_dirty(layer, data_type) || dirty;
-			}
-			root.cache_dirty = dirty;
-		}
-		if LayerDataTypeDiscriminant::from(&root.data) == data_type {
-			root.cache_dirty = true;
-			if let LayerDataType::Text(text) = &mut root.data {
-				text.cached_path = None;
-			}
-		}
-
-		root.cache_dirty
-	}
-
-	/// Marks all layers in the [Document] of a specific [LayerDataType] as dirty
-	pub fn mark_all_layers_of_type_as_dirty(&mut self, data_type: LayerDataTypeDiscriminant) -> bool {
-		Self::mark_layers_of_type_as_dirty(&mut self.root, data_type)
-	}
-
 	pub fn transforms(&self, path: &[LayerId]) -> Result<Vec<DAffine2>, DocumentError> {
 		let mut root = &self.root;
 		let mut transforms = vec![self.root.transform];
@@ -539,25 +514,6 @@ impl Document {
 
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::AddText {
-				path,
-				insert_index,
-				transform,
-				text,
-				style,
-				size,
-				font_name,
-				font_style,
-			} => {
-				let font = Font::new(font_name, font_style);
-				let layer_text = TextLayer::new(text, style, size, font, render_data);
-				let layer_data = LayerDataType::Text(layer_text);
-				let layer = Layer::new(layer_data, transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
 			Operation::AddNodeGraphFrame {
 				path,
 				insert_index,
@@ -575,30 +531,6 @@ impl Document {
 					layer.preserve_aspect = preserve_aspect;
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::SetTextEditability { path, editable } => {
-				self.layer_mut(&path)?.as_text_mut()?.editable = editable;
-				self.mark_as_dirty(&path)?;
-				Some(vec![DocumentChanged])
-			}
-			Operation::SetTextContent { path, new_text } => {
-				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
-				let mut current_folder = &mut self.root;
-
-				let (layer_path, id) = split_path(&path)?;
-				for id in layer_path {
-					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(layer_path.into()))?;
-				}
-				current_folder
-					.as_folder_mut()?
-					.layer_mut(id)
-					.ok_or_else(|| DocumentError::LayerNotFound(path.clone()))?
-					.as_text_mut()?
-					.update_text(new_text, render_data);
-
-				self.mark_as_dirty(&path)?;
-
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::AddNgon {
 				path,
@@ -736,22 +668,6 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::ModifyFont { path, font_family, font_style, size } => {
-				// Not using Document::layer_mut is necessary because we also need to borrow the font cache
-				let mut current_folder = &mut self.root;
-				let (folder_path, id) = split_path(&path)?;
-				for id in folder_path {
-					current_folder = current_folder.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-				}
-				let layer_mut = current_folder.as_folder_mut()?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(folder_path.into()))?;
-				let text = layer_mut.as_text_mut()?;
-
-				text.font = Font::new(font_family, font_style);
-				text.size = size;
-				text.cached_path = Some(text.generate_path(text.load_face(render_data)));
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
 			Operation::RenameLayer { layer_path: path, new_name: name } => {
 				self.layer_mut(&path)?.name = Some(name);
 				Some(vec![LayerChanged { path }])
@@ -791,7 +707,9 @@ impl Document {
 				let layer = self.layer_mut(&path).expect("Clearing node graph image for invalid layer");
 				match &mut layer.data {
 					LayerDataType::NodeGraphFrame(node_graph) => {
-						node_graph.cached_output_data = CachedOutputData::None;
+						if matches!(node_graph.cached_output_data, CachedOutputData::BlobURL(_)) {
+							node_graph.cached_output_data = CachedOutputData::None;
+						}
 					}
 					e => panic!("Incorrectly trying to clear the blob URL for layer of type {}", LayerDataTypeDiscriminant::from(&*e)),
 				}
@@ -984,7 +902,6 @@ impl Document {
 				let layer = self.layer_mut(&path)?;
 				match &mut layer.data {
 					LayerDataType::Shape(s) => s.style = style,
-					LayerDataType::Text(text) => text.path_style = style,
 					_ => return Err(DocumentError::NotShape),
 				}
 				self.mark_as_dirty(&path)?;

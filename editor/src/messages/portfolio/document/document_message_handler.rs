@@ -29,13 +29,12 @@ use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::nodegraph_layer::CachedOutputData;
-use document_legacy::layers::style::{Fill, RenderData, ViewMode};
-use document_legacy::layers::text_layer::Font;
+use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
-use graph_craft::document::NodeId;
-use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::raster::{Color, ImageFrame};
-use graphene_core::Cow;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
+use graphene_core::raster::ImageFrame;
+use graphene_core::text::Font;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -904,24 +903,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
-			SetTextboxEditability { path, editable } => {
-				let text = self.document_legacy.layer(&path).unwrap().as_text().unwrap();
-				responses.push_back(DocumentOperation::SetTextEditability { path, editable }.into());
-				if editable {
-					let color = if let Fill::Solid(solid_color) = text.path_style.fill() { *solid_color } else { Color::BLACK };
-					responses.push_back(
-						FrontendMessage::DisplayEditableTextbox {
-							text: text.text.clone(),
-							line_width: text.line_width,
-							font_size: text.size,
-							color,
-						}
-						.into(),
-					);
-				} else {
-					responses.push_back(FrontendMessage::DisplayRemoveEditableTextbox.into());
-				}
-			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
 				responses.push_front(DocumentMessage::DirtyRenderDocument.into());
@@ -1055,37 +1036,41 @@ impl DocumentMessageHandler {
 			return None;
 		};
 
-		// Find the primary input type of the node graph
-		let primary_input_type = node_network.input_types().next().clone();
-		let response = match primary_input_type {
-			// Only calclate the frame if the primary input is an image
-			Some(ty) if ty == concrete!(ImageFrame<Color>) => {
-				// Calculate the size of the region to be exported
-				let old_transforms = self.remove_document_transform();
-				let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
-				let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+		// Check if we use the "Input Frame" node.
+		// TODO: Remove once rasterization is moved into a node.
+		let input_frame = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame");
+		let input_node_id = input_frame.map(|(&id, _)| id);
+		let primary_input_type = input_node_id.filter(|&target_node_id| node_network.connected_to_output(target_node_id, true));
 
-				let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-				self.restore_document_transform(old_transforms);
+		// Only calculate the frame if the primary input is an image
+		let response = if primary_input_type.is_some() {
+			// Calculate the size of the region to be exported
+			let old_transforms = self.remove_document_transform();
+			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
+			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
-				FrontendMessage::TriggerNodeGraphFrameGenerate {
-					document_id,
-					layer_path,
-					svg,
-					size,
-					imaginate_node,
-				}
-				.into()
+			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			self.restore_document_transform(old_transforms);
+
+			FrontendMessage::TriggerNodeGraphFrameGenerate {
+				document_id,
+				layer_path,
+				svg,
+				size,
+				imaginate_node,
 			}
-			// Skip processing under node graph frame input if not connected
-			_ => PortfolioMessage::ProcessNodeGraphFrame {
+			.into()
+		}
+		// Skip processing under node graph frame input if not connected
+		else {
+			PortfolioMessage::ProcessNodeGraphFrame {
 				document_id,
 				layer_path,
 				image_data: Default::default(),
 				size: (0, 0),
 				imaginate_node,
 			}
-			.into(),
+			.into()
 		};
 		Some(response)
 	}
@@ -1622,12 +1607,20 @@ impl DocumentMessageHandler {
 						path.pop();
 					}
 				}
-				LayerDataType::Text(text) => {
-					fonts.insert(text.font.clone());
-				}
 				LayerDataType::NodeGraphFrame(node_graph_frame) => {
 					if node_graph_frame.cached_output_data == CachedOutputData::None {
 						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: path.clone() });
+					}
+					for node in node_graph_frame.network.nodes.values() {
+						for input in &node.inputs {
+							if let NodeInput::Value {
+								tagged_value: TaggedValue::Font(font),
+								..
+							} = input
+							{
+								fonts.insert(font.clone());
+							}
+						}
 					}
 				}
 				_ => {}
