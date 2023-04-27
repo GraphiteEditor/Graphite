@@ -236,11 +236,12 @@
 
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
 		showTextInput = true;
-		console.info("Show text");
 
 		await tick();
 
-		if (!textInput) { return; }
+		if (!textInput) {
+			return;
+		}
 
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
@@ -257,10 +258,9 @@
 			editor.instance.updateBounds(textInputCleanup(textInput.innerText));
 		};
 		textInputMatrix = displayEditableTextbox.transform;
-		const new_font = new FontFace('text-font', `url(${displayEditableTextbox.url})`);
+		const new_font = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
 		window.document.fonts.add(new_font);
 		textInput.style.fontFamily = "text-font";
-		
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
@@ -276,7 +276,6 @@
 		textInput.focus();
 		textInput.click();
 
-
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
 	}
 
@@ -288,7 +287,7 @@
 	// Resize elements to render the new viewport size
 	export function viewportResize() {
 		if (!canvasContainer) return;
-		
+
 		// Resize the canvas
 		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasContainer).width));
 		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasContainer).height));
@@ -442,7 +441,7 @@
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})"/>
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
 							{/if}
 						</div>
 					</div>
@@ -588,25 +587,23 @@
 						}
 					}
 
-					.text-input {
-						div {
-							cursor: text;
-							background: none;
-							border: none;
-							margin: 0;
-							padding: 0;
-							overflow: visible;
-							white-space: pre-wrap;
-							display: inline-block;
-							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
-							padding-left: 1px;
-							margin-left: -1px;
+					.text-input div {
+						cursor: text;
+						background: none;
+						border: none;
+						margin: 0;
+						padding: 0;
+						overflow: visible;
+						white-space: pre-wrap;
+						display: inline-block;
+						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+						padding-left: 1px;
+						margin-left: -1px;
 
-							&:focus {
-								border: none;
-								outline: none; // Ok for contenteditable element
-								margin: -1px;
-							}
+						&:focus {
+							border: none;
+							outline: none; // Ok for contenteditable element
+							margin: -1px;
 						}
 					}
 				}

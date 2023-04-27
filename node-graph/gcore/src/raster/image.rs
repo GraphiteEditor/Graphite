@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 
 #[cfg(feature = "serde")]
 mod base64_serde {
-	//! Basic wrapper for [`serde`] for [`base64`] encoding
+	//! Basic wrapper for [`serde`] to perform [`base64`] encoding
 
 	use super::super::Pixel;
 	use serde::{Deserialize, Deserializer, Serializer};

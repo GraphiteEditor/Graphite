@@ -34,9 +34,9 @@ use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as Doc
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::ImageFrame;
+use graphene_core::text::Font;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::text::Font;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1036,8 +1036,8 @@ impl DocumentMessageHandler {
 			return None;
 		};
 
-		// Check if we we use the "Input Frame" node.
-		// TODO: Remove once rasterisation is moved into a node.
+		// Check if we use the "Input Frame" node.
+		// TODO: Remove once rasterization is moved into a node.
 		let input_frame = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame");
 		let input_node_id = input_frame.map(|(&id, _)| id);
 		let primary_input_type = input_node_id.filter(|&target_node_id| node_network.connected_to_output(target_node_id, true));

@@ -1,10 +1,9 @@
-use bezier_rs::{ManipulatorGroup, Subpath};
+use crate::uuid::ManipulatorGroupId;
 
+use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::DVec2;
 use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
-
-use crate::uuid::ManipulatorGroupId;
 
 struct Builder {
 	current_subpath: Subpath<ManipulatorGroupId>,

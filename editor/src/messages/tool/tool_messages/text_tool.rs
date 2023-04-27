@@ -218,6 +218,7 @@ impl TextToolData {
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
 		}
 	}
+
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.document_legacy.multiply_transforms(&self.layer_path).ok()?;
 		let layer = document.document_legacy.layer(&self.layer_path).ok()?;
@@ -241,6 +242,7 @@ impl TextToolData {
 		self.new_text = text.clone();
 		Some(())
 	}
+
 	fn start_editing_layer(&mut self, layer_path: &[LayerId], tool_state: TextToolFsmState, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
 		if tool_state == TextToolFsmState::Editing {
 			self.set_editing(false, render_data, responses);
@@ -256,12 +258,14 @@ impl TextToolData {
 		let replacement_selected_layers = vec![self.layer_path.clone()];
 		responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 	}
+
 	fn extract_text_node_inputs(node: &DocumentNode) -> Option<(&String, &Font, f64)> {
 		let NodeInput::Value { tagged_value: TaggedValue::String(text), .. } = &node.inputs[1] else { return None; };
 		let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = &node.inputs[2] else { return None; };
 		let NodeInput::Value { tagged_value: TaggedValue::F64(font_size), .. } = &node.inputs[3] else { return None; };
 		Some((text, font, *font_size))
 	}
+
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 		let quad = Quad::from_box([mouse - tolerance, mouse + tolerance]);
@@ -411,6 +415,7 @@ fn get_network<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler)
 fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {
 	network.nodes.iter().find(|(_, node)| node.name == "Text").map(|(&id, _)| id)
 }
+
 fn is_text_layer(document: &DocumentMessageHandler, layer_path: &[LayerId]) -> bool {
 	let Some(network) = get_network(layer_path, document) else { return false; };
 	get_text_node_id(network).is_some()
