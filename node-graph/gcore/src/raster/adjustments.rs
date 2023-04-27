@@ -217,32 +217,18 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractChannelNode<ColorChannel, Bool> {
+pub struct ExtractChannelNode<ColorChannel> {
 	channel: ColorChannel,
-	is_monochrome: Bool,
 }
 
 #[node_macro::node_fn(ExtractChannelNode)]
-fn extract_channel_node(color: Color, channel: ColorChannel, is_monochrome: bool) -> Color {
+fn extract_channel_node(color: Color, channel: ColorChannel) -> Color {
 	let extracted_value = match channel {
 		ColorChannel::Red => color.r(),
 		ColorChannel::Green => color.g(),
 		ColorChannel::Blue => color.b(),
 	};
-	let extracted_color = color.map_rgb(|_| extracted_value);
-	if is_monochrome {
-		extracted_color
-	} else {
-		if channel == ColorChannel::Red {
-			Color::BLACK.with_red(extracted_value)
-		} else if channel == ColorChannel::Green {
-			Color::BLACK.with_green(extracted_value)
-		} else if channel == ColorChannel::Blue {
-			Color::BLACK.with_blue(extracted_value)
-		} else {
-			unreachable!()
-		}
-	}
+	return color.map_rgb(|_| extracted_value);
 }
 
 #[derive(Debug, Clone, Copy, Default)]
