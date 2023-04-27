@@ -1,5 +1,5 @@
 use super::style::ViewMode;
-use super::text_layer::FontCache;
+use graphene_std::text::FontCache;
 
 use glam::DVec2;
 

@@ -12,6 +12,8 @@ pub mod generic;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]
+pub mod text;
+#[cfg(feature = "std")]
 pub mod uuid;
 pub mod value;
 
@@ -114,3 +116,6 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = 
 		(**self).eval(input)
 	}
 }
+
+#[cfg(feature = "alloc")]
+pub use crate::raster::image::{EditorApi, ExtractImageFrame};

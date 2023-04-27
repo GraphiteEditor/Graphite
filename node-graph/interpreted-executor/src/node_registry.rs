@@ -20,7 +20,7 @@ use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 use graph_craft::proto::NodeConstructor;
 
 use graphene_core::{concrete, fn_type, generic, value_fn};
-use graphene_std::memo::{CacheNode, LetNode, MonitorNode};
+use graphene_std::memo::{CacheNode, LetNode};
 use graphene_std::raster::BlendImageTupleNode;
 
 use crate::executor::NodeContainer;
@@ -140,6 +140,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddNode, input: (u32, u32), params: []),
 		register_node!(graphene_core::ops::AddNode, input: (u32, &u32), params: []),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &ImageFrame<Color>, params: []),
+		register_node!(graphene_core::ops::CloneNode<_>, input: &graphene_core::EditorApi, params: []),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [&u32]),
@@ -148,7 +149,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
-		register_node!(graphene_core::ops::SomeNode, input: ImageFrame<Color>, params: []),
+		register_node!(graphene_core::ops::SomeNode, input: graphene_core::EditorApi, params: []),
 		register_node!(graphene_std::raster::DownresNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
@@ -318,34 +319,43 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIOTypes::new(concrete!(Option<ImageFrame<Color>>), concrete!(&ImageFrame<Color>), vec![]),
 			),
 			(
+				NodeIdentifier::new("graphene_std::memo::LetNode<_>"),
+				|_| {
+					let node: LetNode<graphene_core::EditorApi> = graphene_std::memo::LetNode::new();
+					let any = graphene_std::any::DynAnyRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(concrete!(Option<graphene_core::EditorApi>), concrete!(&graphene_core::EditorApi), vec![]),
+			),
+			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
 				|args| {
 					let input: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 					let node = graphene_std::memo::EndLetNode::new(input);
-					let any: DynAnyInRefNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					let any: DynAnyInRefNode<graphene_core::EditorApi, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(generic!(T), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(ImageFrame<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
 				|args| {
 					let input: DowncastBothNode<(), VectorData> = DowncastBothNode::new(args[0]);
 					let node = graphene_std::memo::EndLetNode::new(input);
-					let any: DynAnyInRefNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					let any: DynAnyInRefNode<graphene_core::EditorApi, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(generic!(T), concrete!(ImageFrame<Color>), vec![value_fn!(VectorData)]),
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(VectorData)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),
 				|args| {
-					let map_fn: DowncastBothRefNode<Option<ImageFrame<Color>>, ImageFrame<Color>> = DowncastBothRefNode::new(args[0]);
+					let map_fn: DowncastBothRefNode<Option<graphene_core::EditorApi>, graphene_core::EditorApi> = DowncastBothRefNode::new(args[0]);
 					let node = graphene_std::memo::RefNode::new(map_fn);
 					let any = graphene_std::any::DynAnyRefNode::new(node);
 					any.into_type_erased()
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame<Color>), vec![]),
+				NodeIOTypes::new(concrete!(()), concrete!(&graphene_core::EditorApi), vec![]),
 			),
 			(
 				NodeIdentifier::new("graphene_core::structural::MapImageNode"),
@@ -500,7 +510,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
 			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
 		),
+		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: graphene_core::EditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
+		register_node!(graphene_core::ExtractImageFrame, input: graphene_core::EditorApi, params: []),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {

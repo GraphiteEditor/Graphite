@@ -1,8 +1,9 @@
+use dyn_any::{DynAny, StaticType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,
@@ -16,7 +17,7 @@ impl Font {
 }
 
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font with ttf_parser and rustybuzz
 	font_file_data: HashMap<Font, Vec<u8>>,
@@ -62,5 +63,17 @@ impl FontCache {
 	/// Gets the preview URL for showing in text field when live editing
 	pub fn get_preview_url(&self, font: &Font) -> Option<&String> {
 		self.preview_urls.get(font)
+	}
+}
+
+impl core::hash::Hash for FontCache {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.preview_urls.len().hash(state);
+		self.preview_urls.iter().for_each(|(font, url)| {
+			font.hash(state);
+			url.hash(state)
+		});
+		self.font_file_data.len().hash(state);
+		self.font_file_data.keys().for_each(|font| font.hash(state));
 	}
 }

@@ -139,6 +139,8 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 		.collect::<Vec<_>>();
 	where_clause.predicates.extend(extra_where_clause.clone());
 
+	let input_lifetime = if generics.is_empty() { quote::quote!() } else { quote::quote!('input,) };
+
 	quote::quote! {
 
 		impl <'input, #generics> Node<'input, #primary_input_ty> for #node_name<#(#args),*>
@@ -155,7 +157,7 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 			}
 		}
 
-		impl <'input, #new_fn_generics> #node_name<#(#args),*>
+		impl <#input_lifetime #new_fn_generics> #node_name<#(#args),*>
 			where #(#extra_where_clause),*
 		{
 			pub const fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{

@@ -34,6 +34,16 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.manipulator_groups.insert(index, group)
 	}
 
+	/// Push a manipulator group to the end.
+	pub fn push_manipulator_group(&mut self, group: ManipulatorGroup<ManipulatorGroupId>) {
+		self.manipulator_groups.push(group)
+	}
+
+	/// Get a mutable reference to the last manipulator
+	pub fn last_manipulator_group_mut(&mut self) -> Option<&mut ManipulatorGroup<ManipulatorGroupId>> {
+		self.manipulator_groups.last_mut()
+	}
+
 	/// Remove a manipulator group at an index.
 	pub fn remove_manipulator_group(&mut self, index: usize) -> ManipulatorGroup<ManipulatorGroupId> {
 		self.manipulator_groups.remove(index)
