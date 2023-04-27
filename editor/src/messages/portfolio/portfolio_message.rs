@@ -2,10 +2,10 @@ use super::utility_types::ImaginateServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::text_layer::Font;
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graph_craft::imaginate_input::ImaginateStatus;
+use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
 

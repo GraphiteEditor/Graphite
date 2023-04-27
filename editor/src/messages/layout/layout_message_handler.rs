@@ -5,9 +5,9 @@ use crate::messages::layout::utility_types::layout_widget::{DiffUpdate, Widget};
 use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
 use crate::messages::prelude::*;
 
-use document_legacy::layers::text_layer::Font;
 use document_legacy::LayerId;
 use graphene_core::raster::color::Color;
+use graphene_core::text::Font;
 
 use serde_json::Value;
 use std::ops::Not;

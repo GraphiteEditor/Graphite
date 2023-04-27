@@ -34,7 +34,6 @@ impl PathOutline {
 		// Get the bezpath from the shape or text
 		let subpath = match &document_layer.data {
 			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
-			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(render_data)),
 			LayerDataType::NodeGraphFrame(frame) => frame.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
 			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;

@@ -52,8 +52,10 @@ pub enum TaggedValue {
 	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
+	Font(graphene_core::text::Font),
 	VecDVec2(Vec<DVec2>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
+	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
 }
 
@@ -115,6 +117,7 @@ impl Hash for TaggedValue {
 			Self::Quantization(quantized_image) => quantized_image.hash(state),
 			Self::OptionalColor(color) => color.hash(state),
 			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
+			Self::Font(font) => font.hash(state),
 			Self::VecDVec2(vec_dvec2) => {
 				vec_dvec2.len().hash(state);
 				for dvec2 in vec_dvec2 {
@@ -126,9 +129,8 @@ impl Hash for TaggedValue {
 					segment.hash(state)
 				}
 			}
-			Self::DocumentNode(document_node) => {
-				document_node.hash(state);
-			}
+			Self::EditorApi(editor_api) => editor_api.hash(state),
+			Self::DocumentNode(document_node) => document_node.hash(state),
 		}
 	}
 }
@@ -173,8 +175,10 @@ impl<'a> TaggedValue {
 			TaggedValue::Quantization(x) => Box::new(x),
 			TaggedValue::OptionalColor(x) => Box::new(x),
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
+			TaggedValue::Font(x) => Box::new(x),
 			TaggedValue::VecDVec2(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
+			TaggedValue::EditorApi(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 		}
 	}
@@ -231,8 +235,10 @@ impl<'a> TaggedValue {
 			TaggedValue::Quantization(_) => concrete!(graphene_core::quantization::QuantizationChannels),
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
+			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
+			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 		}
 	}

@@ -4,7 +4,6 @@
 //! There are currently these different types of layers:
 //! * [Folder layers](folder_layer::FolderLayer), which encapsulate sub-layers
 //! * [Shape layers](shape_layer::ShapeLayer), which contain generic SVG [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path)s
-//! * [Text layers](text_layer::TextLayer), which contain a description of laid out text
 //! * [Node Graph layers](nodegraph_layer::NodegraphLayer), which contain a node graph frame
 //!
 //! Refer to the module-level documentation for detailed information on each layer.
@@ -23,10 +22,9 @@ pub mod folder_layer;
 pub mod layer_info;
 /// Contains the [NodegraphLayer](nodegraph_layer::NodegraphLayer) type that contains a node graph.
 pub mod nodegraph_layer;
+// TODO: Remove shape layers after rewriting the overlay system
 /// Contains the [ShapeLayer](shape_layer::ShapeLayer) type, a generic SVG element defined using Bezier paths.
 pub mod shape_layer;
-/// Contains the [TextLayer](text_layer::TextLayer) type.
-pub mod text_layer;
 
 mod render_data;
 pub use render_data::RenderData;
