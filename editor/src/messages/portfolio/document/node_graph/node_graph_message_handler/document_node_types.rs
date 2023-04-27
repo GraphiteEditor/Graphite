@@ -507,7 +507,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0)],
+				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -533,6 +533,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						metadata: Default::default(),
 					},
+					DocumentNode {
+						name: "AlphaNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
+						metadata: Default::default(),
+					},
 				]
 				.into_iter()
 				.enumerate()
@@ -543,6 +549,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![
+				DocumentOutputType::new("Alpha Channel", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Red Channel", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Green Channel", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Blue Channel", FrontendGraphDataType::Raster),
