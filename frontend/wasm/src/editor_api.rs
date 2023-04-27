@@ -697,6 +697,25 @@ impl JsEditorHandle {
 		let message = DocumentMessage::ToggleLayerExpansion { layer_path };
 		self.dispatch(message);
 	}
+
+	/// Returns the string representation of the nodes contents
+	#[wasm_bindgen(js_name = introspectNode)]
+	pub fn introspect_node(&self, node_path: Vec<NodeId>) -> Option<String> {
+		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
+			// Mutably borrow the editors, and if successful, we can access them in the closure
+			instances.try_borrow_mut().map(|mut editors| {
+				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
+				editors
+					.get_mut(&self.editor_id)
+					.expect("EDITOR_INSTANCES does not contain the current editor_id")
+					.dispatcher
+					.message_handlers
+					.portfolio_message_handler
+					.introspect_node(&node_path)
+			})
+		});
+		frontend_messages.unwrap()
+	}
 }
 
 // Needed to make JsEditorHandle functions pub to Rust.

@@ -51,6 +51,10 @@ impl NodeGraphExecutor {
 		}
 	}
 
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<String> {
+		self.executor.introspect(path).flatten()
+	}
+
 	/// Computes an input for a node in the graph
 	pub fn compute_input<T: dyn_any::StaticType>(&mut self, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, editor_api: Cow<EditorApi<'_>>) -> Result<T, String> {
 		let mut network = old_network.clone();
