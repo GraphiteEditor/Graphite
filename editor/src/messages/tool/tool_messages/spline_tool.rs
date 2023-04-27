@@ -3,6 +3,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -264,7 +265,19 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
 
 	let layer_path = tool_data.path.clone().unwrap();
+	let manipulator_groups = subpath.manipulator_groups().to_vec();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+	// Set the manipulator groups to have their handle angles mirrored by default
+	for manipulator_group in manipulator_groups {
+		responses.add(GraphOperationMessage::Vector {
+			layer: layer_path.clone(),
+			modification: VectorDataModification::SetManipulatorHandleMirroring {
+				id: manipulator_group.id,
+				mirror_angle: true,
+			},
+		});
+	}
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path.clone(),
