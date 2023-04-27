@@ -139,12 +139,11 @@ where
 					to_u8(to_gamma(color.r() / color.a().to_channel())),
 					to_u8(to_gamma(color.g() / color.a().to_channel())),
 					to_u8(to_gamma(color.b() / color.a().to_channel())),
-					255 - (num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
+					(num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
 				]
 			})
 			.collect();
 
-		log::debug!("{:?}", result_bytes);
 		(result_bytes, width, height)
 	}
 }

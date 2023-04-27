@@ -97,18 +97,18 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 
 	fn sample(&self, position: DVec2, area: DVec2) -> Option<P> {
 		let position = self.transform.inverse().transform_point2(position);
+		let center = DVec2::splat(0.5);
 
-		let x1 = (position).length() as f32;
-		let x2 = (position + area).length() as f32;
+		let x1 = (position - center).length() as f32;
+		let x2 = (position + area - center).length() as f32;
 		let min = x1.min(x2);
 		let max = x1.max(x2);
 
 		let integral = |x: f32| -x.powf(1. - self.feather_exponent) / (self.feather_exponent + 1.);
 
-		let result = if max < 1. {
+		let result = if x1 < 1. {
 			let inner = integral(min);
 			let outer = integral(max);
-			log::debug!("{:?}", outer - inner);
 			outer - inner
 		} else {
 			return None;

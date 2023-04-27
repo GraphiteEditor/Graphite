@@ -314,7 +314,6 @@ where
 			if let Some(src_pixel) = foreground.sample(fg_point, area) {
 				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
 					*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
-					log::debug!("Blending ")
 				}
 			}
 		}

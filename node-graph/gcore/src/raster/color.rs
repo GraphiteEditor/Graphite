@@ -715,6 +715,14 @@ impl Color {
 	}
 
 	pub fn to_unassociated_alpha(&self) -> Self {
+		if self.alpha == 0. {
+			return Self {
+				red: 1.,
+				green: 1.,
+				blue: 1.,
+				alpha: 0.,
+			};
+		}
 		let unmultiply = 1. / self.alpha;
 		Self {
 			red: self.red * unmultiply,
