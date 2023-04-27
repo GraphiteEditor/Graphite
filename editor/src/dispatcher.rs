@@ -8,12 +8,12 @@ use graphene_core::text::Font;
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
-	message_handlers: DispatcherMessageHandlers,
+	pub message_handlers: DispatcherMessageHandlers,
 }
 
 #[remain::sorted]
 #[derive(Debug, Default)]
-struct DispatcherMessageHandlers {
+pub struct DispatcherMessageHandlers {
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -21,7 +21,7 @@ struct DispatcherMessageHandlers {
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
-	portfolio_message_handler: PortfolioMessageHandler,
+	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	workspace_message_handler: WorkspaceMessageHandler,

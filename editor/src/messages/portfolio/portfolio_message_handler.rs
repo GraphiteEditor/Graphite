@@ -16,7 +16,7 @@ use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeInput;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::Image;
 use graphene_core::text::Font;
 
@@ -606,6 +606,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 }
 
 impl PortfolioMessageHandler {
+	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<String> {
+		self.executor.introspect_node(node_path)
+	}
+
 	pub fn document(&self, document_id: u64) -> Option<&DocumentMessageHandler> {
 		self.documents.get(&document_id)
 	}

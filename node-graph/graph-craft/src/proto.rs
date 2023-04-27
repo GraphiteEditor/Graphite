@@ -275,7 +275,7 @@ impl ProtoNetwork {
 		let paths = self.nodes.iter().map(|(_, node)| node.document_node_path.clone()).collect::<Vec<_>>();
 
 		let resolved_lookup = resolved.clone();
-		if let Some((input_node, id, input, path)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
+		if let Some((input_node, id, input, mut path)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
 			if let ProtoNodeInput::Node(input_node, false) = node.input {
 				resolved.insert(*id);
 				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
@@ -288,6 +288,7 @@ impl ProtoNetwork {
 		}) {
 			lookup.insert(id, compose_node_id);
 			self.replace_node_references(&lookup, true);
+			path.push(id);
 			self.nodes.push((
 				compose_node_id,
 				ProtoNode {
