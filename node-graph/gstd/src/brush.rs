@@ -101,17 +101,10 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 		let area = self.transform.inverse().transform_vector2(area);
 		let center = DVec2::splat(0.5);
 
-		let x2 = (position + area / 2. - center).length() as f32 * 2.;
-		// let _min = (x2 - area.length() as f32 / 2.).abs();
-		// let _max = x2 + area.length() as f32 / 2.;
+		let distance = (position + area / 2. - center).length() as f32 * 2.;
 
-		// let _integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
-
-		let result = if x2 < 1. {
-			// let inner = integral(min);
-			// let outer = integral(max);
-			// ((outer - inner) / (max - min) as f32).clamp(0., 1.)
-			1. - x2.powf(self.feather_exponent)
+		let result = if distance < 1. {
+			1. - distance.powf(self.feather_exponent)
 		} else {
 			return None;
 		};
@@ -122,7 +115,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BrushTextureNode<ColorNode, Hardness, Flow> {
+pub struct BrushStampGeneratorNode<ColorNode, Hardness, Flow> {
 	pub color: ColorNode,
 	pub hardness: Hardness,
 	pub flow: Flow,
@@ -140,7 +133,7 @@ fn erase(input: (Color, Color), flow: f64) -> Color {
 	Color::from_unassociated_alpha(input.r(), input.g(), input.b(), alpha)
 }
 
-#[node_fn(BrushTextureNode)]
+#[node_fn(BrushStampGeneratorNode)]
 fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
@@ -203,7 +196,7 @@ mod test {
 
 	#[test]
 	fn test_brush_texture() {
-		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(100.), ClonedNode::new(100.));
+		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(100.), ClonedNode::new(100.));
 		let size = 20.;
 		let image = brush_texture_node.eval(size);
 		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
@@ -213,7 +206,7 @@ mod test {
 
 	#[test]
 	fn test_brush() {
-		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
+		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
 		let image = brush_texture_node.eval(20.);
 		let trace = vec![DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0)];
 		let trace = ClonedNode::new(trace.into_iter());

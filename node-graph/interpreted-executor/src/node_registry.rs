@@ -184,7 +184,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
 				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[4]);
 
-				let stamp = BrushTextureNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
+				let stamp = BrushStampGeneratorNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
 				let stamp = stamp.eval(diameter.eval(()));
 
 				let frames = TranslateNode::new(CopiedNode::new(stamp));
