@@ -31,24 +31,26 @@
 		"reflect-metadata": "^0.1.13"
 	},
 	"devDependencies": {
+		"@parcel/config-default": "^2.8.3",
 		"@parcel/transformer-inline-string": "^2.8.3",
 		"@parcel/transformer-webmanifest": "^2.8.3",
 		"@types/license-checker-webpack-plugin": "^0.2.1",
-		"@types/node": "^18.15.11",
+		"@types/node": "^18.16.2",
 		"@types/webpack": "^5.28.1",
-		"buffer": "^5.7.1",
-		"concurrently": "^7.6.0",
+		"buffer": "^6.0.3",
+		"concurrently": "^8.0.1",
 		"license-checker-webpack-plugin": "^0.2.1",
+		"parcel-transformer-svelte3-plus": "^0.2.9",
 		"parcel": "^2.8.3",
-		"parcel-transformer-svelte3-plus": "^0.2.8",
-		"postcss": "^8.4.21",
+		"postcss": "^8.4.23",
 		"process": "^0.11.10",
-		"svelte": "^3.56.0",
-		"svelte-preprocess": "^4.10.7",
+		"sass": "^1.62.1",
+		"svelte-preprocess": "^5.0.3",
+		"svelte": "^3.58.0",
 		"ts-node": "^10.9.1",
-		"typescript": "^4.9.5",
-		"webpack": "^5.75.0",
-		"webpack-cli": "^5.0.1"
+		"typescript": "^5.0.4",
+		"webpack-cli": "^5.0.2",
+		"webpack": "^5.81.0"
 	},
 	"optionalDependencies": {
 		"wasm-pack": "0.10.3"
