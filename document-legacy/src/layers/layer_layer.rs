@@ -18,7 +18,7 @@ pub enum CachedOutputData {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct NodeGraphFrameLayer {
+pub struct LayerLayer {
 	/// The document node network that this layer contains
 	pub network: graph_craft::document::NodeNetwork,
 
@@ -26,7 +26,7 @@ pub struct NodeGraphFrameLayer {
 	pub cached_output_data: CachedOutputData,
 }
 
-impl LayerData for NodeGraphFrameLayer {
+impl LayerData for LayerLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
@@ -121,7 +121,7 @@ impl LayerData for NodeGraphFrameLayer {
 	}
 }
 
-impl NodeGraphFrameLayer {
+impl LayerLayer {
 	pub fn transform(&self, transforms: &[DAffine2], mode: ViewMode) -> DAffine2 {
 		let start = match mode {
 			ViewMode::Outline => 0,

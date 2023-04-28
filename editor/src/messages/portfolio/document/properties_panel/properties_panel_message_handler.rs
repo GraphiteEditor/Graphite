@@ -45,11 +45,11 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				} else {
 					let path = paths.into_iter().next().unwrap();
 					if Some((path.clone(), document)) != self.active_selection {
-						// Update the node graph frame visibility
+						// Update the layer visibility
 						if get_document(document)
 							.layer(&path)
 							.ok()
-							.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::NodeGraphFrame)
+							.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::Layer)
 							.is_some()
 						{
 							responses.add(NodeGraphMessage::OpenNodeGraph { layer_path: path.clone() });

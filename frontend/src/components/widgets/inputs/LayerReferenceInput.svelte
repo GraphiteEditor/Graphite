@@ -58,8 +58,8 @@
 		<TextLabel italic={true}>{droppable ? "Drop" : "Drag"} Layer Here</TextLabel>
 	{:else}
 		{#if layerName !== undefined && layerType}
-			<IconLabel icon={layerTypeData(layerType).icon} class="layer-icon" />
-			<TextLabel italic={layerName === ""} class="layer-name">{layerName || `Untitled ${layerTypeData(layerType).name}`}</TextLabel>
+			<IconLabel icon={layerType} class="layer-icon" />
+			<TextLabel italic={layerName === ""} class="layer-name">{layerName || `Untitled ${layerType || "[Unknown Layer Type]"}`}</TextLabel>
 		{:else}
 			<TextLabel bold={true} italic={true} class="missing">Layer Missing</TextLabel>
 		{/if}

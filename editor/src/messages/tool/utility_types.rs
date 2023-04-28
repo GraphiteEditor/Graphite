@@ -365,7 +365,7 @@ pub enum ToolType {
 	Detail,
 	Relight,
 	Imaginate,
-	NodeGraphFrame,
+	Frame,
 }
 
 enum ToolAvailability {
@@ -399,7 +399,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<frame_tool::NodeGraphFrameTool>::default()),
+			ToolAvailability::Available(Box::<frame_tool::FrameTool>::default()),
 			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry {
@@ -465,7 +465,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
 		ToolMessage::Imaginate(_) => ToolType::Imaginate,
-		ToolMessage::NodeGraphFrame(_) => ToolType::NodeGraphFrame,
+		ToolMessage::Frame(_) => ToolType::Frame,
 		_ => panic!(
 			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
 			tool_message
@@ -502,7 +502,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
 		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
-		ToolType::NodeGraphFrame => ToolMessageDiscriminant::ActivateToolNodeGraphFrame,
+		ToolType::Frame => ToolMessageDiscriminant::ActivateToolFrame,
 		_ => panic!(
 			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
 			tool_type

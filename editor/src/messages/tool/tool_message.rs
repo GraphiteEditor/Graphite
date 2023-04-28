@@ -84,7 +84,7 @@ pub enum ToolMessage {
 	Imaginate(ImaginateToolMessage),
 	#[remain::unsorted]
 	#[child]
-	NodeGraphFrame(NodeGraphFrameToolMessage),
+	Frame(FrameToolMessage),
 
 	// Messages
 	#[remain::unsorted]
@@ -124,7 +124,7 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	ActivateToolImaginate,
 	#[remain::unsorted]
-	ActivateToolNodeGraphFrame,
+	ActivateToolFrame,
 
 	ActivateTool {
 		tool_type: ToolType,

@@ -604,7 +604,7 @@ export class TriggerImaginateTerminate extends JsMessage {
 	readonly hostname!: string;
 }
 
-export class TriggerNodeGraphFrameGenerate extends JsMessage {
+export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly documentId!: bigint;
 
 	readonly layerPath!: BigUint64Array;
@@ -613,7 +613,7 @@ export class TriggerNodeGraphFrameGenerate extends JsMessage {
 
 	readonly size!: [number, number];
 
-	readonly imaginateNode!: BigUint64Array | undefined;
+	readonly imaginateNodePath!: BigUint64Array | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage { }
@@ -751,22 +751,12 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "NodeGraphFrame";
+export type LayerType = "Folder" | "Layer";
 
 export type LayerTypeData = {
 	name: string;
 	icon: IconName;
 };
-
-// TODO: Delete this function after renaming NodeGraphFrame to Layer, since it will basically just return its input parameter
-export function layerTypeData(layerType: LayerType): LayerTypeData {
-	const entries: Record<string, LayerTypeData> = {
-		NodeGraphFrame: { name: "Layer", icon: "Layer" },
-		Folder: { name: "Folder", icon: "Folder" },
-	};
-
-	return entries[layerType] || { name: "Error", icon: "Info" };
-}
 
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
@@ -1397,7 +1387,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
-	TriggerNodeGraphFrameGenerate,
+	TriggerRasterizeRegionBelowLayer,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,

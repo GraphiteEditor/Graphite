@@ -257,7 +257,7 @@ pub fn register_artwork_layer_properties(
 					tooltip: "Shape".into(),
 					..Default::default()
 				})),
-				LayerDataType::NodeGraphFrame(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
+				LayerDataType::Layer(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
 					icon: "Layer".into(),
 					tooltip: "Layer".into(),
 					..Default::default()
@@ -266,7 +266,7 @@ pub fn register_artwork_layer_properties(
 			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: match &layer.data {
-					LayerDataType::NodeGraphFrame(_) => "Layer".into(),
+					LayerDataType::Layer(_) => "Layer".into(),
 					other => LayerDataTypeDiscriminant::from(other).to_string(),
 				},
 				..TextLabel::default()
@@ -298,7 +298,7 @@ pub fn register_artwork_layer_properties(
 				vec![node_section_transform(layer, persistent_data), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
 		}
-		LayerDataType::NodeGraphFrame(node_graph_frame) => {
+		LayerDataType::Layer(layer) => {
 			let mut properties_sections = Vec::new();
 
 			let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
@@ -308,9 +308,9 @@ pub fn register_artwork_layer_properties(
 				nested_path: &node_graph_message_handler.nested_path,
 				layer_path: &layer_path,
 				executor,
-				network: &node_graph_frame.network,
+				network: &layer.network,
 			};
-			node_graph_message_handler.collate_properties(node_graph_frame, &mut context, &mut properties_sections);
+			node_graph_message_handler.collate_properties(layer, &mut context, &mut properties_sections);
 
 			properties_sections
 		}

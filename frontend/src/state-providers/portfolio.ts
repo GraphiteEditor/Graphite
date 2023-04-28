@@ -15,7 +15,7 @@ import {
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
 	TriggerImaginateCheckServerStatus,
-	TriggerNodeGraphFrameGenerate,
+	TriggerRasterizeRegionBelowLayer,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateImageData,
@@ -116,21 +116,23 @@ export function createPortfolioState(editor: Editor) {
 			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerNodeGraphFrameGenerate, async (triggerNodeGraphFrameGenerate) => {
-		const { documentId, layerPath, svg, size, imaginateNode } = triggerNodeGraphFrameGenerate;
+	editor.subscriptions.subscribeJsMessage(TriggerRasterizeRegionBelowLayer, async (triggerRasterizeRegionBelowLayer) => {
+		const { documentId, layerPath, svg, size, imaginateNodePath } = triggerRasterizeRegionBelowLayer;
 
 		// Rasterize the SVG to an image file
-		let imageData;
 		try {
-			// getImageData may throw an exception if the resolution is too high
 			if (size[0] >= 1 && size[1] >= 1) {
-				imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
+				const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
+				if (!imageData) return;
+
+				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height, imaginateNodePath);
 			}
-		} catch (e) {
+		}
+		// getImageData may throw an exception if the resolution is too high
+		catch (e) {
 			console.error("Failed to rasterize the SVG canvas in JS to be sent back to Rust:", e);
 		}
 
-		if (imageData) editor.instance.processNodeGraphFrame(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height, imaginateNode);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

@@ -148,8 +148,8 @@ impl Fsm for ImaginateToolFsmState {
 						imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 					);
 
-					// Add the node graph frame layer to the document
-					responses.add(Operation::AddNodeGraphFrame {
+					// Add a layer with a frame to the document
+					responses.add(Operation::AddFrame {
 						path: shape_data.path.clone().unwrap(),
 						insert_index: -1,
 						transform: DAffine2::ZERO.to_cols_array(),
@@ -167,7 +167,7 @@ impl Fsm for ImaginateToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					if let Some(layer_path) = &shape_data.path {
-						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
 					}
 
 					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
