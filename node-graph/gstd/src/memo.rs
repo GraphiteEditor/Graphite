@@ -28,12 +28,12 @@ where
 
 		if let Some((_, cached_value, keep)) = self.cache.iter().find(|(h, _, _)| *h == hash) {
 			keep.store(true, std::sync::atomic::Ordering::Relaxed);
-			return cached_value;
+			cached_value
 		} else {
 			trace!("Cache miss");
 			let output = self.node.eval(input);
 			let index = self.cache.push((hash, output, AtomicBool::new(true)));
-			return &self.cache[index].1;
+			&self.cache[index].1
 		}
 	}
 
@@ -70,7 +70,7 @@ where
 
 	fn serialize(&self) -> Option<String> {
 		let output = self.output.lock().unwrap();
-		(&*output).as_ref().map(|output| serde_json::to_string(output).ok()).flatten()
+		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
 	}
 }
 
@@ -110,7 +110,7 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 				}
 				trace!("Cache miss");
 				let index = self.cache.push((hash, input));
-				return &self.cache[index].1;
+				&self.cache[index].1
 			}
 			None => &self.cache.iter().last().expect("Let node was not initialized").1,
 		}

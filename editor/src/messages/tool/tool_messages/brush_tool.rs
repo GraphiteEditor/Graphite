@@ -315,7 +315,7 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 	};
 	let mut network = NodeNetwork::value_network(brush_node);
 	network.push_output_node();
-	graph_modification_utils::new_custom_layer(network, layer_path.clone(), responses);
+	graph_modification_utils::new_custom_layer(network, layer_path, responses);
 }
 
 fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {

@@ -149,10 +149,10 @@ impl ShapeState {
 	/// Move the selected points by dragging the mouse.
 	pub fn move_selected_points(&self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
 		for (layer_path, state) in &self.selected_shape_state {
-			let Ok(layer) = document.layer(&layer_path) else { continue };
+			let Ok(layer) = document.layer(layer_path) else { continue };
 			let Some(vector_data) = layer.as_vector_data() else { continue };
 
-			let transform = document.multiply_transforms(&layer_path).unwrap_or_default();
+			let transform = document.multiply_transforms(layer_path).unwrap_or_default();
 			let delta = transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
-use graphene_core::value::{ClonedNode, ForgetNode, ValueNode};
+use graphene_core::value::{ClonedNode, CopiedNode, ForgetNode, ValueNode};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::brush::*;
 use graphene_std::raster::*;
@@ -175,6 +175,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::BrushNode"),
 			|args| {
+				use graphene_core::value::*;
 				use graphene_std::brush::*;
 
 				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[0]);
@@ -183,24 +184,23 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
 				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[4]);
 
-				let stamp = BrushTextureNode::new(color, ClonedNode::new(hardness.eval(())), ClonedNode::new(flow.eval(())));
+				let stamp = BrushStampGeneratorNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
 				let stamp = stamp.eval(diameter.eval(()));
 
-				let frames = TranslateNode::new(ClonedNode::new(stamp));
+				let frames = TranslateNode::new(CopiedNode::new(stamp));
 				let frames = MapNode::new(ValueNode::new(frames));
 				let frames = frames.eval(trace.eval(()).into_iter()).collect::<Vec<_>>();
 
-				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
+				let background_bounds = ReduceNode::new(DebugClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 				let background_bounds = background_bounds.eval(frames.clone().into_iter());
-				let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
+				let background_bounds = DebugClonedNode::new(background_bounds.unwrap().to_transform());
 
-				let background_image = background_bounds.then(EmptyImageNode::new(ClonedNode::new(Color::TRANSPARENT)));
+				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
 
-				let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(100.));
+				let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 
 				let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
-				let final_image = final_image.eval(frames.into_iter());
-				let final_image = ClonedNode::new(final_image);
+				let final_image = DebugClonedNode::new(frames.into_iter()).then(final_image);
 
 				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
 				Box::pin(any)
@@ -241,7 +241,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
 					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
-					let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(blend_mode.eval(())), ClonedNode::new(opacity.eval(())));
+					let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(blend_mode.eval(())), CopiedNode::new(opacity.eval(())));
 					let node = graphene_std::raster::BlendImageNode::new(image, ValueNode::new(blend_node));
 					let _ = &node as &dyn for<'i> Node<'i, ImageFrame<Color>, Output = ImageFrame<Color>>;
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));

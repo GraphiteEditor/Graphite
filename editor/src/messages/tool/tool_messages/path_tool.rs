@@ -273,11 +273,9 @@ impl Fsm for PathToolFsmState {
 						if tool_data.opposing_handle_lengths.is_none() {
 							tool_data.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_legacy));
 						}
-					} else {
-						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
-							shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
-							tool_data.opposing_handle_lengths = None;
-						}
+					} else if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
+						shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+						tool_data.opposing_handle_lengths = None;
 					}
 
 					// Move the selected points by the mouse position
@@ -291,8 +289,7 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
-						.map(|(_, nearest_point)| nearest_point)
-						.clone();
+						.map(|(_, nearest_point)| nearest_point);
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {

@@ -171,7 +171,7 @@ pub trait Luminance {
 pub trait Sample {
 	type Pixel: Pixel;
 	// TODO: Add an area parameter
-	fn sample(&self, pos: DVec2) -> Option<Self::Pixel>;
+	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel>;
 }
 
 // TODO: We might rename this to Bitmap at some point

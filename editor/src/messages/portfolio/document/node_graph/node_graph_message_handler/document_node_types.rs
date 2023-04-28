@@ -1048,19 +1048,19 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 	let nodes = vec![
 		resolve_document_node_type("Begin Scope")
 			.expect("Begin Scope node type not found")
-			.to_document_node(vec![input_type.clone()], DocumentNodeMetadata::default()),
+			.to_document_node(vec![input_type], DocumentNodeMetadata::default()),
 		inner_network,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
 			.to_document_node(vec![NodeInput::node(0, 0), NodeInput::node(1, 0)], DocumentNodeMetadata::default()),
 	];
-	let network = NodeNetwork {
+
+	NodeNetwork {
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(2, 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (id as NodeId, node)).collect(),
 		..Default::default()
-	};
-	network
+	}
 }
 
 pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
@@ -1121,8 +1121,8 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 		text_generator.to_document_node(
 			[
 				NodeInput::Network(concrete!(graphene_core::EditorApi)),
-				NodeInput::value(TaggedValue::String(text.clone()), false),
-				NodeInput::value(TaggedValue::Font(font.clone()), false),
+				NodeInput::value(TaggedValue::String(text), false),
+				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
 			],
 			DocumentNodeMetadata::position((0, 4)),

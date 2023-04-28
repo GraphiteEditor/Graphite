@@ -2,7 +2,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Alpha, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
-use graphene_core::value::{ClonedNode, ValueNode};
+
 use graphene_core::Node;
 
 use std::fmt::Debug;
@@ -240,6 +240,7 @@ fn mask_image<
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
 
+	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_point = DVec2::new(x as f64, y as f64);
@@ -247,8 +248,8 @@ fn mask_image<
 			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
 			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
-			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
-			if let Some(mask_pixel) = stencil.sample(mask_point) {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
 				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().to_channel());
 			}
 		}
@@ -258,20 +259,20 @@ fn mask_image<
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlendImageTupleNode<P, MapFn> {
+pub struct BlendImageTupleNode<P, Fg, MapFn> {
 	map_fn: MapFn,
 	_p: PhantomData<P>,
+	_fg: PhantomData<Fg>,
 }
 
-#[node_macro::node_fn(BlendImageTupleNode<_P>)]
-fn blend_image_tuple<_P: Pixel + Debug, MapFn>(images: (ImageFrame<_P>, ImageFrame<_P>), map_fn: &'any_input MapFn) -> ImageFrame<_P>
+#[node_macro::node_fn(BlendImageTupleNode<_P, _Fg>)]
+fn blend_image_tuple<_P: Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
 {
 	let (background, foreground) = images;
 
-	let node = BlendImageNode::new(ClonedNode::new(background), ValueNode::new(map_fn.clone()));
-	node.eval(foreground)
+	blend_image(foreground, background, map_fn)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -283,13 +284,20 @@ pub struct BlendImageNode<P, Background, MapFn> {
 
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(
+fn blend_image_node<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(
 	foreground: Frame,
-	mut background: Background,
+	background: Background,
 	map_fn: &'any_input MapFn,
 ) -> Background
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
+{
+	blend_image(foreground, background, map_fn)
+}
+
+fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(foreground: Frame, mut background: Background, map_fn: &MapFn) -> Background
+where
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
 
@@ -303,12 +311,13 @@ where
 	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
 	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
 
+	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
 	for y in start.y..end.y {
 		for x in start.x..end.x {
 			let bg_point = DVec2::new(x as f64, y as f64);
 			let fg_point = bg_to_fg.transform_point2(bg_point);
 
-			if let Some(src_pixel) = foreground.sample(fg_point) {
+			if let Some(src_pixel) = foreground.sample(fg_point, area) {
 				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
 					*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
 				}

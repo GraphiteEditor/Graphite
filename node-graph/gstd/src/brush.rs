@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Color, Image, ImageFrame, RasterMut};
-use graphene_core::transform::TransformMut;
+use graphene_core::raster::{Alpha, Color, Pixel, Sample};
+use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
@@ -73,8 +73,49 @@ fn vector_points(vector: VectorData) -> Vec<DVec2> {
 	vector.subpaths.iter().flat_map(|subpath| subpath.manipulator_groups().iter().map(|group| group.anchor)).collect()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BrushStampGenerator<P: Pixel + Alpha> {
+	color: P,
+	feather_exponent: f32,
+	transform: DAffine2,
+}
+
+impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+
+impl<P: Pixel + Alpha> TransformMut for BrushStampGenerator<P> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
+	}
+}
+
+impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
+	type Pixel = P;
+
+	#[inline]
+	fn sample(&self, position: DVec2, area: DVec2) -> Option<P> {
+		let position = self.transform.inverse().transform_point2(position);
+		let area = self.transform.inverse().transform_vector2(area);
+		let center = DVec2::splat(0.5);
+
+		let distance = (position + area / 2. - center).length() as f32 * 2.;
+
+		let result = if distance < 1. {
+			1. - distance.powf(self.feather_exponent)
+		} else {
+			return None;
+		};
+
+		use graphene_core::raster::Channel;
+		Some(self.color.multiplied_alpha(P::AlphaChannel::from_f32(result)))
+	}
+}
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct BrushTextureNode<ColorNode, Hardness, Flow> {
+pub struct BrushStampGeneratorNode<ColorNode, Hardness, Flow> {
 	pub color: ColorNode,
 	pub hardness: Hardness,
 	pub flow: Flow,
@@ -92,17 +133,14 @@ fn erase(input: (Color, Color), flow: f64) -> Color {
 	Color::from_unassociated_alpha(input.r(), input.g(), input.b(), alpha)
 }
 
-#[node_fn(BrushTextureNode)]
-fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> ImageFrame<Color> {
+#[node_fn(BrushStampGeneratorNode)]
+fn brush_stamp_generator_node(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
-	// TODO: Remove the 4px padding after figuring out why the brush stamp gets randomly offset by 1px up/down/left/right when clicking with the Brush tool
-	let dimension = diameter.ceil() as u32 + 4;
-	let center = DVec2::splat(radius + (dimension as f64 - diameter) / 2.);
 
 	// Hardness
 	let hardness = hardness / 100.;
-	let feather_exponent = 1. / (1. - hardness);
+	let feather_exponent = 1. / (1. - hardness) as f32;
 
 	// Flow
 	let flow = flow / 100.;
@@ -110,33 +148,8 @@ fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> Image
 	// Color
 	let color = color.apply_opacity(flow as f32);
 
-	// Initial transparent image
-	let mut image = Image::new(dimension, dimension, Color::TRANSPARENT);
-
-	for y in 0..dimension {
-		for x in 0..dimension {
-			let summation = MULTISAMPLE_GRID.iter().fold(0., |acc, (offset_x, offset_y)| {
-				let position = DVec2::new(x as f64 + offset_x, y as f64 + offset_y);
-				let distance = (position - center).length();
-
-				if distance < radius {
-					acc + (1. - (distance / radius).powf(feather_exponent)).clamp(0., 1.)
-				} else {
-					acc
-				}
-			});
-
-			let pixel_fill = summation / MULTISAMPLE_GRID.len() as f64;
-
-			let pixel = image.get_pixel_mut(x, y).unwrap();
-			*pixel = color.apply_opacity(pixel_fill as f32);
-		}
-	}
-
-	ImageFrame {
-		image,
-		transform: DAffine2::from_scale_angle_translation(DVec2::splat(dimension as f64), 0., -DVec2::splat(radius)),
-	}
+	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(diameter), 0., -DVec2::splat(radius));
+	BrushStampGenerator { color, feather_exponent, transform }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,19 +196,17 @@ mod test {
 
 	#[test]
 	fn test_brush_texture() {
-		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(100.), ClonedNode::new(100.));
+		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(100.), ClonedNode::new(100.));
 		let size = 20.;
 		let image = brush_texture_node.eval(size);
-		assert_eq!(image.image.width, size.ceil() as u32 + 4);
-		assert_eq!(image.image.height, size.ceil() as u32 + 4);
-		assert_eq!(image.transform, DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil() + 4.), 0., -DVec2::splat(size / 2.)));
+		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
-		assert_eq!(image.image.get_pixel(11, 11), Some(Color::BLACK));
+		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));
 	}
 
 	#[test]
 	fn test_brush() {
-		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
+		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
 		let image = brush_texture_node.eval(20.);
 		let trace = vec![DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0)];
 		let trace = ClonedNode::new(trace.into_iter());
@@ -203,7 +214,6 @@ mod test {
 		let frames = MapNode::new(ValueNode::new(translate_node));
 		let frames = trace.then(frames).eval(()).collect::<Vec<_>>();
 		assert_eq!(frames.len(), 2);
-		assert_eq!(frames[0].image.width, 24);
 		let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 		let background_bounds = background_bounds.eval(frames.clone().into_iter());
 		let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
@@ -211,8 +221,8 @@ mod test {
 		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.0));
 		let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 		let final_image = final_image.eval(frames.into_iter());
-		assert_eq!(final_image.image.height, 24);
-		assert_eq!(final_image.image.width, 34);
+		assert_eq!(final_image.image.height, 20);
+		assert_eq!(final_image.image.width, 30);
 		drop(final_image);
 	}
 }
