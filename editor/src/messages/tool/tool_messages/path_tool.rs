@@ -274,9 +274,9 @@ impl Fsm for PathToolFsmState {
 							tool_data.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_legacy));
 						}
 					} else if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
-     							shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
-     							tool_data.opposing_handle_lengths = None;
-     						}
+						shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+						tool_data.opposing_handle_lengths = None;
+					}
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);

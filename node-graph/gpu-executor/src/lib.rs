@@ -169,7 +169,6 @@ pub struct UniformNode<Executor> {
 
 #[node_macro::node_fn(UniformNode)]
 fn uniform_node<T: ToUniformBuffer, E: GpuExecutor>(data: T, executor: &'any_input E) -> ShaderInput<E::BufferHandle> {
-	
 	executor.create_uniform_buffer(data).unwrap()
 }
 
@@ -179,7 +178,6 @@ pub struct StorageNode<Executor> {
 
 #[node_macro::node_fn(StorageNode)]
 fn storage_node<T: ToStorageBuffer, E: GpuExecutor>(data: T, executor: &'any_input E) -> ShaderInput<E::BufferHandle> {
-	
 	executor
 		.create_storage_buffer(
 			data,

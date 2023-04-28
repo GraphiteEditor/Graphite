@@ -1054,7 +1054,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 			.expect("End Scope node type not found")
 			.to_document_node(vec![NodeInput::node(0, 0), NodeInput::node(1, 0)], DocumentNodeMetadata::default()),
 	];
-	
+
 	NodeNetwork {
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(2, 0)],

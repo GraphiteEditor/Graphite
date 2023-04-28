@@ -1226,8 +1226,8 @@ fn recursive_search(document: &DocumentMessageHandler, layer_path: &Vec<u64>, in
 		if path == *incoming_layer_path_vector {
 			return true;
 		} else if document.document_legacy.is_folder(path.clone()) && recursive_search(document, &path, incoming_layer_path_vector) {
-  				return true;
-  			}
+			return true;
+		}
 	}
 	false
 }
