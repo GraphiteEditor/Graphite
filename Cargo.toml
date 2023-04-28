@@ -33,6 +33,9 @@ specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183
 ] }
 xxhash-rust = { version = "0.8.4", features = ["xxh3"] }
 
+[profile.release-with-debug]
+inherits = "release"
+debug = true
 
 [profile.dev.package.graphite-editor]
 opt-level = 1
@@ -52,6 +55,9 @@ opt-level = 1
 opt-level = 3
 
 [profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
 opt-level = 3
 
 [profile.dev.package.xxhash-rust]

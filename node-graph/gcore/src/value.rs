@@ -7,6 +7,7 @@ pub struct IntNode<const N: u32>;
 
 impl<'i, const N: u32> Node<'i, ()> for IntNode<N> {
 	type Output = u32;
+	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
 		N
 	}
@@ -17,6 +18,7 @@ pub struct ValueNode<T>(pub T);
 
 impl<'i, T: 'i> Node<'i, ()> for ValueNode<T> {
 	type Output = &'i T;
+	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
 		&self.0
 	}
@@ -45,6 +47,7 @@ pub struct ClonedNode<T: Clone>(pub T);
 
 impl<'i, T: Clone + 'i> Node<'i, ()> for ClonedNode<T> {
 	type Output = T;
+	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
 		self.0.clone()
 	}
@@ -63,10 +66,29 @@ impl<T: Clone> From<T> for ClonedNode<T> {
 }
 
 #[derive(Clone, Copy)]
+pub struct DebugClonedNode<T: Clone>(pub T);
+
+impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
+	type Output = T;
+	#[inline(always)]
+	fn eval(&'i self, _input: ()) -> Self::Output {
+		log::debug!("DebugClonedNode::eval");
+		self.0.clone()
+	}
+}
+
+impl<T: Clone> DebugClonedNode<T> {
+	pub const fn new(value: T) -> ClonedNode<T> {
+		ClonedNode(value)
+	}
+}
+
+#[derive(Clone, Copy)]
 pub struct CopiedNode<T: Copy>(pub T);
 
 impl<'i, T: Copy + 'i> Node<'i, ()> for CopiedNode<T> {
 	type Output = T;
+	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
 		self.0
 	}

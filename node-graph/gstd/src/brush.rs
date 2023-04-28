@@ -73,7 +73,7 @@ fn vector_points(vector: VectorData) -> Vec<DVec2> {
 	vector.subpaths.iter().flat_map(|subpath| subpath.manipulator_groups().iter().map(|group| group.anchor)).collect()
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BrushStampGenerator<P: Pixel + Alpha> {
 	color: P,
 	feather_exponent: f32,
@@ -101,16 +101,18 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 		let area = self.transform.inverse().transform_vector2(area);
 		let center = DVec2::splat(0.5);
 
-		let x2 = (position + area - center).length() as f32 * 2.;
+		let x2 = (position + area / 2. - center).length() as f32 * 2.;
 		let min = (x2 - area.length() as f32 / 2.).abs();
 		let max = x2 + area.length() as f32 / 2.;
 
 		let integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
 
 		let result = if x2 < 1. {
-			let inner = integral(min);
+			/*let inner = integral(min);
 			let outer = integral(max);
 			((outer - inner) / (max - min) as f32).clamp(0., 1.)
+			*/
+			1. - x2.powf(self.feather_exponent)
 		} else {
 			return None;
 		};

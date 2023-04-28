@@ -272,8 +272,7 @@ where
 {
 	let (background, foreground) = images;
 
-	let node = BlendImageNode::new(ClonedNode::new(background), ValueNode::new(map_fn.clone()));
-	node.eval(foreground)
+	blend_image(foreground, background, map_fn)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -285,13 +284,20 @@ pub struct BlendImageNode<P, Background, MapFn> {
 
 // TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(
+fn blend_image_node<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(
 	foreground: Frame,
-	mut background: Background,
+	background: Background,
 	map_fn: &'any_input MapFn,
 ) -> Background
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
+{
+	blend_image(foreground, background, map_fn)
+}
+
+fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(foreground: Frame, mut background: Background, map_fn: &MapFn) -> Background
+where
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
 

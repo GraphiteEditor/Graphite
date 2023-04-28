@@ -291,9 +291,9 @@ impl NodeGraphExecutor {
 				}
 			} else {
 				// Update the image data
-				let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Png)?;
+				let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
 
-				let mime = "image/png".to_string();
+				let mime = "image/bmp".to_string();
 				let image_data = std::sync::Arc::new(image_data);
 				let image_data = vec![FrontendImageData {
 					path: layer_path.clone(),
