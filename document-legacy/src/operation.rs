@@ -36,7 +36,7 @@ pub enum Operation {
 		transform: [f64; 6],
 		style: style::PathStyle,
 	},
-	AddNodeGraphFrame {
+	AddFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,
 		transform: [f64; 6],

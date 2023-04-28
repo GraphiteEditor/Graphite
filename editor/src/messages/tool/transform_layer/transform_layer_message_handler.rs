@@ -107,7 +107,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				for layer_path in document.selected_layers() {
-					responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
 				}
 			}
 			BeginGrab => {
@@ -125,7 +125,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				selected.original_transforms.clear();
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -142,7 +142,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				selected.original_transforms.clear();
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -159,7 +159,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
 				selected.original_transforms.clear();
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();

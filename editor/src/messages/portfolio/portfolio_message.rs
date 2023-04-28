@@ -112,12 +112,12 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
-	ProcessNodeGraphFrame {
+	RenderGraphUsingRasterizedRegionBelowLayer {
 		document_id: u64,
 		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
+		input_image_data: Vec<u8>,
 		size: (u32, u32),
-		imaginate_node: Option<Vec<NodeId>>,
+		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	SelectDocument {
 		document_id: u64,

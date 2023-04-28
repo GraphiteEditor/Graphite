@@ -36,7 +36,7 @@ pub use crate::messages::tool::tool_messages::brush_tool::{BrushToolMessage, Bru
 pub use crate::messages::tool::tool_messages::ellipse_tool::{EllipseToolMessage, EllipseToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::eyedropper_tool::{EyedropperToolMessage, EyedropperToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};
-pub use crate::messages::tool::tool_messages::frame_tool::{NodeGraphFrameToolMessage, NodeGraphFrameToolMessageDiscriminant};
+pub use crate::messages::tool::tool_messages::frame_tool::{FrameToolMessage, FrameToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::freehand_tool::{FreehandToolMessage, FreehandToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::gradient_tool::{GradientToolMessage, GradientToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::imaginate_tool::{ImaginateToolMessage, ImaginateToolMessageDiscriminant};
@@ -60,14 +60,22 @@ pub use std::collections::{HashMap, HashSet, VecDeque};
 
 pub trait Responses {
 	fn add(&mut self, message: impl Into<Message>);
+
+	fn add_front(&mut self, message: impl Into<Message>);
+
 	fn try_add(&mut self, message: Option<impl Into<Message>>) {
 		if let Some(message) = message {
 			self.add(message);
 		}
 	}
 }
+
 impl Responses for VecDeque<Message> {
 	fn add(&mut self, message: impl Into<Message>) {
 		self.push_back(message.into());
+	}
+
+	fn add_front(&mut self, message: impl Into<Message>) {
+		self.push_front(message.into());
 	}
 }

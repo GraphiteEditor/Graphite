@@ -136,10 +136,10 @@ impl Fsm for FillToolFsmState {
 			])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

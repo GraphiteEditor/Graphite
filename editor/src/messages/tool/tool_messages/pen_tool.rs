@@ -313,7 +313,7 @@ impl PenToolData {
 				modification: VectorDataModification::SetClosed { index: 0, closed: true },
 			});
 
-			responses.push_back(DocumentMessage::CommitTransaction.into());
+			responses.add(DocumentMessage::CommitTransaction);
 
 			// Clean up overlays
 			for layer_path in document.all_layers() {
@@ -329,7 +329,7 @@ impl PenToolData {
 		}
 		// Add a new manipulator for the next anchor that we will place
 		if let Some(out_handle) = outwards_handle.get_position(last_manipulator_group) {
-			responses.push_back(add_manipulator_group(&self.path, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
+			responses.add(add_manipulator_group(&self.path, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
 		}
 
 		Some(PenToolFsmState::PlacingAnchor)
@@ -524,7 +524,7 @@ impl Fsm for PenToolFsmState {
 					self
 				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 
 					// Initialize snapping
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
@@ -608,11 +608,11 @@ impl Fsm for PenToolFsmState {
 			]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 

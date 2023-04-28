@@ -72,7 +72,7 @@ pub trait Fsm {
 	/// For example, if the tool's FSM is in a `Ready` state and receives a `DragStart` message as its event, it may decide to send some messages,
 	/// update some internal tool variables, and end by transitioning to a `Drawing` state.
 	#[must_use]
-	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, messages: &mut VecDeque<Message>) -> Self;
+	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
@@ -80,15 +80,15 @@ pub trait Fsm {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(messages);
+				self.update_hints(responses);
 				true
 			}
 			ToolMessage::UpdateCursor => {
-				self.update_cursor(messages);
+				self.update_cursor(responses);
 				true
 			}
 			_ => false,
@@ -103,25 +103,25 @@ pub trait Fsm {
 		tool_data: &mut Self::ToolData,
 		transition_data: &mut ToolActionHandlerData,
 		options: &Self::ToolOptions,
-		messages: &mut VecDeque<Message>,
+		responses: &mut VecDeque<Message>,
 		update_cursor_on_transition: bool,
 	) where
 		Self: PartialEq + Sized + Copy,
 	{
 		// If this message is one of the standard tool messages, process it and exit early
-		if self.standard_tool_messages(&message, messages, tool_data) {
+		if self.standard_tool_messages(&message, responses, tool_data) {
 			return;
 		}
 
 		// Transition the tool
-		let new_state = self.transition(message, tool_data, transition_data, options, messages);
+		let new_state = self.transition(message, tool_data, transition_data, options, responses);
 
 		// Update state
 		if *self != new_state {
 			*self = new_state;
-			self.update_hints(messages);
+			self.update_hints(responses);
 			if update_cursor_on_transition {
-				self.update_cursor(messages);
+				self.update_cursor(responses);
 			}
 		}
 	}
@@ -164,15 +164,12 @@ impl DocumentToolData {
 			},
 		]);
 
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: Layout::WidgetLayout(layout),
-				layout_target: LayoutTarget::WorkingColors,
-			}
-			.into(),
-		);
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layout),
+			layout_target: LayoutTarget::WorkingColors,
+		});
 
-		responses.push_back(EyedropperToolMessage::PointerMove.into());
+		responses.add(EyedropperToolMessage::PointerMove);
 	}
 }
 
@@ -189,13 +186,10 @@ pub trait ToolTransition {
 	fn activate(&self, responses: &mut VecDeque<Message>) {
 		let mut subscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, event: BroadcastEvent| {
 			if let Some(mapping) = broadcast_to_tool_mapping {
-				responses.push_back(
-					BroadcastMessage::SubscribeEvent {
-						on: event,
-						send: Box::new(mapping.into()),
-					}
-					.into(),
-				);
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: event,
+					send: Box::new(mapping.into()),
+				});
 			};
 		};
 
@@ -208,13 +202,10 @@ pub trait ToolTransition {
 	fn deactivate(&self, responses: &mut VecDeque<Message>) {
 		let mut unsubscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, event: BroadcastEvent| {
 			if let Some(mapping) = broadcast_to_tool_mapping {
-				responses.push_back(
-					BroadcastMessage::UnsubscribeEvent {
-						on: event,
-						message: Box::new(mapping.into()),
-					}
-					.into(),
-				);
+				responses.add(BroadcastMessage::UnsubscribeEvent {
+					on: event,
+					message: Box::new(mapping.into()),
+				});
 			};
 		};
 
@@ -374,7 +365,7 @@ pub enum ToolType {
 	Detail,
 	Relight,
 	Imaginate,
-	NodeGraphFrame,
+	Frame,
 }
 
 enum ToolAvailability {
@@ -408,7 +399,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<frame_tool::NodeGraphFrameTool>::default()),
+			ToolAvailability::Available(Box::<frame_tool::FrameTool>::default()),
 			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry {
@@ -474,7 +465,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
 		ToolMessage::Imaginate(_) => ToolType::Imaginate,
-		ToolMessage::NodeGraphFrame(_) => ToolType::NodeGraphFrame,
+		ToolMessage::Frame(_) => ToolType::Frame,
 		_ => panic!(
 			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
 			tool_message
@@ -511,7 +502,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
 		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
-		ToolType::NodeGraphFrame => ToolMessageDiscriminant::ActivateToolNodeGraphFrame,
+		ToolType::Frame => ToolMessageDiscriminant::ActivateToolFrame,
 		_ => panic!(
 			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
 			tool_type

@@ -248,7 +248,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
 			self.tool_data.nested_selection_behavior = nested_selection_behavior;
-			responses.push_back(ToolMessage::UpdateHints.into());
+			responses.add(ToolMessage::UpdateHints);
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
@@ -336,7 +336,7 @@ impl SelectToolData {
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		responses.push_back(DocumentMessage::DeselectAllLayers.into());
+		responses.add(DocumentMessage::DeselectAllLayers);
 
 		// Take the selected layers and store them in a separate list.
 		self.not_duplicated_layers = Some(self.layers_dragging.clone());
@@ -344,15 +344,12 @@ impl SelectToolData {
 		// Duplicate each previously selected layer and select the new ones.
 		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter_mut()) {
 			// Moves the original back to its starting position.
-			responses.push_front(
-				GraphOperationMessage::TransformChange {
-					layer: layer_path.clone(),
-					transform: DAffine2::from_translation(self.drag_start - self.drag_current),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: true,
-				}
-				.into(),
-			);
+			responses.add_front(GraphOperationMessage::TransformChange {
+				layer: layer_path.clone(),
+				transform: DAffine2::from_translation(self.drag_start - self.drag_current),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: true,
+			});
 
 			// Copy the layers.
 			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
@@ -380,7 +377,7 @@ impl SelectToolData {
 
 		// Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
 		for layer_path in self.not_duplicated_layers.iter().flatten() {
-			responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
+			responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
 		}
 	}
 
@@ -391,33 +388,27 @@ impl SelectToolData {
 			None => return,
 		};
 
-		responses.push_back(DocumentMessage::DeselectAllLayers.into());
+		responses.add(DocumentMessage::DeselectAllLayers);
 
 		// Delete the duplicated layers
 		for layer_path in Document::shallowest_unique_layers(self.layers_dragging.iter()) {
-			responses.push_back(Operation::DeleteLayer { path: layer_path.clone() }.into());
+			responses.add(Operation::DeleteLayer { path: layer_path.clone() });
 		}
 
 		// Move the original to under the mouse
 		for layer_path in Document::shallowest_unique_layers(originals.iter()) {
-			responses.push_front(
-				GraphOperationMessage::TransformChange {
-					layer: layer_path.clone(),
-					transform: DAffine2::from_translation(self.drag_current - self.drag_start),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: true,
-				}
-				.into(),
-			);
+			responses.add_front(GraphOperationMessage::TransformChange {
+				layer: layer_path.clone(),
+				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: true,
+			});
 		}
 
 		// Select the originals
-		responses.push_back(
-			DocumentMessage::SetSelectedLayers {
-				replacement_selected_layers: originals.clone(),
-			}
-			.into(),
-		);
+		responses.add(DocumentMessage::SetSelectedLayers {
+			replacement_selected_layers: originals.clone(),
+		});
 
 		self.layers_dragging = originals;
 	}
@@ -514,14 +505,14 @@ impl Fsm for SelectToolFsmState {
 					// If the user clicks on new shape, make that layer their new selection.
 					// Otherwise enter the box select mode
 					let state = if tool_data.pivot.is_over(input.mouse.position) {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 						DraggingPivot
 					} else if let Some(selected_edges) = dragging_bounds {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
@@ -553,7 +544,7 @@ impl Fsm for SelectToolFsmState {
 
 						ResizingBounds
 					} else if rotating_bounds {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 							let selected = selected.iter().collect::<Vec<_>>();
@@ -574,7 +565,7 @@ impl Fsm for SelectToolFsmState {
 
 						RotatingBounds
 					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.layers_dragging = selected;
 
@@ -584,10 +575,10 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						if !input.keyboard.get(add_to_selection as usize) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-							responses.push_back(DocumentMessage::DeselectAllLayers.into());
+							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
 						}
 
@@ -606,7 +597,7 @@ impl Fsm for SelectToolFsmState {
 							// Deselect all layers if using shallowest selection behavior
 							// Necessary since for shallowest mode, we need to know the current selected layers to determine the next
 							if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest {
-								responses.push_back(DocumentMessage::DeselectAllLayers.into());
+								responses.add(DocumentMessage::DeselectAllLayers);
 								tool_data.layers_dragging.clear();
 							}
 							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
@@ -620,7 +611,7 @@ impl Fsm for SelectToolFsmState {
 				(Dragging, PointerMove { axis_align, duplicate, .. }) => {
 					tool_data.is_dragging = true;
 					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
-					responses.push_front(SelectToolMessage::DocumentIsDirty.into());
+					responses.add_front(SelectToolMessage::DocumentIsDirty);
 
 					let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, tool_data.drag_start);
 
@@ -636,15 +627,12 @@ impl Fsm for SelectToolFsmState {
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-						responses.push_front(
-							GraphOperationMessage::TransformChange {
-								layer: path.to_vec(),
-								transform: DAffine2::from_translation(mouse_delta + closest_move),
-								transform_in: TransformIn::Viewport,
-								skip_rerender: true,
-							}
-							.into(),
-						);
+						responses.add_front(GraphOperationMessage::TransformChange {
+							layer: path.to_vec(),
+							transform: DAffine2::from_translation(mouse_delta + closest_move),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: true,
+						});
 					}
 					tool_data.drag_current = mouse_position + closest_move;
 
@@ -720,16 +708,13 @@ impl Fsm for SelectToolFsmState {
 				(DrawingBox, PointerMove { .. }) => {
 					tool_data.drag_current = input.mouse.position;
 
-					responses.push_front(
-						DocumentMessage::Overlays(
-							Operation::SetLayerTransformInViewport {
-								path: tool_data.drag_box_overlay_layer.clone().unwrap(),
-								transform: transform_from_box(tool_data.drag_start, tool_data.drag_current, DAffine2::IDENTITY).to_cols_array(),
-							}
-							.into(),
-						)
+					responses.add_front(DocumentMessage::Overlays(
+						Operation::SetLayerTransformInViewport {
+							path: tool_data.drag_box_overlay_layer.clone().unwrap(),
+							transform: transform_from_box(tool_data.drag_start, tool_data.drag_current, DAffine2::IDENTITY).to_cols_array(),
+						}
 						.into(),
-					);
+					));
 					DrawingBox
 				}
 				(Ready, PointerMove { .. }) => {
@@ -749,7 +734,7 @@ impl Fsm for SelectToolFsmState {
 
 					if tool_data.cursor != cursor {
 						tool_data.cursor = cursor;
-						responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 					}
 
 					Ready
@@ -762,7 +747,7 @@ impl Fsm for SelectToolFsmState {
 						false => DocumentMessage::CommitTransaction,
 					};
 					tool_data.snap_manager.cleanup(responses);
-					responses.push_front(response.into());
+					responses.add_front(response);
 
 					Ready
 				}
@@ -782,14 +767,14 @@ impl Fsm for SelectToolFsmState {
 							tool_data.layers_dragging.clear();
 							tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
 
-							responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+							responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 						}
 					}
 
 					tool_data.is_dragging = false;
 					tool_data.layer_selected_on_start = None;
 
-					responses.push_back(DocumentMessage::CommitTransaction.into());
+					responses.add(DocumentMessage::CommitTransaction);
 					tool_data.snap_manager.cleanup(responses);
 
 					Ready
@@ -801,7 +786,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
-					responses.push_back(response.into());
+					responses.add(response);
 
 					tool_data.snap_manager.cleanup(responses);
 
@@ -818,7 +803,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
-					responses.push_back(response.into());
+					responses.add(response);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						bounds.original_transforms.clear();
@@ -831,7 +816,7 @@ impl Fsm for SelectToolFsmState {
 						true => DocumentMessage::Undo,
 						false => DocumentMessage::CommitTransaction,
 					};
-					responses.push_back(response.into());
+					responses.add(response);
 
 					tool_data.snap_manager.cleanup(responses);
 
@@ -839,21 +824,15 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, DragStop { .. } | Enter) => {
 					let quad = tool_data.selection_quad();
-					responses.push_front(
-						DocumentMessage::AddSelectedLayers {
-							additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
+					responses.add_front(DocumentMessage::AddSelectedLayers {
+						additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
+					});
+					responses.add_front(DocumentMessage::Overlays(
+						Operation::DeleteLayer {
+							path: tool_data.drag_box_overlay_layer.take().unwrap(),
 						}
 						.into(),
-					);
-					responses.push_front(
-						DocumentMessage::Overlays(
-							Operation::DeleteLayer {
-								path: tool_data.drag_box_overlay_layer.take().unwrap(),
-							}
-							.into(),
-						)
-						.into(),
-					);
+					));
 					Ready
 				}
 				(Ready, Enter) => {
@@ -865,8 +844,8 @@ impl Fsm for SelectToolFsmState {
 							if let Ok(layer) = document.document_legacy.layer(layer_path) {
 								if let Ok(network) = layer.as_node_graph() {
 									if network.nodes.values().any(|node| node.name == "Text") {
-										responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-										responses.push_back(TextToolMessage::EditSelected.into());
+										responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
+										responses.add(TextToolMessage::EditSelected);
 									}
 								}
 							}
@@ -879,7 +858,7 @@ impl Fsm for SelectToolFsmState {
 					rerender_selected_layers(tool_data, responses);
 
 					tool_data.snap_manager.cleanup(responses);
-					responses.push_back(DocumentMessage::Undo.into());
+					responses.add(DocumentMessage::Undo);
 
 					tool_data.path_outlines.clear_selected(responses);
 					tool_data.pivot.clear_overlays(responses);
@@ -888,7 +867,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				(_, Abort) => {
 					if let Some(path) = tool_data.drag_box_overlay_layer.take() {
-						responses.push_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into())
+						responses.add_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()))
 					};
 					if let Some(mut bounding_box_overlays) = tool_data.bounding_box_overlays.take() {
 						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
@@ -915,22 +894,22 @@ impl Fsm for SelectToolFsmState {
 					Ready
 				}
 				(_, Align { axis, aggregate }) => {
-					responses.push_back(DocumentMessage::AlignSelectedLayers { axis, aggregate }.into());
+					responses.add(DocumentMessage::AlignSelectedLayers { axis, aggregate });
 
 					self
 				}
 				(_, FlipHorizontal) => {
-					responses.push_back(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X }.into());
+					responses.add(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X });
 
 					self
 				}
 				(_, FlipVertical) => {
-					responses.push_back(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y }.into());
+					responses.add(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y });
 
 					self
 				}
 				(_, SetPivot { position }) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 
 					let pos: Option<DVec2> = position.into();
 					tool_data.pivot.set_normalized_position(pos.unwrap(), document, render_data, responses);
@@ -944,7 +923,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn standard_tool_messages(&self, message: &ToolMessage, messages: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
@@ -974,12 +953,12 @@ impl Fsm for SelectToolFsmState {
 					]),
 				]);
 
-				messages.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
-				self.update_hints(messages);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				self.update_hints(responses);
 				true
 			}
 			ToolMessage::UpdateCursor => {
-				self.update_cursor(messages);
+				self.update_cursor(responses);
 				true
 			}
 			_ => false,
@@ -989,13 +968,13 @@ impl Fsm for SelectToolFsmState {
 	fn update_hints(&self, _responses: &mut VecDeque<Message>) {}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 
 fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
 	for layer_path in &tool_data.layers_dragging {
-		responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
+		responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
 	}
 }
 
@@ -1023,13 +1002,13 @@ fn drag_shallowest_manipulation(
 		if layers.contains(&&[incoming_parent].as_slice()) {
 			// Add incoming layer
 			tool_data.layers_dragging.clear();
-			responses.push_back(DocumentMessage::DeselectAllLayers.into());
+			responses.add(DocumentMessage::DeselectAllLayers);
 			layers_without_incoming_parent.append(selected.clone().as_mut());
 			*selected = layers_without_incoming_parent;
 		}
 
 		tool_data.layers_dragging.append(selected.clone().as_mut());
-		responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+		responses.add(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() });
 		return;
 	}
 
@@ -1037,12 +1016,9 @@ fn drag_shallowest_manipulation(
 	if input.keyboard.get(select_deepest as usize) {
 		tool_data.layers_dragging.clear();
 		tool_data.layers_dragging.append(selected.clone().as_mut());
-		responses.push_back(
-			DocumentMessage::SetSelectedLayers {
-				replacement_selected_layers: selected.clone(),
-			}
-			.into(),
-		);
+		responses.add(DocumentMessage::SetSelectedLayers {
+			replacement_selected_layers: selected.clone(),
+		});
 		return;
 	}
 
@@ -1094,23 +1070,17 @@ fn drag_shallowest_manipulation(
 			if selected_layers_count <= 1 {
 				if input.keyboard.get(add_to_selection as usize) {
 					if !already_selected {
-						responses.push_back(
-							DocumentMessage::AddSelectedLayers {
-								additional_layers: vec![search.clone()],
-							}
-							.into(),
-						);
+						responses.add(DocumentMessage::AddSelectedLayers {
+							additional_layers: vec![search.clone()],
+						});
 					} else {
 						tool_data.layer_selected_on_start = None;
 					}
 				} else {
 					tool_data.layers_dragging.clear();
-					responses.push_back(
-						DocumentMessage::SetSelectedLayers {
-							replacement_selected_layers: vec![search.clone()],
-						}
-						.into(),
-					);
+					responses.add(DocumentMessage::SetSelectedLayers {
+						replacement_selected_layers: vec![search.clone()],
+					});
 				}
 				tool_data.layers_dragging.push(search);
 			} else {
@@ -1131,23 +1101,17 @@ fn drag_shallowest_manipulation(
 				if input.keyboard.get(add_to_selection as usize) {
 					if !already_selected {
 						tool_data.layers_dragging.push(direct_child.clone());
-						responses.push_back(
-							DocumentMessage::AddSelectedLayers {
-								additional_layers: vec![direct_child.clone()],
-							}
-							.into(),
-						);
+						responses.add(DocumentMessage::AddSelectedLayers {
+							additional_layers: vec![direct_child.clone()],
+						});
 					} else {
 						tool_data.layer_selected_on_start = None;
 					}
 				} else {
 					tool_data.layers_dragging.push(direct_child.clone());
-					responses.push_back(
-						DocumentMessage::SetSelectedLayers {
-							replacement_selected_layers: vec![direct_child.clone()],
-						}
-						.into(),
-					);
+					responses.add(DocumentMessage::SetSelectedLayers {
+						replacement_selected_layers: vec![direct_child.clone()],
+					});
 				}
 			}
 		}
@@ -1155,20 +1119,14 @@ fn drag_shallowest_manipulation(
 		else {
 			let parent_folder_id = selected.first().unwrap().first().unwrap();
 			if input.keyboard.get(add_to_selection as usize) {
-				responses.push_back(
-					DocumentMessage::AddSelectedLayers {
-						additional_layers: vec![vec![*parent_folder_id]],
-					}
-					.into(),
-				);
+				responses.add(DocumentMessage::AddSelectedLayers {
+					additional_layers: vec![vec![*parent_folder_id]],
+				});
 			} else {
 				tool_data.layers_dragging.clear();
-				responses.push_back(
-					DocumentMessage::SetSelectedLayers {
-						replacement_selected_layers: vec![vec![*parent_folder_id]],
-					}
-					.into(),
-				);
+				responses.add(DocumentMessage::SetSelectedLayers {
+					replacement_selected_layers: vec![vec![*parent_folder_id]],
+				});
 			}
 			tool_data.layers_dragging.push(vec![*parent_folder_id]);
 		}
@@ -1176,12 +1134,9 @@ fn drag_shallowest_manipulation(
 		// Check if new layer is already selected
 		let parent_folder_id = selected.first().unwrap().first().unwrap();
 		tool_data.layers_dragging.push(vec![*parent_folder_id]);
-		responses.push_back(
-			DocumentMessage::AddSelectedLayers {
-				additional_layers: vec![vec![*parent_folder_id]],
-			}
-			.into(),
-		);
+		responses.add(DocumentMessage::AddSelectedLayers {
+			additional_layers: vec![vec![*parent_folder_id]],
+		});
 	}
 }
 
@@ -1193,7 +1148,7 @@ fn drag_deepest_manipulation(
 	input: &InputPreprocessorMessageHandler,
 	render_data: &document_legacy::layers::RenderData,
 ) {
-	responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() }.into());
+	responses.add(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() });
 	tool_data.layers_dragging.append(selected.as_mut());
 	tool_data
 		.snap_manager
@@ -1237,14 +1192,11 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 		if !selected_layers.contains(&new_layer_path.as_slice()) {
 			tool_data.layers_dragging.clear();
 			tool_data.layers_dragging.push(new_layer_path.clone());
-			responses.push_back(
-				DocumentMessage::SetSelectedLayers {
-					replacement_selected_layers: vec![new_layer_path],
-				}
-				.into(),
-			);
+			responses.add(DocumentMessage::SetSelectedLayers {
+				replacement_selected_layers: vec![new_layer_path],
+			});
 		} else {
-			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+			responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 		}
 	}
 }
@@ -1252,14 +1204,14 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<Message>) {
 	match &intersect.data {
 		LayerDataType::Shape(_) => {
-			responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+			responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 		}
-		LayerDataType::NodeGraphFrame(graph_frame) if graph_frame.as_vector_data().is_some() => {
-			if graph_frame.network.nodes.values().any(|node| node.name == "Text") {
-				responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into());
-				responses.push_back(TextToolMessage::EditSelected.into());
+		LayerDataType::Layer(layer) if layer.as_vector_data().is_some() => {
+			if layer.network.nodes.values().any(|node| node.name == "Text") {
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
+				responses.add(TextToolMessage::EditSelected);
 			} else {
-				responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into());
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 			}
 		}
 		_ => {}

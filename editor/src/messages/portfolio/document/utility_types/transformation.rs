@@ -423,7 +423,7 @@ impl<'a> Selected<'a> {
 						});
 					}
 				}
-				self.responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				self.responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 		}
 	}

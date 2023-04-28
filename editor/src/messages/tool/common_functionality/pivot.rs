@@ -93,7 +93,7 @@ impl Pivot {
 	pub fn clear_overlays(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(overlays) = self.pivot_overlay_circles.take() {
 			for path in overlays {
-				responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into());
+				responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()));
 			}
 		}
 	}
@@ -107,43 +107,37 @@ impl Pivot {
 		};
 
 		let layer_paths = [vec![generate_uuid()], vec![generate_uuid()]];
-		responses.push_back(
-			DocumentMessage::Overlays(
-				Operation::AddEllipse {
-					path: layer_paths[0].clone(),
-					transform: DAffine2::IDENTITY.to_cols_array(),
-					style: style::PathStyle::new(
-						Some(style::Stroke::new(COLOR_ACCENT, PIVOT_OUTER_OUTLINE_THICKNESS)),
-						style::Fill::Solid(graphene_core::raster::color::Color::WHITE),
-					),
-					insert_index: -1,
-				}
-				.into(),
-			)
+		responses.add(DocumentMessage::Overlays(
+			Operation::AddEllipse {
+				path: layer_paths[0].clone(),
+				transform: DAffine2::IDENTITY.to_cols_array(),
+				style: style::PathStyle::new(
+					Some(style::Stroke::new(COLOR_ACCENT, PIVOT_OUTER_OUTLINE_THICKNESS)),
+					style::Fill::Solid(graphene_core::raster::color::Color::WHITE),
+				),
+				insert_index: -1,
+			}
 			.into(),
-		);
-		responses.push_back(
-			DocumentMessage::Overlays(
-				Operation::AddEllipse {
-					path: layer_paths[1].clone(),
-					transform: DAffine2::IDENTITY.to_cols_array(),
-					style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
-					insert_index: -1,
-				}
-				.into(),
-			)
+		));
+		responses.add(DocumentMessage::Overlays(
+			Operation::AddEllipse {
+				path: layer_paths[1].clone(),
+				transform: DAffine2::IDENTITY.to_cols_array(),
+				style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
+				insert_index: -1,
+			}
 			.into(),
-		);
+		));
 
 		self.pivot_overlay_circles = Some(layer_paths.clone());
 		let [outer, inner] = layer_paths;
 
 		let pivot_diameter_without_outline = PIVOT_OUTER - PIVOT_OUTER_OUTLINE_THICKNESS;
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(pivot_diameter_without_outline), 0., pivot - DVec2::splat(pivot_diameter_without_outline / 2.)).to_cols_array();
-		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: outer, transform }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: outer, transform }.into()));
 
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(PIVOT_INNER), 0., pivot - DVec2::splat(PIVOT_INNER / 2.)).to_cols_array();
-		responses.push_back(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: inner, transform }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: inner, transform }.into()));
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {

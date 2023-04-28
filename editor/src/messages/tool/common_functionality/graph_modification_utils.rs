@@ -17,17 +17,14 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: 
 }
 
 pub fn new_custom_layer(network: NodeNetwork, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-	responses.push_back(DocumentMessage::DeselectAllLayers.into());
-	responses.push_back(
-		Operation::AddNodeGraphFrame {
-			path: layer_path.clone(),
-			insert_index: -1,
-			transform: DAffine2::ZERO.to_cols_array(),
-			network,
-		}
-		.into(),
-	);
-	responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+	responses.add(DocumentMessage::DeselectAllLayers);
+	responses.add(Operation::AddFrame {
+		path: layer_path.clone(),
+		insert_index: -1,
+		transform: DAffine2::ZERO.to_cols_array(),
+		network,
+	});
+	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 }
 
 pub fn set_manipulator_mirror_angle(manipulator_groups: &Vec<ManipulatorGroup<ManipulatorGroupId>>, layer_path: &Vec<u64>, mirror_angle: bool, responses: &mut VecDeque<Message>) {

@@ -76,7 +76,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
-			self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 		} else {
 			self.responses.add(DocumentMessage::FrameClear);
 		}

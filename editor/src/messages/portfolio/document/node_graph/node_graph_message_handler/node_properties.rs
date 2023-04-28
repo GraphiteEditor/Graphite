@@ -8,7 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::*;
-use graphene_core::raster::{BlendMode, Color, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::EditorApi;
@@ -460,7 +460,7 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context
 	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
 		.tooltip("Refresh the artwork under the layer")
-		.on_update(move |_| DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() }.into())
+		.on_update(move |_| DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() }.into())
 		.widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
 }
@@ -923,7 +923,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let server_status = {
 		let status = match &context.persistent_data.imaginate_server_status {
 			ImaginateServerStatus::Unknown => {
-				context.responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+				context.responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 				"Checking..."
 			}
 			ImaginateServerStatus::Checking => "Checking...",
@@ -1035,7 +1035,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						.on_update({
 							let imaginate_node = imaginate_node.clone();
 							move |_| {
-								DocumentMessage::NodeGraphFrameImaginateTerminate {
+								DocumentMessage::ImaginateTerminate {
 									layer_path: layer_path.clone(),
 									node_path: imaginate_node.clone(),
 								}
@@ -1061,7 +1061,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
-							DocumentMessage::NodeGraphFrameImaginateRandom {
+							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: true,
@@ -1077,7 +1077,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
-							DocumentMessage::NodeGraphFrameImaginate {
+							DocumentMessage::ImaginateGenerate {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 							}
@@ -1092,7 +1092,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.on_update({
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
-							DocumentMessage::NodeGraphFrameClear {
+							DocumentMessage::ImaginateClear {
 								node_id,
 								layer_path: layer_path.clone(),
 								cached_index,
@@ -1123,7 +1123,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
-							DocumentMessage::NodeGraphFrameImaginateRandom {
+							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: false,
@@ -1145,12 +1145,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	// Create the input to the graph using an empty image
-	let image_frame = std::borrow::Cow::Owned(EditorApi {
+	let editor_api = std::borrow::Cow::Owned(EditorApi {
 		image_frame: None,
 		font_cache: Some(&context.persistent_data.font_cache),
 	});
-	// Compute the transform input to the node graph frame
-	let image_frame: graphene_core::raster::ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, image_frame).unwrap_or_default();
+	// Compute the transform input to the image frame
+	let image_frame: ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, editor_api).unwrap_or_default();
 	let transform = image_frame.transform;
 
 	let resolution = {
