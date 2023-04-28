@@ -280,7 +280,7 @@ impl TextToolData {
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size as f64);
+			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size);
 
 			responses.add(Operation::AddFrame {
 				path: self.layer_path.clone(),
@@ -320,7 +320,7 @@ impl TextToolData {
 		resize_overlays(&mut self.overlays, responses, 1);
 
 		let editing_text = self.editing_text.as_ref()?;
-		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(&data));
+		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(data));
 		let far = graphene_core::text::bounding_box(&self.new_text, buzz_face, editing_text.font_size, None);
 		let quad = Quad::from_box([DVec2::ZERO, far]);
 
@@ -337,8 +337,8 @@ impl TextToolData {
 
 	fn get_bounds(&self, text: &str, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let editing_text = self.editing_text.as_ref()?;
-		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(&data));
-		let subpaths = graphene_core::text::to_path(&text, buzz_face, editing_text.font_size, None);
+		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(data));
+		let subpaths = graphene_core::text::to_path(text, buzz_face, editing_text.font_size, None);
 		let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box());
 		let combined_bounds = bounds.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]).unwrap_or_default();
 		Some(combined_bounds)
@@ -383,8 +383,8 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 		let node_id = get_text_node_id(node_graph)?;
 		let document_node = node_graph.nodes.get(&node_id)?;
 		let (text, font, font_size) = TextToolData::extract_text_node_inputs(document_node)?;
-		let buzz_face = render_data.font_cache.get(font).map(|data| load_face(&data));
-		let far = graphene_core::text::bounding_box(&text, buzz_face, font_size, None);
+		let buzz_face = render_data.font_cache.get(font).map(|data| load_face(data));
+		let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
 		let quad = Quad::from_box([DVec2::ZERO, far]);
 		let multiplied = document.document_legacy.multiply_transforms(path).ok()? * quad;
 		Some(multiplied.bounding_box())
@@ -474,7 +474,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.new_text = String::new();
 					tool_data.layer_path = document.get_path_for_new_layer();
 
-					tool_data.interact(state, input.mouse.position, document, &render_data, responses)
+					tool_data.interact(state, input.mouse.position, document, render_data, responses)
 				}
 				(state, TextToolMessage::EditSelected) => {
 					if let Some(layer_path) = can_edit_selected(document) {

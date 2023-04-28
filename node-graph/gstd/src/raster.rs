@@ -2,7 +2,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Alpha, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
-use graphene_core::value::{ClonedNode, ValueNode};
+
 use graphene_core::Node;
 
 use std::fmt::Debug;
@@ -248,7 +248,7 @@ fn mask_image<
 			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
 			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
-			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
 			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
 				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().to_channel());
 			}

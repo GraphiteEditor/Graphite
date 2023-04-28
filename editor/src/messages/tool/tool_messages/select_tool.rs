@@ -762,7 +762,7 @@ impl Fsm for SelectToolFsmState {
 						if let Some(path) = intersection.last() {
 							// let folders: Vec<_> = (1..path.len() + 1).map(|i| &path[0..i]).collect();
 							// let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !folders.contains(&layer)).map(|path| path.to_vec()).collect();
-							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(&layer)).map(|path| path.to_vec()).collect();
+							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(layer)).map(|path| path.to_vec()).collect();
 
 							tool_data.layers_dragging.clear();
 							tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
@@ -999,7 +999,7 @@ fn drag_shallowest_manipulation(
 		// Checks if the incoming layer's root parent is already selected
 		// If so we need to update the selected layer to the deeper of the two
 		let mut layers_without_incoming_parent: Vec<Vec<u64>> = document.selected_layers().filter(|&layer| layer != [incoming_parent].as_slice()).map(|path| path.to_vec()).collect();
-		if layers.contains(&&[incoming_parent].as_slice()) {
+		if layers.contains(&[incoming_parent].as_slice()) {
 			// Add incoming layer
 			tool_data.layers_dragging.clear();
 			responses.add(DocumentMessage::DeselectAllLayers);
@@ -1028,7 +1028,7 @@ fn drag_shallowest_manipulation(
 
 		// Check if the intersected layer path is already selected
 		let previous_parents: Vec<_> = (0..layers.len()).map(|i| &layers.get(i).unwrap()[..1]).collect();
-		let already_selected_parent = previous_parents.contains(&&[incoming_parent].as_slice());
+		let already_selected_parent = previous_parents.contains(&[incoming_parent].as_slice());
 
 		let selected_layers: Vec<_> = document.selected_layers().collect();
 		let mut search = previous_layer_path.to_vec();
@@ -1042,7 +1042,7 @@ fn drag_shallowest_manipulation(
 				selected_layer_path_parent = selected_layer_path_parent[..selected_layer_path_parent.len() - 1].to_vec();
 			}
 
-			while selected_layer_path_parent.len() > 0 && !is_parent && !recursive_found {
+			while !selected_layer_path_parent.is_empty() && !is_parent && !recursive_found {
 				let selected_children_layer_paths = document.document_legacy.folder_children_paths(&selected_layer_path_parent);
 				for child in selected_children_layer_paths {
 					if child == *incoming_layer_path_vector {
@@ -1062,7 +1062,7 @@ fn drag_shallowest_manipulation(
 
 			// Check if new layer is already selected
 			let mut already_selected = false;
-			if selected_layers.contains(&search.clone().as_slice()) {
+			if selected_layers.contains(&search.as_slice()) {
 				already_selected = true;
 			}
 
@@ -1086,7 +1086,7 @@ fn drag_shallowest_manipulation(
 			} else {
 				// Previous selected layers with the intersect layer path appended to it
 				let mut combined_layers = selected_layers.clone();
-				let intersection_temp = intersection.clone();
+				let intersection_temp = intersection;
 				let intersection_temp_slice = intersection_temp.as_slice();
 				combined_layers.push(intersection_temp_slice);
 				let layers_iter = combined_layers.into_iter();
@@ -1162,7 +1162,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 	let incoming_parent = *intersect_layer_path.first().unwrap();
 	let previous_parents: Vec<_> = (0..selected_layers.len()).map(|i| &selected_layers.get(i).unwrap()[..1]).collect();
 	let mut incoming_parent_selected = false;
-	if previous_parents.contains(&&[incoming_parent].as_slice()) {
+	if previous_parents.contains(&[incoming_parent].as_slice()) {
 		incoming_parent_selected = true;
 	}
 	if incoming_parent_selected {
@@ -1225,11 +1225,9 @@ fn recursive_search(document: &DocumentMessageHandler, layer_path: &Vec<u64>, in
 	for path in layer_paths {
 		if path == *incoming_layer_path_vector {
 			return true;
-		} else if document.document_legacy.is_folder(path.clone()) {
-			if recursive_search(document, &path, incoming_layer_path_vector) {
-				return true;
-			}
-		}
+		} else if document.document_legacy.is_folder(path.clone()) && recursive_search(document, &path, incoming_layer_path_vector) {
+  				return true;
+  			}
 	}
-	return false;
+	false
 }

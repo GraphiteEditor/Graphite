@@ -207,13 +207,13 @@ impl WasmSubpath {
 		// Line between pivot and start point on curve
 		let original_dashed_line = format!(
 			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
-			self.0.iter().nth(0).unwrap().start().x,
-			self.0.iter().nth(0).unwrap().start().y
+			self.0.iter().next().unwrap().start().x,
+			self.0.iter().next().unwrap().start().y
 		);
 		let rotated_dashed_line = format!(
 			r#"<line x1="{pivot_x}" y1="{pivot_y}" x2="{}" y2="{}" stroke="{ORANGE}" stroke-dasharray="0, 4" stroke-width="2" stroke-linecap="round"/>"#,
-			rotated_subpath.iter().nth(0).unwrap().start().x,
-			rotated_subpath.iter().nth(0).unwrap().start().y
+			rotated_subpath.iter().next().unwrap().start().x,
+			rotated_subpath.iter().next().unwrap().start().y
 		);
 
 		wrap_svg_tag(format!("{subpath_svg}{rotated_subpath_svg}{pivot}{original_dashed_line}{rotated_dashed_line}"))

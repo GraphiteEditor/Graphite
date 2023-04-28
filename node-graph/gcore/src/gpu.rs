@@ -13,7 +13,7 @@ pub struct PushConstants {
 impl Sample for SampledImage<Image2d> {
 	type Pixel = Color;
 
-	fn sample(&self, pos: glam::DVec2, size: glam::DVec2) -> Option<Self::Pixel> {
+	fn sample(&self, pos: glam::DVec2, _size: glam::DVec2) -> Option<Self::Pixel> {
 		let color = self.sample(pos);
 		Color::from_rgbaf32(color.x, color.y, color.z, color.w)
 	}

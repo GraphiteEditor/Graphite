@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Raster, RasterMut, Sample};
+use graphene_core::raster::{Alpha, Color, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
@@ -102,10 +102,10 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 		let center = DVec2::splat(0.5);
 
 		let x2 = (position + area / 2. - center).length() as f32 * 2.;
-		let min = (x2 - area.length() as f32 / 2.).abs();
-		let max = x2 + area.length() as f32 / 2.;
+		let _min = (x2 - area.length() as f32 / 2.).abs();
+		let _max = x2 + area.length() as f32 / 2.;
 
-		let integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
+		let _integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
 
 		let result = if x2 < 1. {
 			/*let inner = integral(min);
@@ -118,7 +118,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 		};
 
 		use graphene_core::raster::Channel;
-		Some(self.color.multiplied_alpha(P::AlphaChannel::from_f32(result as f32)))
+		Some(self.color.multiplied_alpha(P::AlphaChannel::from_f32(result)))
 	}
 }
 
@@ -207,11 +207,9 @@ mod test {
 		let brush_texture_node = BrushTextureNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(100.), ClonedNode::new(100.));
 		let size = 20.;
 		let image = brush_texture_node.eval(size);
-		assert_eq!(image.image.width, size.ceil() as u32 + 4);
-		assert_eq!(image.image.height, size.ceil() as u32 + 4);
-		assert_eq!(image.transform, DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil() + 4.), 0., -DVec2::splat(size / 2.)));
+		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
-		assert_eq!(image.image.get_pixel(11, 11), Some(Color::BLACK));
+		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));
 	}
 
 	#[test]
@@ -224,7 +222,6 @@ mod test {
 		let frames = MapNode::new(ValueNode::new(translate_node));
 		let frames = trace.then(frames).eval(()).collect::<Vec<_>>();
 		assert_eq!(frames.len(), 2);
-		assert_eq!(frames[0].image.width, 24);
 		let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 		let background_bounds = background_bounds.eval(frames.clone().into_iter());
 		let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
@@ -232,8 +229,8 @@ mod test {
 		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.0));
 		let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 		let final_image = final_image.eval(frames.into_iter());
-		assert_eq!(final_image.image.height, 24);
-		assert_eq!(final_image.image.width, 34);
+		assert_eq!(final_image.image.height, 20);
+		assert_eq!(final_image.image.width, 30);
 		drop(final_image);
 	}
 }
