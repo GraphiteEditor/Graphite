@@ -39,11 +39,11 @@ impl<ManipulatorGroupId: crate::Identifier> Hash for ManipulatorGroup<Manipulato
 		self.anchor.to_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.in_handle.is_some().hash(state);
 		if let Some(in_handle) = self.in_handle {
-			in_handle.to_array().iter().for_each(|x| x.to_bits().hash(state))
+			in_handle.to_array().iter().for_each(|x| x.to_bits().hash(state));
 		}
 		self.out_handle.is_some().hash(state);
 		if let Some(out_handle) = self.out_handle {
-			out_handle.to_array().iter().for_each(|x| x.to_bits().hash(state))
+			out_handle.to_array().iter().for_each(|x| x.to_bits().hash(state));
 		}
 		self.id.hash(state);
 	}

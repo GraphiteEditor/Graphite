@@ -80,15 +80,15 @@ pub struct BrushStampGenerator<P: Pixel + Alpha> {
 	transform: DAffine2,
 }
 
-impl<P: Pixel + Alpha> TransformMut for BrushStampGenerator<P> {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
 impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
+	}
+}
+
+impl<P: Pixel + Alpha> TransformMut for BrushStampGenerator<P> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -102,16 +102,15 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 		let center = DVec2::splat(0.5);
 
 		let x2 = (position + area / 2. - center).length() as f32 * 2.;
-		let _min = (x2 - area.length() as f32 / 2.).abs();
-		let _max = x2 + area.length() as f32 / 2.;
+		// let _min = (x2 - area.length() as f32 / 2.).abs();
+		// let _max = x2 + area.length() as f32 / 2.;
 
-		let _integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
+		// let _integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
 
 		let result = if x2 < 1. {
-			/*let inner = integral(min);
-			let outer = integral(max);
-			((outer - inner) / (max - min) as f32).clamp(0., 1.)
-			*/
+			// let inner = integral(min);
+			// let outer = integral(max);
+			// ((outer - inner) / (max - min) as f32).clamp(0., 1.)
 			1. - x2.powf(self.feather_exponent)
 		} else {
 			return None;
