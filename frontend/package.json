@@ -12,8 +12,7 @@
 		"@graphite/*": "~/src/$1"
 	},
 	"scripts": {
-		"start": "npm run build-wasm && npm run watch || (npm run print-building-help && exit 1)",
-		"watch": "concurrently -k \"parcel serve index.html --port 8080\" \"npm run watch:wasm\"",
+		"start": "npm run build-wasm && concurrently -k \"parcel serve index.html --port 8080\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
 		"build": "npm run build-wasm-prod && npm run build-licenses && parcel build index.html || (npm run print-building-help && exit 1)",
 		"build-licenses": "webpack build",
 		"tauri:dev": "echo 'Make sure you build the wasm binary for tauri using `npm run tauri:build-wasm`' && parcel serve index.html --port 8080",
@@ -36,22 +35,22 @@
 		"@parcel/transformer-inline-string": "^2.8.3",
 		"@parcel/transformer-webmanifest": "^2.8.3",
 		"@types/license-checker-webpack-plugin": "^0.2.1",
-		"@types/node": "^18.16.1",
+		"@types/node": "^18.16.2",
 		"@types/webpack": "^5.28.1",
-		"buffer": "^5.7.1",
+		"buffer": "^6.0.3",
 		"concurrently": "^8.0.1",
 		"license-checker-webpack-plugin": "^0.2.1",
-		"parcel": "^2.8.3",
 		"parcel-transformer-svelte3-plus": "^0.2.9",
+		"parcel": "^2.8.3",
 		"postcss": "^8.4.23",
 		"process": "^0.11.10",
 		"sass": "^1.62.1",
-		"svelte": "^3.58.0",
 		"svelte-preprocess": "^5.0.3",
+		"svelte": "^3.58.0",
 		"ts-node": "^10.9.1",
 		"typescript": "^5.0.4",
-		"webpack": "^5.81.0",
-		"webpack-cli": "^5.0.2"
+		"webpack-cli": "^5.0.2",
+		"webpack": "^5.81.0"
 	},
 	"optionalDependencies": {
 		"wasm-pack": "0.10.3"
