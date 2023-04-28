@@ -34,12 +34,12 @@ impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler
 					Ok(Some(document_responses)) => {
 						for response in document_responses {
 							match &response {
-								DocumentResponse::LayerChanged { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }.into()),
-								DocumentResponse::DeletedLayer { path } => responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }.into()),
-								DocumentResponse::DocumentChanged => responses.push_back(ArtboardMessage::RenderArtboards.into()),
+								DocumentResponse::LayerChanged { path } => responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }),
+								DocumentResponse::DeletedLayer { path } => responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }),
+								DocumentResponse::DocumentChanged => responses.add(ArtboardMessage::RenderArtboards),
 								_ => {}
 							};
-							responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
 					}
 					Ok(None) => {}
@@ -52,50 +52,41 @@ impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler
 				let artboard_id = id.unwrap_or_else(generate_uuid);
 				self.artboard_ids.push(artboard_id);
 
-				responses.push_back(
-					ArtboardMessage::DispatchOperation(
-						DocumentOperation::AddRect {
-							path: vec![artboard_id],
-							insert_index: -1,
-							transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
-							style: style::PathStyle::new(None, Fill::solid(Color::WHITE)),
-						}
-						.into(),
-					)
+				responses.add(ArtboardMessage::DispatchOperation(
+					DocumentOperation::AddRect {
+						path: vec![artboard_id],
+						insert_index: -1,
+						transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
+						style: style::PathStyle::new(None, Fill::solid(Color::WHITE)),
+					}
 					.into(),
-				);
+				));
 
-				responses.push_back(DocumentMessage::RenderDocument.into());
+				responses.add(DocumentMessage::RenderDocument);
 			}
 			ClearArtboards => {
 				for &artboard in self.artboard_ids.iter() {
-					responses.push_front(ArtboardMessage::DeleteArtboard { artboard }.into());
+					responses.add_front(ArtboardMessage::DeleteArtboard { artboard });
 				}
 			}
 			DeleteArtboard { artboard } => {
 				self.artboard_ids.retain(|&id| id != artboard);
 
-				responses.push_back(ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::DeleteLayer { path: vec![artboard] })).into());
+				responses.add(ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::DeleteLayer { path: vec![artboard] })));
 
-				responses.push_back(DocumentMessage::RenderDocument.into());
+				responses.add(DocumentMessage::RenderDocument);
 			}
 			RenderArtboards => {
 				// Render an infinite canvas if there are no artboards
 				if self.artboard_ids.is_empty() {
-					responses.push_back(
-						FrontendMessage::UpdateDocumentArtboards {
-							svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
-						}
-						.into(),
-					)
+					responses.add(FrontendMessage::UpdateDocumentArtboards {
+						svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
+					})
 				} else {
 					let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
-					responses.push_back(
-						FrontendMessage::UpdateDocumentArtboards {
-							svg: self.artboards_document.render_root(&render_data),
-						}
-						.into(),
-					);
+					responses.add(FrontendMessage::UpdateDocumentArtboards {
+						svg: self.artboards_document.render_root(&render_data),
+					});
 				}
 			}
 			ResizeArtboard { artboard, position, mut size } => {
@@ -106,15 +97,12 @@ impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler
 					size.1 = size.1.signum();
 				}
 
-				responses.push_back(
-					ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::SetLayerTransform {
-						path: vec![artboard],
-						transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
-					}))
-					.into(),
-				);
+				responses.add(ArtboardMessage::DispatchOperation(Box::new(DocumentOperation::SetLayerTransform {
+					path: vec![artboard],
+					transform: DAffine2::from_scale_angle_translation(size.into(), 0., position.into()).to_cols_array(),
+				})));
 
-				responses.push_back(DocumentMessage::RenderDocument.into());
+				responses.add(DocumentMessage::RenderDocument);
 			}
 		}
 	}

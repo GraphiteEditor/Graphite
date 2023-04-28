@@ -157,7 +157,7 @@ impl Fsm for ShapeToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					let layer_path = document.get_path_for_new_layer();
 					shape_data.path = Some(layer_path.clone());
 					tool_data.sides = tool_options.vertices;
@@ -173,7 +173,7 @@ impl Fsm for ShapeToolFsmState {
 				}
 				(state, Resize { center, lock_ratio }) => {
 					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
-						responses.push_back(message);
+						responses.add(message);
 					}
 
 					state
@@ -185,7 +185,7 @@ impl Fsm for ShapeToolFsmState {
 					Ready
 				}
 				(Drawing, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					responses.add(DocumentMessage::AbortTransaction);
 
 					shape_data.cleanup(responses);
 
@@ -208,10 +208,10 @@ impl Fsm for ShapeToolFsmState {
 			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
 }

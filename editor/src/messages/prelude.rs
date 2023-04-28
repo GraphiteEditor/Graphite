@@ -60,14 +60,22 @@ pub use std::collections::{HashMap, HashSet, VecDeque};
 
 pub trait Responses {
 	fn add(&mut self, message: impl Into<Message>);
+
+	fn add_front(&mut self, message: impl Into<Message>);
+
 	fn try_add(&mut self, message: Option<impl Into<Message>>) {
 		if let Some(message) = message {
 			self.add(message);
 		}
 	}
 }
+
 impl Responses for VecDeque<Message> {
 	fn add(&mut self, message: impl Into<Message>) {
 		self.push_back(message.into());
+	}
+
+	fn add_front(&mut self, message: impl Into<Message>) {
+		self.push_front(message.into());
 	}
 }

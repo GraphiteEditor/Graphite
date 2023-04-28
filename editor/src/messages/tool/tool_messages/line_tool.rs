@@ -83,7 +83,7 @@ impl PropertyHolder for LineTool {
 }
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineTool {
-	fn process_message(&mut self, message: ToolMessage, messages: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message {
 			match action {
 				LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
@@ -91,7 +91,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 			return;
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, messages, true);
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -159,7 +159,7 @@ impl Fsm for LineToolFsmState {
 
 					let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
 
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					let layer_path = document.get_path_for_new_layer();
 					tool_data.path = Some(layer_path.clone());
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
@@ -176,7 +176,7 @@ impl Fsm for LineToolFsmState {
 					tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 					let keyboard = &input.keyboard;
-					responses.push_back(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+					responses.add(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
 
 					Drawing
 				}
@@ -189,7 +189,7 @@ impl Fsm for LineToolFsmState {
 				}
 				(Drawing, Abort) => {
 					tool_data.snap_manager.cleanup(responses);
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					responses.add(DocumentMessage::AbortTransaction);
 					tool_data.path = None;
 					Ready
 				}
@@ -215,11 +215,11 @@ impl Fsm for LineToolFsmState {
 			])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
 }
 

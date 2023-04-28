@@ -38,41 +38,41 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				.process_message(message, responses, (document, input, &render_data, &self.tool_state.tool_data, &mut self.shape_editor)),
 
 			#[remain::unsorted]
-			ToolMessage::ActivateToolSelect => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into()),
+			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolArtboard => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }.into()),
+			ToolMessage::ActivateToolArtboard => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolNavigate => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Navigate }.into()),
+			ToolMessage::ActivateToolNavigate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Navigate }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolEyedropper => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }.into()),
+			ToolMessage::ActivateToolEyedropper => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolText => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }.into()),
+			ToolMessage::ActivateToolText => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolFill => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Fill }.into()),
+			ToolMessage::ActivateToolFill => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Fill }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolGradient => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Gradient }.into()),
+			ToolMessage::ActivateToolGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Gradient }),
 
 			#[remain::unsorted]
-			ToolMessage::ActivateToolPath => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }.into()),
+			ToolMessage::ActivateToolPath => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolPen => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }.into()),
+			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolFreehand => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }.into()),
+			ToolMessage::ActivateToolFreehand => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolSpline => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }.into()),
+			ToolMessage::ActivateToolSpline => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolLine => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Line }.into()),
+			ToolMessage::ActivateToolLine => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Line }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolRectangle => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }.into()),
+			ToolMessage::ActivateToolRectangle => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolEllipse => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }.into()),
+			ToolMessage::ActivateToolEllipse => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolShape => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }.into()),
+			ToolMessage::ActivateToolShape => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }),
 
 			#[remain::unsorted]
-			ToolMessage::ActivateToolBrush => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }.into()),
+			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolImaginate => responses.push_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }.into()),
+			ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -122,13 +122,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				tool_data.tools.get(&tool_type).unwrap().activate(responses);
 
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
-				responses.push_back(BroadcastEvent::SelectionChanged.into());
+				responses.add(BroadcastEvent::SelectionChanged);
 
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(BroadcastEvent::DocumentIsDirty);
 
 				// Send tool options to the frontend
-				responses.push_back(ToolMessage::RefreshToolOptions.into());
+				responses.add(ToolMessage::RefreshToolOptions);
 
 				// Notify the frontend about the new active tool to be displayed
 				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
@@ -140,13 +140,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Unsubscribe the transform layer to selection change events
 				let message = Box::new(TransformLayerMessage::SelectionChanged.into());
 				let on = BroadcastEvent::SelectionChanged;
-				responses.push_back(BroadcastMessage::UnsubscribeEvent { message, on }.into());
+				responses.add(BroadcastMessage::UnsubscribeEvent { message, on });
 			}
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
 				let send = Box::new(TransformLayerMessage::SelectionChanged.into());
 				let on = BroadcastEvent::SelectionChanged;
-				responses.push_back(BroadcastMessage::SubscribeEvent { send, on }.into());
+				responses.add(BroadcastMessage::SubscribeEvent { send, on });
 
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -163,7 +163,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
-				responses.push_back(FrontendMessage::TriggerRefreshBoundsOfViewports.into());
+				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
 
 				let mut data = ToolActionHandlerData {
 					document,

@@ -23,13 +23,10 @@ impl MessageHandler<PreferencesDialogMessage, &PreferencesMessageHandler> for Pr
 
 impl PreferencesDialogMessageHandler {
 	pub fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: self.properties(preferences),
-				layout_target,
-			}
-			.into(),
-		)
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.properties(preferences),
+			layout_target,
+		})
 	}
 
 	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {

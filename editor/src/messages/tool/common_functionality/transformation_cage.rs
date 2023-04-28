@@ -159,7 +159,7 @@ pub fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
 		insert_index: -1,
 	};
-	responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+	responses.add(DocumentMessage::Overlays(operation.into()));
 
 	path
 }
@@ -178,7 +178,7 @@ fn add_transform_handles(responses: &mut VecDeque<Message>) -> [Vec<LayerId>; 8]
 			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
 			insert_index: -1,
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		*item = current_path;
 	}
@@ -253,7 +253,7 @@ impl BoundingBoxOverlays {
 	pub fn transform(&mut self, responses: &mut VecDeque<Message>) {
 		let transform = transform_from_box(self.bounds[0], self.bounds[1], self.transform).to_cols_array();
 		let path = self.bounding_box.clone();
-		responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()));
 
 		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
 		const BIAS: f64 = 0.0001;
@@ -263,7 +263,7 @@ impl BoundingBoxOverlays {
 			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
 			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
 			let path = path.clone();
-			responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()));
 		}
 	}
 
@@ -341,7 +341,7 @@ impl BoundingBoxOverlays {
 
 	/// Removes the overlays
 	pub fn delete(self, responses: &mut VecDeque<Message>) {
-		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()));
 		responses.extend(
 			self.transform_handles
 				.iter()

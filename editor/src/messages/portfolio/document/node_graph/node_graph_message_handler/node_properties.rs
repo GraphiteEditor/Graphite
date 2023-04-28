@@ -923,7 +923,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let server_status = {
 		let status = match &context.persistent_data.imaginate_server_status {
 			ImaginateServerStatus::Unknown => {
-				context.responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+				context.responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 				"Checking..."
 			}
 			ImaginateServerStatus::Checking => "Checking...",

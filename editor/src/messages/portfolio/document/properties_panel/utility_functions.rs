@@ -225,20 +225,14 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 		}]
 	};
 
-	responses.push_back(
-		LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
-			layout_target: LayoutTarget::PropertiesOptions,
-		}
-		.into(),
-	);
-	responses.push_back(
-		LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
-			layout_target: LayoutTarget::PropertiesSections,
-		}
-		.into(),
-	);
+	responses.add(LayoutMessage::SendLayout {
+		layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
+		layout_target: LayoutTarget::PropertiesOptions,
+	});
+	responses.add(LayoutMessage::SendLayout {
+		layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
+		layout_target: LayoutTarget::PropertiesSections,
+	});
 }
 
 pub fn register_artwork_layer_properties(
@@ -325,20 +319,14 @@ pub fn register_artwork_layer_properties(
 		}
 	};
 
-	responses.push_back(
-		LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
-			layout_target: LayoutTarget::PropertiesOptions,
-		}
-		.into(),
-	);
-	responses.push_back(
-		LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
-			layout_target: LayoutTarget::PropertiesSections,
-		}
-		.into(),
-	);
+	responses.add(LayoutMessage::SendLayout {
+		layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
+		layout_target: LayoutTarget::PropertiesOptions,
+	});
+	responses.add(LayoutMessage::SendLayout {
+		layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
+		layout_target: LayoutTarget::PropertiesSections,
+	});
 }
 
 fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> LayoutGroup {

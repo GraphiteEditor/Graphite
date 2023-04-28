@@ -27,15 +27,12 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 			ExportDialogMessage::ScaleFactor(x) => self.scale_factor = x,
 			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
 
-			ExportDialogMessage::Submit => responses.push_front(
-				DocumentMessage::ExportDocument {
-					file_name: self.file_name.clone(),
-					file_type: self.file_type,
-					scale_factor: self.scale_factor,
-					bounds: self.bounds,
-				}
-				.into(),
-			),
+			ExportDialogMessage::Submit => responses.add_front(DocumentMessage::ExportDocument {
+				file_name: self.file_name.clone(),
+				file_type: self.file_type,
+				scale_factor: self.scale_factor,
+				bounds: self.bounds,
+			}),
 		}
 
 		self.register_properties(responses, LayoutTarget::DialogDetails);
