@@ -176,8 +176,13 @@ impl BorrowTree {
 	}
 
 	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
-		let ProtoNode { construction_args, identifier, .. } = proto_node;
-		self.source_map.insert(proto_node.document_node_path, id);
+		let ProtoNode {
+			construction_args,
+			identifier,
+			document_node_path,
+			..
+		} = proto_node;
+		self.source_map.insert(document_node_path, id);
 
 		match construction_args {
 			ConstructionArgs::Value(value) => {
