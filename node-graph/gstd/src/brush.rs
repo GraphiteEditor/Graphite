@@ -95,21 +95,22 @@ impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
 impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 	type Pixel = P;
 
+	#[inline]
 	fn sample(&self, position: DVec2, area: DVec2) -> Option<P> {
 		let position = self.transform.inverse().transform_point2(position);
+		let area = self.transform.inverse().transform_vector2(area);
 		let center = DVec2::splat(0.5);
 
-		let x1 = (position - center).length() as f32;
-		let x2 = (position + area - center).length() as f32;
-		let min = x1.min(x2);
-		let max = x1.max(x2);
+		let x2 = (position + area - center).length() as f32 * 2.;
+		let min = (x2 - area.length() as f32 / 2.).abs();
+		let max = x2 + area.length() as f32 / 2.;
 
-		let integral = |x: f32| -x.powf(1. - self.feather_exponent) / (self.feather_exponent + 1.);
+		let integral = |x: f32| x - x.powf(self.feather_exponent + 1.) / (self.feather_exponent + 1.);
 
-		let result = if x1 < 1. {
+		let result = if x2 < 1. {
 			let inner = integral(min);
 			let outer = integral(max);
-			outer - inner
+			((outer - inner) / (max - min) as f32).clamp(0., 1.)
 		} else {
 			return None;
 		};
