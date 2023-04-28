@@ -65,10 +65,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				if let Ok(layer) = document.document_legacy.layer(&selected_layers[0]) {
+				if let Ok(layer) = document.document_legacy.layer(selected_layers[0]) {
 					if let Some(vector_data) = layer.as_vector_data() {
 						*selected.original_transforms = OriginalTransforms::default();
-						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(&selected_layers[0]).ok().unwrap_or_default();
+						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(selected_layers[0]).ok().unwrap_or_default();
 
 						let mut point_count: usize = 0;
 						let count_point = |position| {

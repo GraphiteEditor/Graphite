@@ -26,7 +26,7 @@ mod base64_serde {
 	{
 		use serde::de::Error;
 
-		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk.try_into().unwrap()).clone();
+		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk.try_into().unwrap());
 
 		let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(P::byte_size()).map(color_from_chunk).collect();
 
@@ -129,7 +129,7 @@ where
 	pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 		let Image { width, height, data } = self;
 
-		let to_gamma = |x| SRGBGammaFloat::from_linear(x);
+		let to_gamma = SRGBGammaFloat::from_linear;
 		let to_u8 = |x| (num_cast::<_, f32>(x).unwrap() * 255.) as u8;
 
 		let result_bytes = data
@@ -201,7 +201,8 @@ pub struct ImageFrame<P: Pixel> {
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	type Pixel = P;
 
-	fn sample(&self, pos: DVec2) -> Option<Self::Pixel> {
+	// TODO: Improve sampling logic
+	fn sample(&self, pos: DVec2, _area: DVec2) -> Option<Self::Pixel> {
 		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
 		let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);
 		if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {

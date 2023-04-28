@@ -24,7 +24,7 @@ struct ModifyInputsContext<'a> {
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
 	fn new(layer: &'a [LayerId], document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Option<Self> {
-		document.layer_mut(&layer).ok().and_then(|layer| layer.as_node_graph_mut().ok()).map(|network| Self {
+		document.layer_mut(layer).ok().and_then(|layer| layer.as_node_graph_mut().ok()).map(|network| Self {
 			network,
 			node_graph,
 			responses,

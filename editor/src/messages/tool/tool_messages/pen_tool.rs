@@ -475,7 +475,7 @@ impl PenToolData {
 			modification: VectorDataModification::SetManipulatorPosition { point, position },
 		});
 
-		return Some(DocumentMessage::CommitTransaction);
+		Some(DocumentMessage::CommitTransaction)
 	}
 }
 

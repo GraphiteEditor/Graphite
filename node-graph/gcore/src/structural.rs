@@ -81,7 +81,7 @@ mod test {
 	fn test_ref_eval() {
 		let value = ValueNode::new(5);
 
-		assert_eq!((&value).eval(()), &5);
+		assert_eq!(value.eval(()), &5);
 		let id = IdNode::new();
 
 		let compose = ComposeNode::new(&value, &id);

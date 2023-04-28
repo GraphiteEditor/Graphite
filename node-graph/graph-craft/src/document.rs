@@ -292,7 +292,7 @@ impl NodeNetwork {
 	}
 
 	pub fn input_types<'a>(&'a self) -> impl Iterator<Item = Type> + 'a {
-		self.inputs.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty().clone()).unwrap_or(concrete!(())))
+		self.inputs.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty()).unwrap_or(concrete!(())))
 	}
 
 	/// An empty graph
@@ -500,7 +500,7 @@ impl NodeNetwork {
 		}
 		FlowIter {
 			stack: self.outputs.iter().map(|output| output.node_id).collect(),
-			network: &self,
+			network: self,
 		}
 	}
 }

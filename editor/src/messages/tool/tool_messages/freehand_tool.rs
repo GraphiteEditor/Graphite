@@ -223,7 +223,7 @@ fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 
 	responses.add(GraphOperationMessage::StrokeSet {
-		layer: layer_path.clone(),
+		layer: layer_path,
 		stroke: Stroke::new(tool_data.primary_color, data.weight),
 	});
 }
