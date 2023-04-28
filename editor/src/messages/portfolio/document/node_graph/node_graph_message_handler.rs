@@ -5,7 +5,7 @@ use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document;
-use document_legacy::layers::nodegraph_layer::NodeGraphFrameLayer;
+use document_legacy::layers::layer_layer::LayerLayer;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
@@ -223,8 +223,8 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collate the properties panel sections for a node graph
-	pub fn collate_properties(&self, node_graph_frame: &NodeGraphFrameLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
-		let mut network = &node_graph_frame.network;
+	pub fn collate_properties(&self, graph: &LayerLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
+		let mut network = &graph.network;
 		for segment in &self.nested_path {
 			network = network.nodes.get(segment).and_then(|node| node.implementation.get_network()).unwrap();
 		}
@@ -493,7 +493,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id, true)) {
 						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}
 					}
 				}
@@ -683,7 +683,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					Self::send_graph(network, responses);
 					if should_rerender {
 						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}
 					}
 				}
@@ -699,7 +699,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						responses.add(PropertiesPanelMessage::ResendActiveProperties);
 						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id, true) {
 							if let Some(layer_path) = self.layer_path.clone() {
-								responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+								responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 							}
 						}
 					}
@@ -737,7 +737,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 						if network.connected_to_output(*node_id, true) {
-							responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}
 					}
 				}
@@ -811,7 +811,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id, true)) {
 						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}
 					}
 				}
@@ -836,7 +836,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				}
 				self.update_selection_action_buttons(document, responses);
 				if let Some(layer_path) = self.layer_path.clone() {
-					responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 				}
 			}
 		}

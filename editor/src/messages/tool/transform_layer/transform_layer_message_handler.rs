@@ -107,7 +107,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				for layer_path in document.selected_layers() {
-					responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
 				}
 			}
 			BeginGrab => {

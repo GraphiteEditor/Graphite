@@ -41,7 +41,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::DocumentIsDirty)),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraphFrameGenerate)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::InputFrameRasterizeRegionBelowLayer)),
 ];
 
 impl Dispatcher {

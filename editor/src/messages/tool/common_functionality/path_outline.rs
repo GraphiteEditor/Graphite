@@ -33,8 +33,8 @@ impl PathOutline {
 		// TODO Purge this area of BezPath and Kurbo
 		// Get the bezpath from the shape or text
 		let subpath = match &document_layer.data {
-			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
-			LayerDataType::NodeGraphFrame(frame) => frame.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
+			LayerDataType::Shape(shape) => Some(shape.shape.clone()),
+			LayerDataType::Layer(layer) => layer.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
 			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 

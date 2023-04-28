@@ -377,7 +377,7 @@ impl SelectToolData {
 
 		// Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
 		for layer_path in self.not_duplicated_layers.iter().flatten() {
-			responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
+			responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
 		}
 	}
 
@@ -974,7 +974,7 @@ impl Fsm for SelectToolFsmState {
 
 fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
 	for layer_path in &tool_data.layers_dragging {
-		responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.clone() });
+		responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
 	}
 }
 
@@ -1206,8 +1206,8 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 		LayerDataType::Shape(_) => {
 			responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 		}
-		LayerDataType::NodeGraphFrame(graph_frame) if graph_frame.as_vector_data().is_some() => {
-			if graph_frame.network.nodes.values().any(|node| node.name == "Text") {
+		LayerDataType::Layer(layer) if layer.as_vector_data().is_some() => {
+			if layer.network.nodes.values().any(|node| node.name == "Text") {
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 				responses.add(TextToolMessage::EditSelected);
 			} else {

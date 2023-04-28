@@ -129,15 +129,7 @@
 
 			&:hover,
 			&.open {
-				background: var(--color-6-lowergray);
-
-				span {
-					color: var(--color-f-white);
-				}
-
-				svg {
-					fill: var(--color-f-white);
-				}
+				background: var(--color-5-dullgray);
 			}
 
 			&.disabled {
