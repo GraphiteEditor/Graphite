@@ -134,7 +134,7 @@ fn erase(input: (Color, Color), flow: f64) -> Color {
 }
 
 #[node_fn(BrushStampGeneratorNode)]
-fn brush_texture(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
+fn brush_stamp_generator_node(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
 
