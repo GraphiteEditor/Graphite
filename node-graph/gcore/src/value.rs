@@ -66,13 +66,17 @@ impl<T: Clone> From<T> for ClonedNode<T> {
 }
 
 #[derive(Clone, Copy)]
+/// The DebugClonedNode logs every time it is evaluated.
+/// This is useful for debugging.
 pub struct DebugClonedNode<T: Clone>(pub T);
 
 impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
 	type Output = T;
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
+		// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 		log::debug!("DebugClonedNode::eval");
+
 		self.0.clone()
 	}
 }
