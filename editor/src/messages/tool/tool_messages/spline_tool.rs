@@ -164,8 +164,8 @@ impl Fsm for SplineToolFsmState {
 		if let ToolMessage::Spline(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					responses.add(DocumentMessage::StartTransaction);
+					responses.add(DocumentMessage::DeselectAllLayers);
 					tool_data.path = Some(document.get_path_for_new_layer());
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
@@ -194,7 +194,7 @@ impl Fsm for SplineToolFsmState {
 						}
 					}
 
-					responses.push_back(remove_preview(tool_data));
+					responses.add(remove_preview(tool_data));
 					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
@@ -204,18 +204,18 @@ impl Fsm for SplineToolFsmState {
 					let pos = transform.inverse().transform_point2(snapped_position);
 					tool_data.next_point = pos;
 
-					responses.push_back(remove_preview(tool_data));
+					responses.add(remove_preview(tool_data));
 					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
-						responses.push_back(remove_preview(tool_data));
+						responses.add(remove_preview(tool_data));
 						add_spline(tool_data, global_tool_data, false, responses);
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+						responses.add(DocumentMessage::CommitTransaction);
 					} else {
-						responses.push_back(DocumentMessage::AbortTransaction.into());
+						responses.add(DocumentMessage::AbortTransaction);
 					}
 
 					tool_data.path = None;
@@ -240,11 +240,11 @@ impl Fsm for SplineToolFsmState {
 			]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 

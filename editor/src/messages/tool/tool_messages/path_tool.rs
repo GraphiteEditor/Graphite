@@ -183,7 +183,7 @@ impl Fsm for PathToolFsmState {
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift_pressed) {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data
 							.snap_manager
@@ -224,16 +224,13 @@ impl Fsm for PathToolFsmState {
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
 							if shift_pressed {
-								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
+								responses.add(DocumentMessage::AddSelectedLayers { additional_layers: intersection });
 							} else {
 								// Selects the topmost layer when selecting intersecting shapes
 								let top_most_intersection = intersection[intersection.len() - 1].clone();
-								responses.push_back(
-									DocumentMessage::SetSelectedLayers {
-										replacement_selected_layers: vec![top_most_intersection.clone()],
-									}
-									.into(),
-								);
+								responses.add(DocumentMessage::SetSelectedLayers {
+									replacement_selected_layers: vec![top_most_intersection.clone()],
+								});
 								tool_data.drag_start_pos = input.mouse.position;
 								tool_data.previous_mouse_position = input.mouse.position;
 								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
@@ -243,7 +240,7 @@ impl Fsm for PathToolFsmState {
 						} else {
 							// Clear the previous selection if we didn't find anything
 							if !input.keyboard.get(shift_pressed as usize) {
-								responses.push_back(DocumentMessage::DeselectAllLayers.into());
+								responses.add(DocumentMessage::DeselectAllLayers);
 							}
 						}
 
@@ -312,9 +309,9 @@ impl Fsm for PathToolFsmState {
 				// Delete key
 				(_, PathToolMessage::Delete) => {
 					// Delete the selected points and clean up overlays
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					shape_editor.delete_selected_points(responses);
-					responses.push_back(PathToolMessage::SelectionChanged.into());
+					responses.add(PathToolMessage::SelectionChanged);
 					for layer_path in document.all_layers() {
 						shape_overlay.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
@@ -367,10 +364,10 @@ impl Fsm for PathToolFsmState {
 			])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

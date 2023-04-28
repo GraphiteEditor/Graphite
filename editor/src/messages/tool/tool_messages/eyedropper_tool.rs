@@ -147,7 +147,7 @@ impl Fsm for EyedropperToolFsmState {
 			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -156,30 +156,24 @@ impl Fsm for EyedropperToolFsmState {
 			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => MouseCursorIcon::None,
 		};
 
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}
 }
 
 fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
-	responses.push_back(
-		FrontendMessage::UpdateEyedropperSamplingState {
-			mouse_position: None,
-			primary_color: "".into(),
-			secondary_color: "".into(),
-			set_color_choice: None,
-		}
-		.into(),
-	);
+	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
+		mouse_position: None,
+		primary_color: "".into(),
+		secondary_color: "".into(),
+		set_color_choice: None,
+	});
 }
 
 fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler, global_tool_data: &DocumentToolData, set_color_choice: Option<String>) {
-	responses.push_back(
-		FrontendMessage::UpdateEyedropperSamplingState {
-			mouse_position: Some(input.mouse.position.into()),
-			primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
-			secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
-			set_color_choice,
-		}
-		.into(),
-	);
+	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
+		mouse_position: Some(input.mouse.position.into()),
+		primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
+		secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
+		set_color_choice,
+	});
 }

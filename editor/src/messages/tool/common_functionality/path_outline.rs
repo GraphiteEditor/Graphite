@@ -51,7 +51,7 @@ impl PathOutline {
 					transform: DAffine2::IDENTITY.to_cols_array(),
 				};
 
-				responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+				responses.add(DocumentMessage::Overlays(operation.into()));
 
 				overlay_path
 			}
@@ -59,14 +59,14 @@ impl PathOutline {
 
 		// Update the shape bezpath
 		let operation = Operation::SetShapePath { path: overlay.clone(), subpath };
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		// Update the transform to match the document
 		let operation = Operation::SetLayerTransform {
 			path: overlay.clone(),
 			transform: document.document_legacy.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		Some(overlay)
 	}
@@ -87,7 +87,7 @@ impl PathOutline {
 			// Discard the overlay layer if it exists
 			if let Some(overlay_path) = copied_overlay_path {
 				let operation = Operation::DeleteLayer { path: overlay_path };
-				responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+				responses.add(DocumentMessage::Overlays(operation.into()));
 			}
 		}
 		result
@@ -97,7 +97,7 @@ impl PathOutline {
 	pub fn clear_hovered(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(path) = self.hovered_overlay_path.take() {
 			let operation = Operation::DeleteLayer { path };
-			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			responses.add(DocumentMessage::Overlays(operation.into()));
 		}
 		self.hovered_layer_path = None;
 	}
@@ -131,7 +131,7 @@ impl PathOutline {
 	pub fn clear_selected(&mut self, responses: &mut VecDeque<Message>) {
 		while let Some(path) = self.selected_overlay_paths.pop() {
 			let operation = Operation::DeleteLayer { path };
-			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			responses.add(DocumentMessage::Overlays(operation.into()));
 		}
 	}
 
@@ -146,7 +146,7 @@ impl PathOutline {
 		}
 		for path in old_overlay_paths {
 			let operation = Operation::DeleteLayer { path };
-			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			responses.add(DocumentMessage::Overlays(operation.into()));
 		}
 	}
 }

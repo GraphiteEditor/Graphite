@@ -18,13 +18,10 @@ pub trait PropertyHolder {
 	}
 
 	fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: self.properties(),
-				layout_target,
-			}
-			.into(),
-		)
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.properties(),
+			layout_target,
+		})
 	}
 }
 

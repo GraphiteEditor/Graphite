@@ -152,8 +152,8 @@ impl Fsm for FreehandToolFsmState {
 		if let ToolMessage::Freehand(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					responses.add(DocumentMessage::StartTransaction);
+					responses.add(DocumentMessage::DeselectAllLayers);
 					tool_data.path = Some(document.get_path_for_new_layer());
 
 					let pos = transform.inverse().transform_point2(input.mouse.position);
@@ -179,11 +179,11 @@ impl Fsm for FreehandToolFsmState {
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
-						responses.push_back(remove_preview(tool_data));
+						responses.add(remove_preview(tool_data));
 						add_polyline(tool_data, global_tool_data, responses);
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+						responses.add(DocumentMessage::CommitTransaction);
 					} else {
-						responses.push_back(DocumentMessage::AbortTransaction.into());
+						responses.add(DocumentMessage::AbortTransaction);
 					}
 
 					tool_data.path = None;
@@ -204,11 +204,11 @@ impl Fsm for FreehandToolFsmState {
 			FreehandToolFsmState::Drawing => HintData(vec![]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 

@@ -93,13 +93,13 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let update_value = value.as_u64().expect("BreadcrumbTrailButtons update was not of type: u64");
 
 						let callback_message = (breadcrumb_trail_buttons.on_update.callback)(&update_value);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::CheckboxInput(checkbox_input) => {
 						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
 						checkbox_input.checked = update_value;
 						let callback_message = (checkbox_input.on_update.callback)(checkbox_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::ColorInput(color_input) => {
 						let update_value = value.as_object().expect("ColorInput update was not of type: object");
@@ -120,13 +120,13 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						.unwrap_or_else(|| panic!("ColorInput update was not able to be parsed with color data: {color_input:?}"));
 						color_input.value = parsed_color;
 						let callback_message = (color_input.on_update.callback)(color_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::DropdownInput(dropdown_input) => {
 						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
 						dropdown_input.selected_index = Some(update_value as u32);
 						let callback_message = (dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&());
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::FontInput(font_input) => {
 						let update_value = value.as_object().expect("FontInput update was not of type: object");
@@ -139,24 +139,21 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						font_input.font_family = font_family.into();
 						font_input.font_style = font_style.into();
 
-						responses.push_back(
-							PortfolioMessage::LoadFont {
-								font: Font::new(font_family.into(), font_style.into()),
-								is_default: false,
-							}
-							.into(),
-						);
+						responses.add(PortfolioMessage::LoadFont {
+							font: Font::new(font_family.into(), font_style.into()),
+							is_default: false,
+						});
 						let callback_message = (font_input.on_update.callback)(font_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::IconButton(icon_button) => {
 						let callback_message = (icon_button.on_update.callback)(icon_button);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::IconLabel(_) => {}
 					Widget::InvisibleStandinInput(invisible) => {
 						let callback_message = (invisible.on_update.callback)(&());
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::LayerReferenceInput(layer_reference_input) => {
 						let update_value = value.is_null().not().then(|| {
@@ -169,18 +166,18 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						});
 						layer_reference_input.value = update_value;
 						let callback_message = (layer_reference_input.on_update.callback)(layer_reference_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::NumberInput(number_input) => match value {
 						Value::Number(num) => {
 							let update_value = num.as_f64().unwrap();
 							number_input.value = Some(update_value);
 							let callback_message = (number_input.on_update.callback)(number_input);
-							responses.push_back(callback_message);
+							responses.add(callback_message);
 						}
 						Value::String(str) => match str.as_str() {
-							"Increment" => responses.push_back((number_input.increment_callback_increase.callback)(number_input)),
-							"Decrement" => responses.push_back((number_input.increment_callback_decrease.callback)(number_input)),
+							"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
+							"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
 							_ => {
 								panic!("Invalid string found when updating `NumberInput`")
 							}
@@ -191,24 +188,24 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let update_value = value.as_bool().expect("OptionalInput update was not of type: bool");
 						optional_input.checked = update_value;
 						let callback_message = (optional_input.on_update.callback)(optional_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::ParameterExposeButton(parameter_expose_button) => {
 						let callback_message = (parameter_expose_button.on_update.callback)(parameter_expose_button);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::PivotAssist(pivot_assist) => {
 						let update_value = value.as_str().expect("RadioInput update was not of type: u64");
 						pivot_assist.position = update_value.into();
 						let callback_message = (pivot_assist.on_update.callback)(pivot_assist);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::PopoverButton(_) => {}
 					Widget::RadioInput(radio_input) => {
 						let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
 						radio_input.selected_index = update_value as u32;
 						let callback_message = (radio_input.entries[update_value as usize].on_update.callback)(&());
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::Separator(_) => {}
 					Widget::SwatchPairInput(_) => {}
@@ -216,21 +213,21 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
 						text_area_input.value = update_value.into();
 						let callback_message = (text_area_input.on_update.callback)(text_area_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::TextButton(text_button) => {
 						let callback_message = (text_button.on_update.callback)(text_button);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::TextInput(text_input) => {
 						let update_value = value.as_str().expect("TextInput update was not of type: string");
 						text_input.value = update_value.into();
 						let callback_message = (text_input.on_update.callback)(text_input);
-						responses.push_back(callback_message);
+						responses.add(callback_message);
 					}
 					Widget::TextLabel(_) => {}
 				};
-				responses.push_back(ResendActiveWidget { layout_target, dirty_id: widget_id }.into());
+				responses.add(ResendActiveWidget { layout_target, dirty_id: widget_id });
 			}
 		}
 	}
@@ -252,13 +249,10 @@ impl LayoutMessageHandler {
 			// Update the backend storage
 			self.layouts[layout_target as usize] = new_layout;
 			// Update the UI
-			responses.push_back(
-				FrontendMessage::UpdateMenuBarLayout {
-					layout_target,
-					layout: self.layouts[layout_target as usize].clone().unwrap_menu_layout(action_input_mapping).layout,
-				}
-				.into(),
-			);
+			responses.add(FrontendMessage::UpdateMenuBarLayout {
+				layout_target,
+				layout: self.layouts[layout_target as usize].clone().unwrap_menu_layout(action_input_mapping).layout,
+			});
 			return;
 		}
 
@@ -296,6 +290,6 @@ impl LayoutMessageHandler {
 			#[remain::unsorted]
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
-		responses.push_back(message.into());
+		responses.add(message);
 	}
 }

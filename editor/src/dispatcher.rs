@@ -76,7 +76,7 @@ impl Dispatcher {
 				} else if self.message_queues.len() > 1 {
 					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.message_logging_verbosity);
 					self.cleanup_queues(true);
-					self.message_queues[0].push_back(message);
+					self.message_queues[0].add(message);
 					continue;
 				}
 			}
@@ -95,15 +95,15 @@ impl Dispatcher {
 				#[remain::unsorted]
 				Init => {
 					// Load persistent data from the browser database
-					queue.push_back(FrontendMessage::TriggerLoadAutoSaveDocuments.into());
-					queue.push_back(FrontendMessage::TriggerLoadPreferences.into());
+					queue.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
+					queue.add(FrontendMessage::TriggerLoadPreferences);
 
 					// Display the menu bar at the top of the window
-					queue.push_back(MenuBarMessage::SendLayout.into());
+					queue.add(MenuBarMessage::SendLayout);
 
 					// Load the default font
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
-					queue.push_back(FrontendMessage::TriggerFontLoad { font, is_default: true }.into());
+					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
 
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
