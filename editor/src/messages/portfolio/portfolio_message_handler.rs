@@ -445,18 +445,18 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
-			PortfolioMessage::ProcessNodeGraphFrame {
+			PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
 				document_id,
 				layer_path,
-				image_data,
+				input_image_data,
 				size,
-				imaginate_node,
+				imaginate_node_path,
 			} => {
 				let result = self.executor.evaluate_node_graph(
 					(document_id, &mut self.documents),
 					layer_path,
-					(image_data, size),
-					imaginate_node,
+					(input_image_data, size),
+					imaginate_node_path,
 					(preferences, &self.persistent_data),
 					responses,
 				);
@@ -664,16 +664,16 @@ impl PortfolioMessageHandler {
 					x.push(*id);
 					x
 				}))),
-				LayerDataType::NodeGraphFrame(graph_frame) => {
+				LayerDataType::Layer(layer) => {
 					let input_is_font = |input: &NodeInput| {
 						let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = input else {
 							return false;
 						};
 						font == target_font
 					};
-					let should_rerender = graph_frame.network.nodes.values().any(|node| node.inputs.iter().any(input_is_font));
+					let should_rerender = layer.network.nodes.values().any(|node| node.inputs.iter().any(input_is_font));
 					if should_rerender {
-						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 					}
 				}
 				_ => {}

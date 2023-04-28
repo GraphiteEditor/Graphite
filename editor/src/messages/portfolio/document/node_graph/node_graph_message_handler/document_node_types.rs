@@ -934,7 +934,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>"),
 	inputs: vec![
 		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `NodeGraphFrameImaginateRandom` updated with this entry's index
+		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::value("Samples", TaggedValue::F64(30.), false),
 		DocumentInputType::value("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),

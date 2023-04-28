@@ -28,7 +28,7 @@ use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
-use document_legacy::layers::nodegraph_layer::CachedOutputData;
+use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
@@ -394,18 +394,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
 			FrameClear => {
-				let mut selected_frame_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::NodeGraphFrame);
-				// Get what is hopefully the only selected NodeGraphFrame layer
+				let mut selected_frame_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Layer);
+				// Get what is hopefully the only selected Layer layer
 				let layer_path = selected_frame_layers.next();
-				// Abort if we didn't have any NodeGraphFrame layer, or if there are additional ones also selected
+				// Abort if we didn't have any Layer layer, or if there are additional ones also selected
 				if layer_path.is_none() || selected_frame_layers.next().is_some() {
 					return;
 				}
 				let layer_path = layer_path.unwrap();
 
-				let layer = self.document_legacy.layer(layer_path).expect("Clearing NodeGraphFrame image for invalid layer");
+				let layer = self.document_legacy.layer(layer_path).expect("Clearing Layer image for invalid layer");
 				let previous_blob_url = match &layer.data {
-					LayerDataType::NodeGraphFrame(node_graph_frame) => node_graph_frame.as_blob_url(),
+					LayerDataType::Layer(layer) => layer.as_blob_url(),
 					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
 				};
 
@@ -437,6 +437,51 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					replacement_selected_layers: vec![new_folder_path],
 				});
 			}
+			ImaginateClear {
+				layer_path,
+				node_id,
+				cached_index: input_index,
+			} => {
+				let value = graph_craft::document::value::TaggedValue::RcImage(None);
+				responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
+				responses.add(InputFrameRasterizeRegionBelowLayer { layer_path });
+			}
+			ImaginateGenerate { layer_path, imaginate_node } => {
+				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
+					responses.add(message);
+				}
+			}
+			ImaginateRandom {
+				layer_path,
+				imaginate_node,
+				then_generate,
+			} => {
+				// Set a random seed input
+				responses.add(NodeGraphMessage::SetInputValue {
+					node_id: *imaginate_node.last().unwrap(),
+					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
+					input_index: 1,
+					value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+				});
+
+				// Generate the image
+				if then_generate {
+					responses.add(DocumentMessage::ImaginateGenerate { layer_path, imaginate_node });
+				}
+			}
+			ImaginateTerminate { layer_path, node_path } => {
+				responses.add(FrontendMessage::TriggerImaginateTerminate {
+					document_id,
+					layer_path,
+					node_path,
+					hostname: preferences.imaginate_server_hostname.clone(),
+				});
+			}
+			InputFrameRasterizeRegionBelowLayer { layer_path } => {
+				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
+					responses.add(message);
+				}
+			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
 					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
@@ -464,51 +509,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					clipboard: Clipboard::Internal,
 					folder_path,
 					insert_index,
-				});
-			}
-			NodeGraphFrameClear {
-				layer_path,
-				node_id,
-				cached_index: input_index,
-			} => {
-				let value = graph_craft::document::value::TaggedValue::RcImage(None);
-				responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
-				responses.add(NodeGraphFrameGenerate { layer_path });
-			}
-			NodeGraphFrameGenerate { layer_path } => {
-				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, None) {
-					responses.add(message);
-				}
-			}
-			NodeGraphFrameImaginate { layer_path, imaginate_node } => {
-				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
-					responses.add(message);
-				}
-			}
-			NodeGraphFrameImaginateRandom {
-				layer_path,
-				imaginate_node,
-				then_generate,
-			} => {
-				// Set a random seed input
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-					input_index: 1,
-					value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
-				});
-
-				// Generate the image
-				if then_generate {
-					responses.add(DocumentMessage::NodeGraphFrameImaginate { layer_path, imaginate_node });
-				}
-			}
-			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
-				responses.add(FrontendMessage::TriggerImaginateTerminate {
-					document_id,
-					layer_path,
-					node_path,
-					hostname: preferences.imaginate_server_hostname.clone(),
 				});
 			}
 			NudgeSelectedLayers {
@@ -622,7 +622,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					downres_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 
-				responses.add(DocumentOperation::AddNodeGraphFrame {
+				responses.add(DocumentOperation::AddFrame {
 					path: path.clone(),
 					insert_index: -1,
 					transform: DAffine2::ZERO.to_cols_array(),
@@ -639,7 +639,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					skip_rerender: false,
 				});
 
-				responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: path });
+				responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: path });
 
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
@@ -785,16 +785,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Revoke the old blob URL
 				match &layer.data {
-					LayerDataType::NodeGraphFrame(node_graph_frame) => {
-						if let Some(url) = node_graph_frame.as_blob_url() {
+					LayerDataType::Layer(layer) => {
+						if let Some(url) = layer.as_blob_url() {
 							responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
 						}
 					}
 					other => {
-						warn!(
-							"Setting blob URL for invalid layer type, which must be an `Imaginate`, `NodeGraphFrame` or `Image`. Found: `{:?}`",
-							other
-						);
+						warn!("Setting blob URL for invalid layer type, which must be a `Layer` layer type. Found: `{:?}`", other);
 						return;
 					}
 				}
@@ -961,53 +958,54 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn call_node_graph_frame(
+	pub fn rasterize_region_below_layer(
 		&mut self,
 		document_id: u64,
 		layer_path: Vec<LayerId>,
 		_preferences: &PreferencesMessageHandler,
 		persistent_data: &PersistentData,
-		imaginate_node: Option<Vec<NodeId>>,
+		imaginate_node_path: Option<Vec<NodeId>>,
 	) -> Option<Message> {
 		// Prepare the node graph input image
 
-		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer|layer.as_node_graph().ok()) else {
+		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_node_graph().ok()) else {
 			return None;
 		};
 
 		// Check if we use the "Input Frame" node.
 		// TODO: Remove once rasterization is moved into a node.
-		let input_frame = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame");
-		let input_node_id = input_frame.map(|(&id, _)| id);
-		let primary_input_type = input_node_id.filter(|&target_node_id| node_network.connected_to_output(target_node_id, true));
+		let input_frame_node_id = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame").map(|(&id, _)| id);
+		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, true));
 
-		// Only calculate the frame if the primary input is an image
-		let response = if primary_input_type.is_some() {
-			// Calculate the size of the region to be exported
+		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
+		let response = if input_frame_connected_to_graph_output {
 			let old_transforms = self.remove_document_transform();
+
+			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+
 			self.restore_document_transform(old_transforms);
 
-			FrontendMessage::TriggerNodeGraphFrameGenerate {
+			// Once JS asynchronously rasterizes the SVG, it will call the `PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer` message with the rasterized image data
+			FrontendMessage::TriggerRasterizeRegionBelowLayer {
 				document_id,
 				layer_path,
 				svg,
 				size,
-				imaginate_node,
+				imaginate_node_path,
 			}
 			.into()
 		}
-		// Skip processing under node graph frame input if not connected
+		// Skip taking a round trip through JS since there's nothing to rasterize, and instead directly call the message which would otherwise be called asynchronously from JS
 		else {
-			PortfolioMessage::ProcessNodeGraphFrame {
+			PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
 				document_id,
 				layer_path,
-				image_data: Default::default(),
+				input_image_data: vec![],
 				size: (0, 0),
-				imaginate_node,
+				imaginate_node_path,
 			}
 			.into()
 		};
@@ -1166,16 +1164,6 @@ impl DocumentMessageHandler {
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.selected_layers().filter(|path| match self.document_legacy.layer(path) {
 			Ok(layer) => layer.visible,
-			Err(_) => false,
-		})
-	}
-
-	pub fn selected_visible_text_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.selected_layers().filter(|path| match self.document_legacy.layer(path) {
-			Ok(layer) => {
-				let discriminant: LayerDataTypeDiscriminant = (&layer.data).into();
-				layer.visible && discriminant == LayerDataTypeDiscriminant::Text
-			}
 			Err(_) => false,
 		})
 	}
@@ -1543,11 +1531,11 @@ impl DocumentMessageHandler {
 						path.pop();
 					}
 				}
-				LayerDataType::NodeGraphFrame(node_graph_frame) => {
-					if node_graph_frame.cached_output_data == CachedOutputData::None {
-						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: path.clone() });
+				LayerDataType::Layer(layer) => {
+					if layer.cached_output_data == CachedOutputData::None {
+						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: path.clone() });
 					}
-					for node in node_graph_frame.network.nodes.values() {
+					for node in layer.network.nodes.values() {
 						for input in &node.inputs {
 							if let NodeInput::Value {
 								tagged_value: TaggedValue::Font(font),

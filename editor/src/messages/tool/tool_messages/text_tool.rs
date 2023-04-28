@@ -282,7 +282,7 @@ impl TextToolData {
 
 			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size as f64);
 
-			responses.add(Operation::AddNodeGraphFrame {
+			responses.add(Operation::AddFrame {
 				path: self.layer_path.clone(),
 				insert_index: -1,
 				transform: DAffine2::ZERO.to_cols_array(),

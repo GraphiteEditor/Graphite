@@ -105,16 +105,6 @@ pub enum FrontendMessage {
 	},
 	TriggerLoadAutoSaveDocuments,
 	TriggerLoadPreferences,
-	TriggerNodeGraphFrameGenerate {
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		svg: String,
-		size: glam::DVec2,
-		#[serde(rename = "imaginateNode")]
-		imaginate_node: Option<Vec<NodeId>>,
-	},
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload {
@@ -122,6 +112,16 @@ pub enum FrontendMessage {
 		name: String,
 		mime: String,
 		size: (f64, f64),
+	},
+	TriggerRasterizeRegionBelowLayer {
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		svg: String,
+		size: glam::DVec2,
+		#[serde(rename = "imaginateNodePath")]
+		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
