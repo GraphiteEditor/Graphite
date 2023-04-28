@@ -29,7 +29,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 					*self = deserialized_preferences;
 
 					if self.imaginate_server_hostname != Self::default().imaginate_server_hostname {
-						responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+						responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 					}
 				}
 			}
@@ -41,7 +41,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 
 			PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
 				self.imaginate_refresh_frequency = seconds;
-				responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 			}
 			PreferencesMessage::ImaginateServerHostname { hostname } => {
 				let initial = hostname.clone();
@@ -54,7 +54,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				}
 
 				self.imaginate_server_hostname = hostname;
-				responses.push_back(PortfolioMessage::ImaginateCheckServerStatus.into());
+				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
@@ -63,12 +63,12 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 					false => MappingVariant::Default,
 					true => MappingVariant::ZoomWithScroll,
 				};
-				responses.push_back(KeyMappingMessage::ModifyMapping(variant).into());
-				responses.push_back(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll }.into());
+				responses.add(KeyMappingMessage::ModifyMapping(variant));
+				responses.add(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll });
 			}
 		}
 
-		responses.push_back(FrontendMessage::TriggerSavePreferences { preferences: self.clone() }.into());
+		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
 	}
 
 	advertise_actions!(PreferencesMessageDiscriminant;
@@ -76,10 +76,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 }
 
 fn refresh_dialog(responses: &mut VecDeque<Message>) {
-	responses.push_back(
-		DialogMessage::CloseDialogAndThen {
-			followups: vec![DialogMessage::RequestPreferencesDialog.into()],
-		}
-		.into(),
-	);
+	responses.add(DialogMessage::CloseDialogAndThen {
+		followups: vec![DialogMessage::RequestPreferencesDialog.into()],
+	});
 }

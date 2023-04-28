@@ -24,18 +24,15 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			NewDocumentDialogMessage::DimensionsY(y) => self.dimensions.y = y as u32,
 
 			NewDocumentDialogMessage::Submit => {
-				responses.push_back(PortfolioMessage::NewDocumentWithName { name: self.name.clone() }.into());
+				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
 				if !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0 {
-					responses.push_back(
-						ArtboardMessage::AddArtboard {
-							id: None,
-							position: (0., 0.),
-							size: (self.dimensions.x as f64, self.dimensions.y as f64),
-						}
-						.into(),
-					);
-					responses.push_back(DocumentMessage::ZoomCanvasToFitAll.into());
+					responses.add(ArtboardMessage::AddArtboard {
+						id: None,
+						position: (0., 0.),
+						size: (self.dimensions.x as f64, self.dimensions.y as f64),
+					});
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 			}
 		}

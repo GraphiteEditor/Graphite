@@ -261,7 +261,7 @@ impl NodeGraphExecutor {
 
 		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
 		if let Some(imaginate_node) = imaginate_node {
-			responses.push_back(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, editor_api, persistent_data)?);
+			responses.add(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, editor_api, persistent_data)?);
 			return Ok(());
 		}
 		// Execute the node graph
@@ -272,8 +272,8 @@ impl NodeGraphExecutor {
 			// Update the cached vector data on the layer
 			let vector_data: VectorData = dyn_any::downcast(boxed_node_graph_output).map(|v| *v)?;
 			let transform = vector_data.transform.to_cols_array();
-			responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
-			responses.push_back(Operation::SetVectorData { path: layer_path, vector_data }.into());
+			responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
+			responses.add(Operation::SetVectorData { path: layer_path, vector_data });
 		} else {
 			// Attempt to downcast to an image frame
 			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
@@ -283,11 +283,11 @@ impl NodeGraphExecutor {
 
 			// If no image was generated, clear the frame
 			if image.width == 0 || image.height == 0 {
-				responses.push_back(DocumentMessage::FrameClear.into());
+				responses.add(DocumentMessage::FrameClear);
 
 				// Update the transform based on the graph output
 				if let Some(transform) = transform {
-					responses.push_back(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into());
+					responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 				}
 			} else {
 				// Update the image data
@@ -301,7 +301,7 @@ impl NodeGraphExecutor {
 					mime,
 					transform,
 				}];
-				responses.push_back(FrontendMessage::UpdateImageData { document_id, image_data }.into());
+				responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
 			}
 		}
 

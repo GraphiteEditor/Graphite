@@ -124,56 +124,46 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					Ok(Some(document_responses)) => {
 						for response in document_responses {
 							match &response {
-								DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
+								DocumentResponse::FolderChanged { path } => responses.add(FolderChanged { affected_folder_path: path.clone() }),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_metadata.remove(path);
 								}
-								DocumentResponse::LayerChanged { path } => responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into()),
+								DocumentResponse::LayerChanged { path } => responses.add(LayerChanged { affected_layer_path: path.clone() }),
 								DocumentResponse::CreatedLayer { path } => {
 									if self.layer_metadata.contains_key(path) {
 										warn!("CreatedLayer overrides existing layer metadata.");
 									}
 									self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
 
-									responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
+									responses.add(LayerChanged { affected_layer_path: path.clone() });
 									self.layer_range_selection_reference = path.clone();
-									responses.push_back(
-										AddSelectedLayers {
-											additional_layers: vec![path.clone()],
-										}
-										.into(),
-									);
+									responses.add(AddSelectedLayers {
+										additional_layers: vec![path.clone()],
+									});
 								}
-								DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
+								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
 								DocumentResponse::DeletedSelectedManipulatorPoints => {
 									// Clear Properties panel after deleting all points by updating backend widget state.
-									responses.push_back(
-										LayoutMessage::SendLayout {
-											layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-											layout_target: LayoutTarget::PropertiesOptions,
-										}
-										.into(),
-									);
-									responses.push_back(
-										LayoutMessage::SendLayout {
-											layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-											layout_target: LayoutTarget::PropertiesSections,
-										}
-										.into(),
-									);
+									responses.add(LayoutMessage::SendLayout {
+										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+										layout_target: LayoutTarget::PropertiesOptions,
+									});
+									responses.add(LayoutMessage::SendLayout {
+										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+										layout_target: LayoutTarget::PropertiesSections,
+									});
 								}
 							};
-							responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
 					}
 					// Display boolean operation error to the user (except if it is a nothing done error).
-					Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => responses.push_back(
-						DialogMessage::DisplayDialogError {
+					Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => {
+						responses.add(DialogMessage::DisplayDialogError {
 							title: "Failed to calculate boolean operation".into(),
 							description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
-						}
-						.into(),
-					),
+						})
+					}
 					Err(e) => error!("DocumentError: {:?}", e),
 					Ok(_) => (),
 				}
@@ -224,8 +214,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
-				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
-				responses.push_back(BroadcastEvent::SelectionChanged.into());
+				responses.add(FolderChanged { affected_folder_path: vec![] });
+				responses.add(BroadcastEvent::SelectionChanged);
 
 				self.update_layer_tree_options_bar_widgets(responses, &render_data);
 			}
@@ -262,95 +252,86 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							skip_rerender: false,
 						});
 					}
-					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
 			}
 			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, *artboard, layer_metadata, responses),
 			BooleanOperation(op) => {
 				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
-				responses.push_back(StartTransaction.into());
-				responses.push_back(BroadcastEvent::ToolAbort.into());
-				responses.push_back(
-					DocumentOperation::BooleanOperation {
-						operation: op,
-						selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
-					}
-					.into(),
-				);
-				responses.push_back(CommitTransaction.into());
+				responses.add(StartTransaction);
+				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(DocumentOperation::BooleanOperation {
+					operation: op,
+					selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
+				});
+				responses.add(CommitTransaction);
 			}
 			ClearLayerTree => {
 				// Send an empty layer tree
 				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
-				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into());
+				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer });
 
 				// Clear the options bar
-				responses.push_back(
-					LayoutMessage::SendLayout {
-						layout: Layout::WidgetLayout(Default::default()),
-						layout_target: LayoutTarget::LayerTreeOptions,
-					}
-					.into(),
-				);
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(Default::default()),
+					layout_target: LayoutTarget::LayerTreeOptions,
+				});
 			}
 			CommitTransaction => (),
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
 				container_path.push(id);
-				responses.push_back(DocumentMessage::DeselectAllLayers.into());
-				responses.push_back(DocumentOperation::CreateFolder { path: container_path.clone() }.into());
-				responses.push_back(
-					DocumentMessage::SetLayerExpansion {
-						layer_path: container_path,
-						set_expanded: true,
-					}
-					.into(),
-				);
+				responses.add(DocumentMessage::DeselectAllLayers);
+				responses.add(DocumentOperation::CreateFolder { path: container_path.clone() });
+				responses.add(DocumentMessage::SetLayerExpansion {
+					layer_path: container_path,
+					set_expanded: true,
+				});
 			}
 			DebugPrintDocument => {
 				info!("{:#?}\n{:#?}", self.document_legacy, self.layer_metadata);
 			}
 			DeleteLayer { layer_path } => {
-				responses.push_front(DocumentOperation::DeleteLayer { path: layer_path.clone() }.into());
-				responses.push_front(BroadcastEvent::ToolAbort.into());
-				responses.push_back(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path }.into());
+				responses.add_front(DocumentOperation::DeleteLayer { path: layer_path.clone() });
+				responses.add_front(BroadcastEvent::ToolAbort);
+				responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path });
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
 
 				for path in self.selected_layers_without_children() {
-					responses.push_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() }.into());
+					responses.add_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() });
 				}
 
-				responses.push_front(BroadcastEvent::SelectionChanged.into());
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add_front(BroadcastEvent::SelectionChanged);
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			DeselectAllLayers => {
-				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
+				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
 				self.layer_range_selection_reference.clear();
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
 				DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
-				responses.push_back(DocumentMessage::RenderDocument.into());
+				responses.add(DocumentMessage::RenderDocument);
 			}
 			DirtyRenderDocumentInOutlineView => {
 				if self.view_mode == ViewMode::Outline {
-					responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+					responses.add_front(DocumentMessage::DirtyRenderDocument);
 				}
 			}
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
-				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
+				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
 			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
-				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
+				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
 				self.layer_range_selection_reference.clear();
 				for path in self.selected_layers_sorted() {
-					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
+					responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
 				}
 			}
 			ExportDocument {
@@ -381,11 +362,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				};
 
 				if file_type == FileType::Svg {
-					responses.push_back(FrontendMessage::TriggerFileDownload { document, name }.into());
+					responses.add(FrontendMessage::TriggerFileDownload { document, name });
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = (size * scale_factor).into();
-					responses.push_back(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size }.into());
+					responses.add(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size });
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {
@@ -405,7 +386,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							skip_rerender: false,
 						});
 					}
-					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
 			}
 			FolderChanged { affected_folder_path } => {
@@ -429,9 +410,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				};
 
 				if let Some(url) = previous_blob_url {
-					responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+					responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
 				}
-				responses.push_back(DocumentOperation::ClearBlobURL { path: layer_path.into() }.into());
+				responses.add(DocumentOperation::ClearBlobURL { path: layer_path.into() });
 			}
 			GroupSelectedLayers => {
 				let mut new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
@@ -443,30 +424,24 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				new_folder_path.push(generate_uuid());
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
-				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(DocumentOperation::CreateFolder { path: new_folder_path.clone() }.into());
-				responses.push_back(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() }.into());
-				responses.push_back(
-					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::Internal,
-						folder_path: new_folder_path.clone(),
-						insert_index: -1,
-					}
-					.into(),
-				);
-				responses.push_back(
-					DocumentMessage::SetSelectedLayers {
-						replacement_selected_layers: vec![new_folder_path],
-					}
-					.into(),
-				);
+				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
+				responses.add(DocumentMessage::DeleteSelectedLayers);
+				responses.add(DocumentOperation::CreateFolder { path: new_folder_path.clone() });
+				responses.add(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() });
+				responses.add(PortfolioMessage::PasteIntoFolder {
+					clipboard: Clipboard::Internal,
+					folder_path: new_folder_path.clone(),
+					insert_index: -1,
+				});
+				responses.add(DocumentMessage::SetSelectedLayers {
+					replacement_selected_layers: vec![new_folder_path],
+				});
 			}
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
-					responses.push_back(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry }.into());
+					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
 				}
-				responses.push_back(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path }.into());
+				responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path });
 				self.update_layer_tree_options_bar_widgets(responses, &render_data);
 			}
 			MoveSelectedLayersTo {
@@ -483,16 +458,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let insert_index = self.update_insert_index(&selected_layers, &folder_path, insert_index, reverse_index).unwrap();
 
-				responses.push_back(PortfolioMessage::Copy { clipboard: Clipboard::Internal }.into());
-				responses.push_back(DocumentMessage::DeleteSelectedLayers.into());
-				responses.push_back(
-					PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::Internal,
-						folder_path,
-						insert_index,
-					}
-					.into(),
-				);
+				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
+				responses.add(DocumentMessage::DeleteSelectedLayers);
+				responses.add(PortfolioMessage::PasteIntoFolder {
+					clipboard: Clipboard::Internal,
+					folder_path,
+					insert_index,
+				});
 			}
 			NodeGraphFrameClear {
 				layer_path,
@@ -500,17 +472,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				cached_index: input_index,
 			} => {
 				let value = graph_craft::document::value::TaggedValue::RcImage(None);
-				responses.push_back(NodeGraphMessage::SetInputValue { node_id, input_index, value }.into());
-				responses.push_back(NodeGraphFrameGenerate { layer_path }.into());
+				responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
+				responses.add(NodeGraphFrameGenerate { layer_path });
 			}
 			NodeGraphFrameGenerate { layer_path } => {
 				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, None) {
-					responses.push_back(message);
+					responses.add(message);
 				}
 			}
 			NodeGraphFrameImaginate { layer_path, imaginate_node } => {
 				if let Some(message) = self.call_node_graph_frame(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
-					responses.push_back(message);
+					responses.add(message);
 				}
 			}
 			NodeGraphFrameImaginateRandom {
@@ -519,31 +491,25 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				then_generate,
 			} => {
 				// Set a random seed input
-				responses.push_back(
-					NodeGraphMessage::SetInputValue {
-						node_id: *imaginate_node.last().unwrap(),
-						// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-						input_index: 1,
-						value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
-					}
-					.into(),
-				);
+				responses.add(NodeGraphMessage::SetInputValue {
+					node_id: *imaginate_node.last().unwrap(),
+					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
+					input_index: 1,
+					value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+				});
 
 				// Generate the image
 				if then_generate {
-					responses.push_back(DocumentMessage::NodeGraphFrameImaginate { layer_path, imaginate_node }.into());
+					responses.add(DocumentMessage::NodeGraphFrameImaginate { layer_path, imaginate_node });
 				}
 			}
 			NodeGraphFrameImaginateTerminate { layer_path, node_path } => {
-				responses.push_back(
-					FrontendMessage::TriggerImaginateTerminate {
-						document_id,
-						layer_path,
-						node_path,
-						hostname: preferences.imaginate_server_hostname.clone(),
-					}
-					.into(),
-				);
+				responses.add(FrontendMessage::TriggerImaginateTerminate {
+					document_id,
+					layer_path,
+					node_path,
+					hostname: preferences.imaginate_server_hostname.clone(),
+				});
 			}
 			NudgeSelectedLayers {
 				delta_x,
@@ -591,7 +557,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						});
 					}
 				}
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			PasteImage { image, mouse } => {
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
@@ -629,7 +595,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let transform = center_in_viewport_layerspace * fit_image_size;
 
-				responses.push_back(DocumentMessage::StartTransaction.into());
+				responses.add(DocumentMessage::StartTransaction);
 
 				let mut pos = 8;
 				let mut next_pos = || {
@@ -656,21 +622,15 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					downres_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 
-				responses.push_back(
-					DocumentOperation::AddNodeGraphFrame {
-						path: path.clone(),
-						insert_index: -1,
-						transform: DAffine2::ZERO.to_cols_array(),
-						network,
-					}
-					.into(),
-				);
-				responses.push_back(
-					DocumentMessage::SetSelectedLayers {
-						replacement_selected_layers: vec![path.clone()],
-					}
-					.into(),
-				);
+				responses.add(DocumentOperation::AddNodeGraphFrame {
+					path: path.clone(),
+					insert_index: -1,
+					transform: DAffine2::ZERO.to_cols_array(),
+					network,
+				});
+				responses.add(DocumentMessage::SetSelectedLayers {
+					replacement_selected_layers: vec![path.clone()],
+				});
 
 				responses.add(GraphOperationMessage::TransformSet {
 					layer: path.clone(),
@@ -679,27 +639,24 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					skip_rerender: false,
 				});
 
-				responses.push_back(DocumentMessage::NodeGraphFrameGenerate { layer_path: path }.into());
+				responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: path });
 
 				// Force chosen tool to be Select Tool after importing image.
-				responses.push_back(ToolMessage::ActivateTool { tool_type: ToolType::Select }.into());
+				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
 			Redo => {
-				responses.push_back(SelectToolMessage::Abort.into());
-				responses.push_back(DocumentHistoryForward.into());
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				responses.push_back(RenderDocument.into());
-				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
+				responses.add(SelectToolMessage::Abort);
+				responses.add(DocumentHistoryForward);
+				responses.add(BroadcastEvent::DocumentIsDirty);
+				responses.add(RenderDocument);
+				responses.add(FolderChanged { affected_folder_path: vec![] });
 			}
-			RenameLayer { layer_path, new_name } => responses.push_back(DocumentOperation::RenameLayer { layer_path, new_name }.into()),
+			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
-				responses.push_back(
-					FrontendMessage::UpdateDocumentArtwork {
-						svg: self.document_legacy.render_root(&render_data),
-					}
-					.into(),
-				);
-				responses.push_back(ArtboardMessage::RenderArtboards.into());
+				responses.add(FrontendMessage::UpdateDocumentArtwork {
+					svg: self.document_legacy.render_root(&render_data),
+				});
+				responses.add(ArtboardMessage::RenderArtboards);
 
 				let document_transform_scale = self.navigation_handler.snapped_scale();
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
@@ -719,23 +676,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let ruler_origin = self.document_legacy.root.transform.transform_point2(DVec2::ZERO);
 
-				responses.push_back(
-					FrontendMessage::UpdateDocumentScrollbars {
-						position: scrollbar_position.into(),
-						size: scrollbar_size.into(),
-						multiplier: scrollbar_multiplier.into(),
-					}
-					.into(),
-				);
+				responses.add(FrontendMessage::UpdateDocumentScrollbars {
+					position: scrollbar_position.into(),
+					size: scrollbar_size.into(),
+					multiplier: scrollbar_multiplier.into(),
+				});
 
-				responses.push_back(
-					FrontendMessage::UpdateDocumentRulers {
-						origin: ruler_origin.into(),
-						spacing: ruler_spacing,
-						interval: ruler_interval,
-					}
-					.into(),
-				);
+				responses.add(FrontendMessage::UpdateDocumentRulers {
+					origin: ruler_origin.into(),
+					spacing: ruler_spacing,
+					interval: ruler_interval,
+				});
 			}
 			RollbackTransaction => {
 				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));
@@ -743,37 +694,34 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			SaveDocument => {
 				self.set_save_state(true);
-				responses.push_back(PortfolioMessage::AutoSaveActiveDocument.into());
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 				// Update the save status of the just saved document
-				responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
 					true => self.name.clone(),
 					false => self.name.clone() + FILE_SAVE_SUFFIX,
 				};
-				responses.push_back(
-					FrontendMessage::TriggerFileDownload {
-						document: self.serialize_document(),
-						name,
-					}
-					.into(),
-				)
+				responses.add(FrontendMessage::TriggerFileDownload {
+					document: self.serialize_document(),
+					name,
+				})
 			}
 			SelectAllLayers => {
 				let all = self.all_layers().map(|path| path.to_vec()).collect();
-				responses.push_front(SetSelectedLayers { replacement_selected_layers: all }.into());
+				responses.add_front(SetSelectedLayers { replacement_selected_layers: all });
 			}
 			SelectedLayersLower => {
-				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 }.into());
+				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 });
 			}
 			SelectedLayersLowerToBack => {
-				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN }.into());
+				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN });
 			}
 			SelectedLayersRaise => {
-				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 }.into());
+				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 });
 			}
 			SelectedLayersRaiseToFront => {
-				responses.push_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX }.into());
+				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX });
 			}
 			SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
@@ -796,13 +744,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						// Toggle selection when holding ctrl
 						let layer = self.layer_metadata_mut(&layer_path);
 						layer.selected = !layer.selected;
-						responses.push_back(
-							LayerChanged {
-								affected_layer_path: layer_path.clone(),
-							}
-							.into(),
-						);
-						responses.push_back(BroadcastEvent::SelectionChanged.into());
+						responses.add(LayerChanged {
+							affected_layer_path: layer_path.clone(),
+						});
+						responses.add(BroadcastEvent::SelectionChanged);
 					} else {
 						paths.push(layer_path.clone());
 					}
@@ -815,16 +760,16 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				if !paths.is_empty() {
 					// Add or set our selected layers
 					if ctrl {
-						responses.push_front(AddSelectedLayers { additional_layers: paths }.into());
+						responses.add_front(AddSelectedLayers { additional_layers: paths });
 					} else {
-						responses.push_front(SetSelectedLayers { replacement_selected_layers: paths }.into());
+						responses.add_front(SetSelectedLayers { replacement_selected_layers: paths });
 					}
 				}
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
 				for path in self.selected_layers() {
-					responses.push_back(DocumentOperation::SetLayerBlendMode { path: path.to_vec(), blend_mode }.into());
+					responses.add(DocumentOperation::SetLayerBlendMode { path: path.to_vec(), blend_mode });
 				}
 			}
 			SetImageBlobUrl {
@@ -842,7 +787,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				match &layer.data {
 					LayerDataType::NodeGraphFrame(node_graph_frame) => {
 						if let Some(url) = node_graph_frame.as_blob_url() {
-							responses.push_back(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() }.into());
+							responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
 						}
 					}
 					other => {
@@ -854,25 +799,22 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 				}
 
-				responses.push_back(
-					PortfolioMessage::DocumentPassMessage {
-						document_id,
-						message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
-					}
-					.into(),
-				);
+				responses.add(PortfolioMessage::DocumentPassMessage {
+					document_id,
+					message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
+				});
 			}
 			SetLayerExpansion { layer_path, set_expanded } => {
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
-				responses.push_back(DocumentStructureChanged.into());
-				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
+				responses.add(DocumentStructureChanged);
+				responses.add(LayerChanged { affected_layer_path: layer_path })
 			}
 			SetLayerName { layer_path, name } => {
 				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, &render_data) {
 					// Only save the history state if the name actually changed to something different
 					if layer.name != name {
 						self.backup(responses);
-						responses.push_back(DocumentOperation::SetLayerName { path: layer_path, name }.into());
+						responses.add(DocumentOperation::SetLayerName { path: layer_path, name });
 					}
 				}
 			}
@@ -881,57 +823,57 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let opacity = opacity.clamp(0., 1.);
 
 				for path in self.selected_layers().map(|path| path.to_vec()) {
-					responses.push_back(DocumentOperation::SetLayerOpacity { path, opacity }.into());
+					responses.add(DocumentOperation::SetLayerOpacity { path, opacity });
 				}
 			}
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
-				responses.push_back(BroadcastEvent::ToolAbort.into());
-				responses.push_back(OverlaysMessage::ClearAllOverlays.into());
-				responses.push_back(OverlaysMessage::Rerender.into());
+				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(OverlaysMessage::ClearAllOverlays);
+				responses.add(OverlaysMessage::Rerender);
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
 				let selected = self.layer_metadata.iter_mut().filter(|(_, layer_metadata)| layer_metadata.selected);
 				selected.for_each(|(path, layer_metadata)| {
 					layer_metadata.selected = false;
-					responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into())
+					responses.add(LayerChanged { affected_layer_path: path.clone() })
 				});
 
 				let additional_layers = replacement_selected_layers;
-				responses.push_front(AddSelectedLayers { additional_layers }.into());
+				responses.add_front(AddSelectedLayers { additional_layers });
 			}
 			SetSnapping { snap } => {
 				self.snapping_enabled = snap;
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
-				responses.push_front(DocumentMessage::DirtyRenderDocument.into());
+				responses.add_front(DocumentMessage::DirtyRenderDocument);
 			}
 			StartTransaction => self.backup(responses),
 			ToggleLayerExpansion { layer_path } => {
 				self.layer_metadata_mut(&layer_path).expanded ^= true;
-				responses.push_back(DocumentStructureChanged.into());
-				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
+				responses.add(DocumentStructureChanged);
+				responses.add(LayerChanged { affected_layer_path: layer_path })
 			}
 			ToggleLayerVisibility { layer_path } => {
-				responses.push_back(DocumentOperation::ToggleLayerVisibility { path: layer_path }.into());
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+				responses.add(DocumentOperation::ToggleLayerVisibility { path: layer_path });
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			Undo => {
 				self.undo_in_progress = true;
-				responses.push_back(BroadcastEvent::ToolAbort.into());
-				responses.push_back(DocumentHistoryBackward.into());
-				responses.push_back(BroadcastEvent::DocumentIsDirty.into());
-				responses.push_back(RenderDocument.into());
-				responses.push_back(FolderChanged { affected_folder_path: vec![] }.into());
-				responses.push_back(UndoFinished.into());
+				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(DocumentHistoryBackward);
+				responses.add(BroadcastEvent::DocumentIsDirty);
+				responses.add(RenderDocument);
+				responses.add(FolderChanged { affected_folder_path: vec![] });
+				responses.add(UndoFinished);
 			}
 			UndoFinished => self.undo_in_progress = false,
 			UngroupLayers { folder_path } => {
 				// Select all the children of the folder
 				let select = self.document_legacy.folder_children_paths(&folder_path);
 
-				let message_buffer = [
+				let message_buffer: [Message; 4] = [
 					// Select them
 					DocumentMessage::SetSelectedLayers { replacement_selected_layers: select }.into(),
 					// Copy them
@@ -949,36 +891,33 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Push these messages in reverse due to push_front
 				for message in message_buffer.into_iter().rev() {
-					responses.push_front(message);
+					responses.add_front(message);
 				}
 			}
 			UngroupSelectedLayers => {
-				responses.push_back(DocumentMessage::StartTransaction.into());
+				responses.add(DocumentMessage::StartTransaction);
 				let folder_paths = self.document_legacy.sorted_folders_by_depth(self.selected_layers());
 				for folder_path in folder_paths {
-					responses.push_back(DocumentMessage::UngroupLayers { folder_path: folder_path.to_vec() }.into());
+					responses.add(DocumentMessage::UngroupLayers { folder_path: folder_path.to_vec() });
 				}
-				responses.push_back(DocumentMessage::CommitTransaction.into());
+				responses.add(DocumentMessage::CommitTransaction);
 			}
 			UpdateLayerMetadata { layer_path, layer_metadata } => {
 				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
 			ZoomCanvasTo100Percent => {
-				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into());
+				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. });
 			}
 			ZoomCanvasTo200Percent => {
-				responses.push_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. }.into());
+				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
 			}
 			ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.document_bounds(&render_data) {
-					responses.push_back(
-						NavigationMessage::FitViewportToBounds {
-							bounds,
-							padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
-							prevent_zoom_past_100: true,
-						}
-						.into(),
-					)
+					responses.add(NavigationMessage::FitViewportToBounds {
+						bounds,
+						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
+						prevent_zoom_past_100: true,
+					})
 				}
 			}
 		}
@@ -1387,7 +1326,7 @@ impl DocumentMessageHandler {
 		}
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 	}
 
 	/// Copies the entire document into the history system
@@ -1397,14 +1336,11 @@ impl DocumentMessageHandler {
 
 	/// Push a message backing up the document in its current state
 	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(
-			DocumentMessage::BackupDocument {
-				document: self.document_legacy.clone(),
-				artboard: Box::new(self.artboard_message_handler.clone()),
-				layer_metadata: self.layer_metadata.clone(),
-			}
-			.into(),
-		);
+		responses.add(DocumentMessage::BackupDocument {
+			document: self.document_legacy.clone(),
+			artboard: Box::new(self.artboard_message_handler.clone()),
+			layer_metadata: self.layer_metadata.clone(),
+		});
 	}
 
 	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
@@ -1432,7 +1368,7 @@ impl DocumentMessageHandler {
 
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
@@ -1443,7 +1379,7 @@ impl DocumentMessageHandler {
 				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
 				if prev_selected_paths != selected_paths {
-					responses.push_back(BroadcastEvent::SelectionChanged.into());
+					responses.add(BroadcastEvent::SelectionChanged);
 				}
 
 				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
@@ -1454,10 +1390,10 @@ impl DocumentMessageHandler {
 				}
 
 				for layer in self.layer_metadata.keys() {
-					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
+					responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: true }.into());
+				responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 
 				Ok(())
 			}
@@ -1467,7 +1403,7 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.push_back(PortfolioMessage::UpdateOpenDocumentsList.into());
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
@@ -1478,7 +1414,7 @@ impl DocumentMessageHandler {
 				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
 				if next_selected_paths != selected_paths {
-					responses.push_back(BroadcastEvent::SelectionChanged.into());
+					responses.add(BroadcastEvent::SelectionChanged);
 				}
 
 				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
@@ -1488,10 +1424,10 @@ impl DocumentMessageHandler {
 				}
 
 				for layer in self.layer_metadata.keys() {
-					responses.push_back(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() }.into())
+					responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
 				}
 
-				responses.push_back(NodeGraphMessage::SendGraph { should_rerender: true }.into());
+				responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 
 				Ok(())
 			}
@@ -1630,7 +1566,7 @@ impl DocumentMessageHandler {
 		let mut fonts = HashSet::new();
 		walk_layers(root, &mut path, responses, &mut fonts);
 		for font in fonts {
-			responses.push_front(FrontendMessage::TriggerFontLoad { font, is_default: false }.into());
+			responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default: false });
 		}
 	}
 
@@ -1836,21 +1772,15 @@ impl DocumentMessageHandler {
 			],
 		}]);
 
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: Layout::WidgetLayout(document_bar_layout),
-				layout_target: LayoutTarget::DocumentBar,
-			}
-			.into(),
-		);
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(document_bar_layout),
+			layout_target: LayoutTarget::DocumentBar,
+		});
 
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: Layout::WidgetLayout(document_mode_layout),
-				layout_target: LayoutTarget::DocumentMode,
-			}
-			.into(),
-		);
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(document_mode_layout),
+			layout_target: LayoutTarget::DocumentMode,
+		});
 	}
 
 	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>, render_data: &RenderData) {
@@ -1963,13 +1893,10 @@ impl DocumentMessageHandler {
 			],
 		}]);
 
-		responses.push_back(
-			LayoutMessage::SendLayout {
-				layout: Layout::WidgetLayout(layer_tree_options),
-				layout_target: LayoutTarget::LayerTreeOptions,
-			}
-			.into(),
-		);
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layer_tree_options),
+			layout_target: LayoutTarget::LayerTreeOptions,
+		});
 	}
 
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
@@ -2014,14 +1941,11 @@ impl DocumentMessageHandler {
 						// If moving down, insert below this layer. If moving up, insert above this layer.
 						let insert_index = if relative_index_offset < 0 { neighbor_layer_index } else { neighbor_layer_index + 1 };
 
-						responses.push_back(
-							DocumentMessage::MoveSelectedLayersTo {
-								folder_path: folder_path.to_vec(),
-								insert_index,
-								reverse_index: false,
-							}
-							.into(),
-						);
+						responses.add(DocumentMessage::MoveSelectedLayersTo {
+							folder_path: folder_path.to_vec(),
+							insert_index,
+							reverse_index: false,
+						});
 					}
 				}
 			}

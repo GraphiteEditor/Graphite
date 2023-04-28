@@ -22,7 +22,7 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 				let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, Some(ipp.document_bounds()));
 
 				match self.overlays_document.handle_operation(*operation, &render_data) {
-					Ok(_) => responses.push_back(OverlaysMessage::Rerender.into()),
+					Ok(_) => responses.add(OverlaysMessage::Rerender),
 					Err(e) => error!("OverlaysError: {:?}", e),
 				}
 			}
@@ -34,17 +34,14 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 			Rerender =>
 			// Render overlays
 			{
-				responses.push_back(
-					FrontendMessage::UpdateDocumentOverlays {
-						svg: if overlays_visible {
-							let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, Some(ipp.document_bounds()));
-							self.overlays_document.render_root(&render_data)
-						} else {
-							String::from("")
-						},
-					}
-					.into(),
-				)
+				responses.add(FrontendMessage::UpdateDocumentOverlays {
+					svg: if overlays_visible {
+						let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, Some(ipp.document_bounds()));
+						self.overlays_document.render_root(&render_data)
+					} else {
+						String::from("")
+					},
+				})
 			}
 		}
 	}

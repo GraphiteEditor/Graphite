@@ -14,7 +14,7 @@ impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 			#[remain::unsorted]
 			BroadcastMessage::TriggerEvent(event) => {
 				for message in self.listeners.entry(event).or_default() {
-					responses.push_front(message.clone())
+					responses.add_front(message.clone())
 				}
 			}
 

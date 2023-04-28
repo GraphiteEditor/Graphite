@@ -18,25 +18,25 @@ impl MessageHandler<DebugMessage, ()> for DebugMessageHandler {
 				}
 
 				// Refresh the checkmark beside the menu entry for this
-				responses.push_back(MenuBarMessage::SendLayout.into());
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			DebugMessage::MessageOff => {
 				self.message_logging_verbosity = MessageLoggingVerbosity::Off;
 
 				// Refresh the checkmark beside the menu entry for this
-				responses.push_back(MenuBarMessage::SendLayout.into());
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			DebugMessage::MessageNames => {
 				self.message_logging_verbosity = MessageLoggingVerbosity::Names;
 
 				// Refresh the checkmark beside the menu entry for this
-				responses.push_back(MenuBarMessage::SendLayout.into());
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			DebugMessage::MessageContents => {
 				self.message_logging_verbosity = MessageLoggingVerbosity::Contents;
 
 				// Refresh the checkmark beside the menu entry for this
-				responses.push_back(MenuBarMessage::SendLayout.into());
+				responses.add(MenuBarMessage::SendLayout);
 			}
 		}
 	}
