@@ -104,8 +104,8 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 
 		let distance = (position + area / 2. - center).length() as f32 * 2.;
 
-		let edge_opacity = 1. - (1.- aa_radius).powf(self.feather_exponent);
-		let result = if distance < 1. -  aa_radius {
+		let edge_opacity = 1. - (1. - aa_radius).powf(self.feather_exponent);
+		let result = if distance < 1. - aa_radius {
 			1. - distance.powf(self.feather_exponent)
 		} else if distance < 1. {
 			edge_opacity * ((1. - distance) / aa_radius)
