@@ -2,6 +2,8 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::widget_prelude::WidgetHolder;
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, OptionalInput, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
@@ -89,15 +91,32 @@ impl ToolMetadata for PenTool {
 	}
 }
 
+fn create_color_select_widget(label_text: String) -> Vec<WidgetHolder> {
+	let reset = IconButton::new("CloseX", 12).tooltip("Clear color").widget_holder();
+	let label = TextLabel::new(label_text).widget_holder();
+	let optional = OptionalInput::new(true, "ResetColors").tooltip("Override working colour").widget_holder();
+	let color_input = ColorInput::default().widget_holder();
+
+	vec![reset, WidgetHolder::related_separator(), label, WidgetHolder::related_separator(), optional, color_input]
+}
+
+fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+	NumberInput::new(Some(line_weight))
+		.unit(" px")
+		.label("Weight")
+		.min(0.)
+		.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.widget_holder()
+}
+
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
-		let weight = NumberInput::new(Some(self.options.line_weight))
-			.unit(" px")
-			.label("Weight")
-			.min(0.)
-			.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
-			.widget_holder();
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
+		let mut widgets = create_color_select_widget(String::from("Fill"));
+		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
+		widgets.append(&mut create_color_select_widget(String::from("Stroke")));
+		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(create_weight_widget(self.options.line_weight));
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
