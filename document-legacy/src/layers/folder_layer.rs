@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct FolderLayer {
 	/// The ID that will be assigned to the next layer that is added to the folder
-	next_assignment_id: LayerId,
+	/// CHANGE BACK TO PRIVATE BELOW
+	pub next_assignment_id: LayerId,
 	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
 	/// The [Layer]s contained in the folder
@@ -75,6 +76,7 @@ impl FolderLayer {
 	}
 
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize, path: Option<Vec<u64>>) -> Option<LayerId> {
+		// debug!("add layer- ID: {:?}", &id);
 		let mut insert_index = insert_index as i128;
 
 		// Bounds check for the insert index
@@ -89,13 +91,15 @@ impl FolderLayer {
 			self.next_assignment_id = id;
 		}
 		if self.layer_ids.contains(&self.next_assignment_id) {
+			// debug!("ret none");
 			return None;
 		}
 
 		let id = self.next_assignment_id;
-		debug!("FOLDER ID TO BE INSERTED: {:?}", &id);
 		self.layers.insert(insert_index as usize, layer);
+		// debug!("before layer_ids: {:?}", self.layer_ids);
 		self.layer_ids.insert(insert_index as usize, id);
+		// debug!("after layer_ids: {:?}", self.layer_ids);
 
 		// Linear probing for collision avoidance
 		while self.layer_ids.contains(&self.next_assignment_id) {

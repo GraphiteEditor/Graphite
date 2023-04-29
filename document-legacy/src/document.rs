@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::vec;
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
@@ -695,6 +697,7 @@ impl Document {
 			} => {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
 				let folder = self.folder_mut(folder_path)?;
+				debug!("INSERT LAYER: {:?}", Some(layer_id));
 				folder.add_layer(*layer, Some(layer_id), insert_index, None).ok_or(DocumentError::IndexOutOfBounds)?;
 				self.mark_as_dirty(&destination_path)?;
 
@@ -713,7 +716,6 @@ impl Document {
 				if let Ok(folder) = self.folder(&destination_path) {
 					aggregate_insertions(folder, &mut destination_path.as_slice().to_vec(), &mut responses)
 				};
-
 				responses.extend([DocumentChanged, CreatedLayer { path: destination_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
 				responses.extend(update_thumbnails_upstream(&destination_path));
 				Some(responses)
@@ -723,11 +725,9 @@ impl Document {
 				// Notes: Currently works with a folder with all children but breaks with all children plus one or more empty folders.
 
 				let layer = self.layer(&path)?.clone();
-				// debug!("first layer: {:?}", &layer);
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 
 				let mut duplicated_layers: Vec<Vec<u64>> = vec![];
-
 				let layer_is_folder = (&layer).as_folder().is_ok();
 				if layer_is_folder {
 					let folder_is_empty = self.folder_children_paths(&path).is_empty();
@@ -735,58 +735,85 @@ impl Document {
 						duplicated_layers = recursive_collect(self, &path);
 					}
 				}
+				duplicated_layers.sort_by(|a, b| a.len().cmp(&b.len()));
 				let duplicated_layers_objects: Vec<Layer> = duplicated_layers.iter().map(|p| self.layer(p.as_slice()).unwrap()).cloned().collect();
-				// debug!("dup objs: {:?}", &duplicated_layers_objects);
 
 				let folder = self.folder_mut(folder_path)?;
 				let selected_id = path.last().copied().unwrap_or_default();
 				let insert_index = folder.layer_ids.iter().position(|&id| id == selected_id).unwrap_or(0) as isize + 1;
 
+				let mut queue = vec![];
+
 				if let Some(new_layer_id) = folder.add_layer(layer, None, insert_index, None) {
 					let new_path = [folder_path, &[new_layer_id]].concat();
+					let mut old_to_new_id: HashMap<LayerId, LayerId> = HashMap::new();
 
 					let mut responses: Vec<DocumentResponse> = vec![];
 					responses.extend([DocumentChanged, CreatedLayer { path: new_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
-					debug!("root folder layer paths: {:?}", &folder.layer_ids);
-					// debug!("new path: {:?}", &new_path);
-					// debug!("folder ch: {:?}", &folder_path);
 					responses.extend(update_thumbnails_upstream(path.as_slice()));
 
 					if layer_is_folder {
 						let new_folder = self.folder_mut(new_path.clone().as_slice())?;
+						new_folder.layer_ids = vec![];
+						new_folder.layers = vec![];
 
+						let mut id_exist = false;
 						// Loop through the duplicated layers and update the layer path by swapping the path with new_path
 						// Use the updated layer path in our duplicate layer operation call
+
+						// We need to keep the layer tree formation. Rn we just append a new assingment id to the new path
+						// potentially make a hashmap to store the old ID with the new ID generated for our layer tree formation
 						let mut counter = 0;
 						for l in duplicated_layers {
-							// debug!("layer: {:?}", &l);
-							// let new_folder = self.folder(new_path.clone().as_slice())?;
 							let cloned_new_path = new_path.clone();
 							let sub = l[..cloned_new_path.len()].to_vec();
+							debug!("layer: {:?}", &l);
 							let mut new_sub_path: Vec<u64> = vec![];
-
-							for i in 0..=cloned_new_path.len() - 1 {
-								if !(cloned_new_path.get(i).unwrap() == sub.get(i).unwrap()) {
-									let random_id = new_folder.next_assignment_id();
-									// debug!("r id: {:?}", random_id);
-									// list_of_new_ids.push(random_id);
+							let sub_layer = l[cloned_new_path.len()..].to_vec();
+							let mut random_id = 0;
+							debug!("new_folder.nextID: {:?}", &new_folder.next_assignment_id);
+							for id in sub_layer {
+								debug!("id: {:?}", &id);
+								if !old_to_new_id.contains_key(&id) {
+									random_id = new_folder.next_assignment_id();
 									new_sub_path.push(random_id);
+									// debug!("id not exist, new id generated: {:?}", random_id);
+									old_to_new_id.insert(id, random_id);
+								} else {
+									debug!("id exist: {:?}", old_to_new_id[&id]);
+									new_sub_path.push(old_to_new_id[&id]);
+									id_exist = true;
 								}
 							}
-							let updated_layer_path = [cloned_new_path.clone(), new_sub_path].concat();
+							let updated_layer_path: Vec<u64> = [cloned_new_path.clone(), new_sub_path.clone()].concat();
 							let updated_layer: Layer = duplicated_layers_objects.get(counter).unwrap().clone();
-							debug!("updated_layer_path: {:?}", &updated_layer_path);
+							debug!("ulp: {:?}", &updated_layer_path);
 
-							let add_layer_id = new_folder.add_layer(updated_layer, None, -1, None).unwrap();
-							debug!("new folder layer paths: {:?}", &new_folder.layer_ids);
-							debug!("add_layer_id: {:?}", &add_layer_id);
-							responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
+							if !id_exist {
+								// debug!("ADD NEW_FOLDER.LAYER_IDS");
+								new_folder.add_layer(updated_layer, None, -1, None).unwrap();
+								responses.extend([DocumentChanged, CreatedLayer { path: updated_layer_path.clone() }, FolderChanged { path: cloned_new_path.clone() }]);
+							} else {
+								// debug!("DOESNT ADD NEW_FOLDER.LAYER_IDS");
+								// let updated_layer_parent: &[u64] = &(updated_layer_path[..updated_layer_path.len() - 1]);
+								// debug!("ulp parent: {:?}", &updated_layer_parent);
 
+								// When we call add_layer in InsertLayer Operation, we plug in a id as an argument which messes up the
+								queue.push(Operation::InsertLayer {
+									layer: Box::new(updated_layer),
+									destination_path: updated_layer_path.to_vec(),
+									insert_index: -1,
+								});
+							}
 							counter = counter + 1;
 						}
 					}
+					for operation in queue {
+						let res = self.handle_operation(operation, render_data).ok().flatten().unwrap_or_default();
+						responses.extend(res);
+					}
+
 					self.mark_as_dirty(folder_path)?;
-					debug!("res: {:?}", &responses);
 					Some(responses)
 				} else {
 					return Err(DocumentError::IndexOutOfBounds);

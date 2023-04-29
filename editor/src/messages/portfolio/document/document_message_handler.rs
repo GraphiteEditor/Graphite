@@ -360,7 +360,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
 			DocumentStructureChanged => {
-				debug!("DocumentStructureChanged");
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.push_back(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer }.into())
 			}
@@ -428,7 +427,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			FolderChanged { affected_folder_path } => {
-				// debug!("FOLDER CHANGED: {:?}", &affected_folder_path);
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
@@ -985,7 +983,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			StartTransaction => self.backup(responses),
 			ToggleLayerExpansion { layer_path } => {
-				debug!("ToggleLayerExpansion: {:?}", &layer_path);
 				self.layer_metadata_mut(&layer_path).expanded ^= true;
 				responses.push_back(DocumentStructureChanged.into());
 				responses.push_back(LayerChanged { affected_layer_path: layer_path }.into())
@@ -1337,27 +1334,16 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: &FolderLayer, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		debug!("serialize_structure");
-		// debug!("path: {:?}", &path);
-		// debug!("folder.layerIDS: {:?}", &folder.layer_ids);
 		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
-			debug!("folder layer ids: {:?}", &folder.layer_ids);
-			// debug!("ID PUSHED TO PATH: {:?}", &id);
-			// debug!("path: {:?}", &path);
 			data.push(*id);
 			space += 1;
 			if let LayerDataType::Folder(ref folder) = layer.data {
 				path.push(*id);
-				debug!("path: {:?}", &path);
 				if self.layer_metadata(path).expanded {
-					debug!("recurse");
 					structure.push(space);
 					self.serialize_structure(folder, structure, data, path);
 					space = 0;
-				} else {
-					debug!("POOP");
 				}
-				// debug!("after");
 				path.pop();
 			}
 		}
@@ -1397,7 +1383,6 @@ impl DocumentMessageHandler {
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
 	/// ```
 	pub fn serialize_root(&self) -> Vec<u64> {
-		debug!("serialize root");
 		let (mut structure, mut data) = (vec![0], Vec::new());
 		self.serialize_structure(self.document_legacy.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
@@ -1413,7 +1398,6 @@ impl DocumentMessageHandler {
 
 	/// Returns the paths to all layers in order
 	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
-		// debug!("LAYERS: {:?}", paths.cloned().collect());
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices
