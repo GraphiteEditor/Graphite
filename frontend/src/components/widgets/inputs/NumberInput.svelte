@@ -400,7 +400,7 @@
 					appearance: none;
 					border-radius: 2px;
 					width: 4px;
-					height: 24px;
+					height: 22px;
 					background: #494949; // Becomes var(--color-5-dullgray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
@@ -422,7 +422,7 @@
 					border: none;
 					border-radius: 2px;
 					width: 4px;
-					height: 24px;
+					height: 22px;
 					background: #494949; // Becomes var(--color-5-dullgray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
@@ -442,8 +442,8 @@
 			// This fake slider thumb stays in the location of the real thumb while we have to hide the real slider between mousedown and mouseup or mousemove.
 			// That's because the range input element moves to the pressed location immediately upon mousedown, but we don't want to show that yet.
 			// Instead, we want to wait until the user does something:
-			// Releasing the mouse means we reset the slider to its previous location, thus canceling the slider move. In that case, we focus the text entry.
-			// Moving the mouse left/right means we have begun dragging, so then we hide this fake one and continue showing the actual drag of the real slider.
+			// - Releasing the mouse means we reset the slider to its previous location, thus canceling the slider move. In that case, we focus the text entry.
+			// - Moving the mouse left/right means we have begun dragging, so then we hide this fake one and continue showing the actual drag of the real slider.
 			.fake-slider-thumb {
 				position: absolute;
 				left: 2px;
@@ -459,9 +459,10 @@
 					position: absolute;
 					border-radius: 2px;
 					margin-left: -2px;
-					left: calc(var(--progress-factor) * 100%);
 					width: 4px;
-					height: 24px;
+					height: 22px;
+					top: 1px;
+					left: calc(var(--progress-factor) * 100%);
 					background: #5b5b5b; // Becomes var(--color-6-lowergray) with screen blend mode over var(--color-1-nearblack) background
 				}
 			}

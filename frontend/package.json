@@ -37,7 +37,7 @@
 		"@types/license-checker-webpack-plugin": "^0.2.1",
 		"@types/node": "^18.16.2",
 		"@types/webpack": "^5.28.1",
-		"buffer": "^6.0.3",
+		"buffer": "^5.7.1",
 		"concurrently": "^8.0.1",
 		"license-checker-webpack-plugin": "^0.2.1",
 		"parcel-transformer-svelte3-plus": "^0.2.9",
