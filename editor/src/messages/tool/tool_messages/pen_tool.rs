@@ -16,7 +16,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use graphene_core::uuid::ManipulatorGroupId;
-use graphene_core::vector::style::Stroke;
+use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 use graphene_core::Color;
 
@@ -32,11 +32,21 @@ pub struct PenTool {
 
 pub struct PenOptions {
 	line_weight: f64,
+	fill_color: Option<Color>,
+	is_fill_tied: bool,
+	stroke_color: Option<Color>,
+	is_stroke_tied: bool,
 }
 
 impl Default for PenOptions {
 	fn default() -> Self {
-		Self { line_weight: 5. }
+		Self {
+			line_weight: 5.,
+			fill_color: Some(Color::BLACK),
+			is_fill_tied: true,
+			stroke_color: Some(Color::WHITE),
+			is_stroke_tied: true,
+		}
 	}
 }
 
@@ -76,7 +86,13 @@ enum PenToolFsmState {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
+	ClearFill(),
+	ClearStroke(),
+	FillColor(Option<Color>),
+	FillWorkingTie(bool),
 	LineWeight(f64),
+	StrokeColor(Option<Color>),
+	StrokeWorkingTie(bool),
 }
 
 impl ToolMetadata for PenTool {
@@ -91,11 +107,36 @@ impl ToolMetadata for PenTool {
 	}
 }
 
-fn create_color_select_widget(label_text: String) -> Vec<WidgetHolder> {
-	let reset = IconButton::new("CloseX", 12).tooltip("Clear color").widget_holder();
-	let label = TextLabel::new(label_text).widget_holder();
-	let optional = OptionalInput::new(true, "ResetColors").tooltip("Override working colour").widget_holder();
-	let color_input = ColorInput::default().widget_holder();
+fn create_fill_widget(fill_color: Option<Color>) -> Vec<WidgetHolder> {
+	let reset = IconButton::new("CloseX", 12)
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ClearFill()).into())
+		.tooltip("Clear color")
+		.widget_holder();
+	let label = TextLabel::new("Fill").widget_holder();
+	let optional = OptionalInput::new(true, "ResetColors")
+		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingTie(optional.checked)).into())
+		.tooltip("Copy working color")
+		.widget_holder();
+	let color_input = ColorInput::new(fill_color)
+		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
+		.widget_holder();
+
+	vec![reset, WidgetHolder::related_separator(), label, WidgetHolder::related_separator(), optional, color_input]
+}
+
+fn create_stroke_widget(stroke_color: Option<Color>) -> Vec<WidgetHolder> {
+	let reset = IconButton::new("CloseX", 12)
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ClearFill()).into())
+		.tooltip("Clear color")
+		.widget_holder();
+	let label = TextLabel::new("Stroke").widget_holder();
+	let optional = OptionalInput::new(true, "ResetColors")
+		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingTie(optional.checked)).into())
+		.tooltip("Copy working color")
+		.widget_holder();
+	let color_input = ColorInput::new(stroke_color)
+		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
+		.widget_holder();
 
 	vec![reset, WidgetHolder::related_separator(), label, WidgetHolder::related_separator(), optional, color_input]
 }
@@ -111,9 +152,9 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = create_color_select_widget(String::from("Fill"));
+		let mut widgets = create_fill_widget(self.options.fill_color);
 		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
-		widgets.append(&mut create_color_select_widget(String::from("Stroke")));
+		widgets.append(&mut create_stroke_widget(self.options.stroke_color));
 		widgets.push(WidgetHolder::unrelated_separator());
 		widgets.push(create_weight_widget(self.options.line_weight));
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -124,7 +165,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
+				PenOptionsUpdate::ClearFill() => {
+					self.options.fill_color = None;
+					self.options.is_fill_tied = true;
+				}
+				PenOptionsUpdate::ClearStroke() => {
+					self.options.stroke_color = None;
+					self.options.is_stroke_tied = true;
+				}
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				PenOptionsUpdate::FillColor(fill_color) => self.options.fill_color = fill_color,
+				// TODO: Temp will update once I know how to update the state of the optional and disable/lock it
+				PenOptionsUpdate::FillWorkingTie(is_fill_tied) => self.options.is_fill_tied = if self.options.fill_color.is_some() { is_fill_tied } else { true },
+				PenOptionsUpdate::StrokeColor(stroke_color) => self.options.stroke_color = stroke_color,
+				// TODO: Temp will update once I know how to update the state of the optional and disable/lock it
+				PenOptionsUpdate::StrokeWorkingTie(is_stroke_tied) => self.options.is_stroke_tied = if self.options.stroke_color.is_some() { is_stroke_tied } else { true },
 			}
 			return;
 		}
@@ -196,7 +251,15 @@ impl PenToolData {
 			},
 		});
 	}
-	fn create_new_path(&mut self, document: &DocumentMessageHandler, line_weight: f64, color: Color, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn create_new_path(
+		&mut self,
+		document: &DocumentMessageHandler,
+		line_weight: f64,
+		stroke_color: Color,
+		fill_color: Color,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
 		// Deselect layers because we are now creating a new layer
 		responses.add(DocumentMessage::DeselectAllLayers);
 
@@ -211,9 +274,15 @@ impl PenToolData {
 		// Create the initial shape with a `bez_path` (only contains a moveto initially)
 		let subpath = bezier_rs::Subpath::new(vec![bezier_rs::ManipulatorGroup::new(start_position, Some(start_position), Some(start_position))], false);
 		graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+		responses.add(GraphOperationMessage::FillSet {
+			layer: layer_path.clone(),
+			fill: Fill::Solid(fill_color),
+		});
+
 		responses.add(GraphOperationMessage::StrokeSet {
 			layer: layer_path.clone(),
-			stroke: Stroke::new(color, line_weight),
+			stroke: Stroke::new(stroke_color, line_weight),
 		});
 
 		self.path = Some(layer_path);
@@ -556,7 +625,18 @@ impl Fsm for PenToolFsmState {
 					if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 						tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
 					} else {
-						tool_data.create_new_path(document, tool_options.line_weight, global_tool_data.primary_color, input, responses);
+						// TODO: Tidy up
+						let stroke_color = if tool_options.is_stroke_tied {
+							global_tool_data.secondary_color
+						} else {
+							tool_options.stroke_color.unwrap()
+						};
+						let fill_color = if tool_options.is_fill_tied {
+							global_tool_data.primary_color
+						} else {
+							tool_options.fill_color.unwrap()
+						};
+						tool_data.create_new_path(document, tool_options.line_weight, stroke_color, fill_color, input, responses);
 					}
 
 					// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
