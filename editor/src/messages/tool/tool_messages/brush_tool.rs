@@ -14,7 +14,7 @@ use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 
-use graphene_core::{Color};
+use graphene_core::Color;
 
 use glam::DVec2;
 use graphene_core::raster::ImageFrame;
@@ -278,7 +278,9 @@ impl Fsm for BrushToolFsmState {
 								.extend((0..extra_points).map(|i| last_point.lerp(pos, (i as f64 + 1.) / (extra_points as f64 + 1.))));
 						}
 
-						if let Some(x) = tool_data.points.last_mut() { x.push(pos) }
+						if let Some(x) = tool_data.points.last_mut() {
+							x.push(pos)
+						}
 					}
 
 					tool_data.update_points(responses);

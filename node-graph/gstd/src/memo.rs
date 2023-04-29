@@ -54,9 +54,11 @@ impl<T, CachedNode> CacheNode<T, CachedNode> {
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
+#[cfg(feature = "serde")]
 pub struct MonitorNode<T> {
 	output: Mutex<Option<T>>,
 }
+#[cfg(feature = "serde")]
 impl<'i, T: 'i + Serialize + Clone> Node<'i, T> for MonitorNode<T> {
 	type Output = T;
 	fn eval(&'i self, input: T) -> Self::Output {
@@ -65,20 +67,13 @@ impl<'i, T: 'i + Serialize + Clone> Node<'i, T> for MonitorNode<T> {
 		input
 	}
 
-	#[cfg(feature = "serde")]
 	fn serialize(&self) -> Option<String> {
 		let output = self.output.lock().unwrap();
 		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
 	}
-	#[cfg(not(feature = "serde"))]
-	fn serialize(&self) -> Option<String> {
-		log::warn!("Serialization is not enabled for this build");
-		None
-	}
 }
 
-impl<T> std::marker::Unpin for MonitorNode<T> {}
-
+#[cfg(feature = "serde")]
 impl<T> MonitorNode<T> {
 	pub const fn new() -> MonitorNode<T> {
 		MonitorNode { output: Mutex::new(None) }
