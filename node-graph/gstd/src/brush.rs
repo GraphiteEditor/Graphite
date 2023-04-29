@@ -99,12 +99,17 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 	fn sample(&self, position: DVec2, area: DVec2) -> Option<P> {
 		let position = self.transform.inverse().transform_point2(position);
 		let area = self.transform.inverse().transform_vector2(area);
+		let aa_blur_radius = area.length() as f32 * 2.;
 		let center = DVec2::splat(0.5);
 
 		let distance = (position + area / 2. - center).length() as f32 * 2.;
 
-		let result = if distance < 1. {
+		let edge_opacity = 1. - (1. - aa_blur_radius).powf(self.feather_exponent);
+		let result = if distance < 1. - aa_blur_radius {
 			1. - distance.powf(self.feather_exponent)
+		} else if distance < 1. {
+			// TODO: Replace this with a proper analytical AA implementation
+			edge_opacity * ((1. - distance) / aa_blur_radius)
 		} else {
 			return None;
 		};
