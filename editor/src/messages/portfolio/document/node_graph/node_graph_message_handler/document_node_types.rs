@@ -107,6 +107,18 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeType {
+			name: "Monitor",
+			category: "General",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::value(TaggedValue::None, true),
+			}],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of it's last evaluation"),
+		},
+		DocumentNodeType {
 			name: "Downres",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {

@@ -48,7 +48,6 @@ fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
 	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-
 pub struct DownresNode<P> {
 	_p: PhantomData<P>,
 }
@@ -239,7 +238,7 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background:  Transform + Sample<Pixel = _P>>(
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background: Transform + Sample<Pixel = _P>>(
 	foreground: Forground,
 	background: Background,
 	map_fn: &'any_input MapFn,
@@ -257,9 +256,8 @@ pub struct BlendReverseImageNode<P, Background, MapFn> {
 	_p: PhantomData<P>,
 }
 
-
 #[node_macro::node_fn(BlendReverseImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background:  Transform + Sample<Pixel = _P>>(
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background: Transform + Sample<Pixel = _P>>(
 	foreground: Forground,
 	background: Background,
 	map_fn: &'any_input MapFn,
@@ -281,15 +279,12 @@ where
 	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
 	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
 	let aabb = foreground_aabb.union(&background_aabb);
-	let background_size = aabb.size();
 
-
-	// Footprint of the foreground image (0,0) (1, 1) in the background image space
-	let bg_aabb = compute_transformed_bounding_box(background.transform().inverse() * foreground.transform()).axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
-	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
-	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
+	let start = aabb.start.as_uvec2();
+	let end = aabb.end.as_uvec2();
+
 
 	let new_background = Image::new(end.x - start.x, end.y - start.y, _P::TRANSPARENT);
 	let size = DVec2::new(new_background.width as f64, new_background.height as f64);
