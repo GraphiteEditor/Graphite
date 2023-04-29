@@ -175,8 +175,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				}
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 				PenOptionsUpdate::FillColor(fill_color) => self.options.fill_color = fill_color,
-				// TODO: Temp will update once I know how to update the state of the optional and disable/lock it
-				PenOptionsUpdate::FillWorkingTie(is_fill_tied) => self.options.is_fill_tied = if self.options.fill_color.is_some() { is_fill_tied } else { true },
+				// Allow fill color to be null and don't set to working color since a user may wan't it null
+				PenOptionsUpdate::FillWorkingTie(is_fill_tied) => self.options.is_fill_tied = is_fill_tied,
 				PenOptionsUpdate::StrokeColor(stroke_color) => self.options.stroke_color = stroke_color,
 				// TODO: Temp will update once I know how to update the state of the optional and disable/lock it
 				PenOptionsUpdate::StrokeWorkingTie(is_stroke_tied) => self.options.is_stroke_tied = if self.options.stroke_color.is_some() { is_stroke_tied } else { true },
@@ -256,7 +256,7 @@ impl PenToolData {
 		document: &DocumentMessageHandler,
 		line_weight: f64,
 		stroke_color: Color,
-		fill_color: Color,
+		fill_color: Option<Color>,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
@@ -277,7 +277,7 @@ impl PenToolData {
 
 		responses.add(GraphOperationMessage::FillSet {
 			layer: layer_path.clone(),
-			fill: Fill::Solid(fill_color),
+			fill: if fill_color.is_some() { Fill::Solid(fill_color.unwrap()) } else { Fill::None },
 		});
 
 		responses.add(GraphOperationMessage::StrokeSet {
@@ -632,9 +632,9 @@ impl Fsm for PenToolFsmState {
 							tool_options.stroke_color.unwrap()
 						};
 						let fill_color = if tool_options.is_fill_tied {
-							global_tool_data.primary_color
+							Some(global_tool_data.primary_color)
 						} else {
-							tool_options.fill_color.unwrap()
+							tool_options.fill_color
 						};
 						tool_data.create_new_path(document, tool_options.line_weight, stroke_color, fill_color, input, responses);
 					}
