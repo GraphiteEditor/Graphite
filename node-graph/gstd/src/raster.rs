@@ -280,11 +280,9 @@ where
 	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
 	let aabb = foreground_aabb.union(&background_aabb);
 
-
 	// Clamp the foreground image to the background image
 	let start = aabb.start.as_uvec2();
 	let end = aabb.end.as_uvec2();
-
 
 	let new_background = Image::new(end.x - start.x, end.y - start.y, _P::TRANSPARENT);
 	let size = DVec2::new(new_background.width as f64, new_background.height as f64);
@@ -294,7 +292,7 @@ where
 	};
 
 	new_background = blend_image(background, new_background, map_fn);
-	return blend_image(foreground, new_background, map_fn);
+	blend_image(foreground, new_background, map_fn)
 }
 
 fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
@@ -324,7 +322,7 @@ where
 
 			if let Some(src_pixel) = foreground.sample(fg_point, area) {
 				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
-					*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
+					*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 				}
 			}
 		}

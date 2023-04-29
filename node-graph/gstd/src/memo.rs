@@ -1,4 +1,5 @@
 use graphene_core::Node;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
 use std::hash::{Hash, Hasher};
@@ -64,10 +65,15 @@ impl<'i, T: 'i + Serialize + Clone> Node<'i, T> for MonitorNode<T> {
 		input
 	}
 
+	#[cfg(feature = "serde")]
 	fn serialize(&self) -> Option<String> {
-		log::debug!("Serializing monitor node");
 		let output = self.output.lock().unwrap();
 		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
+	}
+	#[cfg(not(feature = "serde"))]
+	fn serialize(&self) -> Option<String> {
+		log::warn!("Serialization is not enabled for this build");
+		None
 	}
 }
 

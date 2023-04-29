@@ -13,12 +13,12 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
-use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::{Color, Cow};
+
+use graphene_core::{Color};
 
 use glam::DVec2;
 use graphene_core::raster::ImageFrame;
-use graphene_std::memo::MonitorNode;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -266,9 +266,9 @@ impl Fsm for BrushToolFsmState {
 				(Drawing, PointerMove) => {
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
-					if tool_data.points.last().map(|x| x.last()).flatten() != Some(&pos) {
+					if tool_data.points.last().and_then(|x| x.last()) != Some(&pos) {
 						// Linear interpolation for when the mouse has moved a lot between frames
-						if let Some(&last_point) = tool_data.points.last().map(|x| x.last()).flatten() {
+						if let Some(&last_point) = tool_data.points.last().and_then(|x| x.last()) {
 							let distance = (last_point - pos).length();
 							let extra_points = (distance / (tool_data.diameter / 2.)).floor() as usize;
 							tool_data
@@ -278,7 +278,7 @@ impl Fsm for BrushToolFsmState {
 								.extend((0..extra_points).map(|i| last_point.lerp(pos, (i as f64 + 1.) / (extra_points as f64 + 1.))));
 						}
 
-						tool_data.points.last_mut().map(|x| x.push(pos));
+						if let Some(x) = tool_data.points.last_mut() { x.push(pos) }
 					}
 
 					tool_data.update_points(responses);
