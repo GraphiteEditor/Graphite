@@ -165,10 +165,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
-				PenOptionsUpdate::ClearFill() => {
-					self.options.fill_color = None;
-					self.options.is_fill_tied = true;
-				}
+				PenOptionsUpdate::ClearFill() => self.options.fill_color = None,
 				PenOptionsUpdate::ClearStroke() => {
 					self.options.stroke_color = None;
 					self.options.is_stroke_tied = true;
