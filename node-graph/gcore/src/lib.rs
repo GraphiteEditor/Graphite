@@ -41,6 +41,7 @@ pub trait Node<'i, Input: 'i>: 'i {
 	fn reset(self: Pin<&mut Self>) {}
 	#[cfg(feature = "alloc")]
 	fn serialize(&self) -> Option<String> {
+		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
 	}
 }

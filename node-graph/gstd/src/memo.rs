@@ -53,32 +53,29 @@ impl<T, CachedNode> CacheNode<T, CachedNode> {
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
-pub struct MonitorNode<T, CachedNode> {
+pub struct MonitorNode<T> {
 	output: Mutex<Option<T>>,
-	node: CachedNode,
 }
-impl<'i, T: 'i + Serialize + Clone, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for MonitorNode<T, CachedNode>
-where
-	CachedNode: for<'any_input> Node<'any_input, I, Output = T>,
-{
+impl<'i, T: 'i + Serialize + Clone> Node<'i, T> for MonitorNode<T> {
 	type Output = T;
-	fn eval(&'i self, input: I) -> Self::Output {
-		let output = self.node.eval(input);
-		*self.output.lock().unwrap() = Some(output.clone());
-		output
+	fn eval(&'i self, input: T) -> Self::Output {
+		*self.output.lock().unwrap() = Some(input.clone());
+		log::debug!("Initializing monitor node with");
+		input
 	}
 
 	fn serialize(&self) -> Option<String> {
+		log::debug!("Serializing monitor node");
 		let output = self.output.lock().unwrap();
 		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
 	}
 }
 
-impl<T, CachedNode> std::marker::Unpin for MonitorNode<T, CachedNode> {}
+impl<T> std::marker::Unpin for MonitorNode<T> {}
 
-impl<T, CachedNode> MonitorNode<T, CachedNode> {
-	pub const fn new(node: CachedNode) -> MonitorNode<T, CachedNode> {
-		MonitorNode { output: Mutex::new(None), node }
+impl<T> MonitorNode<T> {
+	pub const fn new() -> MonitorNode<T> {
+		MonitorNode { output: Mutex::new(None) }
 	}
 }
 

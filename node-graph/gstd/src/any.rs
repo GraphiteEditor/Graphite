@@ -9,15 +9,45 @@ pub struct DynAnyNode<I, O, Node> {
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-#[node_macro::node_fn(DynAnyNode<_I, _O>)]
-fn any_node<_I: StaticType, _O: StaticType, N>(input: Any<'input>, node: &'any_input N) -> Any<'input>
+
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input, S0: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, S0>
 where
 	N: for<'any_input> Node<'any_input, _I, Output = _O>,
+	S0: for<'any_input> Node<'any_input, (), Output = &'any_input N>,
 {
-	let node_name = core::any::type_name::<N>();
-	let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {e} in:\n{node_name}"));
-	Box::new(node.eval(*input))
+	type Output = Any<'input>;
+	#[inline]
+	fn eval(&'input self, input: Any<'input>) -> Self::Output {
+		let node = self.node.eval(());
+		{
+			let node_name = core::any::type_name::<N>();
+			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name));
+			Box::new(node.eval(*input))
+		}
+	}
+
+	fn reset(self: std::pin::Pin<&mut Self>) {
+		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
+		Node::reset(wrapped_node);
+	}
+
+	fn serialize(&self) -> Option<String> {
+		self.node.eval(()).serialize()
+	}
 }
+impl<'input, _I: StaticType, _O: StaticType, N, S0: 'input> DynAnyNode<_I, _O, S0>
+where
+	S0: for<'any_input> Node<'any_input, (), Output = &'any_input N>,
+{
+	pub const fn new(node: S0) -> Self {
+		Self {
+			node,
+			_i: core::marker::PhantomData,
+			_o: core::marker::PhantomData,
+		}
+	}
+}
+
 pub struct DynAnyRefNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<(I, O)>,
@@ -28,11 +58,9 @@ where
 {
 	type Output = Any<'input>;
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
-		{
-			let node_name = core::any::type_name::<N>();
-			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyRefNode Input, {e} in:\n{node_name}"));
-			Box::new(self.node.eval(*input))
-		}
+		let node_name = core::any::type_name::<N>();
+		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyRefNode Input, {e} in:\n{node_name}"));
+		Box::new(self.node.eval(*input))
 	}
 	fn reset(self: std::pin::Pin<&mut Self>) {
 		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };

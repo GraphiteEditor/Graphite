@@ -154,7 +154,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
-		register_node!(graphene_std::memo::MonitorNode<_, _>, input: (), params: [ImageFrame<Color>]),
+		register_node!(graphene_std::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
 		vec![(
@@ -175,6 +175,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::BrushNode"),
 			|args| {
+				use graphene_core::structural::*;
 				use graphene_core::value::*;
 				use graphene_std::brush::*;
 
@@ -191,22 +192,24 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let frames = MapNode::new(ValueNode::new(frames));
 				let frames = frames.eval(trace.eval(()).into_iter()).collect::<Vec<_>>();
 
-				let background_bounds = ReduceNode::new(DebugClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
+				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 				let background_bounds = background_bounds.eval(frames.clone().into_iter());
-				let background_bounds = DebugClonedNode::new(background_bounds.unwrap().to_transform());
+				let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
 
 				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
 
 				let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 
 				let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
-				let final_image = DebugClonedNode::new(frames.into_iter()).then(final_image);
+				let final_image = ClonedNode::new(frames.into_iter()).then(final_image);
 
-				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
+				let blend_node = BlendReverseImageNode::new(final_image, ValueNode::new(blend_node));
+
+				let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(blend_node));
 				Box::pin(any)
 			},
 			NodeIOTypes::new(
-				concrete!(()),
+				concrete!(ImageFrame<Color>),
 				concrete!(ImageFrame<Color>),
 				vec![value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64), value_fn!(Color)],
 			),

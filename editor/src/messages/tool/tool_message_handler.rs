@@ -7,6 +7,7 @@ use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::layers::style::RenderData;
 use graphene_core::raster::color::Color;
@@ -19,13 +20,13 @@ pub struct ToolMessageHandler {
 	pub shape_editor: ShapeState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData)> for ToolMessageHandler {
+impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor)> for ToolMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: ToolMessage,
 		responses: &mut VecDeque<Message>,
-		(document, document_id, input, persistent_data): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData),
+		(document, document_id, input, persistent_data, node_graph): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor),
 	) {
 		let render_data = RenderData::new(&persistent_data.font_cache, document.view_mode, None);
 
@@ -94,6 +95,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							render_data: &render_data,
 							shape_overlay: &mut self.shape_overlay,
 							shape_editor: &mut self.shape_editor,
+							node_graph,
 						};
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
 							tool.process_message(tool_abort_message, responses, &mut data);
@@ -173,6 +175,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 					render_data: &render_data,
 					shape_overlay: &mut self.shape_overlay,
 					shape_editor: &mut self.shape_editor,
+					node_graph,
 				};
 
 				// Set initial hints and cursor
@@ -243,6 +246,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							render_data: &render_data,
 							shape_overlay: &mut self.shape_overlay,
 							shape_editor: &mut self.shape_editor,
+							node_graph,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if self.transform_layer_handler.is_transforming() {

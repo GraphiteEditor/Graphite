@@ -48,50 +48,6 @@ fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
 	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-/*
-pub fn file_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Vec<u8>, Error>> {
-	let fs = ValueNode(StdFs).then(CloneNode::new());
-	let file = FileNode::new(fs);
-
-	file.then(FlatMapResultNode::new(ValueNode::new(BufferNode)))
-}
-
-pub fn image_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Image, Error>> {
-	let file = file_node();
-	let image_loader = FnNode::new(|data: Vec<u8>| image::load_from_memory(&data).map_err(Error::Image).map(|image| image.into_rgba32f()));
-	let image = file.then(FlatMapResultNode::new(ValueNode::new(image_loader)));
-	let convert_image = FnNode::new(|image: image::ImageBuffer<_, _>| {
-		let data = image
-			.enumerate_pixels()
-			.map(|(_, _, pixel): (_, _, &image::Rgba<f32>)| {
-				let c = pixel.channels();
-				Color::from_rgbaf32(c[0], c[1], c[2], c[3]).unwrap()
-			})
-			.collect();
-		Image {
-			width: image.width(),
-			height: image.height(),
-			data,
-		}
-	});
-
-	image.then(MapResultNode::new(convert_image))
-}
-
-pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Output = Result<(), Error>> {
-	FnNode::new(|input: (Image, &str)| {
-		let (image, path) = input;
-		let mut new_image = image::ImageBuffer::new(image.width, image.height);
-		for ((x, y, pixel), color) in new_image.enumerate_pixels_mut().zip(image.data.iter()) {
-			let color: Color = *color;
-			assert!(x < image.width);
-			assert!(y < image.height);
-			*pixel = image::Rgba(color.to_rgba8())
-		}
-		new_image.save(path).map_err(Error::Image)
-	})
-}
-*/
 
 pub struct DownresNode<P> {
 	_p: PhantomData<P>,
@@ -266,7 +222,7 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'any_input MapFn) -> ImageFrame<_P>
+fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
 {
@@ -282,25 +238,79 @@ pub struct BlendImageNode<P, Background, MapFn> {
 	_p: PhantomData<P>,
 }
 
-// TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image_node<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(
-	foreground: Frame,
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background:  Transform + Sample<Pixel = _P>>(
+	foreground: Forground,
 	background: Background,
 	map_fn: &'any_input MapFn,
-) -> Background
+) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
-	blend_image(foreground, background, map_fn)
+	blend_new_image(foreground, background, map_fn)
 }
 
-fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(foreground: Frame, mut background: Background, map_fn: &MapFn) -> Background
+#[derive(Debug, Clone, Copy)]
+pub struct BlendReverseImageNode<P, Background, MapFn> {
+	background: Background,
+	map_fn: MapFn,
+	_p: PhantomData<P>,
+}
+
+
+#[node_macro::node_fn(BlendReverseImageNode<_P>)]
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background:  Transform + Sample<Pixel = _P>>(
+	foreground: Forground,
+	background: Background,
+	map_fn: &'any_input MapFn,
+) -> ImageFrame<_P>
+where
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
+{
+	blend_new_image(background, foreground, map_fn)
+}
+
+fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: Transform + Sample<Pixel = _P>>(
+	foreground: Frame,
+	background: Background,
+	map_fn: &MapFn,
+) -> ImageFrame<_P>
+where
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+{
+	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
+	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+	let aabb = foreground_aabb.union(&background_aabb);
+	let background_size = aabb.size();
+
+
+	// Footprint of the foreground image (0,0) (1, 1) in the background image space
+	let bg_aabb = compute_transformed_bounding_box(background.transform().inverse() * foreground.transform()).axis_aligned_bbox();
+
+	// Clamp the foreground image to the background image
+	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
+	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
+
+	let new_background = Image::new(end.x - start.x, end.y - start.y, _P::TRANSPARENT);
+	let size = DVec2::new(new_background.width as f64, new_background.height as f64);
+	let mut new_background = ImageFrame {
+		image: new_background,
+		transform: DAffine2::from_scale_angle_translation(size, 0., background.transform().translation + start.as_dvec2()),
+	};
+
+	new_background = blend_image(background, new_background, map_fn);
+	return blend_image(foreground, new_background, map_fn);
+}
+
+fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+	foreground: Frame,
+	mut background: Background,
+	map_fn: &MapFn,
+) -> Background
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
-
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
 
