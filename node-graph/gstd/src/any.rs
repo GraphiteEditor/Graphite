@@ -31,7 +31,7 @@ where
 		Node::reset(wrapped_node);
 	}
 
-	fn serialize(&self) -> Option<String> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		self.node.eval(()).serialize()
 	}
 }

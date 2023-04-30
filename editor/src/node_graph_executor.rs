@@ -17,6 +17,7 @@ use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeGraphExecutor {
@@ -52,7 +53,7 @@ impl NodeGraphExecutor {
 		}
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<String> {
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
 		self.executor.introspect(path).flatten()
 	}
 

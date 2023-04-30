@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 use xxhash_rust::xxh3::Xxh3;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -54,26 +54,22 @@ impl<T, CachedNode> CacheNode<T, CachedNode> {
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
-#[cfg(feature = "serde")]
 pub struct MonitorNode<T> {
-	output: Mutex<Option<T>>,
+	output: Mutex<Option<Arc<T>>>,
 }
-#[cfg(feature = "serde")]
-impl<'i, T: 'i + Serialize + Clone> Node<'i, T> for MonitorNode<T> {
+impl<'i, T: 'static + Clone> Node<'i, T> for MonitorNode<T> {
 	type Output = T;
 	fn eval(&'i self, input: T) -> Self::Output {
-		*self.output.lock().unwrap() = Some(input.clone());
-		log::debug!("Initializing monitor node with");
+		*self.output.lock().unwrap() = Some(Arc::new(input.clone()));
 		input
 	}
 
-	fn serialize(&self) -> Option<String> {
+	fn serialize(&self) -> Option<Arc<dyn core::any::Any>> {
 		let output = self.output.lock().unwrap();
-		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
+		(*output).as_ref().and_then(|output| Some(output.clone() as Arc<dyn core::any::Any>))
 	}
 }
 
-#[cfg(feature = "serde")]
 impl<T> MonitorNode<T> {
 	pub const fn new() -> MonitorNode<T> {
 		MonitorNode { output: Mutex::new(None) }

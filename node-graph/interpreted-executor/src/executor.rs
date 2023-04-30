@@ -59,7 +59,7 @@ impl DynamicExecutor {
 		Ok(())
 	}
 
-	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<String>> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		self.tree.introspect(node_path)
 	}
 
@@ -154,7 +154,7 @@ impl BorrowTree {
 		node
 	}
 
-	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<String>> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		let id = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
 		let reader = node.read().unwrap();

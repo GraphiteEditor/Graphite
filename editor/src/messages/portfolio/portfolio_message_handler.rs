@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
@@ -564,7 +566,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 }
 
 impl PortfolioMessageHandler {
-	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<String> {
+	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
 		self.executor.introspect_node(node_path)
 	}
 

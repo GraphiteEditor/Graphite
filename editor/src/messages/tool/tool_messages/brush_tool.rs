@@ -11,6 +11,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::LayerId;
+use dyn_any::downcast_ref;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 
@@ -197,12 +198,12 @@ impl BrushToolData {
 	fn update_image(&self, node_graph: &NodeGraphExecutor, responses: &mut VecDeque<Message>) {
 		if let Some(layer_path) = self.path.clone() {
 			let Some(image) = node_graph.introspect_node(&[1]) else { return; };
-			let image: ImageFrame<Color> = serde_json::from_str(&image).unwrap();
+			let image: &ImageFrame<Color> = image.downcast_ref().unwrap();
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
 				input_index: 0,
-				value: TaggedValue::ImageFrame(image),
+				value: TaggedValue::ImageFrame(image.clone()),
 			});
 		}
 	}
@@ -258,6 +259,7 @@ impl Fsm for BrushToolFsmState {
 					if new_layer {
 						add_brush_render(tool_data, global_tool_data, responses);
 					} else {
+						tool_data.update_image(node_graph, responses);
 						tool_data.update_points(responses);
 					}
 
@@ -294,8 +296,6 @@ impl Fsm for BrushToolFsmState {
 						responses.add(DocumentMessage::AbortTransaction);
 					}
 
-					// Skips last point
-					tool_data.update_image(node_graph, responses);
 					tool_data.path = None;
 
 					Ready

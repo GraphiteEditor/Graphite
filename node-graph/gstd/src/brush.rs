@@ -7,39 +7,6 @@ use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
 
-// Spacing is a consistent 0.2 apart, even when tiled across pixels (from 0.9 to the neighboring 0.1), to avoid bias
-const MULTISAMPLE_GRID: [(f64, f64); 25] = [
-	// Row 1
-	(0.1, 0.1),
-	(0.1, 0.3),
-	(0.1, 0.5),
-	(0.1, 0.7),
-	(0.1, 0.9),
-	// Row 2
-	(0.3, 0.1),
-	(0.3, 0.3),
-	(0.3, 0.5),
-	(0.3, 0.7),
-	(0.3, 0.9),
-	// Row 3
-	(0.5, 0.1),
-	(0.5, 0.3),
-	(0.5, 0.5),
-	(0.5, 0.7),
-	(0.5, 0.9),
-	// Row 4
-	(0.7, 0.1),
-	(0.7, 0.3),
-	(0.7, 0.5),
-	(0.7, 0.7),
-	(0.7, 0.9),
-	// Row 5
-	(0.9, 0.1),
-	(0.9, 0.3),
-	(0.9, 0.5),
-	(0.9, 0.7),
-	(0.9, 0.9),
-];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReduceNode<Initial, Lambda> {
