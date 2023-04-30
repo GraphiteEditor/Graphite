@@ -249,11 +249,7 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background: Transform + Sample<Pixel = _P>>(
-	foreground: Forground,
-	background: Background,
-	map_fn: &'any_input MapFn,
-) -> ImageFrame<_P>
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform>(foreground: Forground, background: ImageFrame<_P>, map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
@@ -268,22 +264,14 @@ pub struct BlendReverseImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendReverseImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform, Background: Transform + Sample<Pixel = _P>>(
-	foreground: Forground,
-	background: Background,
-	map_fn: &'any_input MapFn,
-) -> ImageFrame<_P>
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Background: Transform + Sample<Pixel = _P>>(foreground: ImageFrame<_P>, background: Background, map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
 	blend_new_image(background, foreground, map_fn)
 }
 
-fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: Transform + Sample<Pixel = _P>>(
-	foreground: Frame,
-	background: Background,
-	map_fn: &MapFn,
-) -> ImageFrame<_P>
+fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
@@ -291,6 +279,11 @@ where
 	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
 
 	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {return ImageFrame::empty()};
+
+	if background_aabb.contains(foreground_aabb.start) && background_aabb.contains(foreground_aabb.end) {
+		return blend_image(foreground, background, map_fn);
+	}
+	log::debug!("Blending images with aabb: {:?} and {:?}", foreground_aabb, background_aabb);
 
 	// Clamp the foreground image to the background image
 	let start = aabb.start.as_uvec2();
