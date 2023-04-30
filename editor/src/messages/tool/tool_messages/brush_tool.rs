@@ -196,14 +196,17 @@ impl BrushToolData {
 		}
 	}
 	fn update_image(&self, node_graph: &NodeGraphExecutor, responses: &mut VecDeque<Message>) {
+		let Some(image) = node_graph.introspect_node(&[1]) else { return; };
+		let image: &ImageFrame<Color> = image.downcast_ref().unwrap();
+		self.set_image(image.clone(), responses)
+	}
+	fn set_image(&self, image_frame: ImageFrame<Color>, responses: &mut VecDeque<Message>) {
 		if let Some(layer_path) = self.path.clone() {
-			let Some(image) = node_graph.introspect_node(&[1]) else { return; };
-			let image: &ImageFrame<Color> = image.downcast_ref().unwrap();
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
 				input_index: 0,
-				value: TaggedValue::ImageFrame(image.clone()),
+				value: TaggedValue::ImageFrame(image_frame),
 			});
 		}
 	}
@@ -238,8 +241,9 @@ impl Fsm for BrushToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 					let existing_points = load_existing_points(document);
 					let new_layer = existing_points.is_none();
-					if let Some((layer_path, points)) = existing_points {
+					if let Some((layer_path, points, image)) = existing_points {
 						tool_data.path = Some(layer_path);
+						tool_data.set_image(image, responses);
 						if tool_data.points.is_empty() {
 							tool_data.points.push(points);
 						}
@@ -353,7 +357,7 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 	graph_modification_utils::new_custom_layer(network, layer_path, responses);
 }
 
-fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {
+fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>, ImageFrame<Color>)> {
 	if document.selected_layers().count() != 1 {
 		return None;
 	}
@@ -363,11 +367,16 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 	if brush_node.implementation != DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()) {
 		return None;
 	}
+	let image_input = brush_node.inputs.get(0)?;
+	let NodeInput::Value {
+		tagged_value: TaggedValue::ImageFrame(image_frame),
+		..
+	} = image_input else { return None };
 	let points_input = brush_node.inputs.get(1)?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(points),
 		..
 	} = points_input else { return None };
 
-	Some((layer_path, points.clone()))
+	Some((layer_path, points.clone(), image_frame.clone()))
 }

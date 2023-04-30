@@ -123,6 +123,17 @@ impl AxisAlignedBbox {
 			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
 		}
 	}
+	pub fn union_non_empty(&self, other: &AxisAlignedBbox) -> Option<AxisAlignedBbox> {
+		match (self.size() == DVec2::ZERO, other.size() == DVec2::ZERO) {
+			(true, true) => None,
+			(true, _) => Some(other.clone()),
+			(_, true) => Some(self.clone()),
+			_ => Some(AxisAlignedBbox {
+				start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
+				end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
+			}),
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -278,7 +289,8 @@ where
 {
 	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
 	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
-	let aabb = foreground_aabb.union(&background_aabb);
+
+	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {return ImageFrame::empty()};
 
 	// Clamp the foreground image to the background image
 	let start = aabb.start.as_uvec2();
@@ -286,9 +298,10 @@ where
 
 	let new_background = Image::new(end.x - start.x, end.y - start.y, _P::TRANSPARENT);
 	let size = DVec2::new(new_background.width as f64, new_background.height as f64);
+	let transfrom = DAffine2::from_scale_angle_translation(size, 0., start.as_dvec2());
 	let mut new_background = ImageFrame {
 		image: new_background,
-		transform: DAffine2::from_scale_angle_translation(size, 0., background.transform().translation + start.as_dvec2()),
+		transform: transfrom,
 	};
 
 	new_background = blend_image(background, new_background, map_fn);
