@@ -208,6 +208,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 				}
 			}
+			ActivateGrid => {
+				// 				Grid button will call DocMessageHandler::ActivateGrid
+				// ActivateGrid will
+				// 	-set Docmessagehandler.snapping to be true
+				// 	-transform all layers points to rounded out integer
+
+				// In Select Tool:
+				// 	when dragging we will check if DocMessageHandler.snapping is enabled
+				// 		-if so then we will round all points
+				debug!("Grid Activated");
+			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
 					responses.extend(self.select_layer(layer_path, &render_data));
@@ -219,6 +230,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				self.update_layer_tree_options_bar_widgets(responses, &render_data);
 			}
+
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 				let (paths, boxes): (Vec<_>, Vec<_>) = self
@@ -1580,7 +1592,7 @@ impl DocumentMessageHandler {
 				checked: true,
 				icon: "Grid".into(),
 				tooltip: "Grid".into(),
-				on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
+				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::ActivateGrid.into()),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {

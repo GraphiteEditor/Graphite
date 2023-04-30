@@ -65,6 +65,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
+				
 				if let Ok(layer) = document.document_legacy.layer(selected_layers[0]) {
 					if let Some(vector_data) = layer.as_vector_data() {
 						*selected.original_transforms = OriginalTransforms::default();
