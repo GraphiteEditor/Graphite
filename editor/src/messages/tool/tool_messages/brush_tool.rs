@@ -368,12 +368,12 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 	if brush_node.implementation != DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()) {
 		return None;
 	}
-	let image_input = brush_node.inputs.get(0)?;
+	let image_input = brush_node.inputs.get(1)?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::ImageFrame(image_frame),
 		..
 	} = image_input else { return None };
-	let points_input = brush_node.inputs.get(1)?;
+	let points_input = brush_node.inputs.get(2)?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(points),
 		..

@@ -195,13 +195,14 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 
 				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 				let background_bounds = background_bounds.eval(frames.clone().into_iter());
+				let background_bounds = MergeBoundingBoxNode::new().eval((background_bounds, image.eval(())));
 				let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
 
 				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
 				let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 
-				let background = BlendReverseImageNode::new(image, ValueNode::new(blend_node));
-				let background_image = background_image.then(background);
+				let background = ExtendImageNode::new(background_image);
+				let background_image = image.then(background);
 
 				let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 				let final_image = ClonedNode::new(frames.into_iter()).then(final_image);

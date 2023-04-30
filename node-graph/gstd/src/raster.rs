@@ -1,9 +1,10 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
 
-use graphene_core::Node;
+use graphene_core::value::CopiedNode;
+use graphene_core::{Color, Node};
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -275,7 +276,6 @@ fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> +
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
-	return blend_image(foreground, background, map_fn);
 	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
 	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
 
@@ -337,6 +337,23 @@ where
 	background
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExtendImageNode<Background> {
+	background: Background,
+}
+
+#[node_macro::node_fn(ExtendImageNode)]
+fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color>) -> ImageFrame<Color> {
+	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
+	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+
+	if foreground_aabb.contains(background_aabb.start) && foreground_aabb.contains(background_aabb.end) {
+		return foreground;
+	}
+
+	blend_image(foreground, background, &BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.)))
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MergeBoundingBoxNode<Data> {
 	_data: PhantomData<Data>,
@@ -349,7 +366,7 @@ fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _D
 	let snd_aabb = compute_transformed_bounding_box(data.transform()).axis_aligned_bbox();
 
 	if let Some(fst_aabb) = initial_aabb {
-		Some(fst_aabb.union(&snd_aabb))
+		fst_aabb.union_non_empty(&snd_aabb)
 	} else {
 		Some(snd_aabb)
 	}
