@@ -43,6 +43,7 @@ pub enum DocumentMessage {
 
 	// Messages
 	AbortTransaction,
+	ActivateGrid,
 	AddSelectedLayers {
 		additional_layers: Vec<Vec<LayerId>>,
 	},
