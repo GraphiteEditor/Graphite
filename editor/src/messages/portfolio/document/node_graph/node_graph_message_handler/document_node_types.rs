@@ -468,7 +468,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Brush",
 			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode"),
 			inputs: vec![
-				DocumentInputType::value("Background", TaggedValue::ImageFrame(ImageFrame::empty()), false),
+				DocumentInputType::value("None", TaggedValue::None, false),
+				DocumentInputType::value("Background", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Trace", TaggedValue::VecDVec2((0..2).map(|x| DVec2::new(x as f64 * 10., 0.)).collect()), true),
 				DocumentInputType::value("Diameter", TaggedValue::F64(40.), false),
 				DocumentInputType::value("Hardness", TaggedValue::F64(50.), false),

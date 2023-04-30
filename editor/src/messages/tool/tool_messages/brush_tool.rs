@@ -190,7 +190,7 @@ impl BrushToolData {
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
-				input_index: 1,
+				input_index: 2,
 				value: TaggedValue::VecDVec2(self.points.last().cloned().unwrap_or_default()),
 			});
 		}
@@ -205,7 +205,7 @@ impl BrushToolData {
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
-				input_index: 0,
+				input_index: 1,
 				value: TaggedValue::ImageFrame(image_frame),
 			});
 		}
@@ -331,7 +331,8 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 	let brush_node = DocumentNode {
 		name: "Brush".to_string(),
 		inputs: vec![
-			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false),
+			NodeInput::value(TaggedValue::None, false),
+			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			NodeInput::value(TaggedValue::VecDVec2(data.points.last().cloned().unwrap_or_default()), false),
 			// Diameter
 			NodeInput::value(TaggedValue::F64(data.diameter), false),

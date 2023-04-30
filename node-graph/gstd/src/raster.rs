@@ -275,6 +275,7 @@ fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> +
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
+	return blend_image(foreground, background, map_fn);
 	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
 	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
 

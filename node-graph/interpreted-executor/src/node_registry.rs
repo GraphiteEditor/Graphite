@@ -179,11 +179,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				use graphene_core::value::*;
 				use graphene_std::brush::*;
 
-				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[0]);
-				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1]);
-				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
-				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
-				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[4]);
+				let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[1]);
+				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
+				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
+				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
+				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[5]);
 
 				let stamp = BrushStampGeneratorNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
 				let stamp = stamp.eval(diameter.eval(()));
@@ -197,21 +198,21 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
 
 				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
-
 				let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+
+				let background = BlendReverseImageNode::new(image, ValueNode::new(blend_node));
+				let background_image = background_image.then(background);
 
 				let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 				let final_image = ClonedNode::new(frames.into_iter()).then(final_image);
 
-				let blend_node = BlendReverseImageNode::new(final_image, ValueNode::new(blend_node));
-
-				let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(blend_node));
+				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
 				Box::pin(any)
 			},
 			NodeIOTypes::new(
+				concrete!(()),
 				concrete!(ImageFrame<Color>),
-				concrete!(ImageFrame<Color>),
-				vec![value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64), value_fn!(Color)],
+				vec![value_fn!(ImageFrame<Color>), value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64), value_fn!(Color)],
 			),
 		)],
 		vec![(
