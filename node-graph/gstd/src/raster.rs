@@ -283,7 +283,6 @@ where
 	if background_aabb.contains(foreground_aabb.start) && background_aabb.contains(foreground_aabb.end) {
 		return blend_image(foreground, background, map_fn);
 	}
-	log::debug!("Blending images with aabb: {:?} and {:?}", foreground_aabb, background_aabb);
 
 	// Clamp the foreground image to the background image
 	let start = aabb.start.as_uvec2();

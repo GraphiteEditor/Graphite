@@ -116,7 +116,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::None, true),
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of it's last evaluation"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
 		},
 		DocumentNodeType {
 			name: "Downres",
