@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use xxhash_rust::xxh3::Xxh3;
 
 /// Caches the output of a given Node and acts as a proxy
