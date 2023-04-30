@@ -2,6 +2,7 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::WidgetHolder;
 use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, OptionalInput, Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
@@ -32,7 +33,18 @@ pub struct PenTool {
 
 pub struct PenColorOptions {
 	color: Option<Color>,
+	working_color: Option<Color>,
 	is_working_color: bool,
+}
+
+impl PenColorOptions {
+	pub fn active_color(&self) -> Option<Color> {
+		if self.is_working_color {
+			self.working_color
+		} else {
+			self.color
+		}
+	}
 }
 
 pub struct PenOptions {
@@ -47,10 +59,12 @@ impl Default for PenOptions {
 			line_weight: 5.,
 			fill: PenColorOptions {
 				color: Some(Color::BLACK),
+				working_color: Some(Color::BLACK),
 				is_working_color: true,
 			},
 			stroke: PenColorOptions {
 				color: Some(Color::WHITE),
+				working_color: Some(Color::WHITE),
 				is_working_color: true,
 			},
 		}
@@ -96,9 +110,11 @@ pub enum PenOptionsUpdate {
 	ClearFill(),
 	ClearStroke(),
 	FillColor(Option<Color>),
+	FillWorkingColor(Option<Color>),
 	FillWorkingTie(bool),
 	LineWeight(f64),
 	StrokeColor(Option<Color>),
+	StrokeWorkingColor(Option<Color>),
 	StrokeWorkingTie(bool),
 }
 
@@ -125,7 +141,7 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingTie(optional.checked)).into())
 		.tooltip("Copy working color")
 		.widget_holder();
-	let color_input = ColorInput::new(fill.color)
+	let color_input = ColorInput::new(fill.active_color())
 		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
 		.widget_holder();
 
@@ -135,7 +151,7 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 	let reset = IconButton::new("CloseX", 12)
 		.disabled(stroke.color.is_none())
-		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ClearFill()).into())
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ClearStroke()).into())
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Stroke").widget_holder();
@@ -143,7 +159,7 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingTie(optional.checked)).into())
 		.tooltip("Copy working color")
 		.widget_holder();
-	let color_input = ColorInput::new(stroke.color)
+	let color_input = ColorInput::new(stroke.active_color())
 		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
 		.widget_holder();
 
@@ -176,17 +192,30 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 			match action {
 				PenOptionsUpdate::ClearFill() => self.options.fill.color = None,
 				PenOptionsUpdate::ClearStroke() => {
-					self.options.stroke.color = None;
+					self.options.stroke.color = Some(Color::WHITE);
 					self.options.stroke.is_working_color = true;
 				}
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				PenOptionsUpdate::FillColor(fill_color) => self.options.fill.color = fill_color,
+				PenOptionsUpdate::FillColor(color) => {
+					self.options.fill.color = color;
+					self.options.fill.is_working_color = false;
+				}
+				PenOptionsUpdate::FillWorkingColor(color) => self.options.fill.working_color = color,
 				// Allow fill color to be null and don't set to working color since a user may wan't it null
 				PenOptionsUpdate::FillWorkingTie(is_fill_tied) => self.options.fill.is_working_color = is_fill_tied,
-				PenOptionsUpdate::StrokeColor(stroke_color) => self.options.stroke.color = stroke_color,
-				// TODO: Temp will update once I know how to update the state of the optional and disable/lock it
-				PenOptionsUpdate::StrokeWorkingTie(is_stroke_tied) => self.options.stroke.is_working_color = if self.options.stroke.color.is_some() { is_stroke_tied } else { true },
+				PenOptionsUpdate::StrokeColor(color) => {
+					self.options.stroke.color = color;
+					self.options.stroke.is_working_color = false;
+				}
+				PenOptionsUpdate::StrokeWorkingColor(color) => self.options.stroke.working_color = color,
+				PenOptionsUpdate::StrokeWorkingTie(is_stroke_tied) => self.options.stroke.is_working_color = is_stroke_tied,
 			}
+
+			responses.add(LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target: LayoutTarget::ToolOptions,
+			});
+
 			return;
 		}
 
@@ -627,11 +656,15 @@ impl Fsm for PenToolFsmState {
 					// Disable this tool's mirroring
 					tool_data.should_mirror = false;
 
+					// Temp work around for update working colors. TODO: update these from a message or something so they are updated before a new path is created.
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingColor(Some(global_tool_data.secondary_color))));
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingColor(Some(global_tool_data.primary_color))));
+
 					// Perform extension of an existing path
 					if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 						tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
 					} else {
-						// TODO: Tidy up
+						// temp work around until I can read a msg to update working colors instead of like above.
 						let stroke_color = if tool_options.stroke.is_working_color {
 							global_tool_data.secondary_color
 						} else {
@@ -642,6 +675,7 @@ impl Fsm for PenToolFsmState {
 						} else {
 							tool_options.fill.color
 						};
+
 						tool_data.create_new_path(document, tool_options.line_weight, stroke_color, fill_color, input, responses);
 					}
 
