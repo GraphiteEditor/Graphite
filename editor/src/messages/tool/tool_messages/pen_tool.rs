@@ -216,6 +216,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PenOptionsUpdate::StrokeWorkingColor(color) => self.options.stroke.working_color = color,
 			}
 
+			// TODO: Consider updating just the relevant widget
 			responses.add(LayoutMessage::SendLayout {
 				layout: self.properties(),
 				layout_target: LayoutTarget::ToolOptions,
