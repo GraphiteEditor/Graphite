@@ -159,6 +159,7 @@ pub enum Operation {
 		layer: Box<Layer>,
 		destination_path: Vec<LayerId>,
 		insert_index: isize,
+		duplicate_root_layer: Option<Vec<u64>>,
 	},
 	CreateFolder {
 		path: Vec<LayerId>,

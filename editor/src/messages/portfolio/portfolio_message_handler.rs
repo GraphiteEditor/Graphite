@@ -418,6 +418,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								layer: Box::new(entry.layer.clone()),
 								destination_path,
 								insert_index,
+								duplicate_root_layer: None,
 							}
 							.into(),
 						);
@@ -460,6 +461,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 									layer: Box::new(entry.layer.clone()),
 									destination_path,
 									insert_index: -1,
+									duplicate_root_layer: None,
 								}
 								.into(),
 							);

@@ -477,10 +477,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					}
 					new_index = new_index + 1;
 				}
-				// debug!("index: {}", insert_index);
-				// debug!("child layers: {}", child_layers_deleted);
 				insert_index = insert_index - child_layers_deleted;
-				// debug!("index: {}", &insert_index);
 
 				// ------------------------------>
 
@@ -1624,7 +1621,6 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
-		// debug!("layer_panel_entry_from_path: {:?}", &path);
 		let layer_metadata = self.layer_metadata(path);
 		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.document_legacy.root.transform.inverse())).ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;
