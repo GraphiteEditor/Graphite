@@ -3,8 +3,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::WidgetHolder;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, OptionalInput, Separator, SeparatorDirection, SeparatorType, TextLabel};
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, OptionalInput, Separator, SeparatorDirection, SeparatorType, TextLabel, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
@@ -31,18 +30,23 @@ pub struct PenTool {
 	options: PenOptions,
 }
 
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+pub enum PenColorType {
+	Base,
+	Working,
+}
+
 pub struct PenColorOptions {
 	color: Option<Color>,
 	working_color: Option<Color>,
-	is_working_color: bool,
+	color_type: PenColorType,
 }
 
 impl PenColorOptions {
 	pub fn active_color(&self) -> Option<Color> {
-		if self.is_working_color {
-			self.working_color
-		} else {
-			self.color
+		match self.color_type {
+			PenColorType::Base => self.color,
+			PenColorType::Working => self.working_color,
 		}
 	}
 }
@@ -60,12 +64,12 @@ impl Default for PenOptions {
 			fill: PenColorOptions {
 				color: Some(Color::BLACK),
 				working_color: Some(Color::BLACK),
-				is_working_color: true,
+				color_type: PenColorType::Working,
 			},
 			stroke: PenColorOptions {
 				color: Some(Color::WHITE),
 				working_color: Some(Color::WHITE),
-				is_working_color: true,
+				color_type: PenColorType::Working,
 			},
 		}
 	}
@@ -110,12 +114,12 @@ pub enum PenOptionsUpdate {
 	ClearFill(),
 	ClearStroke(),
 	FillColor(Option<Color>),
+	FillColorType(PenColorType),
 	FillWorkingColor(Option<Color>),
-	FillWorkingTie(bool),
 	LineWeight(f64),
 	StrokeColor(Option<Color>),
+	StrokeColorType(PenColorType),
 	StrokeWorkingColor(Option<Color>),
-	StrokeWorkingTie(bool),
 }
 
 impl ToolMetadata for PenTool {
@@ -137,8 +141,8 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Fill").widget_holder();
-	let optional = OptionalInput::new(fill.is_working_color, "ResetColors")
-		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingTie(optional.checked)).into())
+	let optional = OptionalInput::new(fill.color_type == PenColorType::Working, "ResetColors")
+		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(if optional.checked { PenColorType::Working } else { PenColorType::Base })).into())
 		.tooltip("Copy working color")
 		.widget_holder();
 	let color_input = ColorInput::new(fill.active_color())
@@ -155,8 +159,8 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Stroke").widget_holder();
-	let optional = OptionalInput::new(stroke.is_working_color, "ResetColors")
-		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingTie(optional.checked)).into())
+	let optional = OptionalInput::new(stroke.color_type == PenColorType::Working, "ResetColors")
+		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(if optional.checked { PenColorType::Working } else { PenColorType::Base })).into())
 		.tooltip("Copy working color")
 		.widget_holder();
 	let color_input = ColorInput::new(stroke.active_color())
@@ -192,23 +196,24 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 			match action {
 				PenOptionsUpdate::ClearFill() => self.options.fill.color = None,
 				PenOptionsUpdate::ClearStroke() => {
+					// Setting None will cause a crash if the user attempts to draw while null - not handled at lower levels yet.
 					self.options.stroke.color = Some(Color::WHITE);
-					self.options.stroke.is_working_color = true;
+					self.options.stroke.color_type = PenColorType::Base;
 				}
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 				PenOptionsUpdate::FillColor(color) => {
 					self.options.fill.color = color;
-					self.options.fill.is_working_color = false;
+					self.options.fill.color_type = PenColorType::Base;
 				}
 				PenOptionsUpdate::FillWorkingColor(color) => self.options.fill.working_color = color,
 				// Allow fill color to be null and don't set to working color since a user may wan't it null
-				PenOptionsUpdate::FillWorkingTie(is_fill_tied) => self.options.fill.is_working_color = is_fill_tied,
+				PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
 				PenOptionsUpdate::StrokeColor(color) => {
 					self.options.stroke.color = color;
-					self.options.stroke.is_working_color = false;
+					self.options.stroke.color_type = PenColorType::Base;
 				}
+				PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
 				PenOptionsUpdate::StrokeWorkingColor(color) => self.options.stroke.working_color = color,
-				PenOptionsUpdate::StrokeWorkingTie(is_stroke_tied) => self.options.stroke.is_working_color = is_stroke_tied,
 			}
 
 			responses.add(LayoutMessage::SendLayout {
@@ -665,15 +670,13 @@ impl Fsm for PenToolFsmState {
 						tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
 					} else {
 						// temp work around until I can read a msg to update working colors instead of like above.
-						let stroke_color = if tool_options.stroke.is_working_color {
-							global_tool_data.secondary_color
-						} else {
-							tool_options.stroke.color.unwrap()
+						let stroke_color = match tool_options.stroke.color_type {
+							PenColorType::Base => tool_options.stroke.color.unwrap(),
+							PenColorType::Working => global_tool_data.secondary_color,
 						};
-						let fill_color = if tool_options.fill.is_working_color {
-							Some(global_tool_data.primary_color)
-						} else {
-							tool_options.fill.color
+						let fill_color = match tool_options.fill.color_type {
+							PenColorType::Base => tool_options.fill.color,
+							PenColorType::Working => Some(global_tool_data.primary_color),
 						};
 
 						tool_data.create_new_path(document, tool_options.line_weight, stroke_color, fill_color, input, responses);
