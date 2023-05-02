@@ -105,9 +105,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 impl ToolTransition for LineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(LineToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -165,7 +164,7 @@ impl Fsm for LineToolFsmState {
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 					responses.add(GraphOperationMessage::StrokeSet {
 						layer: layer_path,
-						stroke: Stroke::new(global_tool_data.primary_color, tool_options.line_weight),
+						stroke: Stroke::new(Some(global_tool_data.primary_color), tool_options.line_weight),
 					});
 
 					tool_data.weight = tool_options.line_weight;

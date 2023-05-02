@@ -56,6 +56,7 @@
 		border: 1px solid var(--color-5-dullgray);
 		border-radius: 2px;
 		padding: 1px;
+		min-width: 80px;
 
 		> button {
 			position: relative;

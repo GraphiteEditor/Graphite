@@ -1193,7 +1193,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
-					.icon("Edit")
+					.icon("Edit12px")
 					.tooltip({
 						let message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64)";
 						let manual_message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64).\n\

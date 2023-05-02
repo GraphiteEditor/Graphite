@@ -122,9 +122,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 impl ToolTransition for SplineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(SplineToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -270,6 +269,6 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path.clone(),
-		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
+		stroke: Stroke::new(Some(global_tool_data.primary_color), tool_data.weight),
 	});
 }

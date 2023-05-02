@@ -112,7 +112,7 @@ impl Pivot {
 				path: layer_paths[0].clone(),
 				transform: DAffine2::IDENTITY.to_cols_array(),
 				style: style::PathStyle::new(
-					Some(style::Stroke::new(COLOR_ACCENT, PIVOT_OUTER_OUTLINE_THICKNESS)),
+					Some(style::Stroke::new(Some(COLOR_ACCENT), PIVOT_OUTER_OUTLINE_THICKNESS)),
 					style::Fill::Solid(graphene_core::raster::color::Color::WHITE),
 				),
 				insert_index: -1,
