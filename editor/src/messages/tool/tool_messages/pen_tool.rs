@@ -3,7 +3,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, OptionalInput, Separator, SeparatorDirection, SeparatorType, TextLabel, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextLabel, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
@@ -32,21 +32,24 @@ pub struct PenTool {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenColorType {
-	Base,
-	Working,
+	Primary,
+	Secondary,
+	Custom,
 }
 
 pub struct PenColorOptions {
 	color: Option<Color>,
-	working_color: Option<Color>,
+	primary_working_color: Option<Color>,
+	secondary_working_color: Option<Color>,
 	color_type: PenColorType,
 }
 
 impl PenColorOptions {
 	pub fn active_color(&self) -> Option<Color> {
 		match self.color_type {
-			PenColorType::Base => self.color,
-			PenColorType::Working => self.working_color,
+			PenColorType::Custom => self.color,
+			PenColorType::Primary => self.primary_working_color,
+			PenColorType::Secondary => self.secondary_working_color,
 		}
 	}
 }
@@ -63,13 +66,15 @@ impl Default for PenOptions {
 			line_weight: 5.,
 			fill: PenColorOptions {
 				color: Some(Color::BLACK),
-				working_color: Some(Color::BLACK),
-				color_type: PenColorType::Working,
+				primary_working_color: Some(Color::BLACK),
+				secondary_working_color: Some(Color::WHITE),
+				color_type: PenColorType::Primary,
 			},
 			stroke: PenColorOptions {
-				color: Some(Color::WHITE),
-				working_color: Some(Color::WHITE),
-				color_type: PenColorType::Working,
+				color: None,
+				primary_working_color: Some(Color::BLACK),
+				secondary_working_color: Some(Color::WHITE),
+				color_type: PenColorType::Custom,
 			},
 		}
 	}
@@ -115,11 +120,11 @@ enum PenToolFsmState {
 pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(PenColorType),
-	FillWorkingColor(Option<Color>),
 	LineWeight(f64),
+	PrimaryColor(Option<Color>),
+	SecondaryColor(Option<Color>),
 	StrokeColor(Option<Color>),
 	StrokeColorType(PenColorType),
-	StrokeWorkingColor(Option<Color>),
 }
 
 impl ToolMetadata for PenTool {
@@ -134,6 +139,7 @@ impl ToolMetadata for PenTool {
 	}
 }
 
+// TODO: Generalize create_fill_widget and create_stroke_widget into one function.
 fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 	let reset = IconButton::new("CloseX", 12)
 		.disabled(fill.color.is_none())
@@ -141,15 +147,35 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Fill").widget_holder();
-	let optional = OptionalInput::new(fill.color_type == PenColorType::Working, "WorkingColorsPrimary")
-		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(if optional.checked { PenColorType::Working } else { PenColorType::Base })).into())
-		.tooltip("Copy working color")
-		.widget_holder();
+
+	let entries = vec![
+		(String::from("WorkingColorsPrimary"), PenColorType::Primary),
+		(String::from("WorkingColorsSecondary"), PenColorType::Secondary),
+		(String::from("Edit"), PenColorType::Custom),
+	]
+	.into_iter()
+	.map(|(icon, color_type)| {
+		RadioEntryData::new("")
+			.icon(icon)
+			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into())
+	})
+	.collect();
+
+	let radio = RadioInput::new(entries).selected_index(fill.color_type.clone() as u32).widget_holder();
+
 	let color_input = ColorInput::new(fill.active_color())
 		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
 		.widget_holder();
 
-	vec![reset, WidgetHolder::related_separator(), label, WidgetHolder::related_separator(), optional, color_input]
+	vec![
+		label,
+		WidgetHolder::related_separator(),
+		reset,
+		WidgetHolder::related_separator(),
+		radio,
+		WidgetHolder::related_separator(),
+		color_input,
+	]
 }
 
 fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
@@ -159,15 +185,34 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Stroke").widget_holder();
-	let optional = OptionalInput::new(stroke.color_type == PenColorType::Working, "WorkingColorsSecondary")
-		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(if optional.checked { PenColorType::Working } else { PenColorType::Base })).into())
-		.tooltip("Copy working color")
-		.widget_holder();
+
+	let entries = vec![
+		(String::from("WorkingColorsPrimary"), PenColorType::Primary),
+		(String::from("WorkingColorsSecondary"), PenColorType::Secondary),
+		(String::from("Edit"), PenColorType::Custom),
+	]
+	.into_iter()
+	.map(|(icon, color_type)| {
+		RadioEntryData::new("")
+			.icon(icon)
+			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into())
+	})
+	.collect();
+
+	let radio = RadioInput::new(entries).selected_index(stroke.color_type.clone() as u32).widget_holder();
 	let color_input = ColorInput::new(stroke.active_color())
 		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
 		.widget_holder();
 
-	vec![reset, WidgetHolder::related_separator(), label, WidgetHolder::related_separator(), optional, color_input]
+	vec![
+		label,
+		WidgetHolder::related_separator(),
+		reset,
+		WidgetHolder::related_separator(),
+		radio,
+		WidgetHolder::related_separator(),
+		color_input,
+	]
 }
 
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
@@ -197,16 +242,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 				PenOptionsUpdate::FillColor(color) => {
 					self.options.fill.color = color;
-					self.options.fill.color_type = PenColorType::Base;
+					self.options.fill.color_type = PenColorType::Custom;
 				}
-				PenOptionsUpdate::FillWorkingColor(color) => self.options.fill.working_color = color,
 				PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
 				PenOptionsUpdate::StrokeColor(color) => {
 					self.options.stroke.color = color;
-					self.options.stroke.color_type = PenColorType::Base;
+					self.options.stroke.color_type = PenColorType::Custom;
 				}
 				PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				PenOptionsUpdate::StrokeWorkingColor(color) => self.options.stroke.working_color = color,
+				PenOptionsUpdate::PrimaryColor(color) => {
+					self.options.stroke.primary_working_color = color;
+					self.options.fill.primary_working_color = color;
+				}
+				PenOptionsUpdate::SecondaryColor(color) => {
+					self.options.stroke.secondary_working_color = color;
+					self.options.fill.secondary_working_color = color;
+				}
 			}
 
 			// TODO: Update just the relevant widget instead of all of them.
@@ -647,8 +698,8 @@ impl Fsm for PenToolFsmState {
 					self
 				}
 				(_, PenToolMessage::WorkingColorChanged) => {
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingColor(Some(global_tool_data.secondary_color))));
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingColor(Some(global_tool_data.primary_color))));
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::PrimaryColor(Some(global_tool_data.primary_color))));
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::SecondaryColor(Some(global_tool_data.secondary_color))));
 					self
 				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
