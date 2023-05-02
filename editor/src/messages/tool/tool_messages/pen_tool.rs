@@ -149,13 +149,14 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 	let label = TextLabel::new("Fill").widget_holder();
 
 	let entries = vec![
-		(String::from("WorkingColorsPrimary"), PenColorType::Primary),
-		(String::from("WorkingColorsSecondary"), PenColorType::Secondary),
-		(String::from("Edit"), PenColorType::Custom),
+		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
+		("WorkingColorsSecondary", "Secondary Working Color", PenColorType::Secondary),
+		("Edit", "Custom Color", PenColorType::Custom),
 	]
 	.into_iter()
-	.map(|(icon, color_type)| {
+	.map(|(icon, tooltip, color_type)| {
 		RadioEntryData::new("")
+			.tooltip(tooltip)
 			.icon(icon)
 			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into())
 	})
@@ -187,13 +188,14 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 	let label = TextLabel::new("Stroke").widget_holder();
 
 	let entries = vec![
-		(String::from("WorkingColorsPrimary"), PenColorType::Primary),
-		(String::from("WorkingColorsSecondary"), PenColorType::Secondary),
-		(String::from("Edit"), PenColorType::Custom),
+		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
+		("WorkingColorsSecondary", "Secondary Working Color", PenColorType::Secondary),
+		("Edit", "Custom Color", PenColorType::Custom),
 	]
 	.into_iter()
-	.map(|(icon, color_type)| {
+	.map(|(icon, tooltip, color_type)| {
 		RadioEntryData::new("")
+			.tooltip(tooltip)
 			.icon(icon)
 			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into())
 	})
