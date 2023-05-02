@@ -299,20 +299,42 @@ impl SnapManager {
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.
 	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
 	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, mouse_delta: DVec2) -> DVec2 {
+		let mut snapping_delta = DVec2::ZERO;
+		// where do i get layer path from?
 		if document_message_handler.snapping_enabled {
-			self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
-		} else {
-			DVec2::ZERO
+			snapping_delta = self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
 		}
+		if document_message_handler.grid_enabled {
+			let doc_transform = document_message_handler.document_legacy.root.transform;
+			let layer_document_space = doc_transform.transform_point2(DVec2::ZERO);
+			let doc_space_delta = doc_transform.inverse().transform_vector2(mouse_delta + snapping_delta);
+			let desired_document_space = (layer_document_space + doc_space_delta).round();
+			let viewspace_delta = doc_transform.transform_vector2(desired_document_space - layer_document_space) - mouse_delta;
+			debug!("doc_transform {:?}", doc_transform);
+			debug!("layer_document_space {:?}", layer_document_space);
+			debug!("doc_space_delta {:?}", doc_space_delta);
+			debug!("desired_document_space {:?}", desired_document_space);
+			debug!("viewspace_delta {:?}", viewspace_delta);
+			snapping_delta = viewspace_delta;
+		}
+		snapping_delta
 	}
 
 	/// Handles snapping of a viewport position, returning another viewport position.
 	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
+		let mut snapped_position = position_viewport;
 		if document_message_handler.snapping_enabled {
-			self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
-		} else {
-			position_viewport
+			snapped_position = self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
 		}
+		if document_message_handler.grid_enabled {
+			let doc_transform = document_message_handler.document_legacy.root.transform;
+			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position).round();
+			debug!("doc_space_pos {:?}", doc_space_pos);
+			snapped_position = doc_transform.transform_point2(doc_space_pos).round();
+		}
+		debug!("snapped_position {:?}", snapped_position);
+
+		snapped_position
 	}
 
 	/// Removes snap target data and overlays. Call this when snapping is done.

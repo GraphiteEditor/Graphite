@@ -240,7 +240,11 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				debug!("Parent transform {:?}", parent_transform);
+				debug!("transform {:?}", transform);
+				debug!("transform in {:?}", transform_in);
 				let bounds = LayerBounds::new(document, &layer);
+				// debug!("Bounds {:?}", bounds);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}

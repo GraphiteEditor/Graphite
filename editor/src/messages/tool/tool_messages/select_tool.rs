@@ -650,7 +650,7 @@ impl Fsm for SelectToolFsmState {
 							let (center, axis_align) = (input.keyboard.get(center as usize), input.keyboard.get(axis_align as usize));
 
 							let mouse_position = input.mouse.position;
-
+							debug!("hit");
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
 							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
@@ -658,8 +658,8 @@ impl Fsm for SelectToolFsmState {
 
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
-
-							selected.update_transforms(delta);
+							let grid = document.grid_enabled;
+							selected.update_transforms(delta, grid);
 						}
 					}
 					ResizingBounds
@@ -692,8 +692,8 @@ impl Fsm for SelectToolFsmState {
 							None,
 							&ToolType::Select,
 						);
-
-						selected.update_transforms(delta);
+						let grid = document.grid_enabled;
+						selected.update_transforms(delta, grid);
 					}
 
 					RotatingBounds
