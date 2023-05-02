@@ -263,7 +263,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				}
 			}
 
-			// TODO: Update just the relevant widget instead of all of them.
 			responses.add(LayoutMessage::SendLayout {
 				layout: self.properties(),
 				layout_target: LayoutTarget::ToolOptions,
@@ -340,6 +339,7 @@ impl PenToolData {
 			},
 		});
 	}
+
 	fn create_new_path(
 		&mut self,
 		document: &DocumentMessageHandler,
@@ -378,9 +378,9 @@ impl PenToolData {
 		self.from_start = false;
 		self.subpath_index = 0;
 	}
+
+	// TODO: tooltip / user documentation?
 	/// If you place the anchor on top of the previous anchor then you break the mirror
-	///
-	/// TODO: tooltip / user documentation?
 	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) -> Option<()> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;

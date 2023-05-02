@@ -62,6 +62,7 @@ impl ToolTransition for EyedropperTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(EyedropperToolMessage::Abort.into()),
+			working_color_changed: Some(EyedropperToolMessage::PointerMove.into()),
 			..Default::default()
 		}
 	}

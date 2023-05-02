@@ -172,8 +172,6 @@ impl DocumentToolData {
 		});
 
 		responses.add(BroadcastMessage::TriggerEvent(BroadcastEvent::WorkingColorChanged));
-
-		responses.add(EyedropperToolMessage::PointerMove);
 	}
 }
 
