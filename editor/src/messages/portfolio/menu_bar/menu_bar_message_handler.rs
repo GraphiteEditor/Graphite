@@ -94,7 +94,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 				]),
 			),
 			MenuBarEntry::new_root(
-				"Edit12px".into(),
+				"Edit".into(),
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
