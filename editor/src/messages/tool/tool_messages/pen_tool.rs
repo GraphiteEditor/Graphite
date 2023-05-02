@@ -164,19 +164,17 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 
 	let radio = RadioInput::new(entries).selected_index(fill.color_type.clone() as u32).widget_holder();
 
-	let color_input = ColorInput::new(fill.active_color())
-		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
-		.widget_holder();
+	let mut widgets = vec![label, WidgetHolder::related_separator(), reset, WidgetHolder::related_separator(), radio];
 
-	vec![
-		label,
-		WidgetHolder::related_separator(),
-		reset,
-		WidgetHolder::related_separator(),
-		radio,
-		WidgetHolder::related_separator(),
-		color_input,
-	]
+	if fill.color_type == PenColorType::Custom {
+		let color_input = ColorInput::new(fill.active_color())
+			.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
+			.widget_holder();
+
+		widgets.append(&mut vec![WidgetHolder::related_separator(), color_input]);
+	}
+
+	widgets
 }
 
 fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
@@ -202,19 +200,18 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 	.collect();
 
 	let radio = RadioInput::new(entries).selected_index(stroke.color_type.clone() as u32).widget_holder();
-	let color_input = ColorInput::new(stroke.active_color())
-		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
-		.widget_holder();
 
-	vec![
-		label,
-		WidgetHolder::related_separator(),
-		reset,
-		WidgetHolder::related_separator(),
-		radio,
-		WidgetHolder::related_separator(),
-		color_input,
-	]
+	let mut widgets = vec![label, WidgetHolder::related_separator(), reset, WidgetHolder::related_separator(), radio];
+
+	if stroke.color_type == PenColorType::Custom {
+		let color_input = ColorInput::new(stroke.active_color())
+			.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
+			.widget_holder();
+
+		widgets.append(&mut vec![WidgetHolder::related_separator(), color_input]);
+	}
+
+	widgets
 }
 
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
