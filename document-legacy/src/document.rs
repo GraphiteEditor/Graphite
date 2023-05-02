@@ -760,7 +760,7 @@ impl Document {
 					let mut old_to_new_layer_id: HashMap<LayerId, LayerId> = HashMap::new();
 
 					let mut responses: Vec<DocumentResponse> = vec![];
-					responses.extend([DocumentChanged, CreatedLayer { path: new_path.clone() }, FolderChanged { path: folder_path.to_vec() }]);
+					responses.extend([DocumentChanged, CreatedLayer { path: (&new_path).to_vec() }, FolderChanged { path: folder_path.to_vec() }]);
 					responses.extend(update_thumbnails_upstream(path.as_slice()));
 
 					let new_folder = self.folder_mut(new_path.clone().as_slice())?;
@@ -770,22 +770,19 @@ impl Document {
 						new_folder.layer_ids = vec![];
 						new_folder.layers = vec![];
 
-						// After sorting, Iterate through each duplicate layer
 						let mut counter = 0;
 						for duplicate_layer in duplicated_layers {
-							let old_layer_id = duplicate_layer.last().unwrap();
-
-							let cloned_new_path = new_path.clone();
+							let old_layer_id = duplicate_layer.last().unwrap_or(&0);
 
 							// Iterate through each ID of the current duplicate layer
 							// If the the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one
-							let sub_layer = &duplicate_layer[cloned_new_path.len()..];
+							let sub_layer = &duplicate_layer[new_path.clone().len()..];
 							let new_sub_path: Vec<u64> = sub_layer.iter().filter_map(|id| old_to_new_layer_id.get(id).cloned()).collect();
 
+							// Combine the new path with the IDs of the duplicate layer path to create the path where we insert the duplicate layer
 							let updated_layer_ref: &Layer = duplicate_layer_objects_sorted.get(counter).unwrap();
 							let mut updated_layer = updated_layer_ref.clone();
-							// Combine the new path with the IDs of the duplicate layer path to create the path where we insert the duplicate layer
-							let updated_layer_path_parent: Vec<u64> = [cloned_new_path.clone(), new_sub_path].concat();
+							let updated_layer_path_parent: Vec<u64> = [new_path.clone(), new_sub_path].concat();
 
 							// Clear the new folders layer_ids/layers because they contain the layer_ids/layers of the layer were duplicated
 							if self.is_folder(duplicate_layer.clone()) {
@@ -800,7 +797,7 @@ impl Document {
 										layer: Box::new(updated_layer.clone()),
 										destination_path: updated_layer_path_parent.clone(),
 										insert_index: -1,
-										duplicate_root_layer: Some(cloned_new_path),
+										duplicate_root_layer: Some(new_path.clone()),
 									},
 									render_data,
 								)
