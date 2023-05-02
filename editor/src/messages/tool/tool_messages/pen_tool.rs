@@ -113,8 +113,6 @@ enum PenToolFsmState {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
-	ClearFill(),
-	ClearStroke(),
 	FillColor(Option<Color>),
 	FillColorType(PenColorType),
 	FillWorkingColor(Option<Color>),
@@ -139,7 +137,7 @@ impl ToolMetadata for PenTool {
 fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 	let reset = IconButton::new("CloseX", 12)
 		.disabled(fill.color.is_none())
-		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ClearFill()).into())
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into())
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Fill").widget_holder();
@@ -157,7 +155,7 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 	let reset = IconButton::new("CloseX", 12)
 		.disabled(stroke.color.is_none())
-		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ClearStroke()).into())
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into())
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Stroke").widget_holder();
@@ -196,15 +194,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
-				PenOptionsUpdate::ClearFill() => self.options.fill.color = None,
-				PenOptionsUpdate::ClearStroke() => self.options.stroke.color = None,
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 				PenOptionsUpdate::FillColor(color) => {
 					self.options.fill.color = color;
 					self.options.fill.color_type = PenColorType::Base;
 				}
 				PenOptionsUpdate::FillWorkingColor(color) => self.options.fill.working_color = color,
-				// Allow fill color to be null and don't set to working color since a user may wan't it null
 				PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
 				PenOptionsUpdate::StrokeColor(color) => {
 					self.options.stroke.color = color;
