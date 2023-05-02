@@ -33,7 +33,8 @@ import KeyboardTab from "@graphite-frontend/assets/icon-12px-solid/keyboard-tab.
 import Link from "@graphite-frontend/assets/icon-12px-solid/link.svg";
 import Overlays from "@graphite-frontend/assets/icon-12px-solid/overlays.svg";
 import Remove from "@graphite-frontend/assets/icon-12px-solid/remove.svg";
-import ResetColors from "@graphite-frontend/assets/icon-12px-solid/reset-colors.svg";
+import WorkingColorsPrimary from "@graphite-frontend/assets/icon-12px-solid/working-colors-primary.svg";
+import WorkingColorsSecondary from "@graphite-frontend/assets/icon-12px-solid/working-colors-secondary.svg";
 import Snapping from "@graphite-frontend/assets/icon-12px-solid/snapping.svg";
 import Swap from "@graphite-frontend/assets/icon-12px-solid/swap.svg";
 import VerticalEllipsis from "@graphite-frontend/assets/icon-12px-solid/vertical-ellipsis.svg";
@@ -69,7 +70,8 @@ const SOLID_12PX = {
 	Link: { svg: Link, size: 12 },
 	Overlays: { svg: Overlays, size: 12 },
 	Remove: { svg: Remove, size: 12 },
-	ResetColors: { svg: ResetColors, size: 12 },
+	WorkingColorsPrimary: { svg: WorkingColorsPrimary, size: 12 },
+	WorkingColorsSecondary: { svg: WorkingColorsSecondary, size: 12 },
 	Snapping: { svg: Snapping, size: 12 },
 	Swap: { svg: Swap, size: 12 },
 	VerticalEllipsis: { svg: VerticalEllipsis, size: 12 },

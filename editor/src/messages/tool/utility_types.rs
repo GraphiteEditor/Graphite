@@ -156,7 +156,7 @@ impl DocumentToolData {
 					})),
 					WidgetHolder::new(Widget::IconButton(IconButton {
 						size: 16,
-						icon: "ResetColors".into(),
+						icon: "WorkingColorsPrimary".into(),
 						tooltip: "Reset".into(),
 						tooltip_shortcut: action_keys!(ToolMessageDiscriminant::ResetColors),
 						on_update: WidgetCallback::new(|_| ToolMessage::ResetColors.into()),
