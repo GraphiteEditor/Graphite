@@ -72,9 +72,7 @@ impl ToolMetadata for RectangleTool {
 impl ToolTransition for RectangleTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
-			selection_changed: None,
 			..Default::default()
 		}
 	}

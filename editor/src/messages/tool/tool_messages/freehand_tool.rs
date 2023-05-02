@@ -116,9 +116,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 impl ToolTransition for FreehandTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
-			selection_changed: None,
 			..Default::default()
 		}
 	}

@@ -73,9 +73,7 @@ impl ToolMetadata for FrameTool {
 impl ToolTransition for FrameTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(FrameToolMessage::Abort.into()),
-			selection_changed: None,
 			..Default::default()
 		}
 	}

@@ -73,9 +73,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 impl ToolTransition for EllipseTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(EllipseToolMessage::Abort.into()),
-			selection_changed: None,
 			..Default::default()
 		}
 	}

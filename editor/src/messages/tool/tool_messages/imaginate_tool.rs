@@ -73,9 +73,7 @@ impl ToolMetadata for ImaginateTool {
 impl ToolTransition for ImaginateTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(ImaginateToolMessage::Abort.into()),
-			selection_changed: None,
 			..Default::default()
 		}
 	}
