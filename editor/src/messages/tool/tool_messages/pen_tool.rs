@@ -141,12 +141,13 @@ impl ToolMetadata for PenTool {
 
 // TODO: Generalize create_fill_widget and create_stroke_widget into one function.
 fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
+	let label = TextLabel::new("Fill").widget_holder();
+
 	let reset = IconButton::new("CloseX", 12)
-		.disabled(fill.color.is_none())
+		.disabled(fill.color.is_none() && fill.color_type == PenColorType::Custom)
 		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into())
 		.tooltip("Clear color")
 		.widget_holder();
-	let label = TextLabel::new("Fill").widget_holder();
 
 	let entries = vec![
 		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
@@ -161,29 +162,31 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into())
 	})
 	.collect();
-
 	let radio = RadioInput::new(entries).selected_index(fill.color_type.clone() as u32).widget_holder();
 
-	let mut widgets = vec![label, WidgetHolder::related_separator(), reset, WidgetHolder::related_separator(), radio];
+	let color_input = ColorInput::new(fill.active_color())
+		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
+		.widget_holder();
 
-	if fill.color_type == PenColorType::Custom {
-		let color_input = ColorInput::new(fill.active_color())
-			.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
-			.widget_holder();
-
-		widgets.append(&mut vec![WidgetHolder::related_separator(), color_input]);
-	}
-
-	widgets
+	vec![
+		label,
+		WidgetHolder::related_separator(),
+		reset,
+		WidgetHolder::related_separator(),
+		radio,
+		WidgetHolder::related_separator(),
+		color_input,
+	]
 }
 
 fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
+	let label = TextLabel::new("Stroke").widget_holder();
+
 	let reset = IconButton::new("CloseX", 12)
-		.disabled(stroke.color.is_none())
+		.disabled(stroke.color.is_none() && stroke.color_type == PenColorType::Custom)
 		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into())
 		.tooltip("Clear color")
 		.widget_holder();
-	let label = TextLabel::new("Stroke").widget_holder();
 
 	let entries = vec![
 		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
@@ -198,20 +201,21 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into())
 	})
 	.collect();
-
 	let radio = RadioInput::new(entries).selected_index(stroke.color_type.clone() as u32).widget_holder();
 
-	let mut widgets = vec![label, WidgetHolder::related_separator(), reset, WidgetHolder::related_separator(), radio];
+	let color_input = ColorInput::new(stroke.active_color())
+		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
+		.widget_holder();
 
-	if stroke.color_type == PenColorType::Custom {
-		let color_input = ColorInput::new(stroke.active_color())
-			.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
-			.widget_holder();
-
-		widgets.append(&mut vec![WidgetHolder::related_separator(), color_input]);
-	}
-
-	widgets
+	vec![
+		label,
+		WidgetHolder::related_separator(),
+		reset,
+		WidgetHolder::related_separator(),
+		radio,
+		WidgetHolder::related_separator(),
+		color_input,
+	]
 }
 
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
