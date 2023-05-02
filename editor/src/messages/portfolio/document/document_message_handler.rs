@@ -126,6 +126,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						for response in document_responses {
 							match &response {
 								DocumentResponse::FolderChanged { path } => responses.push_back(FolderChanged { affected_folder_path: path.clone() }.into()),
+								DocumentResponse::AddSelectedLayer { additional_layers } => responses.push_back(
+									AddSelectedLayers {
+										additional_layers: additional_layers.clone(),
+									}
+									.into(),
+								),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_metadata.remove(path);
 								}
@@ -142,19 +148,21 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									}
 									.into(),
 								),
-								DocumentResponse::CreatedLayer { path } => {
+								DocumentResponse::CreatedLayer { path, select } => {
 									if self.layer_metadata.contains_key(path) {
 										warn!("CreatedLayer overrides existing layer metadata.");
 									}
 									self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
 									responses.push_back(LayerChanged { affected_layer_path: path.clone() }.into());
 									self.layer_range_selection_reference = path.clone();
-									responses.push_back(
-										AddSelectedLayers {
-											additional_layers: vec![path.clone()],
-										}
-										.into(),
-									);
+									if *select {
+										responses.push_back(
+											AddSelectedLayers {
+												additional_layers: vec![path.clone()],
+											}
+											.into(),
+										);
+									}
 								}
 								DocumentResponse::DocumentChanged => responses.push_back(RenderDocument.into()),
 								DocumentResponse::DeletedSelectedManipulatorPoints => {
@@ -368,7 +376,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.push_front(SetSelectedLayers { replacement_selected_layers: vec![] }.into());
 				self.layer_range_selection_reference.clear();
 				for path in self.selected_layers_sorted() {
-					responses.push_back(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
+					responses.push_front(DocumentOperation::DuplicateLayer { path: path.to_vec() }.into());
 				}
 			}
 			ExportDocument {

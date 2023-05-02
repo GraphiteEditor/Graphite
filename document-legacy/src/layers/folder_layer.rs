@@ -75,7 +75,7 @@ impl FolderLayer {
 		return self.next_assignment_id;
 	}
 
-	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize, path: Option<Vec<u64>>) -> Option<LayerId> {
+	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 
 		// Bounds check for the insert index

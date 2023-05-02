@@ -371,7 +371,7 @@ impl SelectToolData {
 				layer: Box::new(layer),
 				destination_path: layer_path.clone(),
 				insert_index: -1,
-				duplicate_root_layer: None,
+				duplicating: false,
 			});
 			responses.add(DocumentMessage::UpdateLayerMetadata {
 				layer_path: layer_path.clone(),
