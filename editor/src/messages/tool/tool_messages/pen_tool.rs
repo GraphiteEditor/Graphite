@@ -143,7 +143,7 @@ fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Fill").widget_holder();
-	let optional = OptionalInput::new(fill.color_type == PenColorType::Working, "ResetColors")
+	let optional = OptionalInput::new(fill.color_type == PenColorType::Working, "WorkingColorsPrimary")
 		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(if optional.checked { PenColorType::Working } else { PenColorType::Base })).into())
 		.tooltip("Copy working color")
 		.widget_holder();
@@ -161,7 +161,7 @@ fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
 		.tooltip("Clear color")
 		.widget_holder();
 	let label = TextLabel::new("Stroke").widget_holder();
-	let optional = OptionalInput::new(stroke.color_type == PenColorType::Working, "ResetColors")
+	let optional = OptionalInput::new(stroke.color_type == PenColorType::Working, "WorkingColorsSecondary")
 		.on_update(|optional| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(if optional.checked { PenColorType::Working } else { PenColorType::Base })).into())
 		.tooltip("Copy working color")
 		.widget_holder();
