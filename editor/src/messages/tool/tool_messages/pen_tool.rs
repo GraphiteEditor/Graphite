@@ -86,6 +86,8 @@ pub enum PenToolMessage {
 	Abort,
 	#[remain::unsorted]
 	SelectionChanged,
+	#[remain::unsorted]
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	Confirm,
@@ -216,7 +218,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PenOptionsUpdate::StrokeWorkingColor(color) => self.options.stroke.working_color = color,
 			}
 
-			// TODO: Consider updating just the relevant widget
+			// TODO: Update just the relevant widget instead of all of them.
 			responses.add(LayoutMessage::SendLayout {
 				layout: self.properties(),
 				layout_target: LayoutTarget::ToolOptions,
@@ -254,6 +256,7 @@ impl ToolTransition for PenTool {
 			document_dirty: Some(PenToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
+			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
 		}
 	}
 }
@@ -652,6 +655,11 @@ impl Fsm for PenToolFsmState {
 					}
 					self
 				}
+				(_, PenToolMessage::WorkingColorChanged) => {
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingColor(Some(global_tool_data.secondary_color))));
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingColor(Some(global_tool_data.primary_color))));
+					self
+				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -662,25 +670,18 @@ impl Fsm for PenToolFsmState {
 					// Disable this tool's mirroring
 					tool_data.should_mirror = false;
 
-					// Temp work around for update working colors. TODO: update these from a message or something so they are updated before a new path is created.
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeWorkingColor(Some(global_tool_data.secondary_color))));
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::FillWorkingColor(Some(global_tool_data.primary_color))));
-
 					// Perform extension of an existing path
 					if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 						tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
 					} else {
-						// temp work around until I can read a msg to update working colors instead of like above.
-						let stroke_color = match tool_options.stroke.color_type {
-							PenColorType::Base => tool_options.stroke.color.unwrap(),
-							PenColorType::Working => global_tool_data.secondary_color,
-						};
-						let fill_color = match tool_options.fill.color_type {
-							PenColorType::Base => tool_options.fill.color,
-							PenColorType::Working => Some(global_tool_data.primary_color),
-						};
-
-						tool_data.create_new_path(document, tool_options.line_weight, stroke_color, fill_color, input, responses);
+						tool_data.create_new_path(
+							document,
+							tool_options.line_weight,
+							tool_options.stroke.active_color().unwrap(),
+							tool_options.fill.active_color(),
+							input,
+							responses,
+						);
 					}
 
 					// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle

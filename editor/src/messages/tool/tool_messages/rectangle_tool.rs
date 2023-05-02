@@ -75,6 +75,7 @@ impl ToolTransition for RectangleTool {
 			document_dirty: None,
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

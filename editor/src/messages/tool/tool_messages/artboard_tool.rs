@@ -81,6 +81,7 @@ impl ToolTransition for ArtboardTool {
 			document_dirty: Some(ArtboardToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

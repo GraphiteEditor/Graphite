@@ -76,6 +76,7 @@ impl ToolTransition for ImaginateTool {
 			document_dirty: None,
 			tool_abort: Some(ImaginateToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

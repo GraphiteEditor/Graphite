@@ -371,6 +371,7 @@ impl ToolTransition for GradientTool {
 			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(GradientToolMessage::Abort.into()),
 			selection_changed: Some(GradientToolMessage::DocumentIsDirty.into()),
+			..Default::default()
 		}
 	}
 }

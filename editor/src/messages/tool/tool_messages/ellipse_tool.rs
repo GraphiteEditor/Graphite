@@ -76,6 +76,7 @@ impl ToolTransition for EllipseTool {
 			document_dirty: None,
 			tool_abort: Some(EllipseToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

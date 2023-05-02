@@ -108,6 +108,7 @@ impl ToolTransition for LineTool {
 			document_dirty: None,
 			tool_abort: Some(LineToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

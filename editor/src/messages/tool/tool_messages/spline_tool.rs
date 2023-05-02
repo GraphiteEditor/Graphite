@@ -125,6 +125,7 @@ impl ToolTransition for SplineTool {
 			document_dirty: None,
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

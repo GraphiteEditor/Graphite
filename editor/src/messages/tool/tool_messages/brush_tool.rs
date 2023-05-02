@@ -167,6 +167,7 @@ impl ToolTransition for BrushTool {
 			document_dirty: None,
 			tool_abort: Some(BrushToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

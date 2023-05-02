@@ -1,6 +1,8 @@
 use super::common_functionality::overlay_renderer::OverlayRenderer;
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
+use crate::messages::broadcast::broadcast_event::BroadcastEvent;
+use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -169,15 +171,18 @@ impl DocumentToolData {
 			layout_target: LayoutTarget::WorkingColors,
 		});
 
+		responses.add(BroadcastMessage::TriggerEvent(BroadcastEvent::WorkingColorChanged));
+
 		responses.add(EyedropperToolMessage::PointerMove);
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EventToMessageMap {
 	pub document_dirty: Option<ToolMessage>,
 	pub selection_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
+	pub working_color_changed: Option<ToolMessage>,
 }
 
 pub trait ToolTransition {
@@ -197,6 +202,7 @@ pub trait ToolTransition {
 		subscribe_message(event_to_tool_map.document_dirty, BroadcastEvent::DocumentIsDirty);
 		subscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		subscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
+		subscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
 	}
 
 	fn deactivate(&self, responses: &mut VecDeque<Message>) {
@@ -213,6 +219,7 @@ pub trait ToolTransition {
 		unsubscribe_message(event_to_tool_map.document_dirty, BroadcastEvent::DocumentIsDirty);
 		unsubscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		unsubscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
+		unsubscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
 	}
 }
 

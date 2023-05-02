@@ -172,6 +172,7 @@ impl ToolTransition for TextTool {
 			document_dirty: Some(TextToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
+			..Default::default()
 		}
 	}
 }

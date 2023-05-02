@@ -62,6 +62,7 @@ impl ToolTransition for FillTool {
 			document_dirty: None,
 			tool_abort: Some(FillToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

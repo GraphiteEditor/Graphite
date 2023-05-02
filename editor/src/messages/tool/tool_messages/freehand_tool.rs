@@ -119,6 +119,7 @@ impl ToolTransition for FreehandTool {
 			document_dirty: None,
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

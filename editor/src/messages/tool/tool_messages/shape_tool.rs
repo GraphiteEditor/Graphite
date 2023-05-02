@@ -113,6 +113,7 @@ impl ToolTransition for ShapeTool {
 			document_dirty: None,
 			tool_abort: Some(ShapeToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

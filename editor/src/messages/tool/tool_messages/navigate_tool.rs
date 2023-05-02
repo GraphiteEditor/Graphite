@@ -79,6 +79,7 @@ impl ToolTransition for NavigateTool {
 			document_dirty: None,
 			tool_abort: Some(NavigateToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

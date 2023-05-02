@@ -76,6 +76,7 @@ impl ToolTransition for FrameTool {
 			document_dirty: None,
 			tool_abort: Some(FrameToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

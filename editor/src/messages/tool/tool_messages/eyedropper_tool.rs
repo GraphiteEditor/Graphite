@@ -64,6 +64,7 @@ impl ToolTransition for EyedropperTool {
 			document_dirty: None,
 			tool_abort: Some(EyedropperToolMessage::Abort.into()),
 			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
