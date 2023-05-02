@@ -197,11 +197,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
 				PenOptionsUpdate::ClearFill() => self.options.fill.color = None,
-				PenOptionsUpdate::ClearStroke() => {
-					// Setting None will cause a crash if the user attempts to draw while null - not handled at lower levels yet.
-					self.options.stroke.color = Some(Color::WHITE);
-					self.options.stroke.color_type = PenColorType::Base;
-				}
+				PenOptionsUpdate::ClearStroke() => self.options.stroke.color = None,
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 				PenOptionsUpdate::FillColor(color) => {
 					self.options.fill.color = color;
@@ -299,7 +295,7 @@ impl PenToolData {
 		&mut self,
 		document: &DocumentMessageHandler,
 		line_weight: f64,
-		stroke_color: Color,
+		stroke_color: Option<Color>,
 		fill_color: Option<Color>,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
@@ -677,7 +673,7 @@ impl Fsm for PenToolFsmState {
 						tool_data.create_new_path(
 							document,
 							tool_options.line_weight,
-							tool_options.stroke.active_color().unwrap(),
+							tool_options.stroke.active_color(),
 							tool_options.fill.active_color(),
 							input,
 							responses,

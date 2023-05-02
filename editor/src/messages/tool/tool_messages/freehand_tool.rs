@@ -225,6 +225,6 @@ fn add_polyline(data: &FreehandToolData, tool_data: &DocumentToolData, responses
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path,
-		stroke: Stroke::new(tool_data.primary_color, data.weight),
+		stroke: Stroke::new(Some(tool_data.primary_color), data.weight),
 	});
 }

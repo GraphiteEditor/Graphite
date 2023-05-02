@@ -166,7 +166,7 @@ impl Fsm for LineToolFsmState {
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 					responses.add(GraphOperationMessage::StrokeSet {
 						layer: layer_path,
-						stroke: Stroke::new(global_tool_data.primary_color, tool_options.line_weight),
+						stroke: Stroke::new(Some(global_tool_data.primary_color), tool_options.line_weight),
 					});
 
 					tool_data.weight = tool_options.line_weight;

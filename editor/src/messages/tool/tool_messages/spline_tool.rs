@@ -271,6 +271,6 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path.clone(),
-		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
+		stroke: Stroke::new(Some(global_tool_data.primary_color), tool_data.weight),
 	});
 }

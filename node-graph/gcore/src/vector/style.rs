@@ -281,9 +281,9 @@ impl core::hash::Hash for Stroke {
 }
 
 impl Stroke {
-	pub const fn new(color: Color, weight: f64) -> Self {
+	pub const fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
-			color: Some(color),
+			color: color,
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -528,7 +528,7 @@ impl PathStyle {
 			(_, fill) => fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
-			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT).render(),
+			(ViewMode::Outline, _) => Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render(),
 			(_, Some(stroke)) => stroke.render(),
 			(_, None) => String::new(),
 		};

@@ -160,7 +160,7 @@ impl GradientOverlay {
 		let operation = Operation::AddEllipse {
 			path: path.clone(),
 			transform: DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array(),
-			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), fill),
+			style: PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), fill),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
@@ -179,7 +179,7 @@ impl GradientOverlay {
 		let operation = Operation::AddLine {
 			path: path.clone(),
 			transform,
-			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
