@@ -159,7 +159,7 @@ impl OverlayRenderer {
 		let operation = Operation::AddShape {
 			path: layer_path.clone(),
 			subpath,
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), PATH_OUTLINE_WEIGHT)), Fill::None),
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
 		};
@@ -174,7 +174,7 @@ impl OverlayRenderer {
 		let operation = Operation::AddRect {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 2.0)), Fill::solid(Color::WHITE)),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
@@ -187,7 +187,7 @@ impl OverlayRenderer {
 		let operation = Operation::AddEllipse {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 2.0)), Fill::solid(Color::WHITE)),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
@@ -212,7 +212,7 @@ impl OverlayRenderer {
 		let operation = Operation::AddLine {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 			insert_index: -1,
 		};
 		responses.add_front(DocumentMessage::Overlays(operation.into()));
@@ -327,8 +327,8 @@ impl OverlayRenderer {
 	/// Sets the overlay style for this point.
 	fn style_overlays(state: &SelectedShapeState, layer_path: &[LayerId], manipulator_group: &GraphiteManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the Subpath, should be looked up from a stylesheet or similar
-		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
-		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
+		let selected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
+		let deselected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
 		let selected_shape_state = state.get(layer_path);
 		// Update if the manipulator points are shown as selected
 		// Here the index is important, even though overlays[..] has five elements we only care about the first three

@@ -110,9 +110,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 impl ToolTransition for ShapeTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(ShapeToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }

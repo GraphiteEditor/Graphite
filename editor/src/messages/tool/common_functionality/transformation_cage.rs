@@ -156,7 +156,7 @@ pub fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	let operation = Operation::AddRect {
 		path: path.clone(),
 		transform: DAffine2::ZERO.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+		style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 		insert_index: -1,
 	};
 	responses.add(DocumentMessage::Overlays(operation.into()));
@@ -175,7 +175,7 @@ fn add_transform_handles(responses: &mut VecDeque<Message>) -> [Vec<LayerId>; 8]
 		let operation = Operation::AddRect {
 			path: current_path.clone(),
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 2.0)), Fill::solid(Color::WHITE)),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));

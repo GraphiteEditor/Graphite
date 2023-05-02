@@ -287,6 +287,7 @@ impl ToolTransition for SelectTool {
 			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
 			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
+			..Default::default()
 		}
 	}
 }

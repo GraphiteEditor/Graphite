@@ -46,7 +46,7 @@ impl PathOutline {
 				let operation = Operation::AddShape {
 					path: overlay_path.clone(),
 					subpath: Default::default(),
-					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+					style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), PATH_OUTLINE_WEIGHT)), Fill::None),
 					insert_index: -1,
 					transform: DAffine2::IDENTITY.to_cols_array(),
 				};
