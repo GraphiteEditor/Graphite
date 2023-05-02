@@ -65,7 +65,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				
 				if let Ok(layer) = document.document_legacy.layer(selected_layers[0]) {
 					if let Some(vector_data) = layer.as_vector_data() {
 						*selected.original_transforms = OriginalTransforms::default();
@@ -173,8 +172,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
-			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
-			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
+			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap, document.grid_enabled),
+			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap, document.grid_enabled),
 			PointerMove { slow_key, snap_key } => {
 				self.slow = ipp.keyboard.get(slow_key as usize);
 
@@ -186,7 +185,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::Scaling(scaling) => scaling.constraint,
 						_ => Axis::Both,
 					};
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -198,7 +197,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							let axis_constraint = translation.constraint;
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
@@ -208,7 +207,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both, document.grid_enabled);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -222,7 +221,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 							let axis_constraint = scale.constraint;
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
 						}
 					};
 				}
@@ -232,10 +231,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 				shape_editor.set_selected_layers(layer_paths);
 			}
-			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
-			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
-			TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
-			TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap),
+			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap, document.grid_enabled),
+			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap, document.grid_enabled),
+			TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap, document.grid_enabled),
+			TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap, document.grid_enabled),
 		}
 	}
 

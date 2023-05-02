@@ -182,7 +182,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis, grid: bool) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -191,12 +191,12 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation);
+			selected.update_transforms(transformation, grid);
 			self.hints(snapping, axis_constraint, selected.responses);
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool) {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, grid: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.constraint.set_or_toggle(axis),
@@ -204,10 +204,10 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping, axis);
+		self.apply_transform_operation(selected, snapping, axis, grid);
 	}
 
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, grid: bool) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -221,7 +221,7 @@ impl TransformOperation {
 			_ => Axis::Both,
 		};
 
-		self.apply_transform_operation(selected, snapping, axis_constraint);
+		self.apply_transform_operation(selected, snapping, axis_constraint, grid);
 	}
 
 	pub fn hints(&self, snapping: bool, axis_constraint: Axis, responses: &mut VecDeque<Message>) {
@@ -370,7 +370,7 @@ impl<'a> Selected<'a> {
 		(min + max) / 2.
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2) {
+	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool) {
 		if !self.selected.is_empty() {
 			let pivot = DAffine2::from_translation(*self.pivot);
 			let transformation = pivot * delta * pivot.inverse();
@@ -412,8 +412,14 @@ impl<'a> Selected<'a> {
 						continue;
 					};
 					for (point_id, position) in original {
-						let viewport_point = viewspace.transform_point2(*position);
-						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+						let mut viewport_point = viewspace.transform_point2(*position);
+						let mut new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+
+						if grid {
+							viewport_point = viewport_point.round();
+						}
+						debug!("viewport_point {:?}", viewport_point);
+						debug!("new_pos_viewport {:?}", new_pos_viewport);
 						let point = *point_id;
 						let position = new_pos_viewport;
 

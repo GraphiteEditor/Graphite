@@ -461,8 +461,10 @@ impl Document {
 
 	pub fn transform_relative_to_scope(&mut self, layer: &[LayerId], scope: Option<DAffine2>, transform: DAffine2) -> Result<(), DocumentError> {
 		let to = self.generate_transform_across_scope(&layer[..layer.len() - 1], scope)?;
+		debug!("to {:?}", to);
 		let layer = self.layer_mut(layer)?;
 		layer.transform = to.inverse() * transform * to * layer.transform;
+		debug!("layer transform {:?}", layer.transform);
 		Ok(())
 	}
 
@@ -682,6 +684,7 @@ impl Document {
 				let layer = self.layer_mut(&path).unwrap();
 				let transform = DAffine2::from_cols_array(&transform) * layer.transform;
 				layer.transform = transform;
+				debug!("layer.transform {:?}", layer.transform);
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
