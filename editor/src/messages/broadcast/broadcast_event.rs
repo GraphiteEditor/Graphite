@@ -1,5 +1,4 @@
 use crate::messages::prelude::*;
-use graphene_core::Color;
 
 use serde::{Deserialize, Serialize};
 
