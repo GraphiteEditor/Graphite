@@ -17,6 +17,7 @@ use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeGraphExecutor {
@@ -37,6 +38,7 @@ impl NodeGraphExecutor {
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
 		let proto_network = c.compile_single(scoped_network, true)?;
+
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
 			error!("Failed to update executor:\n{}", e);
@@ -53,7 +55,7 @@ impl NodeGraphExecutor {
 		}
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<String> {
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
 		self.executor.introspect(path).flatten()
 	}
 

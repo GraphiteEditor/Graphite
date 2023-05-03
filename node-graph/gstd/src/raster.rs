@@ -1,9 +1,10 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
 
-use graphene_core::Node;
+use graphene_core::value::CopiedNode;
+use graphene_core::{Color, Node};
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -47,51 +48,6 @@ pub struct BufferNode;
 fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
 	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
-
-/*
-pub fn file_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Vec<u8>, Error>> {
-	let fs = ValueNode(StdFs).then(CloneNode::new());
-	let file = FileNode::new(fs);
-
-	file.then(FlatMapResultNode::new(ValueNode::new(BufferNode)))
-}
-
-pub fn image_node<'i, 's: 'i, P: AsRef<Path> + 'i>() -> impl Node<'i, 's, P, Output = Result<Image, Error>> {
-	let file = file_node();
-	let image_loader = FnNode::new(|data: Vec<u8>| image::load_from_memory(&data).map_err(Error::Image).map(|image| image.into_rgba32f()));
-	let image = file.then(FlatMapResultNode::new(ValueNode::new(image_loader)));
-	let convert_image = FnNode::new(|image: image::ImageBuffer<_, _>| {
-		let data = image
-			.enumerate_pixels()
-			.map(|(_, _, pixel): (_, _, &image::Rgba<f32>)| {
-				let c = pixel.channels();
-				Color::from_rgbaf32(c[0], c[1], c[2], c[3]).unwrap()
-			})
-			.collect();
-		Image {
-			width: image.width(),
-			height: image.height(),
-			data,
-		}
-	});
-
-	image.then(MapResultNode::new(convert_image))
-}
-
-pub fn export_image_node<'i, 's: 'i>() -> impl Node<'i, 's, (Image, &'i str), Output = Result<(), Error>> {
-	FnNode::new(|input: (Image, &str)| {
-		let (image, path) = input;
-		let mut new_image = image::ImageBuffer::new(image.width, image.height);
-		for ((x, y, pixel), color) in new_image.enumerate_pixels_mut().zip(image.data.iter()) {
-			let color: Color = *color;
-			assert!(x < image.width);
-			assert!(y < image.height);
-			*pixel = image::Rgba(color.to_rgba8())
-		}
-		new_image.save(path).map_err(Error::Image)
-	})
-}
-*/
 
 pub struct DownresNode<P> {
 	_p: PhantomData<P>,
@@ -166,6 +122,17 @@ impl AxisAlignedBbox {
 		AxisAlignedBbox {
 			start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
 			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
+		}
+	}
+	pub fn union_non_empty(&self, other: &AxisAlignedBbox) -> Option<AxisAlignedBbox> {
+		match (self.size() == DVec2::ZERO, other.size() == DVec2::ZERO) {
+			(true, true) => None,
+			(true, _) => Some(other.clone()),
+			(_, true) => Some(self.clone()),
+			_ => Some(AxisAlignedBbox {
+				start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
+				end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
+			}),
 		}
 	}
 }
@@ -266,7 +233,7 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'any_input MapFn) -> ImageFrame<_P>
+fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
 {
@@ -282,25 +249,67 @@ pub struct BlendImageNode<P, Background, MapFn> {
 	_p: PhantomData<P>,
 }
 
-// TODO: Implement proper blending
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image_node<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(
-	foreground: Frame,
-	background: Background,
-	map_fn: &'any_input MapFn,
-) -> Background
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform>(foreground: Forground, background: ImageFrame<_P>, map_fn: &'any_input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
-	blend_image(foreground, background, map_fn)
+	blend_new_image(foreground, background, map_fn)
 }
 
-fn blend_image<_P: Clone, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform>(foreground: Frame, mut background: Background, map_fn: &MapFn) -> Background
+#[derive(Debug, Clone, Copy)]
+pub struct BlendReverseImageNode<P, Background, MapFn> {
+	background: Background,
+	map_fn: MapFn,
+	_p: PhantomData<P>,
+}
+
+#[node_macro::node_fn(BlendReverseImageNode<_P>)]
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Background: Transform + Sample<Pixel = _P>>(foreground: ImageFrame<_P>, background: Background, map_fn: &'any_input MapFn) -> ImageFrame<_P>
+where
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
+{
+	blend_new_image(background, foreground, map_fn)
+}
+
+fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &MapFn) -> ImageFrame<_P>
+where
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+{
+	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
+	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+
+	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {return ImageFrame::empty()};
+
+	if background_aabb.contains(foreground_aabb.start) && background_aabb.contains(foreground_aabb.end) {
+		return blend_image(foreground, background, map_fn);
+	}
+
+	// Clamp the foreground image to the background image
+	let start = aabb.start.as_uvec2();
+	let end = aabb.end.as_uvec2();
+
+	let new_background = Image::new(end.x - start.x, end.y - start.y, _P::TRANSPARENT);
+	let size = DVec2::new(new_background.width as f64, new_background.height as f64);
+	let transfrom = DAffine2::from_scale_angle_translation(size, 0., start.as_dvec2());
+	let mut new_background = ImageFrame {
+		image: new_background,
+		transform: transfrom,
+	};
+
+	new_background = blend_image(background, new_background, map_fn);
+	blend_image(foreground, new_background, map_fn)
+}
+
+fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+	foreground: Frame,
+	mut background: Background,
+	map_fn: &MapFn,
+) -> Background
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
-
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
 
@@ -319,13 +328,30 @@ where
 
 			if let Some(src_pixel) = foreground.sample(fg_point, area) {
 				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
-					*dst_pixel = map_fn.eval((src_pixel, dst_pixel.clone()));
+					*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
 				}
 			}
 		}
 	}
 
 	background
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExtendImageNode<Background> {
+	background: Background,
+}
+
+#[node_macro::node_fn(ExtendImageNode)]
+fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color>) -> ImageFrame<Color> {
+	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
+	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+
+	if foreground_aabb.contains(background_aabb.start) && foreground_aabb.contains(background_aabb.end) {
+		return foreground;
+	}
+
+	blend_image(foreground, background, &BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.)))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -340,7 +366,7 @@ fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _D
 	let snd_aabb = compute_transformed_bounding_box(data.transform()).axis_aligned_bbox();
 
 	if let Some(fst_aabb) = initial_aabb {
-		Some(fst_aabb.union(&snd_aabb))
+		fst_aabb.union_non_empty(&snd_aabb)
 	} else {
 		Some(snd_aabb)
 	}

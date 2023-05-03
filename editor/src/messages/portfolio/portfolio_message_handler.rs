@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
@@ -25,7 +27,7 @@ pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
-	executor: NodeGraphExecutor,
+	pub executor: NodeGraphExecutor,
 	active_document_id: Option<u64>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
@@ -564,7 +566,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 }
 
 impl PortfolioMessageHandler {
-	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<String> {
+	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
 		self.executor.introspect_node(node_path)
 	}
 

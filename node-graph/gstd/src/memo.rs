@@ -1,11 +1,12 @@
 use graphene_core::Node;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use xxhash_rust::xxh3::Xxh3;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -53,32 +54,25 @@ impl<T, CachedNode> CacheNode<T, CachedNode> {
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
-pub struct MonitorNode<T, CachedNode> {
-	output: Mutex<Option<T>>,
-	node: CachedNode,
+pub struct MonitorNode<T> {
+	output: Mutex<Option<Arc<T>>>,
 }
-impl<'i, T: 'i + Serialize + Clone, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for MonitorNode<T, CachedNode>
-where
-	CachedNode: for<'any_input> Node<'any_input, I, Output = T>,
-{
+impl<'i, T: 'static + Clone> Node<'i, T> for MonitorNode<T> {
 	type Output = T;
-	fn eval(&'i self, input: I) -> Self::Output {
-		let output = self.node.eval(input);
-		*self.output.lock().unwrap() = Some(output.clone());
-		output
+	fn eval(&'i self, input: T) -> Self::Output {
+		*self.output.lock().unwrap() = Some(Arc::new(input.clone()));
+		input
 	}
 
-	fn serialize(&self) -> Option<String> {
+	fn serialize(&self) -> Option<Arc<dyn core::any::Any>> {
 		let output = self.output.lock().unwrap();
-		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
+		(*output).as_ref().and_then(|output| Some(output.clone() as Arc<dyn core::any::Any>))
 	}
 }
 
-impl<T, CachedNode> std::marker::Unpin for MonitorNode<T, CachedNode> {}
-
-impl<T, CachedNode> MonitorNode<T, CachedNode> {
-	pub const fn new(node: CachedNode) -> MonitorNode<T, CachedNode> {
-		MonitorNode { output: Mutex::new(None), node }
+impl<T> MonitorNode<T> {
+	pub const fn new() -> MonitorNode<T> {
+		MonitorNode { output: Mutex::new(None) }
 	}
 }
 
