@@ -187,11 +187,12 @@ struct BrushToolData {
 impl BrushToolData {
 	fn update_points(&self, responses: &mut VecDeque<Message>) {
 		if let Some(layer_path) = self.path.clone() {
+			let points = self.points.iter().flatten().cloned().collect();
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
 				input_index: 2,
-				value: TaggedValue::VecDVec2(self.points.last().cloned().unwrap_or_default()),
+				value: TaggedValue::VecDVec2(points),
 			});
 		}
 	}
@@ -243,7 +244,7 @@ impl Fsm for BrushToolFsmState {
 					let new_layer = existing_points.is_none();
 					if let Some((layer_path, points, image)) = existing_points {
 						tool_data.path = Some(layer_path);
-						tool_data.set_image(image, responses);
+						//tool_data.set_image(image, responses);
 						if tool_data.points.is_empty() {
 							tool_data.points.push(points);
 						}
@@ -263,7 +264,7 @@ impl Fsm for BrushToolFsmState {
 					if new_layer {
 						add_brush_render(tool_data, global_tool_data, responses);
 					} else {
-						tool_data.update_image(node_graph, responses);
+						//tool_data.update_image(node_graph, responses);
 						tool_data.update_points(responses);
 					}
 
@@ -353,7 +354,7 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 		..Default::default()
 	};
 	let mut network = NodeNetwork::value_network(brush_node);
-	network.push_node(monitor_node, true);
+	//network.push_node(monitor_node, true);
 	network.push_output_node();
 	graph_modification_utils::new_custom_layer(network, layer_path, responses);
 }
