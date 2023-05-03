@@ -54,7 +54,9 @@ impl DynamicExecutor {
 		let mut orphans = self.tree.update(proto_network, &self.typing_context)?;
 		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
 		for node_id in orphans {
-			self.tree.free_node(node_id)
+			if self.orphaned_nodes.contains(&node_id) {
+				self.tree.free_node(node_id)
+			}
 		}
 		Ok(())
 	}
