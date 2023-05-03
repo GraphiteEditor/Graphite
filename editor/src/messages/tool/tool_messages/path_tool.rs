@@ -99,6 +99,7 @@ impl ToolTransition for PathTool {
 			document_dirty: Some(PathToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PathToolMessage::Abort.into()),
 			selection_changed: Some(PathToolMessage::SelectionChanged.into()),
+			..Default::default()
 		}
 	}
 }

@@ -172,6 +172,7 @@ impl ToolTransition for TextTool {
 			document_dirty: Some(TextToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
+			..Default::default()
 		}
 	}
 }
@@ -370,7 +371,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let operation = Operation::AddRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
@@ -379,7 +380,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 
 fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 	let get_bounds = |layer: &Layer, path: &[LayerId], document: &DocumentMessageHandler, render_data: &RenderData| {
-		let node_graph = layer.as_node_graph().ok()?;
+		let node_graph = layer.as_layer_network().ok()?;
 		let node_id = get_text_node_id(node_graph)?;
 		let document_node = node_graph.nodes.get(&node_id)?;
 		let (text, font, font_size) = TextToolData::extract_text_node_inputs(document_node)?;
@@ -409,7 +410,7 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 
 fn get_network<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler) -> Option<&'a NodeNetwork> {
 	let layer = document.document_legacy.layer(layer_path).ok()?;
-	layer.as_node_graph().ok()
+	layer.as_layer_network().ok()
 }
 
 fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {

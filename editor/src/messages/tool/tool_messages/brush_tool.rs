@@ -168,9 +168,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 impl ToolTransition for BrushTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(BrushToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -365,7 +364,7 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 		return None;
 	}
 	let layer_path = document.selected_layers().next()?.to_vec();
-	let network = document.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_node_graph().ok())?;
+	let network = document.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_layer_network().ok())?;
 	let brush_node = network.nodes.get(&0)?;
 	if brush_node.implementation != DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()) {
 		return None;

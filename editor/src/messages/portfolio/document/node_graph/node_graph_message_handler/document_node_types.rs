@@ -286,7 +286,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
+			properties: node_properties::output_properties,
 		},
 		DocumentNodeType {
 			name: "Image Frame",

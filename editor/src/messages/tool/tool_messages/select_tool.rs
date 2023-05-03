@@ -287,6 +287,7 @@ impl ToolTransition for SelectTool {
 			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
 			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
+			..Default::default()
 		}
 	}
 }
@@ -842,7 +843,7 @@ impl Fsm for SelectToolFsmState {
 						// Check that only one layer is selected
 						if selected_layers.next().is_none() {
 							if let Ok(layer) = document.document_legacy.layer(layer_path) {
-								if let Ok(network) = layer.as_node_graph() {
+								if let Ok(network) = layer.as_layer_network() {
 									if network.nodes.values().any(|node| node.name == "Text") {
 										responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 										responses.add(TextToolMessage::EditSelected);

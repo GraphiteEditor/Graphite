@@ -58,6 +58,9 @@ pub enum DocumentMessage {
 	BooleanOperation(BooleanOperationType),
 	ClearLayerTree,
 	CommitTransaction,
+	CopyToClipboardLayerImageOutput {
+		layer_path: Vec<LayerId>,
+	},
 	CreateEmptyFolder {
 		container_path: Vec<LayerId>,
 	},
@@ -72,6 +75,9 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
+	DownloadLayerImageOutput {
+		layer_path: Vec<LayerId>,
+	},
 	DuplicateSelectedLayers,
 	ExportDocument {
 		file_name: String,
