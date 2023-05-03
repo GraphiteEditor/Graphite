@@ -32,24 +32,18 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
 					self.viewport_bounds = bounds;
 
-					responses.push_back(
+					responses.add(Operation::TransformLayer {
+						path: vec![],
+						transform: glam::DAffine2::from_translation(translation).to_cols_array(),
+					});
+					responses.add(DocumentMessage::Artboard(
 						Operation::TransformLayer {
 							path: vec![],
 							transform: glam::DAffine2::from_translation(translation).to_cols_array(),
 						}
 						.into(),
-					);
-					responses.push_back(
-						DocumentMessage::Artboard(
-							Operation::TransformLayer {
-								path: vec![],
-								transform: glam::DAffine2::from_translation(translation).to_cols_array(),
-							}
-							.into(),
-						)
-						.into(),
-					);
-					responses.push_back(FrontendMessage::TriggerViewportResize.into());
+					));
+					responses.add(FrontendMessage::TriggerViewportResize);
 				}
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
@@ -58,17 +52,17 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				responses.push_back(InputMapperMessage::DoubleClick.into());
+				responses.add(InputMapperMessage::DoubleClick);
 			}
 			InputPreprocessorMessage::KeyDown { key, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 				self.keyboard.set(key as usize);
-				responses.push_back(InputMapperMessage::KeyDown(key).into());
+				responses.add(InputMapperMessage::KeyDown(key));
 			}
 			InputPreprocessorMessage::KeyUp { key, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 				self.keyboard.unset(key as usize);
-				responses.push_back(InputMapperMessage::KeyUp(key).into());
+				responses.add(InputMapperMessage::KeyUp(key));
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
@@ -84,7 +78,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				responses.push_back(InputMapperMessage::PointerMove.into());
+				responses.add(InputMapperMessage::PointerMove);
 
 				// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events
 				self.translate_mouse_event(mouse_state, false, responses);
@@ -104,7 +98,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				self.mouse.position = mouse_state.position;
 				self.mouse.scroll_delta = mouse_state.scroll_delta;
 
-				responses.push_back(InputMapperMessage::WheelScroll.into());
+				responses.add(InputMapperMessage::WheelScroll);
 			}
 		};
 	}
@@ -123,14 +117,14 @@ impl InputPreprocessorMessageHandler {
 			let new_down = new_state.mouse_keys & bit_flag == bit_flag;
 			if !old_down && new_down {
 				if allow_first_button_down || self.mouse.mouse_keys != MouseKeys::NONE {
-					responses.push_back(InputMapperMessage::KeyDown(key).into());
+					responses.add(InputMapperMessage::KeyDown(key));
 				} else {
 					// Required to stop a keyup being emitted for a keydown outside canvas
 					new_state.mouse_keys ^= bit_flag;
 				}
 			}
 			if old_down && !new_down {
-				responses.push_back(InputMapperMessage::KeyUp(key).into());
+				responses.add(InputMapperMessage::KeyUp(key));
 			}
 		}
 
@@ -165,10 +159,10 @@ impl InputPreprocessorMessageHandler {
 
 		if key_was_down && !key_is_down {
 			self.keyboard.unset(key as usize);
-			responses.push_back(InputMapperMessage::KeyUp(key).into());
+			responses.add(InputMapperMessage::KeyUp(key));
 		} else if !key_was_down && key_is_down {
 			self.keyboard.set(key as usize);
-			responses.push_back(InputMapperMessage::KeyDown(key).into());
+			responses.add(InputMapperMessage::KeyDown(key));
 		}
 	}
 

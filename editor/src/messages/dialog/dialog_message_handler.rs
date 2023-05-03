@@ -25,37 +25,34 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog;
 				dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "Copy".to_string() }.into());
+				responses.add(FrontendMessage::DisplayDialog { icon: "Copy".to_string() });
 			}
 			DialogMessage::CloseDialogAndThen { followups } => {
-				responses.push_back(FrontendMessage::DisplayDialogDismiss.into());
+				responses.add(FrontendMessage::DisplayDialogDismiss);
 				for message in followups.into_iter() {
-					responses.push_back(message);
+					responses.add(message);
 				}
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
 				let dialog = simple_dialogs::ErrorDialog { title, description };
 				dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
+				responses.add(FrontendMessage::DisplayDialog { icon: "Warning".to_string() });
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
-				responses.push_back(
-					FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
-						commit_date: env!("GRAPHITE_GIT_COMMIT_DATE").into(),
-					}
-					.into(),
-				);
+				responses.add(FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
+					commit_date: env!("GRAPHITE_GIT_COMMIT_DATE").into(),
+				});
 			}
 			DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date } => {
 				let about_graphite = AboutGraphiteDialog { localized_commit_date };
 
 				about_graphite.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "GraphiteLogo".to_string() }.into());
+				responses.add(FrontendMessage::DisplayDialog { icon: "GraphiteLogo".to_string() });
 			}
 			DialogMessage::RequestComingSoonDialog { issue } => {
 				let coming_soon = ComingSoonDialog { issue };
 				coming_soon.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "Warning".to_string() }.into());
+				responses.add(FrontendMessage::DisplayDialog { icon: "Warning".to_string() });
 			}
 			DialogMessage::RequestExportDialog => {
 				if let Some(document) = portfolio.active_document() {
@@ -88,7 +85,7 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 						..Default::default()
 					};
 					self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);
-					responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+					responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
 				}
 			}
 			DialogMessage::RequestNewDocumentDialog => {
@@ -98,12 +95,12 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 					dimensions: glam::UVec2::new(1920, 1080),
 				};
 				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "File".to_string() }.into());
+				responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
 			}
 			DialogMessage::RequestPreferencesDialog => {
 				self.preferences_dialog = PreferencesDialogMessageHandler {};
 				self.preferences_dialog.register_properties(responses, LayoutTarget::DialogDetails, preferences);
-				responses.push_back(FrontendMessage::DisplayDialog { icon: "Settings".to_string() }.into());
+				responses.add(FrontendMessage::DisplayDialog { icon: "Settings".to_string() });
 			}
 		}
 	}

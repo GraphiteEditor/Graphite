@@ -29,40 +29,37 @@ impl SnapOverlays {
 		// If there isn't one in the pool to ruse, add a new alignment line to the pool with the intended transform
 		let layer_path = if index >= overlay_paths.len() {
 			let layer_path = vec![generate_uuid()];
-			responses.push_back(
-				DocumentMessage::Overlays(
-					if is_axis {
-						Operation::AddLine {
-							path: layer_path.clone(),
-							transform,
-							style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), style::Fill::None),
-							insert_index: -1,
-						}
-					} else {
-						Operation::AddEllipse {
-							path: layer_path.clone(),
-							transform,
-							style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
-							insert_index: -1,
-						}
+			responses.add(DocumentMessage::Overlays(
+				if is_axis {
+					Operation::AddLine {
+						path: layer_path.clone(),
+						transform,
+						style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), style::Fill::None),
+						insert_index: -1,
 					}
-					.into(),
-				)
+				} else {
+					Operation::AddEllipse {
+						path: layer_path.clone(),
+						transform,
+						style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
+						insert_index: -1,
+					}
+				}
 				.into(),
-			);
+			));
 			overlay_paths.push(layer_path.clone());
 			layer_path
 		}
 		// Otherwise, reuse an overlay from the pool and update its new transform
 		else {
 			let layer_path = overlay_paths[index].clone();
-			responses.push_back(DocumentMessage::Overlays(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::SetLayerTransform { path: layer_path.clone(), transform }.into()));
 			layer_path
 		};
 
 		// Then set its opacity to the fade amount
 		if let Some(opacity) = opacity {
-			responses.push_back(DocumentMessage::Overlays(Operation::SetLayerOpacity { path: layer_path, opacity }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::SetLayerOpacity { path: layer_path, opacity }.into()));
 		}
 	}
 
@@ -147,7 +144,7 @@ impl SnapOverlays {
 	/// Remove overlays from the pool beyond a given index. Pool entries up through that index will be kept.
 	fn remove_unused_overlays(overlay_paths: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Message>, remove_after_index: usize) {
 		while overlay_paths.len() > remove_after_index {
-			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_paths.pop().unwrap() }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_paths.pop().unwrap() }.into()));
 		}
 	}
 

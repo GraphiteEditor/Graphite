@@ -2,6 +2,8 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextLabel, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
@@ -14,7 +16,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use graphene_core::uuid::ManipulatorGroupId;
-use graphene_core::vector::style::Stroke;
+use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 use graphene_core::Color;
 
@@ -28,13 +30,53 @@ pub struct PenTool {
 	options: PenOptions,
 }
 
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+pub enum PenColorType {
+	Primary,
+	Secondary,
+	Custom,
+}
+
+pub struct PenColorOptions {
+	color: Option<Color>,
+	primary_working_color: Option<Color>,
+	secondary_working_color: Option<Color>,
+	color_type: PenColorType,
+}
+
+impl PenColorOptions {
+	pub fn active_color(&self) -> Option<Color> {
+		match self.color_type {
+			PenColorType::Custom => self.color,
+			PenColorType::Primary => self.primary_working_color,
+			PenColorType::Secondary => self.secondary_working_color,
+		}
+	}
+}
+
 pub struct PenOptions {
 	line_weight: f64,
+	fill: PenColorOptions,
+	stroke: PenColorOptions,
 }
 
 impl Default for PenOptions {
 	fn default() -> Self {
-		Self { line_weight: 5. }
+		Self {
+			line_weight: 5.,
+			fill: PenColorOptions {
+				color: Some(Color::BLACK),
+				primary_working_color: Some(Color::BLACK),
+				secondary_working_color: Some(Color::WHITE),
+				color_type: PenColorType::Primary,
+			},
+			stroke: PenColorOptions {
+				color: None,
+				primary_working_color: Some(Color::BLACK),
+				secondary_working_color: Some(Color::WHITE),
+				color_type: PenColorType::Custom,
+			},
+		}
 	}
 }
 
@@ -49,6 +91,8 @@ pub enum PenToolMessage {
 	Abort,
 	#[remain::unsorted]
 	SelectionChanged,
+	#[remain::unsorted]
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	Confirm,
@@ -74,7 +118,13 @@ enum PenToolFsmState {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
+	FillColor(Option<Color>),
+	FillColorType(PenColorType),
 	LineWeight(f64),
+	PrimaryColor(Option<Color>),
+	SecondaryColor(Option<Color>),
+	StrokeColor(Option<Color>),
+	StrokeColorType(PenColorType),
 }
 
 impl ToolMetadata for PenTool {
@@ -89,15 +139,102 @@ impl ToolMetadata for PenTool {
 	}
 }
 
+// TODO: Generalize create_fill_widget and create_stroke_widget into one function.
+fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
+	let label = TextLabel::new("Fill").widget_holder();
+
+	let reset = IconButton::new("CloseX", 12)
+		.disabled(fill.color.is_none() && fill.color_type == PenColorType::Custom)
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into())
+		.tooltip("Clear color")
+		.widget_holder();
+
+	let entries = vec![
+		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
+		("WorkingColorsSecondary", "Secondary Working Color", PenColorType::Secondary),
+		("Edit", "Custom Color", PenColorType::Custom),
+	]
+	.into_iter()
+	.map(|(icon, tooltip, color_type)| {
+		RadioEntryData::new("")
+			.tooltip(tooltip)
+			.icon(icon)
+			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into())
+	})
+	.collect();
+	let radio = RadioInput::new(entries).selected_index(fill.color_type.clone() as u32).widget_holder();
+
+	let color_input = ColorInput::new(fill.active_color())
+		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
+		.widget_holder();
+
+	vec![
+		label,
+		WidgetHolder::related_separator(),
+		reset,
+		WidgetHolder::related_separator(),
+		radio,
+		WidgetHolder::related_separator(),
+		color_input,
+	]
+}
+
+fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
+	let label = TextLabel::new("Stroke").widget_holder();
+
+	let reset = IconButton::new("CloseX", 12)
+		.disabled(stroke.color.is_none() && stroke.color_type == PenColorType::Custom)
+		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into())
+		.tooltip("Clear color")
+		.widget_holder();
+
+	let entries = vec![
+		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
+		("WorkingColorsSecondary", "Secondary Working Color", PenColorType::Secondary),
+		("Edit", "Custom Color", PenColorType::Custom),
+	]
+	.into_iter()
+	.map(|(icon, tooltip, color_type)| {
+		RadioEntryData::new("")
+			.tooltip(tooltip)
+			.icon(icon)
+			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into())
+	})
+	.collect();
+	let radio = RadioInput::new(entries).selected_index(stroke.color_type.clone() as u32).widget_holder();
+
+	let color_input = ColorInput::new(stroke.active_color())
+		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
+		.widget_holder();
+
+	vec![
+		label,
+		WidgetHolder::related_separator(),
+		reset,
+		WidgetHolder::related_separator(),
+		radio,
+		WidgetHolder::related_separator(),
+		color_input,
+	]
+}
+
+fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+	NumberInput::new(Some(line_weight))
+		.unit(" px")
+		.label("Weight")
+		.min(0.)
+		.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.widget_holder()
+}
+
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
-		let weight = NumberInput::new(Some(self.options.line_weight))
-			.unit(" px")
-			.label("Weight")
-			.min(0.)
-			.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
-			.widget_holder();
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
+		let mut widgets = create_fill_widget(&self.options.fill);
+		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
+		widgets.append(&mut create_stroke_widget(&self.options.stroke));
+		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(create_weight_widget(self.options.line_weight));
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -106,7 +243,31 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
 			match action {
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				PenOptionsUpdate::FillColor(color) => {
+					self.options.fill.color = color;
+					self.options.fill.color_type = PenColorType::Custom;
+				}
+				PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+				PenOptionsUpdate::StrokeColor(color) => {
+					self.options.stroke.color = color;
+					self.options.stroke.color_type = PenColorType::Custom;
+				}
+				PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+				PenOptionsUpdate::PrimaryColor(color) => {
+					self.options.stroke.primary_working_color = color;
+					self.options.fill.primary_working_color = color;
+				}
+				PenOptionsUpdate::SecondaryColor(color) => {
+					self.options.stroke.secondary_working_color = color;
+					self.options.fill.secondary_working_color = color;
+				}
 			}
+
+			responses.add(LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target: LayoutTarget::ToolOptions,
+			});
+
 			return;
 		}
 
@@ -139,6 +300,7 @@ impl ToolTransition for PenTool {
 			document_dirty: Some(PenToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
+			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
 		}
 	}
 }
@@ -177,7 +339,16 @@ impl PenToolData {
 			},
 		});
 	}
-	fn create_new_path(&mut self, document: &DocumentMessageHandler, line_weight: f64, color: Color, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+
+	fn create_new_path(
+		&mut self,
+		document: &DocumentMessageHandler,
+		line_weight: f64,
+		stroke_color: Option<Color>,
+		fill_color: Option<Color>,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
 		// Deselect layers because we are now creating a new layer
 		responses.add(DocumentMessage::DeselectAllLayers);
 
@@ -192,18 +363,24 @@ impl PenToolData {
 		// Create the initial shape with a `bez_path` (only contains a moveto initially)
 		let subpath = bezier_rs::Subpath::new(vec![bezier_rs::ManipulatorGroup::new(start_position, Some(start_position), Some(start_position))], false);
 		graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+		responses.add(GraphOperationMessage::FillSet {
+			layer: layer_path.clone(),
+			fill: if fill_color.is_some() { Fill::Solid(fill_color.unwrap()) } else { Fill::None },
+		});
+
 		responses.add(GraphOperationMessage::StrokeSet {
 			layer: layer_path.clone(),
-			stroke: Stroke::new(color, line_weight),
+			stroke: Stroke::new(stroke_color, line_weight),
 		});
 
 		self.path = Some(layer_path);
 		self.from_start = false;
 		self.subpath_index = 0;
 	}
+
+	// TODO: tooltip / user documentation?
 	/// If you place the anchor on top of the previous anchor then you break the mirror
-	///
-	/// TODO: tooltip / user documentation?
 	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) -> Option<()> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
@@ -313,7 +490,7 @@ impl PenToolData {
 				modification: VectorDataModification::SetClosed { index: 0, closed: true },
 			});
 
-			responses.push_back(DocumentMessage::CommitTransaction.into());
+			responses.add(DocumentMessage::CommitTransaction);
 
 			// Clean up overlays
 			for layer_path in document.all_layers() {
@@ -329,7 +506,7 @@ impl PenToolData {
 		}
 		// Add a new manipulator for the next anchor that we will place
 		if let Some(out_handle) = outwards_handle.get_position(last_manipulator_group) {
-			responses.push_back(add_manipulator_group(&self.path, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
+			responses.add(add_manipulator_group(&self.path, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
 		}
 
 		Some(PenToolFsmState::PlacingAnchor)
@@ -475,7 +652,7 @@ impl PenToolData {
 			modification: VectorDataModification::SetManipulatorPosition { point, position },
 		});
 
-		return Some(DocumentMessage::CommitTransaction);
+		Some(DocumentMessage::CommitTransaction)
 	}
 }
 
@@ -523,8 +700,13 @@ impl Fsm for PenToolFsmState {
 					}
 					self
 				}
+				(_, PenToolMessage::WorkingColorChanged) => {
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::PrimaryColor(Some(global_tool_data.primary_color))));
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::SecondaryColor(Some(global_tool_data.secondary_color))));
+					self
+				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 
 					// Initialize snapping
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
@@ -537,7 +719,14 @@ impl Fsm for PenToolFsmState {
 					if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 						tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
 					} else {
-						tool_data.create_new_path(document, tool_options.line_weight, global_tool_data.primary_color, input, responses);
+						tool_data.create_new_path(
+							document,
+							tool_options.line_weight,
+							tool_options.stroke.active_color(),
+							tool_options.fill.active_color(),
+							input,
+							responses,
+						);
 					}
 
 					// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
@@ -608,11 +797,11 @@ impl Fsm for PenToolFsmState {
 			]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 

@@ -1,7 +1,8 @@
 use crate::messages::portfolio::document::node_graph;
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 
-use bezier_rs::Subpath;
+use bezier_rs::{ManipulatorGroup, Subpath};
 use document_legacy::{LayerId, Operation};
 use graph_craft::document::NodeNetwork;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -16,15 +17,24 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: 
 }
 
 pub fn new_custom_layer(network: NodeNetwork, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-	responses.push_back(DocumentMessage::DeselectAllLayers.into());
-	responses.push_back(
-		Operation::AddNodeGraphFrame {
-			path: layer_path.clone(),
-			insert_index: -1,
-			transform: DAffine2::ZERO.to_cols_array(),
-			network,
-		}
-		.into(),
-	);
-	responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+	responses.add(DocumentMessage::DeselectAllLayers);
+	responses.add(Operation::AddFrame {
+		path: layer_path.clone(),
+		insert_index: -1,
+		transform: DAffine2::ZERO.to_cols_array(),
+		network,
+	});
+	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+}
+
+pub fn set_manipulator_mirror_angle(manipulator_groups: &Vec<ManipulatorGroup<ManipulatorGroupId>>, layer_path: &Vec<u64>, mirror_angle: bool, responses: &mut VecDeque<Message>) {
+	for manipulator_group in manipulator_groups {
+		responses.add(GraphOperationMessage::Vector {
+			layer: layer_path.clone(),
+			modification: VectorDataModification::SetManipulatorHandleMirroring {
+				id: manipulator_group.id,
+				mirror_angle,
+			},
+		});
+	}
 }

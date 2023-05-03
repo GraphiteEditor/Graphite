@@ -23,7 +23,7 @@ impl VectorData {
 		Self {
 			subpaths: Vec::new(),
 			transform: DAffine2::IDENTITY,
-			style: PathStyle::new(Some(Stroke::new(Color::BLACK, 0.)), super::style::Fill::None),
+			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			mirror_angle: Vec::new(),
 		}
 	}

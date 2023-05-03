@@ -237,11 +237,11 @@
 					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
 
 					{#if entry.shortcut?.keys.length}
-						<UserInputLabel keysWithLabelsGroups={[entry.shortcut.keys]} requiresLock={entry.shortcutRequiresLock} />
+						<UserInputLabel keysWithLabelsGroups={[entry.shortcut.keys]} requiresLock={entry.shortcutRequiresLock} textOnly={true} />
 					{/if}
 
 					{#if entry.children?.length}
-						<div class="submenu-arrow" />
+						<IconLabel class="submenu-arrow" icon="DropdownArrow" />
 					{:else}
 						<div class="no-submenu-arrow" />
 					{/if}
@@ -261,7 +261,7 @@
 
 <style lang="scss" global>
 	.menu-list {
-		.floating-menu-container .floating-menu-content {
+		.floating-menu-container .floating-menu-content.floating-menu-content {
 			padding: 4px 0;
 
 			.separator div {
@@ -278,70 +278,69 @@
 				white-space: nowrap;
 				position: relative;
 				flex: 0 0 auto;
+				border-radius: 2px;
+				margin: 0 4px;
 
-				& > * {
+				> * {
 					flex: 0 0 auto;
-				}
-
-				.entry-icon svg {
-					fill: var(--color-e-nearwhite);
 				}
 
 				.no-icon {
 					width: 16px;
+					height: 16px;
 				}
 
 				.entry-label {
 					flex: 1 1 100%;
-					margin-left: 8px;
+					margin: 0 4px;
 				}
 
 				.entry-icon,
 				.no-icon {
-					margin: 0 4px;
-
-					& + .entry-label {
-						margin-left: 0;
-					}
+					margin-left: 4px;
 				}
 
 				.user-input-label {
-					margin-left: 16px;
+					margin-left: 12px;
 				}
 
 				.submenu-arrow {
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 3px 0 3px 6px;
-					border-color: transparent transparent transparent var(--color-e-nearwhite);
+					transform: rotate(270deg);
 				}
 
 				.no-submenu-arrow {
-					width: 6px;
+					width: 12px;
+					height: 12px;
 				}
 
-				.submenu-arrow,
-				.no-submenu-arrow {
-					margin-left: 6px;
-					margin-right: 4px;
+				// Extend the submenu to the right by the width of the margin outside the row, since we want the submenu to line up with the edge of the menu
+				&.open {
+					// Offset by the margin distance
+					> .menu-list {
+						margin-right: -4px;
+					}
+
+					// Extend the click target by the margin distance so the user can hover to the right of the row, within the margin area, and still have the submenu open
+					&::after {
+						content: "";
+						position: absolute;
+						top: 0;
+						right: -4px;
+						width: 4px;
+						height: 100%;
+					}
 				}
 
 				&:hover,
 				&.open {
-					background: var(--color-6-lowergray);
-					color: var(--color-f-white);
-
-					.entry-icon svg {
-						fill: var(--color-f-white);
-					}
+					background: var(--color-5-dullgray);
 				}
 
 				&.active {
 					background: var(--color-e-nearwhite);
 					color: var(--color-2-mildblack);
 
-					.entry-icon svg {
+					svg {
 						fill: var(--color-2-mildblack);
 					}
 				}

@@ -24,7 +24,7 @@ struct ModifyInputsContext<'a> {
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
 	fn new(layer: &'a [LayerId], document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Option<Self> {
-		document.layer_mut(&layer).ok().and_then(|layer| layer.as_node_graph_mut().ok()).map(|network| Self {
+		document.layer_mut(layer).ok().and_then(|layer| layer.as_node_graph_mut().ok()).map(|network| Self {
 			network,
 			node_graph,
 			responses,
@@ -76,7 +76,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
-			self.responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path });
+			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 		} else {
 			self.responses.add(DocumentMessage::FrameClear);
 		}
@@ -157,7 +157,27 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
+	fn update_bounds(&mut self, [old_bounds_min, old_bounds_max]: [DVec2; 2], [new_bounds_min, new_bounds_max]: [DVec2; 2]) {
+		self.modify_inputs("Transform", false, |inputs| {
+			let layer_transform = transform_utils::get_current_transform(inputs);
+			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
+
+			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
+			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
+			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
+			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
+
+			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
+			transform_utils::update_transform(inputs, transform);
+		});
+	}
+
 	fn vector_modify(&mut self, modification: VectorDataModification) {
+		// TODO: Allow modifying a graph with a "Text" node.
+		if self.network.nodes.values().any(|node| node.name == "Text") {
+			return;
+		}
+
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 
@@ -186,18 +206,7 @@ impl<'a> ModifyInputsContext<'a> {
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
 
-		self.modify_inputs("Transform", false, |inputs| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
-
-			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
-			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
-			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
-			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
-
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
-		});
+		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
 	}
 }
 
@@ -211,7 +220,11 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					responses.add(Operation::SetLayerFill { path: layer, fill });
 				}
 			}
-
+			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+					modify_inputs.update_bounds(old_bounds, new_bounds);
+				}
+			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);

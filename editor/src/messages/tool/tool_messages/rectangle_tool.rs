@@ -72,9 +72,8 @@ impl ToolMetadata for RectangleTool {
 impl ToolTransition for RectangleTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -122,7 +121,7 @@ impl Fsm for RectangleToolFsmState {
 					let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
 					let layer_path = document.get_path_for_new_layer();
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					shape_data.path = Some(layer_path.clone());
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 					responses.add(GraphOperationMessage::FillSet {
@@ -134,7 +133,7 @@ impl Fsm for RectangleToolFsmState {
 				}
 				(state, Resize { center, lock_ratio }) => {
 					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
-						responses.push_back(message);
+						responses.add(message);
 					}
 
 					state
@@ -146,7 +145,7 @@ impl Fsm for RectangleToolFsmState {
 					Ready
 				}
 				(Drawing, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					responses.add(DocumentMessage::AbortTransaction);
 
 					shape_data.cleanup(responses);
 
@@ -169,10 +168,10 @@ impl Fsm for RectangleToolFsmState {
 			RectangleToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
 }

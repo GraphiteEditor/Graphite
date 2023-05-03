@@ -13,15 +13,15 @@ use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct NodeGraphFrameTool {
+pub struct FrameTool {
 	fsm_state: NodeGraphToolFsmState,
 	tool_data: NodeGraphToolData,
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, NodeGraphFrame)]
+#[impl_message(Message, ToolMessage, Frame)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
-pub enum NodeGraphFrameToolMessage {
+pub enum FrameToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -35,9 +35,9 @@ pub enum NodeGraphFrameToolMessage {
 	},
 }
 
-impl PropertyHolder for NodeGraphFrameTool {}
+impl PropertyHolder for FrameTool {}
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NodeGraphFrameTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FrameTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
@@ -46,10 +46,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NodeGra
 		use NodeGraphToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(NodeGraphFrameToolMessageDiscriminant;
+			Ready => actions!(FrameToolMessageDiscriminant;
 				DragStart,
 			),
-			Drawing => actions!(NodeGraphFrameToolMessageDiscriminant;
+			Drawing => actions!(FrameToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				Resize,
@@ -58,7 +58,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NodeGra
 	}
 }
 
-impl ToolMetadata for NodeGraphFrameTool {
+impl ToolMetadata for FrameTool {
 	fn icon_name(&self) -> String {
 		"RasterFrameTool".into()
 	}
@@ -66,16 +66,15 @@ impl ToolMetadata for NodeGraphFrameTool {
 		"Frame Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
-		ToolType::NodeGraphFrame
+		ToolType::Frame
 	}
 }
 
-impl ToolTransition for NodeGraphFrameTool {
+impl ToolTransition for FrameTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
-			tool_abort: Some(NodeGraphFrameToolMessage::Abort.into()),
-			selection_changed: None,
+			tool_abort: Some(FrameToolMessage::Abort.into()),
+			..Default::default()
 		}
 	}
 }
@@ -104,12 +103,12 @@ impl Fsm for NodeGraphToolFsmState {
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use NodeGraphFrameToolMessage::*;
+		use FrameToolMessage::*;
 		use NodeGraphToolFsmState::*;
 
 		let mut shape_data = &mut tool_data.data;
 
-		if let ToolMessage::NodeGraphFrame(event) = event {
+		if let ToolMessage::Frame(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
@@ -119,7 +118,7 @@ impl Fsm for NodeGraphToolFsmState {
 
 					let network = node_graph::new_image_network(8, 0);
 
-					responses.add(Operation::AddNodeGraphFrame {
+					responses.add(Operation::AddFrame {
 						path: shape_data.path.clone().unwrap(),
 						insert_index: -1,
 						transform: DAffine2::ZERO.to_cols_array(),
@@ -136,7 +135,7 @@ impl Fsm for NodeGraphToolFsmState {
 				}
 				(Drawing, DragStop) => {
 					if let Some(layer_path) = &shape_data.path {
-						responses.add(DocumentMessage::NodeGraphFrameGenerate { layer_path: layer_path.to_vec() });
+						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
 					}
 
 					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);

@@ -122,9 +122,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 impl ToolTransition for SplineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(SplineToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -164,8 +163,8 @@ impl Fsm for SplineToolFsmState {
 		if let ToolMessage::Spline(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
-					responses.push_back(DocumentMessage::DeselectAllLayers.into());
+					responses.add(DocumentMessage::StartTransaction);
+					responses.add(DocumentMessage::DeselectAllLayers);
 					tool_data.path = Some(document.get_path_for_new_layer());
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
@@ -194,7 +193,7 @@ impl Fsm for SplineToolFsmState {
 						}
 					}
 
-					responses.push_back(remove_preview(tool_data));
+					responses.add(remove_preview(tool_data));
 					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
@@ -204,18 +203,18 @@ impl Fsm for SplineToolFsmState {
 					let pos = transform.inverse().transform_point2(snapped_position);
 					tool_data.next_point = pos;
 
-					responses.push_back(remove_preview(tool_data));
+					responses.add(remove_preview(tool_data));
 					add_spline(tool_data, global_tool_data, true, responses);
 
 					Drawing
 				}
 				(Drawing, Confirm) | (Drawing, Abort) => {
 					if tool_data.points.len() >= 2 {
-						responses.push_back(remove_preview(tool_data));
+						responses.add(remove_preview(tool_data));
 						add_spline(tool_data, global_tool_data, false, responses);
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+						responses.add(DocumentMessage::CommitTransaction);
 					} else {
-						responses.push_back(DocumentMessage::AbortTransaction.into());
+						responses.add(DocumentMessage::AbortTransaction);
 					}
 
 					tool_data.path = None;
@@ -240,11 +239,11 @@ impl Fsm for SplineToolFsmState {
 			]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 
@@ -264,10 +263,12 @@ fn add_spline(tool_data: &SplineToolData, global_tool_data: &DocumentToolData, s
 	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
 
 	let layer_path = tool_data.path.clone().unwrap();
+	let manipulator_groups = subpath.manipulator_groups().to_vec();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+	graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
 
 	responses.add(GraphOperationMessage::StrokeSet {
 		layer: layer_path.clone(),
-		stroke: Stroke::new(global_tool_data.primary_color, tool_data.weight),
+		stroke: Stroke::new(Some(global_tool_data.primary_color), tool_data.weight),
 	});
 }

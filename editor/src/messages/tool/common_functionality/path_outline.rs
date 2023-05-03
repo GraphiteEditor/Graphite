@@ -33,9 +33,8 @@ impl PathOutline {
 		// TODO Purge this area of BezPath and Kurbo
 		// Get the bezpath from the shape or text
 		let subpath = match &document_layer.data {
-			LayerDataType::Shape(layer_shape) => Some(layer_shape.shape.clone()),
-			LayerDataType::Text(text) => Some(text.to_subpath_nonmut(render_data)),
-			LayerDataType::NodeGraphFrame(frame) => frame.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
+			LayerDataType::Shape(shape) => Some(shape.shape.clone()),
+			LayerDataType::Layer(layer) => layer.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
 			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 
@@ -47,12 +46,12 @@ impl PathOutline {
 				let operation = Operation::AddShape {
 					path: overlay_path.clone(),
 					subpath: Default::default(),
-					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+					style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), PATH_OUTLINE_WEIGHT)), Fill::None),
 					insert_index: -1,
 					transform: DAffine2::IDENTITY.to_cols_array(),
 				};
 
-				responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+				responses.add(DocumentMessage::Overlays(operation.into()));
 
 				overlay_path
 			}
@@ -60,14 +59,14 @@ impl PathOutline {
 
 		// Update the shape bezpath
 		let operation = Operation::SetShapePath { path: overlay.clone(), subpath };
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		// Update the transform to match the document
 		let operation = Operation::SetLayerTransform {
 			path: overlay.clone(),
 			transform: document.document_legacy.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		Some(overlay)
 	}
@@ -88,7 +87,7 @@ impl PathOutline {
 			// Discard the overlay layer if it exists
 			if let Some(overlay_path) = copied_overlay_path {
 				let operation = Operation::DeleteLayer { path: overlay_path };
-				responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+				responses.add(DocumentMessage::Overlays(operation.into()));
 			}
 		}
 		result
@@ -98,7 +97,7 @@ impl PathOutline {
 	pub fn clear_hovered(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(path) = self.hovered_overlay_path.take() {
 			let operation = Operation::DeleteLayer { path };
-			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			responses.add(DocumentMessage::Overlays(operation.into()));
 		}
 		self.hovered_layer_path = None;
 	}
@@ -132,7 +131,7 @@ impl PathOutline {
 	pub fn clear_selected(&mut self, responses: &mut VecDeque<Message>) {
 		while let Some(path) = self.selected_overlay_paths.pop() {
 			let operation = Operation::DeleteLayer { path };
-			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			responses.add(DocumentMessage::Overlays(operation.into()));
 		}
 	}
 
@@ -147,7 +146,7 @@ impl PathOutline {
 		}
 		for path in old_overlay_paths {
 			let operation = Operation::DeleteLayer { path };
-			responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+			responses.add(DocumentMessage::Overlays(operation.into()));
 		}
 	}
 }

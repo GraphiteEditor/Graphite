@@ -117,7 +117,6 @@
 		position: relative;
 		border-radius: 2px;
 		background: var(--color-1-nearblack);
-		overflow: hidden;
 		flex-direction: row-reverse;
 
 		label {

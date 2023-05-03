@@ -38,9 +38,13 @@ impl<ManipulatorGroupId: crate::Identifier> Hash for ManipulatorGroup<Manipulato
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.anchor.to_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.in_handle.is_some().hash(state);
-		self.in_handle.map(|in_handle| in_handle.to_array().iter().for_each(|x| x.to_bits().hash(state)));
+		if let Some(in_handle) = self.in_handle {
+			in_handle.to_array().iter().for_each(|x| x.to_bits().hash(state));
+		}
 		self.out_handle.is_some().hash(state);
-		self.out_handle.map(|out_handle| out_handle.to_array().iter().for_each(|x| x.to_bits().hash(state)));
+		if let Some(out_handle) = self.out_handle {
+			out_handle.to_array().iter().for_each(|x| x.to_bits().hash(state));
+		}
 		self.id.hash(state);
 	}
 }
@@ -70,6 +74,16 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 	/// Construct a new manipulator point with just an anchor position
 	pub fn new_anchor(anchor: DVec2) -> Self {
 		Self::new(anchor, Some(anchor), Some(anchor))
+	}
+
+	/// Construct a new manipulator group from an anchor, in handle, out handle and an id
+	pub fn new_with_id(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>, id: ManipulatorGroupId) -> Self {
+		Self { anchor, in_handle, out_handle, id }
+	}
+
+	/// Construct a new manipulator point with just an anchor position and an id
+	pub fn new_anchor_with_id(anchor: DVec2, id: ManipulatorGroupId) -> Self {
+		Self::new_with_id(anchor, Some(anchor), Some(anchor), id)
 	}
 
 	/// Create a bezier curve that starts at the current manipulator group and finishes in the `end_group` manipulator group.

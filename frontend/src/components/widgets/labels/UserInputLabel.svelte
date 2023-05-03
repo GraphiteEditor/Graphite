@@ -36,6 +36,7 @@
 	export let keysWithLabelsGroups: LayoutKeysGroup[] = [];
 	export let mouseMotion: MouseMotion | undefined = undefined;
 	export let requiresLock = false;
+	export let textOnly = false;
 
 	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage(fullscreen.keyboardLockApiSupported);
 
@@ -117,7 +118,7 @@
 {#if displayKeyboardLockNotice}
 	<IconLabel class="user-input-label keyboard-lock-notice" icon="Info" tooltip={keyboardLockInfoMessage} />
 {:else}
-	<LayoutRow class="user-input-label">
+	<LayoutRow class="user-input-label" classes={{ "text-only": textOnly }}>
 		{#each keysWithLabelsGroups as keysWithLabels, groupIndex (groupIndex)}
 			{#if groupIndex > 0}
 				<Separator type="Related" />
@@ -152,56 +153,64 @@
 		align-items: center;
 		white-space: nowrap;
 
-		.input-key,
-		.input-mouse {
-			& + .input-key,
-			& + .input-mouse {
-				margin-left: 2px;
+		&.text-only {
+			.input-key + .input-key::before {
+				content: "+";
 			}
 		}
 
-		.input-key {
-			display: flex;
-			justify-content: center;
-			align-items: center;
-			font-family: "Inconsolata", monospace;
-			font-weight: 400;
-			text-align: center;
-			height: 16px;
-			box-sizing: border-box;
-			border: 1px solid;
-			border-radius: 4px;
-			border-color: var(--color-5-dullgray);
-			color: var(--color-e-nearwhite);
-
-			.text-label {
-				// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height,
-				// so moving it up 1 pixel by using 15px makes them agree.
-				line-height: 15px;
+		&:not(.text-only) {
+			.input-key,
+			.input-mouse {
+				& + .input-key,
+				& + .input-mouse {
+					margin-left: 2px;
+				}
 			}
 
-			&.width-1 {
-				width: 16px;
-			}
+			.input-key {
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				font-family: "Inconsolata", monospace;
+				font-weight: 400;
+				text-align: center;
+				height: 16px;
+				box-sizing: border-box;
+				border: 1px solid;
+				border-radius: 4px;
+				border-color: var(--color-5-dullgray);
+				color: var(--color-e-nearwhite);
 
-			&.width-2 {
-				width: 24px;
-			}
+				.text-label {
+					// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height,
+					// so moving it up 1 pixel by using 15px makes them agree.
+					line-height: 15px;
+				}
 
-			&.width-3 {
-				width: 32px;
-			}
+				&.width-1 {
+					width: 16px;
+				}
 
-			&.width-4 {
-				width: 40px;
-			}
+				&.width-2 {
+					width: 24px;
+				}
 
-			&.width-5 {
-				width: 48px;
-			}
+				&.width-3 {
+					width: 32px;
+				}
 
-			.icon-label {
-				margin: 1px;
+				&.width-4 {
+					width: 40px;
+				}
+
+				&.width-5 {
+					width: 48px;
+				}
+
+				.icon-label {
+					margin: 1px;
+				}
 			}
 		}
 

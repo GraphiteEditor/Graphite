@@ -12,6 +12,8 @@ pub mod generic;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]
+pub mod text;
+#[cfg(feature = "std")]
 pub mod uuid;
 pub mod value;
 
@@ -37,6 +39,10 @@ pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
 	fn reset(self: Pin<&mut Self>) {}
+	#[cfg(feature = "alloc")]
+	fn serialize(&self) -> Option<String> {
+		None
+	}
 }
 
 #[cfg(feature = "alloc")]
@@ -110,3 +116,6 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = 
 		(**self).eval(input)
 	}
 }
+
+#[cfg(feature = "alloc")]
+pub use crate::raster::image::{EditorApi, ExtractImageFrame};

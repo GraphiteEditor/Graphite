@@ -1,7 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -74,9 +73,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 impl ToolTransition for EllipseTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(EllipseToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -120,7 +118,7 @@ impl Fsm for EllipseToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 
 					// Create a new layer path for this shape
 					let layer_path = document.get_path_for_new_layer();
@@ -130,17 +128,7 @@ impl Fsm for EllipseToolFsmState {
 					let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
 					let manipulator_groups = subpath.manipulator_groups().to_vec();
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-
-					// Set the four manipulator groups to have their handle angles mirrored by default
-					for manipulator_group in manipulator_groups {
-						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.clone(),
-							modification: VectorDataModification::SetManipulatorHandleMirroring {
-								id: manipulator_group.id,
-								mirror_angle: true,
-							},
-						});
-					}
+					graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
 
 					// Set the fill color to the primary working color
 					responses.add(GraphOperationMessage::FillSet {
@@ -152,7 +140,7 @@ impl Fsm for EllipseToolFsmState {
 				}
 				(state, Resize { center, lock_ratio }) => {
 					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
-						responses.push_back(message);
+						responses.add(message);
 					}
 
 					state
@@ -164,7 +152,7 @@ impl Fsm for EllipseToolFsmState {
 					Ready
 				}
 				(Drawing, Abort) => {
-					responses.push_back(DocumentMessage::AbortTransaction.into());
+					responses.add(DocumentMessage::AbortTransaction);
 					shape_data.cleanup(responses);
 
 					Ready
@@ -186,10 +174,10 @@ impl Fsm for EllipseToolFsmState {
 			EllipseToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
 }

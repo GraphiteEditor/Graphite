@@ -5,8 +5,6 @@ import { Transform, Type, plainToClass } from "class-transformer";
 import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
 
-import type MenuList from "@graphite/components/floating-menus/MenuList.svelte";
-
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
 	static readonly jsMessageMarker = true;
@@ -606,7 +604,7 @@ export class TriggerImaginateTerminate extends JsMessage {
 	readonly hostname!: string;
 }
 
-export class TriggerNodeGraphFrameGenerate extends JsMessage {
+export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly documentId!: bigint;
 
 	readonly layerPath!: BigUint64Array;
@@ -615,7 +613,7 @@ export class TriggerNodeGraphFrameGenerate extends JsMessage {
 
 	readonly size!: [number, number];
 
-	readonly imaginateNode!: BigUint64Array | undefined;
+	readonly imaginateNodePath!: BigUint64Array | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage { }
@@ -704,6 +702,14 @@ export class DisplayEditableTextbox extends JsMessage {
 
 	@Type(() => Color)
 	readonly color!: Color;
+
+	readonly url!: string;
+
+	readonly transform!: number[];
+}
+
+export class DisplayEditableTextboxTransform extends JsMessage {
+	readonly transform!: number[];
 }
 
 export class UpdateImageData extends JsMessage {
@@ -745,22 +751,12 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "NodeGraphFrame" | "Text";
+export type LayerType = "Folder" | "Layer";
 
 export type LayerTypeData = {
 	name: string;
 	icon: IconName;
 };
-
-export function layerTypeData(layerType: LayerType): LayerTypeData | undefined {
-	const entries: Record<string, LayerTypeData> = {
-		NodeGraphFrame: { name: "Layer", icon: "Layer" },
-		Folder: { name: "Folder", icon: "Folder" },
-		Text: { name: "Text", icon: "NodeText" },
-	};
-
-	return entries[layerType];
-}
 
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
@@ -826,9 +822,10 @@ export class ColorInput extends WidgetProps {
 	)
 	value!: Color;
 
-	noTransparency!: boolean;
-
-	disabled!: boolean;
+	// TODO: Implement
+	// allowTransparency!: boolean;
+	// allowNone!: boolean;
+	// disabled!: boolean;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
@@ -856,7 +853,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	disabled?: boolean;
 	tooltip?: string;
 	font?: URL;
-	ref?: MenuList;
+	ref?: any;
 };
 
 export class DropdownInput extends WidgetProps {
@@ -1384,12 +1381,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
+	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
-	TriggerNodeGraphFrameGenerate,
+	TriggerRasterizeRegionBelowLayer,
 	TriggerFileDownload,
 	TriggerFontLoad,
 	TriggerImport,

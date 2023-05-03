@@ -76,9 +76,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Navigat
 impl ToolTransition for NavigateTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(NavigateToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -107,59 +106,56 @@ impl Fsm for NavigateToolFsmState {
 		tool_data: &mut Self::ToolData,
 		ToolActionHandlerData { input, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
-		messages: &mut VecDeque<Message>,
+		responses: &mut VecDeque<Message>,
 	) -> Self {
 		if let ToolMessage::Navigate(navigate) = message {
 			use NavigateToolMessage::*;
 
 			match navigate {
 				ClickZoom { zoom_in } => {
-					messages.push_front(NavigationMessage::TransformCanvasEnd.into());
+					responses.add_front(NavigationMessage::TransformCanvasEnd);
 
 					// Mouse has not moved from pointerdown to pointerup
 					if tool_data.drag_start == input.mouse.position {
-						messages.push_front(if zoom_in {
-							NavigationMessage::IncreaseCanvasZoom { center_on_mouse: true }.into()
+						responses.add_front(if zoom_in {
+							NavigationMessage::IncreaseCanvasZoom { center_on_mouse: true }
 						} else {
-							NavigationMessage::DecreaseCanvasZoom { center_on_mouse: true }.into()
+							NavigationMessage::DecreaseCanvasZoom { center_on_mouse: true }
 						});
 					}
 
 					NavigateToolFsmState::Ready
 				}
 				PointerMove { snap_angle, snap_zoom } => {
-					messages.push_front(
-						NavigationMessage::PointerMove {
-							snap_angle,
-							wait_for_snap_angle_release: false,
-							snap_zoom,
-							zoom_from_viewport: Some(tool_data.drag_start),
-						}
-						.into(),
-					);
+					responses.add_front(NavigationMessage::PointerMove {
+						snap_angle,
+						wait_for_snap_angle_release: false,
+						snap_zoom,
+						zoom_from_viewport: Some(tool_data.drag_start),
+					});
 					self
 				}
 				TranslateCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					messages.push_front(NavigationMessage::TranslateCanvasBegin.into());
+					responses.add_front(NavigationMessage::TranslateCanvasBegin);
 					NavigateToolFsmState::Panning
 				}
 				RotateCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					messages.push_front(NavigationMessage::RotateCanvasBegin.into());
+					responses.add_front(NavigationMessage::RotateCanvasBegin);
 					NavigateToolFsmState::Tilting
 				}
 				ZoomCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					messages.push_front(NavigationMessage::ZoomCanvasBegin.into());
+					responses.add_front(NavigationMessage::ZoomCanvasBegin);
 					NavigateToolFsmState::Zooming
 				}
 				TransformCanvasEnd => {
-					messages.push_front(NavigationMessage::TransformCanvasEnd.into());
+					responses.add_front(NavigationMessage::TransformCanvasEnd);
 					NavigateToolFsmState::Ready
 				}
 				Abort => {
-					messages.push_front(NavigationMessage::TransformCanvasEnd.into());
+					responses.add_front(NavigationMessage::TransformCanvasEnd);
 					NavigateToolFsmState::Ready
 				}
 			}
@@ -181,7 +177,7 @@ impl Fsm for NavigateToolFsmState {
 			_ => HintData(Vec::new()),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -192,6 +188,6 @@ impl Fsm for NavigateToolFsmState {
 			NavigateToolFsmState::Zooming => MouseCursorIcon::ZoomIn,
 		};
 
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}
 }

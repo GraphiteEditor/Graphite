@@ -80,7 +80,7 @@ impl ToolTransition for ArtboardTool {
 		EventToMessageMap {
 			document_dirty: Some(ArtboardToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -132,14 +132,11 @@ impl Fsm for ArtboardToolFsmState {
 
 							tool_data.bounding_box_overlays = Some(bounding_box_overlays);
 
-							responses.push_back(OverlaysMessage::Rerender.into());
-							responses.push_back(
-								PropertiesPanelMessage::SetActiveLayers {
-									paths: vec![vec![tool_data.selected_artboard.unwrap()]],
-									document: TargetDocument::Artboard,
-								}
-								.into(),
-							);
+							responses.add(OverlaysMessage::Rerender);
+							responses.add(PropertiesPanelMessage::SetActiveLayers {
+								paths: vec![vec![tool_data.selected_artboard.unwrap()]],
+								document: TargetDocument::Artboard,
+							});
 						}
 						_ => {}
 					};
@@ -165,7 +162,7 @@ impl Fsm for ArtboardToolFsmState {
 					};
 
 					if let Some(selected_edges) = dragging_bounds {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						let snap_x = selected_edges.2 || selected_edges.3;
 						let snap_y = selected_edges.0 || selected_edges.1;
@@ -185,12 +182,12 @@ impl Fsm for ArtboardToolFsmState {
 
 						ArtboardToolFsmState::ResizingBounds
 					} else {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 						let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
 						let intersection = document.artboard_message_handler.artboards_document.intersects_quad_root(quad, render_data);
 
-						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+						responses.add(BroadcastEvent::DocumentIsDirty);
 						if let Some(intersection) = intersection.last() {
 							tool_data.selected_artboard = Some(intersection[0]);
 
@@ -199,19 +196,16 @@ impl Fsm for ArtboardToolFsmState {
 								.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), render_data), true, true);
 							tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-							responses.push_back(
-								PropertiesPanelMessage::SetActiveLayers {
-									paths: vec![intersection.clone()],
-									document: TargetDocument::Artboard,
-								}
-								.into(),
-							);
+							responses.add(PropertiesPanelMessage::SetActiveLayers {
+								paths: vec![intersection.clone()],
+								document: TargetDocument::Artboard,
+							});
 
 							ArtboardToolFsmState::Dragging
 						} else {
 							tool_data.selected_artboard = None;
 
-							responses.push_back(PropertiesPanelMessage::ClearSelection.into());
+							responses.add(PropertiesPanelMessage::ClearSelection);
 
 							ArtboardToolFsmState::Drawing
 						}
@@ -227,16 +221,13 @@ impl Fsm for ArtboardToolFsmState {
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
 							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.center_of_transformation, constrain_square);
-							responses.push_back(
-								ArtboardMessage::ResizeArtboard {
-									artboard: tool_data.selected_artboard.unwrap(),
-									position: position.round().into(),
-									size: size.round().into(),
-								}
-								.into(),
-							);
+							responses.add(ArtboardMessage::ResizeArtboard {
+								artboard: tool_data.selected_artboard.unwrap(),
+								position: position.round().into(),
+								size: size.round().into(),
+							});
 
-							responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
 					}
 					ArtboardToolFsmState::ResizingBounds
@@ -255,16 +246,13 @@ impl Fsm for ArtboardToolFsmState {
 
 						let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current + closest_move);
 
-						responses.push_back(
-							ArtboardMessage::ResizeArtboard {
-								artboard: tool_data.selected_artboard.unwrap(),
-								position: position.round().into(),
-								size: size.round().into(),
-							}
-							.into(),
-						);
+						responses.add(ArtboardMessage::ResizeArtboard {
+							artboard: tool_data.selected_artboard.unwrap(),
+							position: position.round().into(),
+							size: size.round().into(),
+						});
 
-						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+						responses.add(BroadcastEvent::DocumentIsDirty);
 
 						tool_data.drag_current = mouse_position + closest_move;
 					}
@@ -292,14 +280,11 @@ impl Fsm for ArtboardToolFsmState {
 					let size = root_transform.transform_vector2(size);
 
 					if let Some(artboard) = tool_data.selected_artboard {
-						responses.push_back(
-							ArtboardMessage::ResizeArtboard {
-								artboard,
-								position: start.round().into(),
-								size: size.round().into(),
-							}
-							.into(),
-						);
+						responses.add(ArtboardMessage::ResizeArtboard {
+							artboard,
+							position: start.round().into(),
+							size: size.round().into(),
+						});
 					} else {
 						let id = generate_uuid();
 						tool_data.selected_artboard = Some(id);
@@ -307,27 +292,21 @@ impl Fsm for ArtboardToolFsmState {
 						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, Some(id), render_data), true, true);
 						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-						responses.push_back(
-							ArtboardMessage::AddArtboard {
-								id: Some(id),
-								position: start.round().into(),
-								size: (1., 1.),
-							}
-							.into(),
-						);
+						responses.add(ArtboardMessage::AddArtboard {
+							id: Some(id),
+							position: start.round().into(),
+							size: (1., 1.),
+						});
 					}
 
 					// Have to put message here instead of when Artboard is created
 					// This might result in a few more calls but it is not reliant on the order of messages
-					responses.push_back(
-						PropertiesPanelMessage::SetActiveLayers {
-							paths: vec![vec![tool_data.selected_artboard.unwrap()]],
-							document: TargetDocument::Artboard,
-						}
-						.into(),
-					);
+					responses.add(PropertiesPanelMessage::SetActiveLayers {
+						paths: vec![vec![tool_data.selected_artboard.unwrap()]],
+						document: TargetDocument::Artboard,
+					});
 
-					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+					responses.add(BroadcastEvent::DocumentIsDirty);
 
 					ArtboardToolFsmState::Drawing
 				}
@@ -336,7 +315,7 @@ impl Fsm for ArtboardToolFsmState {
 
 					if tool_data.cursor != cursor {
 						tool_data.cursor = cursor;
-						responses.push_back(FrontendMessage::UpdateMouseCursor { cursor }.into());
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 					}
 
 					ArtboardToolFsmState::Ready
@@ -357,7 +336,7 @@ impl Fsm for ArtboardToolFsmState {
 						bounds.original_transforms.clear();
 					}
 
-					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+					responses.add(BroadcastEvent::DocumentIsDirty);
 
 					ArtboardToolFsmState::Ready
 				}
@@ -372,21 +351,18 @@ impl Fsm for ArtboardToolFsmState {
 				}
 				(_, ArtboardToolMessage::DeleteSelected) => {
 					if let Some(artboard) = tool_data.selected_artboard.take() {
-						responses.push_back(ArtboardMessage::DeleteArtboard { artboard }.into());
-						responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+						responses.add(ArtboardMessage::DeleteArtboard { artboard });
+						responses.add(BroadcastEvent::DocumentIsDirty);
 					}
 					ArtboardToolFsmState::Ready
 				}
 				(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						responses.push_back(
-							ArtboardMessage::ResizeArtboard {
-								artboard: tool_data.selected_artboard.unwrap(),
-								position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
-								size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
-							}
-							.into(),
-						);
+						responses.add(ArtboardMessage::ResizeArtboard {
+							artboard: tool_data.selected_artboard.unwrap(),
+							position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
+							size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
+						});
 					}
 
 					ArtboardToolFsmState::Ready
@@ -397,13 +373,10 @@ impl Fsm for ArtboardToolFsmState {
 					}
 
 					// Register properties when switching back to other tools
-					responses.push_back(
-						PropertiesPanelMessage::SetActiveLayers {
-							paths: document.selected_layers().map(|path| path.to_vec()).collect(),
-							document: TargetDocument::Artwork,
-						}
-						.into(),
-					);
+					responses.add(PropertiesPanelMessage::SetActiveLayers {
+						paths: document.selected_layers().map(|path| path.to_vec()).collect(),
+						document: TargetDocument::Artwork,
+					});
 
 					tool_data.snap_manager.cleanup(responses);
 					ArtboardToolFsmState::Ready
@@ -428,10 +401,10 @@ impl Fsm for ArtboardToolFsmState {
 			}
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

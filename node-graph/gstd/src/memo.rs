@@ -1,9 +1,11 @@
 use graphene_core::Node;
+use serde::Serialize;
 
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
+use std::sync::Mutex;
 use xxhash_rust::xxh3::Xxh3;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -26,12 +28,12 @@ where
 
 		if let Some((_, cached_value, keep)) = self.cache.iter().find(|(h, _, _)| *h == hash) {
 			keep.store(true, std::sync::atomic::Ordering::Relaxed);
-			return cached_value;
+			cached_value
 		} else {
 			trace!("Cache miss");
 			let output = self.node.eval(input);
 			let index = self.cache.push((hash, output, AtomicBool::new(true)));
-			return &self.cache[index].1;
+			&self.cache[index].1
 		}
 	}
 
@@ -46,6 +48,37 @@ impl<T, CachedNode> std::marker::Unpin for CacheNode<T, CachedNode> {}
 impl<T, CachedNode> CacheNode<T, CachedNode> {
 	pub fn new(node: CachedNode) -> CacheNode<T, CachedNode> {
 		CacheNode { cache: boxcar::Vec::new(), node }
+	}
+}
+
+/// Caches the output of the last graph evaluation for introspection
+#[derive(Default)]
+pub struct MonitorNode<T, CachedNode> {
+	output: Mutex<Option<T>>,
+	node: CachedNode,
+}
+impl<'i, T: 'i + Serialize + Clone, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for MonitorNode<T, CachedNode>
+where
+	CachedNode: for<'any_input> Node<'any_input, I, Output = T>,
+{
+	type Output = T;
+	fn eval(&'i self, input: I) -> Self::Output {
+		let output = self.node.eval(input);
+		*self.output.lock().unwrap() = Some(output.clone());
+		output
+	}
+
+	fn serialize(&self) -> Option<String> {
+		let output = self.output.lock().unwrap();
+		(*output).as_ref().and_then(|output| serde_json::to_string(output).ok())
+	}
+}
+
+impl<T, CachedNode> std::marker::Unpin for MonitorNode<T, CachedNode> {}
+
+impl<T, CachedNode> MonitorNode<T, CachedNode> {
+	pub const fn new(node: CachedNode) -> MonitorNode<T, CachedNode> {
+		MonitorNode { output: Mutex::new(None), node }
 	}
 }
 
@@ -77,7 +110,7 @@ impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 				}
 				trace!("Cache miss");
 				let index = self.cache.push((hash, input));
-				return &self.cache[index].1;
+				&self.cache[index].1
 			}
 			None => &self.cache.iter().last().expect("Let node was not initialized").1,
 		}

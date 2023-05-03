@@ -99,6 +99,7 @@ impl ToolTransition for PathTool {
 			document_dirty: Some(PathToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PathToolMessage::Abort.into()),
 			selection_changed: Some(PathToolMessage::SelectionChanged.into()),
+			..Default::default()
 		}
 	}
 }
@@ -183,7 +184,7 @@ impl Fsm for PathToolFsmState {
 
 					// Select the first point within the threshold (in pixels)
 					if let Some(mut selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift_pressed) {
-						responses.push_back(DocumentMessage::StartTransaction.into());
+						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data
 							.snap_manager
@@ -224,16 +225,13 @@ impl Fsm for PathToolFsmState {
 							.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
 						if !intersection.is_empty() {
 							if shift_pressed {
-								responses.push_back(DocumentMessage::AddSelectedLayers { additional_layers: intersection }.into());
+								responses.add(DocumentMessage::AddSelectedLayers { additional_layers: intersection });
 							} else {
 								// Selects the topmost layer when selecting intersecting shapes
 								let top_most_intersection = intersection[intersection.len() - 1].clone();
-								responses.push_back(
-									DocumentMessage::SetSelectedLayers {
-										replacement_selected_layers: vec![top_most_intersection.clone()],
-									}
-									.into(),
-								);
+								responses.add(DocumentMessage::SetSelectedLayers {
+									replacement_selected_layers: vec![top_most_intersection.clone()],
+								});
 								tool_data.drag_start_pos = input.mouse.position;
 								tool_data.previous_mouse_position = input.mouse.position;
 								// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
@@ -243,7 +241,7 @@ impl Fsm for PathToolFsmState {
 						} else {
 							// Clear the previous selection if we didn't find anything
 							if !input.keyboard.get(shift_pressed as usize) {
-								responses.push_back(DocumentMessage::DeselectAllLayers.into());
+								responses.add(DocumentMessage::DeselectAllLayers);
 							}
 						}
 
@@ -276,11 +274,9 @@ impl Fsm for PathToolFsmState {
 						if tool_data.opposing_handle_lengths.is_none() {
 							tool_data.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_legacy));
 						}
-					} else {
-						if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
-							shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
-							tool_data.opposing_handle_lengths = None;
-						}
+					} else if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
+						shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+						tool_data.opposing_handle_lengths = None;
 					}
 
 					// Move the selected points by the mouse position
@@ -294,8 +290,7 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
-						.map(|(_, nearest_point)| nearest_point)
-						.clone();
+						.map(|(_, nearest_point)| nearest_point);
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
@@ -312,9 +307,9 @@ impl Fsm for PathToolFsmState {
 				// Delete key
 				(_, PathToolMessage::Delete) => {
 					// Delete the selected points and clean up overlays
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					shape_editor.delete_selected_points(responses);
-					responses.push_back(PathToolMessage::SelectionChanged.into());
+					responses.add(PathToolMessage::SelectionChanged);
 					for layer_path in document.all_layers() {
 						shape_overlay.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
 					}
@@ -367,10 +362,10 @@ impl Fsm for PathToolFsmState {
 			])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

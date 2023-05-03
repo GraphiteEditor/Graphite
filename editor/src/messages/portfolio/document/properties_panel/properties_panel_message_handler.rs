@@ -40,66 +40,48 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			SetActiveLayers { paths, document } => {
 				if paths.len() != 1 {
 					// TODO: Allow for multiple selected layers
-					responses.push_back(PropertiesPanelMessage::ClearSelection.into());
-					responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+					responses.add(PropertiesPanelMessage::ClearSelection);
+					responses.add(NodeGraphMessage::CloseNodeGraph);
 				} else {
 					let path = paths.into_iter().next().unwrap();
 					if Some((path.clone(), document)) != self.active_selection {
-						// Update the node graph frame visibility
+						// Update the layer visibility
 						if get_document(document)
 							.layer(&path)
 							.ok()
-							.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::NodeGraphFrame)
+							.filter(|layer| LayerDataTypeDiscriminant::from(&layer.data) == LayerDataTypeDiscriminant::Layer)
 							.is_some()
 						{
-							responses.push_back(NodeGraphMessage::OpenNodeGraph { layer_path: path.clone() }.into());
+							responses.add(NodeGraphMessage::OpenNodeGraph { layer_path: path.clone() });
 						} else {
-							responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+							responses.add(NodeGraphMessage::CloseNodeGraph);
 						}
 
 						self.active_selection = Some((path, document));
-						responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into());
+						responses.add(PropertiesPanelMessage::ResendActiveProperties);
 					}
 				}
 			}
 			ClearSelection => {
-				responses.push_back(
-					LayoutMessage::SendLayout {
-						layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-						layout_target: LayoutTarget::PropertiesOptions,
-					}
-					.into(),
-				);
-				responses.push_back(
-					LayoutMessage::SendLayout {
-						layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-						layout_target: LayoutTarget::PropertiesSections,
-					}
-					.into(),
-				);
-				responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+					layout_target: LayoutTarget::PropertiesOptions,
+				});
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+					layout_target: LayoutTarget::PropertiesSections,
+				});
+				responses.add(NodeGraphMessage::CloseNodeGraph);
 				self.active_selection = None;
 			}
-			Deactivate => responses.push_back(
-				BroadcastMessage::UnsubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
-					message: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
-				}
-				.into(),
-			),
-			Init => responses.push_back(
-				BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
-					send: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
-				}
-				.into(),
-			),
-			ModifyFont { font_family, font_style, size } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-
-				self.create_document_operation(Operation::ModifyFont { path, font_family, font_style, size }, true, responses);
-				responses.push_back(ResendActiveProperties.into());
-			}
+			Deactivate => responses.add(BroadcastMessage::UnsubscribeEvent {
+				on: BroadcastEvent::SelectionChanged,
+				message: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
+			}),
+			Init => responses.add(BroadcastMessage::SubscribeEvent {
+				on: BroadcastEvent::SelectionChanged,
+				send: Box::new(PropertiesPanelMessage::UpdateSelectedDocumentProperties.into()),
+			}),
 			ModifyTransform { value, transform_op } => {
 				let (path, target_document) = self.active_selection.as_ref().expect("Received update for properties panel with no active layer");
 				let layer = get_document(*target_document).layer(path).unwrap();
@@ -124,10 +106,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				self.create_document_operation(Operation::SetLayerStroke { path, stroke }, true, responses);
 			}
-			ModifyText { new_text } => {
-				let (path, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				self.create_document_operation(Operation::SetTextContent { path, new_text }, true, responses);
-			}
 			SetPivot { new_position } => {
 				let (layer, _) = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let position: Option<glam::DVec2> = new_position.into();
@@ -138,27 +116,21 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			}
 			CheckSelectedWasUpdated { path } => {
 				if self.matches_selected(&path) {
-					responses.push_back(PropertiesPanelMessage::ResendActiveProperties.into())
+					responses.add(PropertiesPanelMessage::ResendActiveProperties)
 				}
 			}
 			CheckSelectedWasDeleted { path } => {
 				if self.matches_selected(&path) {
 					self.active_selection = None;
-					responses.push_back(
-						LayoutMessage::SendLayout {
-							layout_target: LayoutTarget::PropertiesOptions,
-							layout: Layout::WidgetLayout(WidgetLayout::default()),
-						}
-						.into(),
-					);
-					responses.push_back(
-						LayoutMessage::SendLayout {
-							layout_target: LayoutTarget::PropertiesSections,
-							layout: Layout::WidgetLayout(WidgetLayout::default()),
-						}
-						.into(),
-					);
-					responses.push_back(NodeGraphMessage::CloseNodeGraph.into());
+					responses.add(LayoutMessage::SendLayout {
+						layout_target: LayoutTarget::PropertiesOptions,
+						layout: Layout::WidgetLayout(WidgetLayout::default()),
+					});
+					responses.add(LayoutMessage::SendLayout {
+						layout_target: LayoutTarget::PropertiesSections,
+						layout: Layout::WidgetLayout(WidgetLayout::default()),
+					});
+					responses.add(NodeGraphMessage::CloseNodeGraph);
 				}
 			}
 			ResendActiveProperties => {
@@ -171,13 +143,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					}
 				}
 			}
-			UpdateSelectedDocumentProperties => responses.push_back(
-				PropertiesPanelMessage::SetActiveLayers {
-					paths: selected_layers.map(|path| path.to_vec()).collect(),
-					document: TargetDocument::Artwork,
-				}
-				.into(),
-			),
+			UpdateSelectedDocumentProperties => responses.add(PropertiesPanelMessage::SetActiveLayers {
+				paths: selected_layers.map(|path| path.to_vec()).collect(),
+				document: TargetDocument::Artwork,
+			}),
 		}
 	}
 
@@ -200,16 +169,16 @@ impl PropertiesPanelMessageHandler {
 				// Commit history is not respected as the artboard document is not saved in the history system.
 
 				// Dispatch the relevant operation to the artboard document
-				responses.push_back(ArtboardMessage::DispatchOperation(Box::new(operation)).into())
+				responses.add(ArtboardMessage::DispatchOperation(Box::new(operation)))
 			}
 			TargetDocument::Artwork => {
 				// Commit to history before the modification
 				if commit_history {
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 				}
 
 				// Dispatch the relevant operation to the main document
-				responses.push_back(DocumentMessage::DispatchOperation(Box::new(operation)).into());
+				responses.add(DocumentMessage::DispatchOperation(Box::new(operation)));
 			}
 		}
 	}

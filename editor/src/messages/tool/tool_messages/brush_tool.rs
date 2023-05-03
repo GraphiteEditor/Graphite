@@ -164,9 +164,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 impl ToolTransition for BrushTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(BrushToolMessage::Abort.into()),
-			selection_changed: None,
+			..Default::default()
 		}
 	}
 }
@@ -215,14 +214,14 @@ impl Fsm for BrushToolFsmState {
 		if let ToolMessage::Brush(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					responses.push_back(DocumentMessage::StartTransaction.into());
+					responses.add(DocumentMessage::StartTransaction);
 					let existing_points = load_existing_points(document);
 					let new_layer = existing_points.is_none();
 					if let Some((layer_path, points)) = existing_points {
 						tool_data.path = Some(layer_path);
 						tool_data.points = points;
 					} else {
-						responses.push_back(DocumentMessage::DeselectAllLayers.into());
+						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.path = Some(document.get_path_for_new_layer());
 					}
 
@@ -262,9 +261,9 @@ impl Fsm for BrushToolFsmState {
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if !tool_data.points.is_empty() {
-						responses.push_back(DocumentMessage::CommitTransaction.into());
+						responses.add(DocumentMessage::CommitTransaction);
 					} else {
-						responses.push_back(DocumentMessage::AbortTransaction.into());
+						responses.add(DocumentMessage::AbortTransaction);
 					}
 
 					tool_data.path = None;
@@ -285,11 +284,11 @@ impl Fsm for BrushToolFsmState {
 			BrushToolFsmState::Drawing => HintData(vec![]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
 
@@ -311,10 +310,11 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
+		..Default::default()
 	};
 	let mut network = NodeNetwork::value_network(brush_node);
 	network.push_output_node();
-	graph_modification_utils::new_custom_layer(network, layer_path.clone(), responses);
+	graph_modification_utils::new_custom_layer(network, layer_path, responses);
 }
 
 fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {

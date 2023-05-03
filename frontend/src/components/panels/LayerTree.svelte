@@ -4,8 +4,6 @@
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import {
-		type LayerType,
-		type LayerTypeData,
 		type LayerPanelEntry,
 		defaultWidgetLayout,
 		patchWidgetLayout,
@@ -314,10 +312,6 @@
 			layers = layers;
 		}
 	}
-
-	function getLayerTypeData(layerType: LayerType): LayerTypeData {
-		return layerTypeData(layerType) || { name: "Error", icon: "Info" };
-	}
 </script>
 
 <LayoutCol class="layer-tree" on:dragleave={() => (dragInPanel = false)}>
@@ -359,16 +353,15 @@
 						on:dragstart={(e) => draggable && dragStart(e, listing)}
 						on:click={(e) => selectLayerWithModifiers(e, listing)}
 					>
-						{@const layerType = getLayerTypeData(listing.entry.layerType)}
 						<LayoutRow class="layer-type-icon">
-							<IconLabel icon={layerType.icon} />
+							<IconLabel icon={listing.entry.layerType || "Info"} />
 						</LayoutRow>
 						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 							<input
 								data-text-input
 								type="text"
 								value={listing.entry.name}
-								placeholder={"Untitled " + layerType.name}
+								placeholder={`Untitled ${listing.entry.layerType || "[Unknown Layer Type]"}`}
 								disabled={!listing.editingName}
 								on:blur={() => onEditLayerNameDeselect(listing)}
 								on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

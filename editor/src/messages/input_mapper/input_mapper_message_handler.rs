@@ -13,7 +13,7 @@ pub struct InputMapperMessageHandler {
 impl MessageHandler<InputMapperMessage, (&InputPreprocessorMessageHandler, ActionList)> for InputMapperMessageHandler {
 	fn process_message(&mut self, message: InputMapperMessage, responses: &mut VecDeque<Message>, (input, actions): (&InputPreprocessorMessageHandler, ActionList)) {
 		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions) {
-			responses.push_back(message);
+			responses.add(message);
 		}
 	}
 	advertise_actions!();

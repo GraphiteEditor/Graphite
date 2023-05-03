@@ -160,10 +160,10 @@ impl GradientOverlay {
 		let operation = Operation::AddEllipse {
 			path: path.clone(),
 			transform: DAffine2::from_scale_angle_translation(size, 0., translation - size / 2.).to_cols_array(),
-			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), fill),
+			style: PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), fill),
 			insert_index: -1,
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		path
 	}
@@ -179,10 +179,10 @@ impl GradientOverlay {
 		let operation = Operation::AddLine {
 			path: path.clone(),
 			transform,
-			style: PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 			insert_index: -1,
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		path
 	}
@@ -224,12 +224,12 @@ impl GradientOverlay {
 	}
 
 	pub fn delete_overlays(self, responses: &mut VecDeque<Message>) {
-		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.line }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.line }.into()));
 		let [start, end] = self.handles;
-		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: start }.into()).into());
-		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: end }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: start }.into()));
+		responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: end }.into()));
 		for step in self.steps {
-			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: step }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: step }.into()));
 		}
 	}
 
@@ -278,7 +278,7 @@ impl SelectedGradient {
 
 		// Clear the gradient if layer deleted
 		let Ok(layer) = document.document_legacy.layer(&inner_gradient.path) else {
-			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;
 		};
@@ -288,13 +288,13 @@ impl SelectedGradient {
 
 		// Clear if no longer a gradient
 		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else {
-			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;
 		};
 
 		if gradient.gradient_type != inner_gradient.gradient.gradient_type {
-			responses.push_back(ToolMessage::RefreshToolOptions.into());
+			responses.add(ToolMessage::RefreshToolOptions);
 		}
 		inner_gradient.gradient = gradient.clone();
 	}
@@ -371,6 +371,7 @@ impl ToolTransition for GradientTool {
 			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(GradientToolMessage::Abort.into()),
 			selection_changed: Some(GradientToolMessage::DocumentIsDirty.into()),
+			..Default::default()
 		}
 	}
 }
@@ -519,7 +520,7 @@ impl Fsm for GradientToolFsmState {
 					self
 				}
 				(GradientToolFsmState::Ready, GradientToolMessage::PointerDown) => {
-					responses.push_back(BroadcastEvent::DocumentIsDirty.into());
+					responses.add(BroadcastEvent::DocumentIsDirty);
 
 					let mouse = input.mouse.position;
 					tool_data.drag_start = mouse;
@@ -570,12 +571,12 @@ impl Fsm for GradientToolFsmState {
 							if !document.selected_layers_contains(&intersection) {
 								let replacement_selected_layers = vec![intersection.clone()];
 
-								responses.push_back(DocumentMessage::SetSelectedLayers { replacement_selected_layers }.into());
+								responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 							}
 
 							let layer = document.document_legacy.layer(&intersection).unwrap();
 
-							responses.push_back(DocumentMessage::StartTransaction.into());
+							responses.add(DocumentMessage::StartTransaction);
 
 							// Use the already existing gradient if it exists
 							let gradient = if let Some(gradient) = layer.style().ok().map(|style| style.fill()).and_then(|fill| fill.as_gradient()) {
@@ -643,10 +644,10 @@ impl Fsm for GradientToolFsmState {
 			GradientToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")])]),
 		};
 
-		responses.push_back(FrontendMessage::UpdateInputHints { hint_data }.into());
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.push_back(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default }.into());
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

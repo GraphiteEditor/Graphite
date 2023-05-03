@@ -87,6 +87,27 @@ pub enum DocumentMessage {
 	},
 	FrameClear,
 	GroupSelectedLayers,
+	ImaginateClear {
+		layer_path: Vec<LayerId>,
+		node_id: NodeId,
+		cached_index: usize,
+	},
+	ImaginateGenerate {
+		layer_path: Vec<LayerId>,
+		imaginate_node: Vec<NodeId>,
+	},
+	ImaginateRandom {
+		layer_path: Vec<LayerId>,
+		imaginate_node: Vec<NodeId>,
+		then_generate: bool,
+	},
+	ImaginateTerminate {
+		layer_path: Vec<LayerId>,
+		node_path: Vec<NodeId>,
+	},
+	InputFrameRasterizeRegionBelowLayer {
+		layer_path: Vec<LayerId>,
+	},
 	LayerChanged {
 		affected_layer_path: Vec<LayerId>,
 	},
@@ -94,27 +115,6 @@ pub enum DocumentMessage {
 		folder_path: Vec<LayerId>,
 		insert_index: isize,
 		reverse_index: bool,
-	},
-	NodeGraphFrameClear {
-		layer_path: Vec<LayerId>,
-		node_id: NodeId,
-		cached_index: usize,
-	},
-	NodeGraphFrameGenerate {
-		layer_path: Vec<LayerId>,
-	},
-	NodeGraphFrameImaginate {
-		layer_path: Vec<LayerId>,
-		imaginate_node: Vec<NodeId>,
-	},
-	NodeGraphFrameImaginateRandom {
-		layer_path: Vec<LayerId>,
-		imaginate_node: Vec<NodeId>,
-		then_generate: bool,
-	},
-	NodeGraphFrameImaginateTerminate {
-		layer_path: Vec<LayerId>,
-		node_path: Vec<NodeId>,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
@@ -175,10 +175,6 @@ pub enum DocumentMessage {
 	},
 	SetSnapping {
 		snap: bool,
-	},
-	SetTextboxEditability {
-		path: Vec<LayerId>,
-		editable: bool,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

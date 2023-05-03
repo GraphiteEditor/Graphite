@@ -159,11 +159,11 @@ impl OverlayRenderer {
 		let operation = Operation::AddShape {
 			path: layer_path.clone(),
 			subpath,
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), PATH_OUTLINE_WEIGHT)), Fill::None),
 			insert_index: -1,
 			transform: DAffine2::IDENTITY.to_cols_array(),
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 
 		layer_path
 	}
@@ -174,10 +174,10 @@ impl OverlayRenderer {
 		let operation = Operation::AddRect {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 2.0)), Fill::solid(Color::WHITE)),
 			insert_index: -1,
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 		layer_path
 	}
 
@@ -187,10 +187,10 @@ impl OverlayRenderer {
 		let operation = Operation::AddEllipse {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 2.0)), Fill::solid(Color::WHITE)),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 2.0)), Fill::solid(Color::WHITE)),
 			insert_index: -1,
 		};
-		responses.push_back(DocumentMessage::Overlays(operation.into()).into());
+		responses.add(DocumentMessage::Overlays(operation.into()));
 		layer_path
 	}
 
@@ -202,7 +202,7 @@ impl OverlayRenderer {
 	/// Remove an overlay at the specified path
 	fn remove_overlay(path: Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
 		if let Some(path) = path {
-			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()));
 		}
 	}
 
@@ -212,10 +212,10 @@ impl OverlayRenderer {
 		let operation = Operation::AddLine {
 			path: layer_path.clone(),
 			transform: DAffine2::IDENTITY.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 			insert_index: -1,
 		};
-		responses.push_front(DocumentMessage::Overlays(operation.into()).into());
+		responses.add_front(DocumentMessage::Overlays(operation.into()));
 		layer_path
 	}
 
@@ -226,12 +226,12 @@ impl OverlayRenderer {
 
 	fn place_outline_overlays(outline_path: Vec<LayerId>, parent_transform: &DAffine2, responses: &mut VecDeque<Message>) {
 		let transform_message = Self::overlay_transform_message(outline_path, parent_transform.to_cols_array());
-		responses.push_back(transform_message);
+		responses.add(transform_message);
 	}
 
 	fn modify_outline_overlays(outline_path: Vec<LayerId>, subpath: graphene_core::vector::Subpath, responses: &mut VecDeque<Message>) {
 		let outline_modify_message = Self::overlay_modify_message(outline_path, subpath);
-		responses.push_back(outline_modify_message);
+		responses.add(outline_modify_message);
 	}
 
 	/// Updates the position of the overlays based on the [Subpath] points.
@@ -245,7 +245,7 @@ impl OverlayRenderer {
 
 			let translation = (parent_transform.transform_point2(handle_position) + VIEWPORT_GRID_ROUNDING_BIAS).round() + DVec2::splat(0.5);
 			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
-			responses.push_back(Self::overlay_transform_message(line_overlay.to_vec(), transform));
+			responses.add(Self::overlay_transform_message(line_overlay.to_vec(), transform));
 
 			let marker_overlay = marker_source.take().unwrap_or_else(|| Self::create_handle_overlay(responses));
 
@@ -254,7 +254,7 @@ impl OverlayRenderer {
 			let translation = (parent_transform.transform_point2(handle_position) - (scale / 2.) + VIEWPORT_GRID_ROUNDING_BIAS).round();
 			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
-			responses.push_back(Self::overlay_transform_message(marker_overlay.clone(), transform));
+			responses.add(Self::overlay_transform_message(marker_overlay.clone(), transform));
 
 			*marker_source = Some(marker_overlay);
 		};
@@ -275,7 +275,7 @@ impl OverlayRenderer {
 			let transform = DAffine2::from_scale_angle_translation(scale, angle, translation).to_cols_array();
 
 			let message = Self::overlay_transform_message(anchor_overlay.clone(), transform);
-			responses.push_back(message);
+			responses.add(message);
 		}
 	}
 
@@ -283,23 +283,23 @@ impl OverlayRenderer {
 	fn remove_manipulator_group_overlays(overlay_paths: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		overlay_paths.iter().flatten().for_each(|layer_id| {
 			trace!("Overlay: Sending delete message for: {:?}", layer_id);
-			responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()).into());
+			responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()));
 		});
 	}
 
 	fn remove_outline_overlays(overlay_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-		responses.push_back(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path }.into()).into());
+		responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: overlay_path }.into()));
 	}
 
 	/// Sets the visibility of the handles overlay.
 	fn set_manipulator_group_overlay_visibility(manipulator_group_overlays: &ManipulatorGroupOverlays, visibility: bool, responses: &mut VecDeque<Message>) {
 		manipulator_group_overlays.iter().flatten().for_each(|layer_id| {
-			responses.push_back(Self::overlay_visibility_message(layer_id.clone(), visibility));
+			responses.add(Self::overlay_visibility_message(layer_id.clone(), visibility));
 		});
 	}
 
 	fn set_outline_overlay_visibility(overlay_path: Vec<LayerId>, visibility: bool, responses: &mut VecDeque<Message>) {
-		responses.push_back(Self::overlay_visibility_message(overlay_path, visibility));
+		responses.add(Self::overlay_visibility_message(overlay_path, visibility));
 	}
 
 	/// Create a visibility message for an overlay.
@@ -327,8 +327,8 @@ impl OverlayRenderer {
 	/// Sets the overlay style for this point.
 	fn style_overlays(state: &SelectedShapeState, layer_path: &[LayerId], manipulator_group: &GraphiteManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the Subpath, should be looked up from a stylesheet or similar
-		let selected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
-		let deselected_style = style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
+		let selected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
+		let deselected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
 		let selected_shape_state = state.get(layer_path);
 		// Update if the manipulator points are shown as selected
 		// Here the index is important, even though overlays[..] has five elements we only care about the first three
@@ -340,7 +340,7 @@ impl OverlayRenderer {
 					.is_some();
 
 				let style = if selected { selected_style.clone() } else { deselected_style.clone() };
-				responses.push_back(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay_path.clone(), style }.into()).into());
+				responses.add(DocumentMessage::Overlays(Operation::SetLayerStyle { path: overlay_path.clone(), style }.into()));
 			}
 		}
 	}

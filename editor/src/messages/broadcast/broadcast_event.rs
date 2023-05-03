@@ -8,4 +8,5 @@ pub enum BroadcastEvent {
 	DocumentIsDirty,
 	ToolAbort,
 	SelectionChanged,
+	WorkingColorChanged,
 }

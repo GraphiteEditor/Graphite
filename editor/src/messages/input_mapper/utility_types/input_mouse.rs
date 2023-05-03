@@ -92,8 +92,8 @@ impl MouseState {
 
 	pub fn finish_transaction(&self, drag_start: DVec2, responses: &mut VecDeque<Message>) {
 		match drag_start.distance(self.position) <= DRAG_THRESHOLD {
-			true => responses.push_back(DocumentMessage::AbortTransaction.into()),
-			false => responses.push_back(DocumentMessage::CommitTransaction.into()),
+			true => responses.add(DocumentMessage::AbortTransaction),
+			false => responses.add(DocumentMessage::CommitTransaction),
 		}
 	}
 }

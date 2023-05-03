@@ -57,12 +57,7 @@
 		}
 
 		&:hover {
-			background: var(--color-6-lowergray);
-			color: var(--color-f-white);
-
-			svg {
-				fill: var(--color-f-white);
-			}
+			background: var(--color-5-dullgray);
 		}
 
 		&.disabled {

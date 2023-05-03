@@ -7,11 +7,11 @@ use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuff
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
-use document_legacy::layers::text_layer::Font;
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graph_craft::imaginate_input::*;
 use graphene_core::raster::color::Color;
+use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +37,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "fontSize")]
 		font_size: f64,
 		color: Color,
+		url: String,
+		transform: [f64; 6],
+	},
+	DisplayEditableTextboxTransform {
+		transform: [f64; 6],
 	},
 	DisplayRemoveEditableTextbox,
 
@@ -100,16 +105,6 @@ pub enum FrontendMessage {
 	},
 	TriggerLoadAutoSaveDocuments,
 	TriggerLoadPreferences,
-	TriggerNodeGraphFrameGenerate {
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		svg: String,
-		size: glam::DVec2,
-		#[serde(rename = "imaginateNode")]
-		imaginate_node: Option<Vec<NodeId>>,
-	},
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerRasterDownload {
@@ -117,6 +112,16 @@ pub enum FrontendMessage {
 		name: String,
 		mime: String,
 		size: (f64, f64),
+	},
+	TriggerRasterizeRegionBelowLayer {
+		#[serde(rename = "documentId")]
+		document_id: u64,
+		#[serde(rename = "layerPath")]
+		layer_path: Vec<LayerId>,
+		svg: String,
+		size: glam::DVec2,
+		#[serde(rename = "imaginateNodePath")]
+		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {

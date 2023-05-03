@@ -412,11 +412,6 @@
 		// Floating menus begin at a z-index of 1000
 		z-index: 1000;
 		--floating-menu-content-offset: 0;
-		--floating-menu-content-border-radius: 4px;
-
-		&.bottom {
-			--floating-menu-content-border-radius: 0 0 4px 4px;
-		}
 
 		.tail {
 			width: 0;
@@ -432,9 +427,9 @@
 			display: flex;
 
 			.floating-menu-content {
-				background: rgba(var(--color-2-mildblack-rgb), 0.95);
+				background: var(--color-2-mildblack);
 				box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
-				border-radius: var(--floating-menu-content-border-radius);
+				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
 				padding: 8px;
@@ -501,7 +496,6 @@
 
 		&.popover {
 			--floating-menu-content-offset: 10px;
-			--floating-menu-content-border-radius: 4px;
 		}
 
 		&.cursor .floating-menu-container .floating-menu-content {
@@ -527,28 +521,28 @@
 
 		&.top .tail {
 			border-width: 8px 6px 0 6px;
-			border-color: rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent transparent;
+			border-color: var(--color-2-mildblack) transparent transparent transparent;
 			margin-left: -6px;
 			margin-bottom: 2px;
 		}
 
 		&.bottom .tail {
 			border-width: 0 6px 8px 6px;
-			border-color: transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent;
+			border-color: transparent transparent var(--color-2-mildblack) transparent;
 			margin-left: -6px;
 			margin-top: 2px;
 		}
 
 		&.left .tail {
 			border-width: 6px 0 6px 8px;
-			border-color: transparent transparent transparent rgba(var(--color-2-mildblack-rgb), 0.95);
+			border-color: transparent transparent transparent var(--color-2-mildblack);
 			margin-top: -6px;
 			margin-right: 2px;
 		}
 
 		&.right .tail {
 			border-width: 6px 8px 6px 0;
-			border-color: transparent rgba(var(--color-2-mildblack-rgb), 0.95) transparent transparent;
+			border-color: transparent var(--color-2-mildblack) transparent transparent;
 			margin-top: -6px;
 			margin-left: 2px;
 		}

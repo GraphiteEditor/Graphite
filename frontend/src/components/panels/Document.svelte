@@ -7,6 +7,7 @@
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
 		TriggerViewportResize,
@@ -37,6 +38,8 @@
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
+	let showTextInput: boolean;
+	let textInputMatrix: number[];
 
 	// CSS properties
 	let canvasSvgWidth: number | undefined = undefined;
@@ -121,32 +124,6 @@
 	export async function updateDocumentArtwork(svg: string) {
 		artworkSvg = svg;
 		rasterizedCanvas = undefined;
-
-		await tick();
-
-		if (textInput) {
-			const foreignObject = canvasContainer?.getElementsByTagName("foreignObject")[0] as SVGForeignObjectElement | undefined;
-			if (!foreignObject || foreignObject.children.length > 0) return;
-
-			const addedInput = foreignObject.appendChild(textInput);
-			window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: addedInput }));
-
-			await tick();
-
-			// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
-
-			const range = window.document.createRange();
-			range.selectNodeContents(addedInput);
-
-			const selection = window.getSelection();
-			if (selection) {
-				selection.removeAllRanges();
-				selection.addRange(range);
-			}
-
-			addedInput.focus();
-			addedInput.click();
-		}
 	}
 
 	export function updateDocumentOverlays(svg: string) {
@@ -257,13 +234,20 @@
 		editor.instance.onChangeText(textCleaned);
 	}
 
-	export function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
-		textInput = window.document.createElement("div") as HTMLDivElement;
+	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
+		showTextInput = true;
+
+		await tick();
+
+		if (!textInput) {
+			return;
+		}
 
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
 		textInput.contentEditable = "true";
+		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 		textInput.style.height = "auto";
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
@@ -273,17 +257,37 @@
 			if (!textInput) return;
 			editor.instance.updateBounds(textInputCleanup(textInput.innerText));
 		};
+		textInputMatrix = displayEditableTextbox.transform;
+		const new_font = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
+		window.document.fonts.add(new_font);
+		textInput.style.fontFamily = "text-font";
+
+		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
+
+		const range = window.document.createRange();
+		range.selectNodeContents(textInput);
+
+		const selection = window.getSelection();
+		if (selection) {
+			selection.removeAllRanges();
+			selection.addRange(range);
+		}
+
+		textInput.focus();
+		textInput.click();
+
+		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
 	}
 
 	export function displayRemoveEditableTextbox() {
-		textInput = undefined;
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
+		showTextInput = false;
 	}
 
 	// Resize elements to render the new viewport size
 	export function viewportResize() {
 		if (!canvasContainer) return;
-		
+
 		// Resize the canvas
 		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasContainer).width));
 		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasContainer).height));
@@ -364,6 +368,9 @@
 
 			displayEditableTextbox(data);
 		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
+			textInputMatrix = data.transform;
+		});
 		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
 			await tick();
 
@@ -432,6 +439,11 @@
 						<svg class="overlays" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html overlaysSvg}
 						</svg>
+						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+							{#if showTextInput}
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
+							{/if}
+						</div>
 					</div>
 				</LayoutCol>
 				<LayoutCol class="bar-area right-scrollbar">
@@ -488,10 +500,6 @@
 					}
 
 					.icon-button:not(.active) {
-						.color-solid {
-							fill: var(--color-f-white);
-						}
-
 						.color-general {
 							fill: var(--color-data-general);
 						}
@@ -575,29 +583,23 @@
 						}
 					}
 
-					foreignObject {
-						width: 10000px;
-						height: 10000px;
+					.text-input div {
+						cursor: text;
+						background: none;
+						border: none;
+						margin: 0;
+						padding: 0;
 						overflow: visible;
+						white-space: pre-wrap;
+						display: inline-block;
+						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+						padding-left: 1px;
+						margin-left: -1px;
 
-						div {
-							cursor: text;
-							background: none;
+						&:focus {
 							border: none;
-							margin: 0;
-							padding: 0;
-							overflow: visible;
-							white-space: pre-wrap;
-							display: inline-block;
-							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
-							padding-left: 1px;
-							margin-left: -1px;
-
-							&:focus {
-								border: none;
-								outline: none; // Ok for contenteditable element
-								margin: -1px;
-							}
+							outline: none; // Ok for contenteditable element
+							margin: -1px;
 						}
 					}
 				}

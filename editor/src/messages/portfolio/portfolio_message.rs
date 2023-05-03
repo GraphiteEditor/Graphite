@@ -2,10 +2,10 @@ use super::utility_types::ImaginateServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::text_layer::Font;
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graph_craft::imaginate_input::ImaginateStatus;
+use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
 
@@ -112,12 +112,12 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
-	ProcessNodeGraphFrame {
+	RenderGraphUsingRasterizedRegionBelowLayer {
 		document_id: u64,
 		layer_path: Vec<LayerId>,
-		image_data: Vec<u8>,
+		input_image_data: Vec<u8>,
 		size: (u32, u32),
-		imaginate_node: Option<Vec<NodeId>>,
+		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	SelectDocument {
 		document_id: u64,

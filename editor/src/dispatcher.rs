@@ -2,18 +2,18 @@ use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::text_layer::Font;
+use graphene_core::text::Font;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
-	message_handlers: DispatcherMessageHandlers,
+	pub message_handlers: DispatcherMessageHandlers,
 }
 
 #[remain::sorted]
 #[derive(Debug, Default)]
-struct DispatcherMessageHandlers {
+pub struct DispatcherMessageHandlers {
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -21,7 +21,7 @@ struct DispatcherMessageHandlers {
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
-	portfolio_message_handler: PortfolioMessageHandler,
+	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	workspace_message_handler: WorkspaceMessageHandler,
@@ -41,7 +41,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::DocumentIsDirty)),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraphFrameGenerate)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::InputFrameRasterizeRegionBelowLayer)),
 ];
 
 impl Dispatcher {
@@ -76,7 +76,7 @@ impl Dispatcher {
 				} else if self.message_queues.len() > 1 {
 					self.log_deferred_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.message_logging_verbosity);
 					self.cleanup_queues(true);
-					self.message_queues[0].push_back(message);
+					self.message_queues[0].add(message);
 					continue;
 				}
 			}
@@ -95,15 +95,15 @@ impl Dispatcher {
 				#[remain::unsorted]
 				Init => {
 					// Load persistent data from the browser database
-					queue.push_back(FrontendMessage::TriggerLoadAutoSaveDocuments.into());
-					queue.push_back(FrontendMessage::TriggerLoadPreferences.into());
+					queue.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
+					queue.add(FrontendMessage::TriggerLoadPreferences);
 
 					// Display the menu bar at the top of the window
-					queue.push_back(MenuBarMessage::SendLayout.into());
+					queue.add(MenuBarMessage::SendLayout);
 
 					// Load the default font
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
-					queue.push_back(FrontendMessage::TriggerFontLoad { font, is_default: true }.into());
+					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
 
 				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),

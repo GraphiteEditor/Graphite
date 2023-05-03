@@ -16,6 +16,7 @@ std = [
 	"glam/std",
 	"specta",
 	"num-traits/std",
+	"rustybuzz",
 ]
 default = ["async", "serde", "kurbo", "log", "std", "rand_chacha"]
 log = ["dep:log"]
@@ -60,6 +61,9 @@ base64 = { version = "0.13", optional = true }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
+
+rustybuzz = { version = "0.6.0", optional = true }
+
 num-derive = { version = "0.3.3" }
 num-traits = { version = "0.2.15", default-features = false, features = [
 	"i128",

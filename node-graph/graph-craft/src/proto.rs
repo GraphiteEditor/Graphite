@@ -120,6 +120,7 @@ pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
 	pub identifier: NodeIdentifier,
+	pub document_node_path: Vec<NodeId>,
 }
 
 /// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
@@ -170,11 +171,12 @@ impl ProtoNode {
 		Some(hasher.finish() as NodeId)
 	}
 
-	pub fn value(value: ConstructionArgs) -> Self {
+	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
 			identifier: NodeIdentifier::new("graphene_core::value::ValueNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
+			document_node_path: path,
 		}
 	}
 
@@ -270,13 +272,15 @@ impl ProtoNetwork {
 		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
 		let compose_node_id = self.nodes.len() as NodeId;
 		let inputs = self.nodes.iter().map(|(_, node)| node.input.clone()).collect::<Vec<_>>();
+		let paths = self.nodes.iter().map(|(_, node)| node.document_node_path.clone()).collect::<Vec<_>>();
 
 		let resolved_lookup = resolved.clone();
-		if let Some((input_node, id, input)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
+		if let Some((input_node, id, input, mut path)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
 			if let ProtoNodeInput::Node(input_node, false) = node.input {
 				resolved.insert(*id);
 				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
-				Some((input_node, *id, pre_node_input.clone()))
+				let pre_path = paths.get(input_node as usize).expect("input node should exist");
+				Some((input_node, *id, pre_node_input.clone(), pre_path.clone()))
 			} else {
 				resolved.insert(*id);
 				None
@@ -284,12 +288,14 @@ impl ProtoNetwork {
 		}) {
 			lookup.insert(id, compose_node_id);
 			self.replace_node_references(&lookup, true);
+			path.push(id);
 			self.nodes.push((
 				compose_node_id,
 				ProtoNode {
 					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 					construction_args: ConstructionArgs::Nodes(vec![(input_node, false), (id, true)]),
 					input,
+					document_node_path: path,
 				},
 			));
 			return false;
@@ -644,6 +650,7 @@ mod test {
 						identifier: "id".into(),
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
+						document_node_path: vec![],
 					},
 				),
 				(
@@ -652,6 +659,7 @@ mod test {
 						identifier: "id".into(),
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
+						document_node_path: vec![],
 					},
 				),
 				(
@@ -660,6 +668,7 @@ mod test {
 						identifier: "cons".into(),
 						input: ProtoNodeInput::Network(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
+						document_node_path: vec![],
 					},
 				),
 				(
@@ -668,6 +677,7 @@ mod test {
 						identifier: "add".into(),
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
+						document_node_path: vec![],
 					},
 				),
 				(
@@ -676,6 +686,7 @@ mod test {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
+						document_node_path: vec![],
 					},
 				),
 			]
