@@ -190,7 +190,7 @@ impl TransformOperation {
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				TransformOperation::None => unreachable!(),
 			};
-
+			debug!("selected.pivot {:?}", *selected.pivot);
 			selected.update_transforms(transformation, grid);
 			self.hints(snapping, axis_constraint, selected.responses);
 		}
@@ -372,8 +372,12 @@ impl<'a> Selected<'a> {
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool) {
 		if !self.selected.is_empty() {
-			let pivot = DAffine2::from_translation(*self.pivot);
+			let pivot_point = self.document.root.transform.transform_point2(*self.pivot);
+			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
+			debug!("pivot_point {:?}", pivot_point);
+			debug!("*self.pivot {:?}", *self.pivot);
+			debug!("transformation {:?}", transformation);
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
@@ -398,7 +402,7 @@ impl<'a> Selected<'a> {
 				if *self.tool_type == ToolType::Path {
 					let viewspace = self.document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
 					let layerspace_rotation = viewspace.inverse() * transformation;
-
+					debug!("viewspace {:?}", viewspace);
 					let initial_points = match self.original_transforms {
 						OriginalTransforms::Layer(_layer_map) => {
 							warn!("Found Layer variant in original_transforms when Path wanted, returning identity transform for layer");
@@ -413,11 +417,12 @@ impl<'a> Selected<'a> {
 					};
 					for (point_id, position) in original {
 						let mut viewport_point = viewspace.transform_point2(*position);
-						let mut new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+						
 
 						if grid {
 							viewport_point = viewport_point.round();
 						}
+						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
 						debug!("viewport_point {:?}", viewport_point);
 						debug!("new_pos_viewport {:?}", new_pos_viewport);
 						let point = *point_id;
