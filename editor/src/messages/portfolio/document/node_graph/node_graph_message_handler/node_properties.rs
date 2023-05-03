@@ -512,6 +512,33 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
+pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	// TODO: Disable the download/copy buttons if the layer's graph does not output an ImageFrame
+	let disabled = false;
+
+	let layer_path_1 = context.layer_path.to_vec();
+	let layer_path_2 = context.layer_path.to_vec();
+
+	let label = TextLabel::new("The graph's output is drawn in the layer").widget_holder();
+	let download_button = TextButton::new("Download Render Output")
+		.tooltip("Download the rendered image output as a PNG file")
+		.disabled(disabled)
+		.on_update(move |_| DocumentMessage::DownloadLayerImageOutput { layer_path: layer_path_1.clone() }.into())
+		.widget_holder();
+	let copy_button = TextButton::new("Copy Render Output")
+		.tooltip("Copy the rendered image output to the clipboard")
+		.disabled(disabled)
+		.on_update(move |_| DocumentMessage::CopyToClipboardLayerImageOutput { layer_path: layer_path_2.clone() }.into())
+		.widget_holder();
+
+	vec![
+		LayoutGroup::Row { widgets: vec![label] },
+		LayoutGroup::Row {
+			widgets: vec![download_button, WidgetHolder::related_separator(), copy_button],
+		},
+	]
+}
+
 pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorInput::default(), true);
 

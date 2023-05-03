@@ -278,6 +278,15 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				});
 			}
 			CommitTransaction => (),
+			CopyToClipboardLayerImageOutput { layer_path } => {
+				let layer = self.document_legacy.layer(&layer_path).ok();
+
+				let blob_url = layer.and_then(|layer| layer.as_layer().ok()).and_then(|layer_layer| layer_layer.as_blob_url()).cloned();
+
+				if let Some(blob_url) = blob_url {
+					responses.add(FrontendMessage::TriggerCopyToClipboardBlobUrl { blob_url });
+				}
+			}
 			CreateEmptyFolder { mut container_path } => {
 				let id = generate_uuid();
 				container_path.push(id);
@@ -326,6 +335,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
 			}
+			DownloadLayerImageOutput { layer_path } => {
+				let layer = self.document_legacy.layer(&layer_path).ok();
+
+				let layer_name = layer.map(|layer| layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()));
+
+				let blob_url = layer.and_then(|layer| layer.as_layer().ok()).and_then(|layer_layer| layer_layer.as_blob_url()).cloned();
+
+				if let (Some(layer_name), Some(blob_url)) = (layer_name, blob_url) {
+					responses.add(FrontendMessage::TriggerDownloadBlobUrl { layer_name, blob_url });
+				}
+			}
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
@@ -353,6 +373,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let transform = (DAffine2::from_translation(bounds[0]) * DAffine2::from_scale(size)).inverse();
 
 				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
+
 				self.restore_document_transform(old_transforms);
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
@@ -362,11 +383,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				};
 
 				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerFileDownload { document, name });
+					responses.add(FrontendMessage::TriggerDownloadTextFile { document, name });
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = (size * scale_factor).into();
-					responses.add(FrontendMessage::TriggerRasterDownload { svg: document, name, mime, size });
+					responses.add(FrontendMessage::TriggerDownloadRaster { svg: document, name, mime, size });
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {
@@ -702,7 +723,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					true => self.name.clone(),
 					false => self.name.clone() + FILE_SAVE_SUFFIX,
 				};
-				responses.add(FrontendMessage::TriggerFileDownload {
+				responses.add(FrontendMessage::TriggerDownloadTextFile {
 					document: self.serialize_document(),
 					name,
 				})
@@ -968,7 +989,7 @@ impl DocumentMessageHandler {
 	) -> Option<Message> {
 		// Prepare the node graph input image
 
-		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_node_graph().ok()) else {
+		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_layer_network().ok()) else {
 			return None;
 		};
 
