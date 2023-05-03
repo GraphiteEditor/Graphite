@@ -21,5 +21,8 @@ export async function copyToClipboardFileURL(url: string): Promise<void> {
 	clipboardItem[pngBlob.type] = pngBlob;
 	const data = [new ClipboardItem(clipboardItem)];
 
+	// Note: if this image has transparency, it will be lost and appear as black due to limitations of the way browsers handle copying transparent images
+	// This even happens if you just open a regular transparent PNG file in a browser tab, right click > copy, and paste it somewhere (the transparency will show up as black)
+	// This is true, at least, on Windows (it's worth checking on other OSs though)
 	navigator.clipboard.write(data);
 }
