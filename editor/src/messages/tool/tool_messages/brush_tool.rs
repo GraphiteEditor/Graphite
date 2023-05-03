@@ -190,7 +190,7 @@ impl BrushToolData {
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
-				input_index: 2,
+				input_index: 3,
 				value: TaggedValue::VecDVec2(points),
 			});
 		}
@@ -334,6 +334,7 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 		inputs: vec![
 			NodeInput::value(TaggedValue::None, false),
 			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			NodeInput::value(TaggedValue::VecDVec2(data.points.last().cloned().unwrap_or_default()), false),
 			// Diameter
 			NodeInput::value(TaggedValue::F64(data.diameter), false),
@@ -374,11 +375,12 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 		tagged_value: TaggedValue::ImageFrame(image_frame),
 		..
 	} = image_input else { return None };
-	let points_input = brush_node.inputs.get(2)?;
+	let points_input = brush_node.inputs.get(3)?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(points),
 		..
-	} = points_input else { return None };
+	} = points_input else {
+		return None };
 
 	Some((layer_path, points.clone(), image_frame.clone()))
 }
