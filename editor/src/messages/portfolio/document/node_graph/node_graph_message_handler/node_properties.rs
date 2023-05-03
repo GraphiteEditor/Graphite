@@ -7,11 +7,12 @@ use document_legacy::Operation;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::*;
+use graph_craft::{concrete, imaginate_input::*};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::EditorApi;
+use graphene_core::{Cow, Type, TypeDescriptor};
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -513,8 +514,12 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	// TODO: Disable the download/copy buttons if the layer's graph does not output an ImageFrame
-	let disabled = false;
+	let output_type = context.executor.previous_output_type(context.layer_path);
+	let raster_output_type = concrete!(ImageFrame<Color>);
+	let disabled = match output_type {
+		Some(output_type) => output_type != raster_output_type,
+		None => true,
+	};
 
 	let layer_path_1 = context.layer_path.to_vec();
 	let layer_path_2 = context.layer_path.to_vec();
