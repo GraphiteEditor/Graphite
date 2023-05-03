@@ -180,11 +180,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				use graphene_std::brush::*;
 
 				let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
-				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[1]);
-				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
-				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
-				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
-				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[5]);
+				let bounds: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
+				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[2]);
+				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
+				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
+				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[5]);
+				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[6]);
 
 				let stamp = BrushStampGeneratorNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
 				let stamp = stamp.eval(diameter.eval(()));
@@ -196,7 +197,13 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 				let background_bounds = background_bounds.eval(frames.clone().into_iter());
 				let background_bounds = MergeBoundingBoxNode::new().eval((background_bounds, image.eval(())));
-				let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
+				let mut background_bounds = CopiedNode::new(background_bounds.unwrap().to_transform());
+
+				let bounds_transform = bounds.eval(()).transform;
+				if bounds_transform != DAffine2::ZERO {
+					background_bounds = CopiedNode::new(bounds_transform);
+					log::debug!("setting transform to {:?}", bounds_transform);
+				}
 
 				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
 				let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
@@ -213,7 +220,15 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			NodeIOTypes::new(
 				concrete!(()),
 				concrete!(ImageFrame<Color>),
-				vec![value_fn!(ImageFrame<Color>), value_fn!(Vec<DVec2>), value_fn!(f64), value_fn!(f64), value_fn!(f64), value_fn!(Color)],
+				vec![
+					value_fn!(ImageFrame<Color>),
+					value_fn!(ImageFrame<Color>),
+					value_fn!(Vec<DVec2>),
+					value_fn!(f64),
+					value_fn!(f64),
+					value_fn!(f64),
+					value_fn!(Color),
+				],
 			),
 		)],
 		vec![(
