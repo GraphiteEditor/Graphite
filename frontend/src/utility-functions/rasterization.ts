@@ -56,6 +56,26 @@ export async function rasterizeSVG(svg: string, width: number, height: number, m
 
 /// Convert an image source (e.g. PNG document) into pixel data, a width, and a height
 export async function extractPixelData(imageData: ImageBitmapSource): Promise<ImageData> {
+	const canvasContext = await imageToCanvasContext(imageData);
+	const width = canvasContext.canvas.width;
+	const height = canvasContext.canvas.height;
+
+	return canvasContext.getImageData(0, 0, width, height);
+}
+
+/// Convert an image source (e.g. BMP document) into a PNG blob
+export async function imageToPNG(imageData: ImageBitmapSource): Promise<Blob> {
+	const canvasContext = await imageToCanvasContext(imageData);
+
+	return new Promise((resolve, reject) => {
+		canvasContext.canvas.toBlob((pngBlob) => {
+			if (pngBlob) resolve(pngBlob);
+			else reject("Converting canvas to blob data failed in imageToPNG()");
+		}, "image/png");
+	});
+}
+
+export async function imageToCanvasContext(imageData: ImageBitmapSource): Promise<CanvasRenderingContext2D> {
 	// Special handling to rasterize an SVG file
 	let svgImageData;
 	if (imageData instanceof File && imageData.type === "image/svg+xml") {
@@ -92,5 +112,5 @@ export async function extractPixelData(imageData: ImageBitmapSource): Promise<Im
 	if (!context) throw new Error("Could not create canvas context");
 	context.drawImage(image, 0, 0, image.width, image.height, 0, 0, width, height);
 
-	return context.getImageData(0, 0, width, height);
+	return context;
 }

@@ -50,7 +50,23 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerFileDownload {
+	TriggerCopyToClipboardBlobUrl {
+		#[serde(rename = "blobUrl")]
+		blob_url: String,
+	},
+	TriggerDownloadBlobUrl {
+		#[serde(rename = "layerName")]
+		layer_name: String,
+		#[serde(rename = "blobUrl")]
+		blob_url: String,
+	},
+	TriggerDownloadRaster {
+		svg: String,
+		name: String,
+		mime: String,
+		size: (f64, f64),
+	},
+	TriggerDownloadTextFile {
 		document: String,
 		name: String,
 	},
@@ -107,12 +123,6 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRasterDownload {
-		svg: String,
-		name: String,
-		mime: String,
-		size: (f64, f64),
-	},
 	TriggerRasterizeRegionBelowLayer {
 		#[serde(rename = "documentId")]
 		document_id: u64,

@@ -20,7 +20,9 @@ use std::borrow::Cow;
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeGraphExecutor {
-	executor: DynamicExecutor,
+	pub(crate) executor: DynamicExecutor,
+	// TODO: This is a memory leak since layers are never removed
+	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
 }
 
 impl NodeGraphExecutor {
@@ -53,6 +55,10 @@ impl NodeGraphExecutor {
 
 	pub fn introspect_node(&self, path: &[NodeId]) -> Option<String> {
 		self.executor.introspect(path).flatten()
+	}
+
+	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {
+		self.last_output_type.get(path).cloned().flatten()
 	}
 
 	/// Computes an input for a node in the graph
@@ -272,11 +278,13 @@ impl NodeGraphExecutor {
 			// Update the cached vector data on the layer
 			let vector_data: VectorData = dyn_any::downcast(boxed_node_graph_output).map(|v| *v)?;
 			let transform = vector_data.transform.to_cols_array();
+			self.last_output_type.insert(layer_path.clone(), Some(concrete!(VectorData)));
 			responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 			responses.add(Operation::SetVectorData { path: layer_path, vector_data });
 		} else {
 			// Attempt to downcast to an image frame
 			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
+			self.last_output_type.insert(layer_path.clone(), Some(concrete!(ImageFrame<Color>)));
 
 			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
 			let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
