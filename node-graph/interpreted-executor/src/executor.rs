@@ -17,6 +17,8 @@ pub struct DynamicExecutor {
 	output: NodeId,
 	tree: BorrowTree,
 	typing_context: TypingContext,
+	// This allows us to keep the nodes around for one more frame which is used for introspection
+	orphaned_nodes: Vec<NodeId>,
 }
 
 impl Default for DynamicExecutor {
@@ -25,6 +27,7 @@ impl Default for DynamicExecutor {
 			output: Default::default(),
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
+			orphaned_nodes: Vec::new(),
 		}
 	}
 }
@@ -36,21 +39,27 @@ impl DynamicExecutor {
 		let output = proto_network.output;
 		let tree = BorrowTree::new(proto_network, &typing_context)?;
 
-		Ok(Self { tree, output, typing_context })
+		Ok(Self {
+			tree,
+			output,
+			typing_context,
+			orphaned_nodes: Vec::new(),
+		})
 	}
 
 	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
 		trace!("setting output to {}", self.output);
-		let orphans = self.tree.update(proto_network, &self.typing_context)?;
+		let mut orphans = self.tree.update(proto_network, &self.typing_context)?;
+		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
 		for node_id in orphans {
 			self.tree.free_node(node_id)
 		}
 		Ok(())
 	}
 
-	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<String>> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		self.tree.introspect(node_path)
 	}
 
@@ -128,7 +137,7 @@ impl BorrowTree {
 				node.reset();
 			}
 			old_nodes.remove(&id);
-			self.source_map.retain(|_, nid| *nid != id);
+			self.source_map.retain(|_, nid| !old_nodes.contains(nid));
 		}
 		Ok(old_nodes.into_iter().collect())
 	}
@@ -145,7 +154,7 @@ impl BorrowTree {
 		node
 	}
 
-	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<String>> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		let id = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
 		let reader = node.read().unwrap();

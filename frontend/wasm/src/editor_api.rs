@@ -708,21 +708,26 @@ impl JsEditorHandle {
 
 	/// Returns the string representation of the nodes contents
 	#[wasm_bindgen(js_name = introspectNode)]
-	pub fn introspect_node(&self, node_path: Vec<NodeId>) -> Option<String> {
+	pub fn introspect_node(&self, node_path: Vec<NodeId>) -> JsValue {
 		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
 			// Mutably borrow the editors, and if successful, we can access them in the closure
 			instances.try_borrow_mut().map(|mut editors| {
 				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-				editors
+				let image = editors
 					.get_mut(&self.editor_id)
 					.expect("EDITOR_INSTANCES does not contain the current editor_id")
 					.dispatcher
 					.message_handlers
 					.portfolio_message_handler
-					.introspect_node(&node_path)
+					.introspect_node(&node_path);
+				let image = image?;
+				let image = image.downcast_ref::<graphene_core::raster::ImageFrame<Color>>()?;
+				let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+				let message_data = image.serialize(&serializer).expect("Failed to serialize FrontendMessage");
+				Some(message_data)
 			})
 		});
-		frontend_messages.unwrap()
+		frontend_messages.unwrap().unwrap_or_default().into()
 	}
 }
 

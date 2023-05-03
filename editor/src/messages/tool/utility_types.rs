@@ -12,6 +12,7 @@ use crate::messages::layout::utility_types::widgets::button_widgets::IconButton;
 use crate::messages::layout::utility_types::widgets::input_widgets::SwatchPairInput;
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
 use crate::messages::prelude::*;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::layers::style::RenderData;
 use graphene_core::raster::color::Color;
@@ -27,6 +28,7 @@ pub struct ToolActionHandlerData<'a> {
 	pub render_data: &'a RenderData<'a>,
 	pub shape_overlay: &'a mut OverlayRenderer,
 	pub shape_editor: &'a mut ShapeState,
+	pub node_graph: &'a NodeGraphExecutor,
 }
 impl<'a> ToolActionHandlerData<'a> {
 	pub fn new(
@@ -37,6 +39,7 @@ impl<'a> ToolActionHandlerData<'a> {
 		render_data: &'a RenderData<'a>,
 		shape_overlay: &'a mut OverlayRenderer,
 		shape_editor: &'a mut ShapeState,
+		node_graph: &'a NodeGraphExecutor,
 	) -> Self {
 		Self {
 			document,
@@ -46,6 +49,7 @@ impl<'a> ToolActionHandlerData<'a> {
 			render_data,
 			shape_overlay,
 			shape_editor,
+			node_graph,
 		}
 	}
 }

@@ -107,6 +107,18 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeType {
+			name: "Monitor",
+			category: "General",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::value(TaggedValue::None, true),
+			}],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
+		},
+		DocumentNodeType {
 			name: "Downres",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -457,6 +469,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode"),
 			inputs: vec![
 				DocumentInputType::value("None", TaggedValue::None, false),
+				DocumentInputType::value("Background", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Trace", TaggedValue::VecDVec2((0..2).map(|x| DVec2::new(x as f64 * 10., 0.)).collect()), true),
 				DocumentInputType::value("Diameter", TaggedValue::F64(40.), false),
 				DocumentInputType::value("Hardness", TaggedValue::F64(50.), false),
