@@ -301,6 +301,7 @@ impl Fsm for BrushToolFsmState {
 						responses.add(DocumentMessage::AbortTransaction);
 					}
 
+					tool_data.points.clear();
 					tool_data.path = None;
 
 					Ready
