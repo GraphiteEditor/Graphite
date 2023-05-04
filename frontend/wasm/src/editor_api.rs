@@ -5,6 +5,8 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use document_legacy::document::Document;
+use document_legacy::layers::RenderData;
 use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
@@ -13,13 +15,18 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::utility_types::{ImaginateServerStatus, Platform};
 use editor::messages::prelude::*;
+use graph_craft::document::value::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 
+use graphene_core::vector::style::ViewMode;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use wasm_bindgen::prelude::*;
+
+static DOUBLE_BUFFER: Mutex<Option<(Document, Option<[DVec2; 2]>, ViewMode)>> = Mutex::new(None);
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -111,23 +118,31 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
 		// Special case for update image data to avoid serialization times.
-		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
-			for image in image_data {
-				#[cfg(not(feature = "tauri"))]
-				{
-					let transform = if let Some(transform_val) = image.transform {
-						let transform = js_sys::Float64Array::new_with_length(6);
-						transform.copy_from(&transform_val);
-						transform
-					} else {
-						js_sys::Float64Array::default()
-					};
-					updateImage(image.path, image.mime, &image.image_data, transform, document_id);
+		match message {
+			FrontendMessage::UpdateImageData { document_id, image_data } => {
+				for image in image_data {
+					#[cfg(not(feature = "tauri"))]
+					{
+						let transform = if let Some(transform_val) = image.transform {
+							let transform = js_sys::Float64Array::new_with_length(6);
+							transform.copy_from(&transform_val);
+							transform
+						} else {
+							js_sys::Float64Array::default()
+						};
+						updateImage(image.path, image.mime, &image.image_data, transform, document_id);
+					}
+					#[cfg(feature = "tauri")]
+					fetchImage(image.path.clone(), image.mime, document_id, format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id));
 				}
-				#[cfg(feature = "tauri")]
-				fetchImage(image.path.clone(), image.mime, document_id, format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id));
+				return;
 			}
-			return;
+			FrontendMessage::UpdateNodeGraphDocument { document, bounds, view_mode } => {
+				let mut guard = DOUBLE_BUFFER.lock().unwrap();
+				*guard = Some((document, bounds, view_mode));
+				return;
+			}
+			_ => (),
 		}
 		if let FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer } = message {
 			message = FrontendMessage::UpdateDocumentLayerTreeStructureJs { data_buffer: data_buffer.into() };
@@ -179,6 +194,45 @@ impl JsEditorHandle {
 			Err(error) => {
 				log::error!("tauri response: {:?}\n{:?}", error, _message);
 			}
+		}
+	}
+
+	#[wasm_bindgen(js_name = renderFrame)]
+	pub fn render_frame(&self, title: String, description: String) {
+		let mut guard = DOUBLE_BUFFER.lock().unwrap();
+		if let Some((ref mut document, bounds, view_mode)) = guard.as_mut() {
+			let message = EDITOR_INSTANCES.with(|instances| {
+				// Mutably borrow the editors, and if successful, we can access them in the closure
+				instances.try_borrow_mut().map(|mut editors| {
+					let dispatcher = &mut editors.get_mut(&self.editor_id).expect("EDITOR_INSTANCES does not contain the current editor_id").dispatcher;
+					let portfolio = &mut dispatcher.message_handlers.portfolio_message_handler;
+					let font_cache = &mut portfolio.persistent_data.font_cache;
+					let render_data = RenderData::new(font_cache, view_mode.clone(), bounds.clone());
+					let v_bounds = document.viewport_bounding_box(&[], &render_data).ok().flatten().unwrap();
+					let size = v_bounds[1] - v_bounds[0];
+					let transform = (DAffine2::from_translation(v_bounds[0]) * DAffine2::from_scale(size)).inverse();
+
+					let active_document = &mut portfolio.active_document_id.and_then(|id| portfolio.documents.get_mut(&id));
+					let artboard_handler = &mut active_document.as_mut().unwrap().artboard_message_handler;
+					let artboards = artboard_handler.artboards_document.render_root(&render_data);
+					let artwork = document.render_root(&render_data);
+					let outside_artboards_color = if artboard_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string();
+					let outside_artboards = format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color);
+					let matrix = transform
+						.to_cols_array()
+						.iter()
+						.enumerate()
+						.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
+					let svg = format!(
+						r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
+						size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork
+					);
+
+					FrontendMessage::UpdateDocumentArtboards { svg }
+				})
+			});
+
+			self.dispatch(message.unwrap());
 		}
 	}
 

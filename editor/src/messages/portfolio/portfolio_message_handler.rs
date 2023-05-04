@@ -25,10 +25,10 @@ use graphene_core::text::Font;
 #[derive(Debug, Clone, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
-	documents: HashMap<u64, DocumentMessageHandler>,
+	pub documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	pub executor: NodeGraphExecutor,
-	active_document_id: Option<u64>,
+	pub active_document_id: Option<u64>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 }

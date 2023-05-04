@@ -674,8 +674,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
-				responses.add(FrontendMessage::UpdateDocumentArtwork {
-					svg: self.document_legacy.render_root(&render_data),
+				responses.add(FrontendMessage::UpdateNodeGraphDocument {
+					document: self.document_legacy.clone(),
+					bounds: render_data.culling_bounds,
+					view_mode: self.view_mode,
 				});
 				responses.add(ArtboardMessage::RenderArtboards);
 

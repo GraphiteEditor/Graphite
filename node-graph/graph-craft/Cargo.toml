@@ -7,12 +7,17 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
+specta = ["bezier-rs/specta"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 graphene-core = { path = "../gcore", features = ["std"] }
-dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
+dyn-any = { path = "../../libraries/dyn-any", features = [
+	"log-bad-types",
+	"rc",
+	"glam",
+] }
 num-traits = "0.2"
 dyn-clone = "1.0"
 log = "0.4"
@@ -22,6 +27,6 @@ base64 = "0.13"
 bezier-rs = { path = "../../libraries/bezier-rs", features = ["dyn-any"] }
 specta.workspace = true
 
-bytemuck = {version = "1.8"  }
+bytemuck = { version = "1.8" }
 anyhow = "1.0.66"
-xxhash-rust = {workspace = true}
+xxhash-rust = { workspace = true }

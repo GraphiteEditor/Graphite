@@ -73,6 +73,7 @@ pub use uuid_generation::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ManipulatorGroupId(u64);
 
 impl bezier_rs::Identifier for ManipulatorGroupId {

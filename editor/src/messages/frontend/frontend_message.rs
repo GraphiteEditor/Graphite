@@ -13,6 +13,7 @@ use graph_craft::imaginate_input::*;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
+use graphene_core::vector::style::ViewMode;
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -163,9 +164,6 @@ pub enum FrontendMessage {
 	UpdateDocumentArtboards {
 		svg: String,
 	},
-	UpdateDocumentArtwork {
-		svg: String,
-	},
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -241,6 +239,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateNodeGraphDocument {
+		document: document_legacy::document::Document,
+		view_mode: ViewMode,
+		bounds: Option<[glam::DVec2; 2]>,
 	},
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,

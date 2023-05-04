@@ -15,6 +15,7 @@ pub use std::sync::Arc;
 /// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum TaggedValue {
 	None,
 	String(String),
@@ -55,6 +56,7 @@ pub enum TaggedValue {
 	Font(graphene_core::text::Font),
 	VecDVec2(Vec<DVec2>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
+	#[specta(skip)]
 	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
 }

@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 /// Represents different types of layers.
 pub enum LayerDataType {
 	/// A layer that wraps a [FolderLayer] struct.
@@ -200,7 +200,7 @@ fn return_true() -> bool {
 	true
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct Layer {
 	/// Whether the layer is currently visible or hidden.
 	pub visible: bool,
@@ -242,6 +242,23 @@ impl Layer {
 			name: None,
 			data,
 			transform: glam::DAffine2::from_cols_array(&transform),
+			preserve_aspect: true,
+			pivot: DVec2::splat(0.5),
+			cache: String::new(),
+			thumbnail_cache: String::new(),
+			svg_defs_cache: String::new(),
+			cache_dirty: true,
+			blend_mode: BlendMode::Normal,
+			opacity: 1.,
+		}
+	}
+
+	pub const fn empty(data: LayerDataType) -> Self {
+		Self {
+			visible: true,
+			name: None,
+			data,
+			transform: glam::DAffine2::IDENTITY,
 			preserve_aspect: true,
 			pivot: DVec2::splat(0.5),
 			cache: String::new(),
