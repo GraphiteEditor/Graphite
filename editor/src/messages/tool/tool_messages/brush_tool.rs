@@ -186,12 +186,26 @@ struct BrushToolData {
 impl BrushToolData {
 	fn update_points(&self, responses: &mut VecDeque<Message>) {
 		if let Some(layer_path) = self.path.clone() {
+<<<<<<< Updated upstream
 			let points = self.points.iter().flatten().cloned().collect();
+||||||| Stash base
+=======
+			let points =  self.points.iter().flatten().cloned().unwrap_or_default();
+>>>>>>> Stashed changes
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
+<<<<<<< Updated upstream
 				input_index: 3,
 				value: TaggedValue::VecDVec2(points),
+||||||| Stash base
+				input_index: 2,
+				value: TaggedValue::VecDVec2(self.points.last().cloned().unwrap_or_default()),
+=======
+				input_index: 2,
+				value: TaggedValue::VecDVec2(self.points.iter().flatten().cloned().unwrap_or_default()),
+
+>>>>>>> Stashed changes
 			});
 		}
 	}
