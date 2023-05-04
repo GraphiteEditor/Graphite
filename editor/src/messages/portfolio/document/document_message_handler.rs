@@ -149,9 +149,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 									responses.add(LayerChanged { affected_layer_path: path.clone() });
 									self.layer_range_selection_reference = path.clone();
-									responses.add(AddSelectedLayers {
-										additional_layers: vec![path.clone()],
-									});
+									if *select {
+										responses.add(AddSelectedLayers {
+											additional_layers: vec![path.clone()],
+										});
+									}
 								}
 								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
 								DocumentResponse::DeletedSelectedManipulatorPoints => {

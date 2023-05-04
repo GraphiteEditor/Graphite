@@ -659,19 +659,23 @@ impl Document {
 				responses.extend(update_thumbnails_upstream(&destination_path));
 				self.mark_as_dirty(&destination_path)?;
 
-				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>, duplicating: bool) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
-						responses.push(DocumentResponse::CreatedLayer { path: path.clone(), select: false });
+						if duplicating {
+							responses.push(DocumentResponse::CreatedLayer { path: path.clone(), select: false });
+						} else {
+							responses.push(DocumentResponse::CreatedLayer { path: path.clone(), select: true });
+						}
 						if let LayerDataType::Folder(f) = &layer.data {
-							aggregate_insertions(f, path, responses);
+							aggregate_insertions(f, path, responses, duplicating);
 						}
 						path.pop();
 					}
 				}
 
 				if let Ok(folder) = self.folder(&destination_path) {
-					aggregate_insertions(folder, &mut destination_path.as_slice().to_vec(), &mut responses)
+					aggregate_insertions(folder, &mut destination_path.as_slice().to_vec(), &mut responses, duplicating);
 				};
 
 				Some(responses)
@@ -705,12 +709,9 @@ impl Document {
 						DocumentChanged,
 						CreatedLayer {
 							path: new_path.to_vec(),
-							select: false,
+							select: true,
 						},
 						FolderChanged { path: folder_path.to_vec() },
-						AddSelectedLayer {
-							additional_layers: vec![new_path.to_vec()],
-						},
 					]);
 					responses.extend(update_thumbnails_upstream(path.as_slice()));
 
