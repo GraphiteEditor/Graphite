@@ -41,17 +41,11 @@ impl Default for PenOptions {
 	fn default() -> Self {
 		Self {
 			line_weight: 5.,
-			fill: ToolColorOptions {
-				custom_color: Some(Color::BLACK),
-				primary_working_color: Some(Color::BLACK),
-				secondary_working_color: Some(Color::WHITE),
-				color_type: ToolColorType::Primary,
-			},
+			fill: ToolColorOptions::default(),
 			stroke: ToolColorOptions {
 				custom_color: None,
-				primary_working_color: Some(Color::BLACK),
-				secondary_working_color: Some(Color::WHITE),
 				color_type: ToolColorType::Custom,
+				..Default::default()
 			},
 		}
 	}
