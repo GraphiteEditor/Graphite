@@ -18,6 +18,17 @@ pub struct ToolColorOptions {
 	pub color_type: ToolColorType,
 }
 
+impl Default for ToolColorOptions {
+	fn default() -> Self {
+		Self {
+			custom_color: Some(Color::BLACK),
+			primary_working_color: Some(Color::BLACK),
+			secondary_working_color: Some(Color::WHITE),
+			color_type: ToolColorType::Primary,
+		}
+	}
+}
+
 impl ToolColorOptions {
 	pub fn active_color(&self) -> Option<Color> {
 		match self.color_type {
