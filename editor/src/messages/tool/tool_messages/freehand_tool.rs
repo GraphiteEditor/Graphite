@@ -47,6 +47,8 @@ pub enum FreehandToolMessage {
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
+	SelectionChanged,
+	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -156,6 +158,7 @@ impl ToolTransition for FreehandTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
+			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
@@ -230,7 +233,7 @@ impl Fsm for FreehandToolFsmState {
 
 					Ready
 				}
-				(_, FreehandToolMessage::WorkingColorChanged) => {
+				(_, FreehandToolMessage::SelectionChanged | FreehandToolMessage::WorkingColorChanged) => {
 					responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::WorkingColors(
 						Some(global_tool_data.primary_color),
 						Some(global_tool_data.secondary_color),
