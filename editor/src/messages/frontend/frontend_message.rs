@@ -36,7 +36,7 @@ pub enum FrontendMessage {
 		line_width: Option<f64>,
 		#[serde(rename = "fontSize")]
 		font_size: f64,
-		color: Color,
+		color: Option<Color>,
 		url: String,
 		transform: [f64; 6],
 	},
