@@ -597,12 +597,6 @@ impl Fsm for PenToolFsmState {
 					for layer_path in document.selected_visible_layers() {
 						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
 					}
-
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-
 					self
 				}
 				(_, PenToolMessage::WorkingColorChanged) => {
