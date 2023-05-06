@@ -1,12 +1,13 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, RadioEntryData, RadioInput, Separator, SeparatorDirection, SeparatorType, TextLabel, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, Separator, SeparatorDirection, SeparatorType, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 
@@ -30,51 +31,27 @@ pub struct PenTool {
 	options: PenOptions,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
-pub enum PenColorType {
-	Primary,
-	Secondary,
-	Custom,
-}
-
-pub struct PenColorOptions {
-	color: Option<Color>,
-	primary_working_color: Option<Color>,
-	secondary_working_color: Option<Color>,
-	color_type: PenColorType,
-}
-
-impl PenColorOptions {
-	pub fn active_color(&self) -> Option<Color> {
-		match self.color_type {
-			PenColorType::Custom => self.color,
-			PenColorType::Primary => self.primary_working_color,
-			PenColorType::Secondary => self.secondary_working_color,
-		}
-	}
-}
-
 pub struct PenOptions {
 	line_weight: f64,
-	fill: PenColorOptions,
-	stroke: PenColorOptions,
+	fill: ToolColorOptions,
+	stroke: ToolColorOptions,
 }
 
 impl Default for PenOptions {
 	fn default() -> Self {
 		Self {
 			line_weight: 5.,
-			fill: PenColorOptions {
-				color: Some(Color::BLACK),
+			fill: ToolColorOptions {
+				custom_color: Some(Color::BLACK),
 				primary_working_color: Some(Color::BLACK),
 				secondary_working_color: Some(Color::WHITE),
-				color_type: PenColorType::Primary,
+				color_type: ToolColorType::Primary,
 			},
-			stroke: PenColorOptions {
-				color: None,
+			stroke: ToolColorOptions {
+				custom_color: None,
 				primary_working_color: Some(Color::BLACK),
 				secondary_working_color: Some(Color::WHITE),
-				color_type: PenColorType::Custom,
+				color_type: ToolColorType::Custom,
 			},
 		}
 	}
@@ -119,12 +96,12 @@ enum PenToolFsmState {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),
-	FillColorType(PenColorType),
+	FillColorType(ToolColorType),
 	LineWeight(f64),
 	PrimaryColor(Option<Color>),
 	SecondaryColor(Option<Color>),
 	StrokeColor(Option<Color>),
-	StrokeColorType(PenColorType),
+	StrokeColorType(ToolColorType),
 }
 
 impl ToolMetadata for PenTool {
@@ -139,85 +116,6 @@ impl ToolMetadata for PenTool {
 	}
 }
 
-// TODO: Generalize create_fill_widget and create_stroke_widget into one function.
-fn create_fill_widget(fill: &PenColorOptions) -> Vec<WidgetHolder> {
-	let label = TextLabel::new("Fill").widget_holder();
-
-	let reset = IconButton::new("CloseX", 12)
-		.disabled(fill.color.is_none() && fill.color_type == PenColorType::Custom)
-		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into())
-		.tooltip("Clear color")
-		.widget_holder();
-
-	let entries = vec![
-		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
-		("WorkingColorsSecondary", "Secondary Working Color", PenColorType::Secondary),
-		("Edit", "Custom Color", PenColorType::Custom),
-	]
-	.into_iter()
-	.map(|(icon, tooltip, color_type)| {
-		RadioEntryData::new("")
-			.tooltip(tooltip)
-			.icon(icon)
-			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into())
-	})
-	.collect();
-	let radio = RadioInput::new(entries).selected_index(fill.color_type.clone() as u32).widget_holder();
-
-	let color_input = ColorInput::new(fill.active_color())
-		.on_update(|fill_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(fill_color.value)).into())
-		.widget_holder();
-
-	vec![
-		label,
-		WidgetHolder::related_separator(),
-		reset,
-		WidgetHolder::related_separator(),
-		radio,
-		WidgetHolder::related_separator(),
-		color_input,
-	]
-}
-
-fn create_stroke_widget(stroke: &PenColorOptions) -> Vec<WidgetHolder> {
-	let label = TextLabel::new("Stroke").widget_holder();
-
-	let reset = IconButton::new("CloseX", 12)
-		.disabled(stroke.color.is_none() && stroke.color_type == PenColorType::Custom)
-		.on_update(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into())
-		.tooltip("Clear color")
-		.widget_holder();
-
-	let entries = vec![
-		("WorkingColorsPrimary", "Primary Working Color", PenColorType::Primary),
-		("WorkingColorsSecondary", "Secondary Working Color", PenColorType::Secondary),
-		("Edit", "Custom Color", PenColorType::Custom),
-	]
-	.into_iter()
-	.map(|(icon, tooltip, color_type)| {
-		RadioEntryData::new("")
-			.tooltip(tooltip)
-			.icon(icon)
-			.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into())
-	})
-	.collect();
-	let radio = RadioInput::new(entries).selected_index(stroke.color_type.clone() as u32).widget_holder();
-
-	let color_input = ColorInput::new(stroke.active_color())
-		.on_update(|stroke_color| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(stroke_color.value)).into())
-		.widget_holder();
-
-	vec![
-		label,
-		WidgetHolder::related_separator(),
-		reset,
-		WidgetHolder::related_separator(),
-		radio,
-		WidgetHolder::related_separator(),
-		color_input,
-	]
-}
-
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
@@ -229,9 +127,19 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = create_fill_widget(&self.options.fill);
+		let mut widgets = self.options.fill.create_widgets(
+			"Fill",
+			WidgetCallback::new(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value)).into()),
+		);
 		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
-		widgets.append(&mut create_stroke_widget(&self.options.stroke));
+		widgets.append(&mut self.options.stroke.create_widgets(
+			"Stroke",
+			WidgetCallback::new(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value)).into()),
+		));
 		widgets.push(WidgetHolder::unrelated_separator());
 		widgets.push(create_weight_widget(self.options.line_weight));
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -244,13 +152,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 			match action {
 				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 				PenOptionsUpdate::FillColor(color) => {
-					self.options.fill.color = color;
-					self.options.fill.color_type = PenColorType::Custom;
+					self.options.fill.custom_color = color;
+					self.options.fill.color_type = ToolColorType::Custom;
 				}
 				PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
 				PenOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.color = color;
-					self.options.stroke.color_type = PenColorType::Custom;
+					self.options.stroke.custom_color = color;
+					self.options.stroke.color_type = ToolColorType::Custom;
 				}
 				PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
 				PenOptionsUpdate::PrimaryColor(color) => {
