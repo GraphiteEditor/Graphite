@@ -2,7 +2,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, Separator, SeparatorDirection, SeparatorType, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -60,10 +60,9 @@ pub enum FreehandToolMessage {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandOptionsUpdate {
 	LineWeight(f64),
-	PrimaryColor(Option<Color>),
-	SecondaryColor(Option<Color>),
 	StrokeColor(Option<Color>),
 	StrokeColorType(ToolColorType),
+	WorkingColors(Option<Color>, Option<Color>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -118,11 +117,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 					self.options.stroke.color_type = ToolColorType::Custom;
 				}
 				FreehandOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				FreehandOptionsUpdate::PrimaryColor(color) => {
-					self.options.stroke.primary_working_color = color;
-				}
-				FreehandOptionsUpdate::SecondaryColor(color) => {
-					self.options.stroke.secondary_working_color = color;
+				FreehandOptionsUpdate::WorkingColors(primary, secondary) => {
+					self.options.stroke.primary_working_color = primary;
+					self.options.stroke.secondary_working_color = secondary;
 				}
 			}
 
@@ -234,8 +231,10 @@ impl Fsm for FreehandToolFsmState {
 					Ready
 				}
 				(_, FreehandToolMessage::WorkingColorChanged) => {
-					responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::PrimaryColor(Some(global_tool_data.primary_color))));
-					responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::SecondaryColor(Some(global_tool_data.secondary_color))));
+					responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::WorkingColors(
+						Some(global_tool_data.primary_color),
+						Some(global_tool_data.secondary_color),
+					)));
 					self
 				}
 				_ => self,

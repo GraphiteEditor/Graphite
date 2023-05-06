@@ -92,10 +92,9 @@ pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
 	LineWeight(f64),
-	PrimaryColor(Option<Color>),
-	SecondaryColor(Option<Color>),
 	StrokeColor(Option<Color>),
 	StrokeColorType(ToolColorType),
+	WorkingColors(Option<Color>, Option<Color>),
 }
 
 impl ToolMetadata for PenTool {
@@ -155,13 +154,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 					self.options.stroke.color_type = ToolColorType::Custom;
 				}
 				PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				PenOptionsUpdate::PrimaryColor(color) => {
-					self.options.stroke.primary_working_color = color;
-					self.options.fill.primary_working_color = color;
-				}
-				PenOptionsUpdate::SecondaryColor(color) => {
-					self.options.stroke.secondary_working_color = color;
-					self.options.fill.secondary_working_color = color;
+				PenOptionsUpdate::WorkingColors(primary, secondary) => {
+					self.options.stroke.primary_working_color = primary;
+					self.options.stroke.secondary_working_color = secondary;
+					self.options.fill.primary_working_color = primary;
+					self.options.fill.secondary_working_color = secondary;
 				}
 			}
 
@@ -603,8 +600,10 @@ impl Fsm for PenToolFsmState {
 					self
 				}
 				(_, PenToolMessage::WorkingColorChanged) => {
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::PrimaryColor(Some(global_tool_data.primary_color))));
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::SecondaryColor(Some(global_tool_data.secondary_color))));
+					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::WorkingColors(
+						Some(global_tool_data.primary_color),
+						Some(global_tool_data.secondary_color),
+					)));
 					self
 				}
 				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
