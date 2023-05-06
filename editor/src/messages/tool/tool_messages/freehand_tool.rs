@@ -2,7 +2,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, Separator, SeparatorDirection, SeparatorType, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -109,6 +109,7 @@ impl PropertyHolder for FreehandTool {
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value)).into()),
 		);
+		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			WidgetCallback::new(|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into()),
@@ -139,6 +140,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 				FreehandOptionsUpdate::WorkingColors(primary, secondary) => {
 					self.options.stroke.primary_working_color = primary;
 					self.options.stroke.secondary_working_color = secondary;
+					self.options.fill.primary_working_color = primary;
+					self.options.fill.secondary_working_color = secondary;
 				}
 			}
 
