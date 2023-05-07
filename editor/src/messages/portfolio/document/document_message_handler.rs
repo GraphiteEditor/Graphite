@@ -23,7 +23,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
@@ -120,7 +119,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			// Sub-messages
 			#[remain::unsorted]
 			DispatchOperation(op) => {
-				match self.document_legacy.handle_operation(*op, &render_data) {
+				match self.document_legacy.handle_operation(*op) {
 					Ok(Some(document_responses)) => {
 						for response in document_responses {
 							match &response {
@@ -156,13 +155,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							};
 							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
-					}
-					// Display boolean operation error to the user (except if it is a nothing done error).
-					Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => {
-						responses.add(DialogMessage::DisplayDialogError {
-							title: "Failed to calculate boolean operation".into(),
-							description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
-						})
 					}
 					Err(e) => error!("DocumentError: {:?}", e),
 					Ok(_) => (),
@@ -256,16 +248,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, *artboard, layer_metadata, responses),
-			BooleanOperation(op) => {
-				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
-				responses.add(StartTransaction);
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(DocumentOperation::BooleanOperation {
-					operation: op,
-					selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
-				});
-				responses.add(CommitTransaction);
-			}
 			ClearLayerTree => {
 				// Send an empty layer tree
 				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
@@ -874,8 +856,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(LayerChanged { affected_layer_path: layer_path })
 			}
 			ToggleLayerVisibility { layer_path } => {
-				responses.add(DocumentOperation::ToggleLayerVisibility { path: layer_path });
-				responses.add(BroadcastEvent::DocumentIsDirty);
+				if let Ok(layer) = self.document_legacy.layer(&layer_path) {
+					let visible = layer.visible;
+					responses.add(DocumentOperation::SetLayerVisibility { path: layer_path, visible: !visible });
+					responses.add(BroadcastEvent::DocumentIsDirty);
+				}
 			}
 			Undo => {
 				self.undo_in_progress = true;

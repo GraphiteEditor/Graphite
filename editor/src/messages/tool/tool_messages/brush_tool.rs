@@ -8,18 +8,13 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::LayerId;
-use dyn_any::downcast_ref;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
-
-use graphene_core::Color;
-
-use glam::DVec2;
 use graphene_core::raster::ImageFrame;
 
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -177,9 +172,6 @@ impl ToolTransition for BrushTool {
 #[derive(Clone, Debug, Default)]
 struct BrushToolData {
 	points: Vec<Vec<DVec2>>,
-	diameter: f64,
-	hardness: f64,
-	flow: f64,
 	path: Option<Vec<LayerId>>,
 }
 
@@ -195,21 +187,23 @@ impl BrushToolData {
 			});
 		}
 	}
-	fn update_image(&self, node_graph: &NodeGraphExecutor, responses: &mut VecDeque<Message>) {
-		let Some(image) = node_graph.introspect_node(&[1]) else { return; };
-		let image: &ImageFrame<Color> = image.downcast_ref().unwrap();
-		self.set_image(image.clone(), responses)
-	}
-	fn set_image(&self, image_frame: ImageFrame<Color>, responses: &mut VecDeque<Message>) {
-		if let Some(layer_path) = self.path.clone() {
-			responses.add(NodeGraphMessage::SetQualifiedInputValue {
-				layer_path,
-				node_path: vec![0],
-				input_index: 1,
-				value: TaggedValue::ImageFrame(image_frame),
-			});
-		}
-	}
+
+	// fn update_image(&self, node_graph: &NodeGraphExecutor, responses: &mut VecDeque<Message>) {
+	// 	let Some(image) = node_graph.introspect_node(&[1]) else { return; };
+	// 	let image: &ImageFrame<Color> = image.downcast_ref().unwrap();
+	// 	self.set_image(image.clone(), responses)
+	// }
+	//
+	// fn set_image(&self, image_frame: ImageFrame<Color>, responses: &mut VecDeque<Message>) {
+	// 	if let Some(layer_path) = self.path.clone() {
+	// 		responses.add(NodeGraphMessage::SetQualifiedInputValue {
+	// 			layer_path,
+	// 			node_path: vec![0],
+	// 			input_index: 1,
+	// 			value: TaggedValue::ImageFrame(image_frame),
+	// 		});
+	// 	}
+	// }
 }
 
 impl Fsm for BrushToolFsmState {
@@ -221,11 +215,7 @@ impl Fsm for BrushToolFsmState {
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
 		ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			node_graph,
-			..
+			document, global_tool_data, input, ..
 		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
@@ -241,7 +231,7 @@ impl Fsm for BrushToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 					let existing_points = load_existing_points(document);
 					let new_layer = existing_points.is_none();
-					if let Some((layer_path, points, image)) = existing_points {
+					if let Some((layer_path, points)) = existing_points {
 						tool_data.path = Some(layer_path);
 						//tool_data.set_image(image, responses);
 						if tool_data.points.is_empty() {
@@ -256,12 +246,8 @@ impl Fsm for BrushToolFsmState {
 
 					tool_data.points.push(vec![pos]);
 
-					tool_data.diameter = tool_options.diameter;
-					tool_data.hardness = tool_options.hardness;
-					tool_data.flow = tool_options.flow;
-
 					if new_layer {
-						add_brush_render(tool_data, global_tool_data, responses);
+						add_brush_render(tool_options, tool_data, global_tool_data, responses);
 					} else {
 						//tool_data.update_image(node_graph, responses);
 						tool_data.update_points(responses);
@@ -276,7 +262,7 @@ impl Fsm for BrushToolFsmState {
 						// Linear interpolation for when the mouse has moved a lot between frames
 						if let Some(&last_point) = tool_data.points.last().and_then(|x| x.last()) {
 							let distance = (last_point - pos).length();
-							let extra_points = (distance / (tool_data.diameter / 2.)).floor() as usize;
+							let extra_points = (distance / (tool_options.diameter / 2.)).floor() as usize;
 							tool_data
 								.points
 								.last_mut()
@@ -326,7 +312,7 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
 
 	let brush_node = DocumentNode {
@@ -337,11 +323,11 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			NodeInput::value(TaggedValue::VecDVec2(data.points.last().cloned().unwrap_or_default()), false),
 			// Diameter
-			NodeInput::value(TaggedValue::F64(data.diameter), false),
+			NodeInput::value(TaggedValue::F64(tool_options.diameter), false),
 			// Hardness
-			NodeInput::value(TaggedValue::F64(data.hardness), false),
+			NodeInput::value(TaggedValue::F64(tool_options.hardness), false),
 			// Flow
-			NodeInput::value(TaggedValue::F64(data.flow), false),
+			NodeInput::value(TaggedValue::F64(tool_options.flow), false),
 			// Color
 			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
 		],
@@ -349,18 +335,18 @@ fn add_brush_render(data: &BrushToolData, tool_data: &DocumentToolData, response
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
 		..Default::default()
 	};
-	let monitor_node = DocumentNode {
-		name: "Monitor".to_string(),
-		implementation: DocumentNodeImplementation::Unresolved("graphene_std::memo::MonitorNode<_>".into()),
-		..Default::default()
-	};
+	// let monitor_node = DocumentNode {
+	// 	name: "Monitor".to_string(),
+	// 	implementation: DocumentNodeImplementation::Unresolved("graphene_std::memo::MonitorNode<_>".into()),
+	// 	..Default::default()
+	// };
 	let mut network = NodeNetwork::value_network(brush_node);
 	//network.push_node(monitor_node, true);
 	network.push_output_node();
 	graph_modification_utils::new_custom_layer(network, layer_path, responses);
 }
 
-fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>, ImageFrame<Color>)> {
+fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {
 	if document.selected_layers().count() != 1 {
 		return None;
 	}
@@ -370,11 +356,6 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 	if brush_node.implementation != DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()) {
 		return None;
 	}
-	let image_input = brush_node.inputs.get(1)?;
-	let NodeInput::Value {
-		tagged_value: TaggedValue::ImageFrame(image_frame),
-		..
-	} = image_input else { return None };
 	let points_input = brush_node.inputs.get(3)?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(points),
@@ -382,5 +363,5 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 	} = points_input else {
 		return None };
 
-	Some((layer_path, points.clone(), image_frame.clone()))
+	Some((layer_path, points.clone()))
 }

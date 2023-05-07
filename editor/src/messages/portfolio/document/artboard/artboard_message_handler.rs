@@ -27,25 +27,21 @@ impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => {
-				let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
-
-				match self.artboards_document.handle_operation(*operation, &render_data) {
-					Ok(Some(document_responses)) => {
-						for response in document_responses {
-							match &response {
-								DocumentResponse::LayerChanged { path } => responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }),
-								DocumentResponse::DeletedLayer { path } => responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }),
-								DocumentResponse::DocumentChanged => responses.add(ArtboardMessage::RenderArtboards),
-								_ => {}
-							};
-							responses.add(BroadcastEvent::DocumentIsDirty);
-						}
+			DispatchOperation(operation) => match self.artboards_document.handle_operation(*operation) {
+				Ok(Some(document_responses)) => {
+					for response in document_responses {
+						match &response {
+							DocumentResponse::LayerChanged { path } => responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: path.clone() }),
+							DocumentResponse::DeletedLayer { path } => responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: path.clone() }),
+							DocumentResponse::DocumentChanged => responses.add(ArtboardMessage::RenderArtboards),
+							_ => {}
+						};
+						responses.add(BroadcastEvent::DocumentIsDirty);
 					}
-					Ok(None) => {}
-					Err(e) => error!("Artboard Error: {:?}", e),
 				}
-			}
+				Ok(None) => {}
+				Err(e) => error!("Artboard Error: {:?}", e),
+			},
 
 			// Messages
 			AddArtboard { id, position, size } => {
