@@ -31,7 +31,7 @@ use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
 
@@ -579,8 +579,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				};
 
 				let path = vec![generate_uuid()];
-				let [image_node_id, transform_node_id, downres_node_id] = [100, 101, 102];
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downres_node_id);
+				let mut network = NodeNetwork::default();
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -600,30 +599,19 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let mut pos = 8;
-				let mut next_pos = || {
-					pos += 8;
-					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
-				};
-
-				network.nodes.insert(
-					image_node_id,
+				network.push_node(
 					image_node_type.to_document_node(
 						[graph_craft::document::NodeInput::value(
 							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
-						next_pos(),
+						graph_craft::document::DocumentNodeMetadata::position((8, 4)),
 					),
+					false,
 				);
-				network.nodes.insert(
-					transform_node_id,
-					transform_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(image_node_id, 0))], next_pos()),
-				);
-				network.nodes.insert(
-					downres_node_id,
-					downres_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
-				);
+				network.push_node(transform_node_type.to_document_node_default_inputs([], Default::default()), true);
+				network.push_node(downres_node_type.to_document_node_default_inputs([], Default::default()), true);
+				network.push_output_node();
 
 				responses.add(DocumentOperation::AddFrame {
 					path: path.clone(),
