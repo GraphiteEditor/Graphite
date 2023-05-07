@@ -36,7 +36,7 @@ impl Default for LineOptions {
 	fn default() -> Self {
 		Self {
 			line_weight: 5.,
-			stroke: ToolColorOptions::default(),
+			stroke: ToolColorOptions::new_primary(),
 		}
 	}
 }

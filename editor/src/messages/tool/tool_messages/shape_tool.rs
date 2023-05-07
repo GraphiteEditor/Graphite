@@ -35,12 +35,8 @@ impl Default for ShapeOptions {
 		Self {
 			vertices: 5,
 			line_weight: 5.,
-			fill: ToolColorOptions::default(),
-			stroke: ToolColorOptions {
-				custom_color: None,
-				color_type: ToolColorType::Custom,
-				..Default::default()
-			},
+			fill: ToolColorOptions::new_secondary(),
+			stroke: ToolColorOptions::new_primary(),
 		}
 	}
 }

@@ -22,15 +22,34 @@ pub struct ToolColorOptions {
 impl Default for ToolColorOptions {
 	fn default() -> Self {
 		Self {
+			color_type: ToolColorType::Primary,
 			custom_color: Some(Color::BLACK),
 			primary_working_color: Some(Color::BLACK),
 			secondary_working_color: Some(Color::WHITE),
-			color_type: ToolColorType::Primary,
 		}
 	}
 }
 
 impl ToolColorOptions {
+	pub fn new_primary() -> Self {
+		Self::default()
+	}
+
+	pub fn new_secondary() -> Self {
+		Self {
+			color_type: ToolColorType::Secondary,
+			..Default::default()
+		}
+	}
+
+	pub fn new_none() -> Self {
+		Self {
+			color_type: ToolColorType::Custom,
+			custom_color: None,
+			..Default::default()
+		}
+	}
+
 	pub fn active_color(&self) -> Option<Color> {
 		match self.color_type {
 			ToolColorType::Custom => self.custom_color,

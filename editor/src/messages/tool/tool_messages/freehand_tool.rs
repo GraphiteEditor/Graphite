@@ -35,12 +35,8 @@ impl Default for FreehandOptions {
 	fn default() -> Self {
 		Self {
 			line_weight: 5.,
-			fill: ToolColorOptions {
-				custom_color: None,
-				color_type: ToolColorType::Custom,
-				..Default::default()
-			},
-			stroke: ToolColorOptions::default(),
+			fill: ToolColorOptions::new_none(),
+			stroke: ToolColorOptions::new_primary(),
 		}
 	}
 }

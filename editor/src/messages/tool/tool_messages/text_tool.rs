@@ -44,7 +44,7 @@ impl Default for TextOptions {
 			font_size: 24,
 			font_name: "Merriweather".into(),
 			font_style: "Normal (400)".into(),
-			fill: ToolColorOptions::default(),
+			fill: ToolColorOptions::new_primary(),
 		}
 	}
 }
