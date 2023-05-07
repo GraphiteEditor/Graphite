@@ -85,32 +85,32 @@ impl ToolMetadata for BrushTool {
 
 impl PropertyHolder for BrushTool {
 	fn properties(&self) -> Layout {
-		let diameter = NumberInput::new(Some(self.options.diameter))
-			.label("Diameter")
-			.min(1.)
-			.unit(" px")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
-			.widget_holder();
-		let hardness = NumberInput::new(Some(self.options.hardness))
-			.label("Hardness")
-			.min(0.)
-			.max(100.)
-			.unit("%")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
-			.widget_holder();
-		let flow = NumberInput::new(Some(self.options.flow))
-			.label("Flow")
-			.min(1.)
-			.max(100.)
-			.unit("%")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
-			.widget_holder();
+		let mut widgets = vec![
+			NumberInput::new(Some(self.options.diameter))
+				.label("Diameter")
+				.min(1.)
+				.unit(" px")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
+				.widget_holder(),
+			NumberInput::new(Some(self.options.hardness))
+				.label("Hardness")
+				.min(0.)
+				.max(100.)
+				.unit("%")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
+				.widget_holder(),
+			NumberInput::new(Some(self.options.flow))
+				.label("Flow")
+				.min(1.)
+				.max(100.)
+				.unit("%")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
+				.widget_holder(),
+		];
 
-		let separator = Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder();
+		widgets.push(WidgetHolder::related_separator());
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![diameter, separator.clone(), hardness, separator, flow],
-		}]))
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 

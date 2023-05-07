@@ -1,8 +1,9 @@
-use graphene_core::Color;
-use serde::{Deserialize, Serialize};
-
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, RadioEntryData, RadioInput, TextLabel, WidgetHolder};
+
+use graphene_core::Color;
+
+use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum ToolColorType {

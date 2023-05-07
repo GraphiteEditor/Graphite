@@ -102,6 +102,7 @@ impl PropertyHolder for LineTool {
 		);
 		widgets.push(WidgetHolder::unrelated_separator());
 		widgets.push(create_weight_widget(self.options.line_weight));
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }

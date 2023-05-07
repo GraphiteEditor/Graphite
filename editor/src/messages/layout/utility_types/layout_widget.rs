@@ -443,6 +443,9 @@ impl WidgetHolder {
 	pub fn new(widget: Widget) -> Self {
 		Self { widget_id: generate_uuid(), widget }
 	}
+	pub fn section_separator() -> Self {
+		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder()
+	}
 	pub fn unrelated_separator() -> Self {
 		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Unrelated).widget_holder()
 	}

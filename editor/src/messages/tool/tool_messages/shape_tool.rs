@@ -111,13 +111,19 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
+		let mut widgets = vec![create_sides_widget(self.options.vertices)];
+
+		widgets.push(WidgetHolder::section_separator());
+
+		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			WidgetCallback::new(|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(color.value)).into()),
-		);
-		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
+		));
+
+		widgets.push(WidgetHolder::section_separator());
+
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			WidgetCallback::new(|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(None)).into()),
@@ -126,8 +132,7 @@ impl PropertyHolder for ShapeTool {
 		));
 		widgets.push(WidgetHolder::unrelated_separator());
 		widgets.push(create_weight_widget(self.options.line_weight));
-		widgets.push(WidgetHolder::unrelated_separator());
-		widgets.push(create_sides_widget(self.options.vertices));
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }

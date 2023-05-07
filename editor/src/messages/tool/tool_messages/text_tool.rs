@@ -137,14 +137,17 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
+		let mut widgets = create_text_widgets(self);
+
+		widgets.push(WidgetHolder::section_separator());
+
+		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			WidgetCallback::new(|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value)).into()),
-		);
-		widgets.push(WidgetHolder::unrelated_separator());
-		widgets.append(&mut create_text_widgets(self));
+		));
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
@@ -244,7 +247,7 @@ impl TextToolData {
 				text: editing_text.text.clone(),
 				line_width: None,
 				font_size: editing_text.font_size,
-				color: editing_text.color,
+				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: render_data.font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
 			});

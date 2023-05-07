@@ -90,7 +90,9 @@ impl PropertyHolder for RectangleTool {
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value)).into()),
 		);
-		widgets.push(Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder());
+
+		widgets.push(WidgetHolder::section_separator());
+
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			WidgetCallback::new(|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(None)).into()),
@@ -99,6 +101,7 @@ impl PropertyHolder for RectangleTool {
 		));
 		widgets.push(WidgetHolder::unrelated_separator());
 		widgets.push(create_weight_widget(self.options.line_weight));
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }

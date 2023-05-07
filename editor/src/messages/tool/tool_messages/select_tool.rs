@@ -137,7 +137,7 @@ impl PropertyHolder for SelectTool {
 				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
 					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
 					.widget_holder(),
-				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
+				WidgetHolder::section_separator(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
 					.on_update(|_| {
@@ -201,7 +201,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				WidgetHolder::related_separator(),
 				PopoverButton::new("Align", "Coming soon").widget_holder(),
-				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
+				WidgetHolder::section_separator(),
 				IconButton::new("FlipHorizontal", 24)
 					.tooltip("Flip Horizontal")
 					.on_update(|_| SelectToolMessage::FlipHorizontal.into())
@@ -216,7 +216,7 @@ impl PropertyHolder for SelectTool {
 					text: "Coming soon".into(),
 					..Default::default()
 				})),
-				Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder(),
+				WidgetHolder::section_separator(),
 				IconButton::new("BooleanUnion", 24)
 					.tooltip("Boolean Union (coming soon)")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
