@@ -117,7 +117,7 @@ struct PathToolData {
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
-	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, f64>>>,
+	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, Option<f64>>>>,
 }
 
 impl PathToolData {
@@ -288,6 +288,8 @@ impl Fsm for PathToolFsmState {
 
 				// Mouse up
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
+					shape_editor.delete_selected_handles_with_zero_length(&document.document_legacy, responses);
+
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
 						.map(|(_, nearest_point)| nearest_point);
