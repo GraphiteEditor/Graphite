@@ -245,7 +245,7 @@ impl<P: Copy + Pixel> ImageFrame<P> {
 	pub const fn empty() -> Self {
 		Self {
 			image: Image::empty(),
-			transform: DAffine2::ZERO,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 
@@ -281,7 +281,7 @@ use crate::text::FontCache;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EditorApi<'a> {
 	#[cfg_attr(feature = "serde", serde(skip))]
-	pub image_frame: Option<&'a ImageFrame<Color>>,
+	pub image_frame: Option<ImageFrame<Color>>,
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub font_cache: Option<&'a FontCache>,
 }
@@ -306,8 +306,8 @@ pub struct ExtractImageFrame;
 
 impl<'a: 'input, 'input> Node<'input, EditorApi<'a>> for ExtractImageFrame {
 	type Output = ImageFrame<Color>;
-	fn eval(&'input self, editor_api: EditorApi<'a>) -> Self::Output {
-		editor_api.image_frame.cloned().unwrap_or(ImageFrame::empty())
+	fn eval(&'input self, mut editor_api: EditorApi<'a>) -> Self::Output {
+		editor_api.image_frame.take().unwrap_or(ImageFrame::empty())
 	}
 }
 
