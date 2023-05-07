@@ -56,7 +56,7 @@ impl ToolColorOptions {
 		let entries = vec![
 			("WorkingColorsPrimary", "Primary Working Color", ToolColorType::Primary),
 			("WorkingColorsSecondary", "Secondary Working Color", ToolColorType::Secondary),
-			("Edit", "Custom Color", ToolColorType::Custom),
+			("CustomColor", "Custom Color", ToolColorType::Custom),
 		]
 		.into_iter()
 		.map(|(icon, tooltip, color_type)| {
