@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetad
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::prelude::*;
 
-use document_legacy::boolean_ops::BooleanOperation as BooleanOperationType;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::style::ViewMode;
@@ -55,7 +54,6 @@ pub enum DocumentMessage {
 		artboard: Box<ArtboardMessageHandler>,
 		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
-	BooleanOperation(BooleanOperationType),
 	ClearLayerTree,
 	CommitTransaction,
 	CopyToClipboardLayerImageOutput {

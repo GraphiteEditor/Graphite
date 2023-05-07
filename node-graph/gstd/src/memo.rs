@@ -1,6 +1,4 @@
 use graphene_core::Node;
-#[cfg(feature = "serde")]
-use serde::Serialize;
 
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
