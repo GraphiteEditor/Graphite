@@ -202,7 +202,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let bounds_transform = bounds.eval(()).transform;
 				if bounds_transform != DAffine2::ZERO {
 					background_bounds = CopiedNode::new(bounds_transform);
-					log::debug!("setting transform to {:?}", bounds_transform);
 				}
 
 				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));

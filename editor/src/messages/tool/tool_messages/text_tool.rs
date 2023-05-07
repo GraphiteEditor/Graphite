@@ -15,12 +15,12 @@ use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
-
-use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::text::{load_face, Font};
 use graphene_core::Color;
+
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]

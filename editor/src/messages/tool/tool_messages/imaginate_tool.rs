@@ -3,6 +3,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::path_outline::PathOutline;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -25,6 +26,10 @@ pub enum ImaginateToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
+	DocumentIsDirty,
+	#[remain::unsorted]
+	SelectionChanged,
 
 	// Tool-specific messages
 	DragStart,
@@ -73,7 +78,9 @@ impl ToolMetadata for ImaginateTool {
 impl ToolTransition for ImaginateTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			document_dirty: Some(ImaginateToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(ImaginateToolMessage::Abort.into()),
+			selection_changed: Some(ImaginateToolMessage::SelectionChanged.into()),
 			..Default::default()
 		}
 	}
@@ -89,6 +96,7 @@ enum ImaginateToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct ImaginateToolData {
 	data: Resize,
+	path_outlines: PathOutline,
 }
 
 impl Fsm for ImaginateToolFsmState {
@@ -110,7 +118,15 @@ impl Fsm for ImaginateToolFsmState {
 
 		if let ToolMessage::Imaginate(event) = event {
 			match (self, event) {
+				(_, DocumentIsDirty | SelectionChanged) => {
+					tool_data.path_outlines.clear_selected(responses);
+					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+
+					self
+				}
 				(Ready, DragStart) => {
+					tool_data.path_outlines.clear_selected(responses);
+
 					shape_data.start(responses, document, input, render_data);
 					responses.add(DocumentMessage::StartTransaction);
 					shape_data.path = Some(document.get_path_for_new_layer());
@@ -178,6 +194,12 @@ impl Fsm for ImaginateToolFsmState {
 					responses.add(DocumentMessage::AbortTransaction);
 
 					shape_data.cleanup(responses);
+					tool_data.path_outlines.clear_selected(responses);
+
+					Ready
+				}
+				(_, Abort) => {
+					tool_data.path_outlines.clear_selected(responses);
 
 					Ready
 				}

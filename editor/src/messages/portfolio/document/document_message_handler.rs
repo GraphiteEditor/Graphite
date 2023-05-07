@@ -23,7 +23,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::boolean_ops::BooleanOperationError;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::folder_layer::FolderLayer;
@@ -32,7 +31,7 @@ use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
 
@@ -120,7 +119,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			// Sub-messages
 			#[remain::unsorted]
 			DispatchOperation(op) => {
-				match self.document_legacy.handle_operation(*op, &render_data) {
+				match self.document_legacy.handle_operation(*op) {
 					Ok(Some(document_responses)) => {
 						for response in document_responses {
 							match &response {
@@ -156,13 +155,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							};
 							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
-					}
-					// Display boolean operation error to the user (except if it is a nothing done error).
-					Err(DocumentError::BooleanOperationError(boolean_operation_error)) if boolean_operation_error != BooleanOperationError::NothingDone => {
-						responses.add(DialogMessage::DisplayDialogError {
-							title: "Failed to calculate boolean operation".into(),
-							description: format!("Unfortunately, this feature not that robust yet.\n\nError: {boolean_operation_error:?}"),
-						})
 					}
 					Err(e) => error!("DocumentError: {:?}", e),
 					Ok(_) => (),
@@ -256,16 +248,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, *artboard, layer_metadata, responses),
-			BooleanOperation(op) => {
-				// Convert Vec<&[LayerId]> to Vec<Vec<&LayerId>> because Vec<&[LayerId]> does not implement several traits (Debug, Serialize, Deserialize, ...) required by DocumentOperation enum
-				responses.add(StartTransaction);
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(DocumentOperation::BooleanOperation {
-					operation: op,
-					selected: self.selected_layers_sorted().iter().map(|slice| (*slice).into()).collect(),
-				});
-				responses.add(CommitTransaction);
-			}
 			ClearLayerTree => {
 				// Send an empty layer tree
 				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
@@ -597,8 +579,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				};
 
 				let path = vec![generate_uuid()];
-				let [image_node_id, transform_node_id, downres_node_id] = [100, 101, 102];
-				let mut network = crate::messages::portfolio::document::node_graph::new_image_network(32, downres_node_id);
+				let mut network = NodeNetwork::default();
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -618,30 +599,19 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let mut pos = 8;
-				let mut next_pos = || {
-					pos += 8;
-					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
-				};
-
-				network.nodes.insert(
-					image_node_id,
+				network.push_node(
 					image_node_type.to_document_node(
 						[graph_craft::document::NodeInput::value(
 							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
 							false,
 						)],
-						next_pos(),
+						graph_craft::document::DocumentNodeMetadata::position((8, 4)),
 					),
+					false,
 				);
-				network.nodes.insert(
-					transform_node_id,
-					transform_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(image_node_id, 0))], next_pos()),
-				);
-				network.nodes.insert(
-					downres_node_id,
-					downres_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
-				);
+				network.push_node(transform_node_type.to_document_node_default_inputs([], Default::default()), true);
+				network.push_node(downres_node_type.to_document_node_default_inputs([], Default::default()), true);
+				network.push_output_node();
 
 				responses.add(DocumentOperation::AddFrame {
 					path: path.clone(),
@@ -874,8 +844,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(LayerChanged { affected_layer_path: layer_path })
 			}
 			ToggleLayerVisibility { layer_path } => {
-				responses.add(DocumentOperation::ToggleLayerVisibility { path: layer_path });
-				responses.add(BroadcastEvent::DocumentIsDirty);
+				if let Ok(layer) = self.document_legacy.layer(&layer_path) {
+					let visible = layer.visible;
+					responses.add(DocumentOperation::SetLayerVisibility { path: layer_path, visible: !visible });
+					responses.add(BroadcastEvent::DocumentIsDirty);
+				}
 			}
 			Undo => {
 				self.undo_in_progress = true;
@@ -996,7 +969,7 @@ impl DocumentMessageHandler {
 		// Check if we use the "Input Frame" node.
 		// TODO: Remove once rasterization is moved into a node.
 		let input_frame_node_id = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame").map(|(&id, _)| id);
-		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, true));
+		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, imaginate_node_path.is_none()));
 
 		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
 		let response = if input_frame_connected_to_graph_output {

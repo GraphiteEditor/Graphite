@@ -8,8 +8,9 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use glam::DVec2;
 use graphene_core::vector::style::Fill;
+
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -25,7 +26,7 @@ pub struct ShapeOptions {
 
 impl Default for ShapeOptions {
 	fn default() -> Self {
-		Self { vertices: 6 }
+		Self { vertices: 5 }
 	}
 }
 
@@ -125,7 +126,6 @@ enum ShapeToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct ShapeToolData {
-	sides: u32,
 	data: Resize,
 }
 
@@ -159,9 +159,8 @@ impl Fsm for ShapeToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 					let layer_path = document.get_path_for_new_layer();
 					shape_data.path = Some(layer_path.clone());
-					tool_data.sides = tool_options.vertices;
 
-					let subpath = bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_data.sides as u64, 1.);
+					let subpath = bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.);
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 					responses.add(GraphOperationMessage::FillSet {
 						layer: layer_path,
