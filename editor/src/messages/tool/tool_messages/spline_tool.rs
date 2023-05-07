@@ -36,12 +36,12 @@ impl Default for SplineOptions {
 	fn default() -> Self {
 		Self {
 			line_weight: 5.,
-			fill: ToolColorOptions::default(),
-			stroke: ToolColorOptions {
+			fill: ToolColorOptions {
 				custom_color: None,
 				color_type: ToolColorType::Custom,
 				..Default::default()
 			},
+			stroke: ToolColorOptions::default(),
 		}
 	}
 }
