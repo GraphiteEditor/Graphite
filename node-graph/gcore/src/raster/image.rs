@@ -245,6 +245,13 @@ impl<P: Copy + Pixel> ImageFrame<P> {
 	pub const fn empty() -> Self {
 		Self {
 			image: Image::empty(),
+			transform: DAffine2::ZERO,
+		}
+	}
+
+	pub const fn identity() -> Self {
+		Self {
+			image: Image::empty(),
 			transform: DAffine2::IDENTITY,
 		}
 	}
@@ -307,7 +314,7 @@ pub struct ExtractImageFrame;
 impl<'a: 'input, 'input> Node<'input, EditorApi<'a>> for ExtractImageFrame {
 	type Output = ImageFrame<Color>;
 	fn eval(&'input self, mut editor_api: EditorApi<'a>) -> Self::Output {
-		editor_api.image_frame.take().unwrap_or(ImageFrame::empty())
+		editor_api.image_frame.take().unwrap_or(ImageFrame::identity())
 	}
 }
 
