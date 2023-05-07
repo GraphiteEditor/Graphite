@@ -118,6 +118,10 @@
 		--color-data-vec2-dim: #71008d;
 		--color-data-color: #70a898;
 		--color-data-color-dim: #43645b;
+		--color-data-graphic: #e4bb72;
+		--color-data-graphic-dim: #897551;
+		--color-data-artboard: #70a898;
+		--color-data-artboard-dim: #3a6156;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

@@ -75,7 +75,6 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-#[cfg(feature = "gpu")]
 fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
 
@@ -191,7 +190,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	(first_widgets, second_widgets)
 }
 
-fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
+fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, multiply: f64, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	if let NodeInput::Value {
@@ -202,8 +201,8 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_separator(),
 			number_props
-				.value(Some(x))
-				.on_update(update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.value(Some(x * multiply))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap() / multiply), node_id, index))
 				.widget_holder(),
 		])
 	} else if let NodeInput::Value {
@@ -214,8 +213,20 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_separator(),
 			number_props
-				.value(Some(x as f64))
-				.on_update(update_value(|x: &NumberInput| TaggedValue::U32(x.value.unwrap() as u32), node_id, index))
+				.value(Some(x as f64 * multiply))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap() / multiply) as u32), node_id, index))
+				.widget_holder(),
+		])
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::F32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			number_props
+				.value(Some(x as f64 * multiply))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap() / multiply) as f32), node_id, index))
 				.widget_holder(),
 		])
 	}
@@ -467,11 +478,11 @@ pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context
 }
 
 pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
+	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
+	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
+	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
+	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
 
 	vec![
 		LayoutGroup::Row { widgets: input_shadows },
@@ -487,12 +498,12 @@ pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	const MAX: f64 = 300.;
 	// TODO: Add tint color (blended above using the "Color" blend mode)
 	let tint = color_widget(document_node, node_id, 1, "Tint", ColorInput::default(), true);
-	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), 1., true);
+	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), 1., true);
+	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), 1., true);
+	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), 1., true);
+	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), 1., true);
+	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), 1., true);
 
 	vec![
 		tint,
@@ -508,7 +519,7 @@ pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorInput::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
 
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
@@ -557,9 +568,9 @@ pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
-	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), 1., true);
+	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
+	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
 
 	vec![
 		LayoutGroup::Row { widgets: hue_shift },
@@ -569,8 +580,8 @@ pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
-	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
+	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), 1., true);
+	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), 1., true);
 	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", true);
 
 	vec![
@@ -581,8 +592,8 @@ pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: Nod
 }
 
 pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
-	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
+	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), 1., true);
+	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), 1., true);
 
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
@@ -590,23 +601,23 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 7, "Color", ColorInput::default(), true);
 
-	let size = number_widget(document_node, node_id, 4, "Diameter", NumberInput::default().min(1.).max(100.).unit(" px"), true);
-	let hardness = number_widget(document_node, node_id, 5, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let flow = number_widget(document_node, node_id, 6, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), true);
+	let size = number_widget(document_node, node_id, 4, "Diameter", NumberInput::default().min(1.).max(100.).unit(" px"), 1., true);
+	let hardness = number_widget(document_node, node_id, 5, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
+	let flow = number_widget(document_node, node_id, 6, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), 1., true);
 
 	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: flow }]
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
+	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
 	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
 
 	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
 
 	vec![LayoutGroup::Row { widgets: vibrance }]
 }
@@ -659,10 +670,10 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 		(false, RedGreenBlue::Green) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
 		(false, RedGreenBlue::Blue) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
 	};
-	let red = number_widget(document_node, node_id, r.0, r.1, NumberInput::default().min(-200.).max(200.).value(Some(r.2)).unit("%"), true);
-	let green = number_widget(document_node, node_id, g.0, g.1, NumberInput::default().min(-200.).max(200.).value(Some(g.2)).unit("%"), true);
-	let blue = number_widget(document_node, node_id, b.0, b.1, NumberInput::default().min(-200.).max(200.).value(Some(b.2)).unit("%"), true);
-	let constant = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-200.).max(200.).value(Some(c.2)).unit("%"), true);
+	let red = number_widget(document_node, node_id, r.0, r.1, NumberInput::default().min(-200.).max(200.).value(Some(r.2)).unit("%"), 1., true);
+	let green = number_widget(document_node, node_id, g.0, g.1, NumberInput::default().min(-200.).max(200.).value(Some(g.2)).unit("%"), 1., true);
+	let blue = number_widget(document_node, node_id, b.0, b.1, NumberInput::default().min(-200.).max(200.).value(Some(b.2)).unit("%"), 1., true);
+	let constant = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-200.).max(200.).value(Some(c.2)).unit("%"), 1., true);
 
 	// Monochrome
 	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
@@ -725,10 +736,10 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 		SelectiveColorChoice::Neutrals => ((30, "(Neutrals) Cyan"), (31, "(Neutrals) Magenta"), (32, "(Neutrals) Yellow"), (33, "(Neutrals) Black")),
 		SelectiveColorChoice::Blacks => ((34, "(Blacks) Cyan"), (35, "(Blacks) Magenta"), (36, "(Blacks) Yellow"), (37, "(Blacks) Black")),
 	};
-	let cyan = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let magenta = number_widget(document_node, node_id, m.0, m.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let yellow = number_widget(document_node, node_id, y.0, y.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let black = number_widget(document_node, node_id, k.0, k.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let cyan = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
+	let magenta = number_widget(document_node, node_id, m.0, m.1, NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
+	let yellow = number_widget(document_node, node_id, y.0, y.1, NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
+	let black = number_widget(document_node, node_id, k.0, k.1, NumberInput::default().min(-100.).max(100.).unit("%"), 1., true);
 
 	// Mode
 	let mode_index = 1;
@@ -767,35 +778,29 @@ pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), 1., true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
 pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(2.).max(255.).int(), true);
+	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(2.).max(255.).int(), 1., true);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
 #[cfg(feature = "quantization")]
 pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(1.).max(1000.).int(), true);
-	let index = number_widget(document_node, node_id, 1, "Fit Fn Index", NumberInput::default().min(0.).max(2.).int(), true);
+	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(1.).max(1000.).int(), 1., true);
+	let index = number_widget(document_node, node_id, 1, "Fit Fn Index", NumberInput::default().min(0.).max(2.).int(), 1., true);
 
 	vec![LayoutGroup::Row { widgets: value }, LayoutGroup::Row { widgets: index }]
 }
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
-	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
-	let gamma_correction = number_widget(
-		document_node,
-		node_id,
-		3,
-		"Gamma Correction",
-		NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1),
-		true,
-	);
+	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), 1., true);
+	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), 1., true);
+	let gamma_input = NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1);
+	let gamma_correction = number_widget(document_node, node_id, 3, "Gamma Correction", gamma_input, 1., true);
 
 	vec![
 		LayoutGroup::Row { widgets: exposure },
@@ -806,7 +811,7 @@ pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), 1., true);
 
 		LayoutGroup::Row { widgets }
 	};
@@ -916,7 +921,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
 	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
-	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
+	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), 1., true);
 
 	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
 	if let Some(style) = style {
@@ -1282,7 +1287,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let sampling_steps = {
-		let widgets = number_widget(document_node, node_id, samples_index, "Sampling Steps", NumberInput::default().min(0.).max(150.).int(), true);
+		let widgets = number_widget(document_node, node_id, samples_index, "Sampling Steps", NumberInput::default().min(0.).max(150.).int(), 1., true);
 		LayoutGroup::Row { widgets }.with_tooltip("Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method")
 	};
 
@@ -1310,7 +1315,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let text_guidance = {
-		let widgets = number_widget(document_node, node_id, text_guidance_index, "Prompt Guidance", NumberInput::default().min(0.).max(30.), true);
+		let widgets = number_widget(document_node, node_id, text_guidance_index, "Prompt Guidance", NumberInput::default().min(0.).max(30.), 1., true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
 			\n\
@@ -1341,7 +1346,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 	let image_creativity = {
 		let props = NumberInput::default().percentage().disabled(!use_base_image);
-		let widgets = number_widget(document_node, node_id, img_creativity_index, "Image Creativity", props, true);
+		let widgets = number_widget(document_node, node_id, img_creativity_index, "Image Creativity", props, 1., true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Strength of the artistic liberties allowing changes from the input image. The image is unchanged at 0% and completely different at 100%.\n\
 			\n\
@@ -1434,7 +1439,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		};
 
 		let blur_radius = {
-			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", NumberInput::default().unit(" px").min(0.).max(25.).int(), true);
+			let number_props = NumberInput::default().unit(" px").min(0.).max(25.).int();
+			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", number_props, 1., true);
 			LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
 		};
 
@@ -1493,7 +1499,7 @@ pub fn no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: 
 }
 
 pub fn index_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), true);
+	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), 1., true);
 
 	vec![LayoutGroup::Row { widgets: index }]
 }
@@ -1517,12 +1523,12 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	let miter_limit_index = 7;
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorInput::default(), true);
-	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
+	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), 1., true);
 	let dash_lengths = vec_f32_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
-	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", NumberInput::default().unit("px").min(0.), true);
+	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", NumberInput::default().unit("px").min(0.), 1., true);
 	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
 	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
-	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", NumberInput::default().min(0.), true);
+	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", NumberInput::default().min(0.), 1., true);
 
 	vec![
 		color,
@@ -1589,4 +1595,26 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	}
 
 	widgets
+}
+
+pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let name = text_widget(document_node, node_id, 1, "Name", true);
+	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), 100., true);
+	let visible = bool_widget(document_node, node_id, 4, "Visible", true);
+	let locked = bool_widget(document_node, node_id, 5, "Locked", true);
+	let collapsed = bool_widget(document_node, node_id, 6, "Collapsed", true);
+
+	vec![
+		LayoutGroup::Row { widgets: name },
+		blend_mode,
+		LayoutGroup::Row { widgets: opacity },
+		LayoutGroup::Row { widgets: visible },
+		LayoutGroup::Row { widgets: locked },
+		LayoutGroup::Row { widgets: collapsed },
+	]
+}
+pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let label = text_widget(document_node, node_id, 1, "Label", true);
+	vec![LayoutGroup::Row { widgets: label }]
 }

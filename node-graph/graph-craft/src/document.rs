@@ -505,6 +505,30 @@ impl NodeNetwork {
 			network: self,
 		}
 	}
+
+	pub fn is_acyclic(&self) -> bool {
+		let mut dependancies: HashMap<u64, Vec<u64>> = HashMap::new();
+		for (node_id, node) in &self.nodes {
+			dependancies.insert(
+				*node_id,
+				node.inputs
+					.iter()
+					.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None })
+					.collect(),
+			);
+		}
+		while !dependancies.is_empty() {
+			let Some((&disconnected, _)) = dependancies.iter().find(|(_, l)|l.is_empty()) else {
+				error!("Dependancies {dependancies:?}");
+				return false
+			};
+			dependancies.remove(&disconnected);
+			for connections in dependancies.values_mut() {
+				connections.retain(|&id| id != disconnected);
+			}
+		}
+		true
+	}
 }
 
 /// Functions for compiling the network

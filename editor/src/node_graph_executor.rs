@@ -286,7 +286,7 @@ impl NodeGraphExecutor {
 			self.last_output_type.insert(layer_path.clone(), Some(concrete!(VectorData)));
 			responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 			responses.add(Operation::SetVectorData { path: layer_path, vector_data });
-		} else {
+		} else if core::any::TypeId::of::<ImageFrame<Color>>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
 			// Attempt to downcast to an image frame
 			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
 			self.last_output_type.insert(layer_path.clone(), Some(concrete!(ImageFrame<Color>)));
@@ -316,6 +316,14 @@ impl NodeGraphExecutor {
 				}];
 				responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
 			}
+		} else if core::any::TypeId::of::<graphene_core::ArtboardGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
+			let artboard: graphene_core::ArtboardGroup = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
+			info!("{artboard:#?}");
+			return Err(format!("Artboard (see console)"));
+		} else if core::any::TypeId::of::<graphene_core::GraphicGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
+			let graphic_group: graphene_core::GraphicGroup = dyn_any::downcast(boxed_node_graph_output).map(|graphic| *graphic)?;
+			info!("{graphic_group:#?}");
+			return Err(format!("Graphic group (see console)"));
 		}
 
 		Ok(())

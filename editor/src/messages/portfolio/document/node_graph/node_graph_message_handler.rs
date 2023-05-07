@@ -34,6 +34,10 @@ pub enum FrontendGraphDataType {
 	Boolean,
 	#[serde(rename = "vec2")]
 	Vector,
+	#[serde(rename = "graphic")]
+	GraphicGroup,
+	#[serde(rename = "artboard")]
+	ArtboardGroup,
 }
 impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
@@ -46,6 +50,8 @@ impl FrontendGraphDataType {
 			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
+			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
+			TaggedValue::ArtboardGroup(_) => Self::ArtboardGroup,
 			_ => Self::General,
 		}
 	}
@@ -750,6 +756,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					warn!("No network");
 					return;
 				};
+				debug_assert!(network.is_acyclic(), "Not acyclic. Network: {network:#?}");
 				let outwards_links = network.collect_outwards_links();
 				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
 					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {
