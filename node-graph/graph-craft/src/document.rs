@@ -330,8 +330,10 @@ impl NodeNetwork {
 	pub fn push_node(&mut self, mut node: DocumentNode, connect_to_previous: bool) -> NodeId {
 		let id = self.nodes.len().try_into().expect("Too many nodes in network");
 		// Set the correct position for the new node
-		if let Some(pos) = self.original_outputs().first().and_then(|first| self.nodes.get(&first.node_id)).map(|n| n.metadata.position) {
-			node.metadata.position = pos + IVec2::new(8, 0);
+		if node.metadata.position == IVec2::default() {
+			if let Some(pos) = self.original_outputs().first().and_then(|first| self.nodes.get(&first.node_id)).map(|n| n.metadata.position) {
+				node.metadata.position = pos + IVec2::new(8, 0);
+			}
 		}
 		if connect_to_previous && !self.outputs.is_empty() {
 			let input = NodeInput::node(self.outputs[0].node_id, self.outputs[0].node_output_index);
