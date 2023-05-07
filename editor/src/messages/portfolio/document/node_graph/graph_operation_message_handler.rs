@@ -133,15 +133,25 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
+	fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
 		self.modify_inputs("Transform", skip_rerender, |inputs| {
+			let current_transform_node = transform_utils::get_current_transform(inputs);
+
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
 			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let transform = pivot.inverse() * to.inverse() * transform * pivot;
+
+			// this_transform * upstream_transforms = current_transform
+			// So this_transform.inverse() * current_transform = upstream_transforms
+			let upstream_transform = (pivot * current_transform_node * pivot.inverse()).inverse() * current_transform;
+			// desired_final_transform = this_transform * upstream_transform
+			// So this_transform = desired_final_transform * upstream_transform.inverse()
+			let transform = transform * upstream_transform.inverse();
+
+			let transform = (pivot.inverse() * to.inverse() * transform * pivot);
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -262,9 +272,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				let current_transorm = document.layer(&layer).ok().map(|layer| layer.transform).unwrap_or_default();
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_set(transform, transform_in, parent_transform, bounds, skip_rerender);
+					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transorm, bounds, skip_rerender);
 				}
 				let transform = transform.to_cols_array();
 				responses.add(match transform_in {
