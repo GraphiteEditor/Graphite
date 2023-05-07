@@ -92,6 +92,7 @@ impl PropertyHolder for BrushTool {
 				.unit(" px")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
 				.widget_holder(),
+			WidgetHolder::related_separator(),
 			NumberInput::new(Some(self.options.hardness))
 				.label("Hardness")
 				.min(0.)
@@ -99,6 +100,7 @@ impl PropertyHolder for BrushTool {
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
 				.widget_holder(),
+			WidgetHolder::related_separator(),
 			NumberInput::new(Some(self.options.flow))
 				.label("Flow")
 				.min(1.)
@@ -107,8 +109,6 @@ impl PropertyHolder for BrushTool {
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 				.widget_holder(),
 		];
-
-		widgets.push(WidgetHolder::related_separator());
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
