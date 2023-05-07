@@ -131,11 +131,13 @@ impl NodeGraphExecutor {
 		imaginate_node_path: Vec<NodeId>,
 		(document, document_id): (&mut DocumentMessageHandler, u64),
 		layer_path: Vec<LayerId>,
-		editor_api: EditorApi<'_>,
+		mut editor_api: EditorApi<'_>,
 		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
 	) -> Result<Message, String> {
 		use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 		use graph_craft::imaginate_input::*;
+
+		let image = editor_api.image_frame.take();
 
 		let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
@@ -166,6 +168,7 @@ impl NodeGraphExecutor {
 		};
 		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node_path, get("Adapt Input Image"), Cow::Borrowed(&editor_api))?;
 
+		editor_api.image_frame = image;
 		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
 			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node_path, get("Input Image"), Cow::Borrowed(&editor_api))?)
 		} else {
@@ -257,7 +260,7 @@ impl NodeGraphExecutor {
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
 		let editor_api = EditorApi {
-			image_frame: Some(&image_frame),
+			image_frame: Some(image_frame),
 			font_cache: Some(&persistent_data.1.font_cache),
 		};
 
