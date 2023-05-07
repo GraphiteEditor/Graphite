@@ -272,10 +272,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
-				let current_transorm = document.layer(&layer).ok().map(|layer| layer.transform).unwrap_or_default();
+				let current_transform = document.layer(&layer).ok().map(|layer| layer.transform).unwrap_or_default();
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
-					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transorm, bounds, skip_rerender);
+					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 				let transform = transform.to_cols_array();
 				responses.add(match transform_in {
