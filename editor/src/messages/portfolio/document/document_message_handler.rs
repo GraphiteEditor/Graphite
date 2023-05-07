@@ -969,7 +969,7 @@ impl DocumentMessageHandler {
 		// Check if we use the "Input Frame" node.
 		// TODO: Remove once rasterization is moved into a node.
 		let input_frame_node_id = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame").map(|(&id, _)| id);
-		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, true));
+		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, imaginate_node_path.is_none()));
 
 		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
 		let response = if input_frame_connected_to_graph_output {
