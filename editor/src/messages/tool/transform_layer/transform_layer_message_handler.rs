@@ -84,9 +84,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						let points = shape_editor.selected_points();
 						let transform = document.document_legacy.root.transform;
 
-						let viewport_pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
-						*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
-						// *selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
+						// let viewport_pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
+						// *selected.pivot = transform.inverse().transform_point2(viewport_pivot);
+						*selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
 					}
 				}
 			} else {

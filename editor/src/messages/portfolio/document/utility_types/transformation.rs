@@ -372,14 +372,10 @@ impl<'a> Selected<'a> {
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool) {
 		if !self.selected.is_empty() {
-			let pivot_point = self.document.root.transform.transform_point2(*self.pivot);
-			// let mut new_pivot = *self.pivot;
-			// if grid {
-			// 	new_pivot = new_pivot.round();
-			// }
+			let pivot_point = self.pivot.round();
 			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
-			// debug!("pivot_point {:?}", pivot_point);
+			debug!("pivot_point {:?}", pivot_point);
 			debug!("*self.pivot {:?}", *self.pivot);
 			debug!("transformation {:?}", transformation);
 
@@ -420,29 +416,28 @@ impl<'a> Selected<'a> {
 						continue;
 					};
 					for (point_id, position) in original {
-						let mut viewport_point = viewspace.transform_point2(*position);
-
-						if grid {
-							let rounded = position.round();
-							debug!("rounded {:?}", rounded);
-							viewport_point = viewspace.transform_point2(rounded);
-							viewport_point = viewport_point.round();
-						}
+						//layerspace positon to viewport
+						let viewport_point = viewspace.transform_point2(*position);
 						let doc_transform = self.document.root.transform;
-						let doc_space_pos = doc_transform.inverse().transform_point2(viewport_point).round();
-						debug!("doc_space_pos {:?}", doc_space_pos);
 
-						// let doc_transform = document_message_handler.document_legacy.root.transform;
-						// 			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position).round();
-						// 			debug!("doc_space_pos {:?}", doc_space_pos);
-						let rounded_position = doc_transform.transform_point2(doc_space_pos).round();
-						debug!("rounded_position {:?}", rounded_position);
-						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-						debug!("viewport_point {:?}", viewport_point);
-						debug!("new_pos_viewport {:?}", new_pos_viewport);
+						//apply transformation and convert from viewport to layerspace position
+						let layer_spacepos = layerspace_rotation.transform_point2(viewport_point);
+						
+						let mut position: DVec2 = layer_spacepos;
+						if grid {
+							let viewspace_pos = viewspace.transform_point2(layer_spacepos);
+							//todo convert from layerspacepos to doc pos
+							let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
+
+							//todo convert from viewport pos to document pos
+							let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
+
+							//round document pos then convert back to viewport
+							let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
+							position = new_layerspace;
+						}
 
 						let point = *point_id;
-						let position = new_pos_viewport;
 
 						self.responses.add(GraphOperationMessage::Vector {
 							layer: (*layer_path).to_vec(),
