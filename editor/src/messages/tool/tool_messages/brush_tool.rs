@@ -94,16 +94,7 @@ impl ToolMetadata for BrushTool {
 
 impl PropertyHolder for BrushTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = self.options.color.create_widgets(
-			"Color",
-			false,
-			WidgetCallback::new(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into()),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
-			WidgetCallback::new(|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into()),
-		);
-		widgets.push(WidgetHolder::unrelated_separator());
-
-		widgets.append(&mut vec![
+		let mut widgets = vec![
 			NumberInput::new(Some(self.options.diameter))
 				.label("Diameter")
 				.min(1.)
@@ -126,7 +117,17 @@ impl PropertyHolder for BrushTool {
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 				.widget_holder(),
-		]);
+		];
+
+		widgets.push(WidgetHolder::section_separator());
+
+		widgets.append(&mut self.options.color.create_widgets(
+			"Color",
+			false,
+			WidgetCallback::new(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into()),
+		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}

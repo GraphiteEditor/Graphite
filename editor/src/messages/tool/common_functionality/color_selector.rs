@@ -66,12 +66,20 @@ impl ToolColorOptions {
 		radio_callback: fn(ToolColorType) -> WidgetCallback<()>,
 		color_callback: WidgetCallback<ColorInput>,
 	) -> Vec<WidgetHolder> {
-		let label = TextLabel::new(label_text).widget_holder();
+		let mut widgets = vec![TextLabel::new(label_text).widget_holder()];
 
-		let mut reset = IconButton::new("CloseX", 12)
-			.disabled(self.custom_color.is_none() && self.color_type == ToolColorType::Custom)
-			.tooltip("Clear Color");
-		reset.on_update = reset_callback;
+		if !color_allow_none {
+			widgets.push(WidgetHolder::unrelated_separator());
+		} else {
+			let mut reset = IconButton::new("CloseX", 12)
+				.disabled(self.custom_color.is_none() && self.color_type == ToolColorType::Custom)
+				.tooltip("Clear Color");
+			reset.on_update = reset_callback;
+
+			widgets.push(WidgetHolder::related_separator());
+			widgets.push(reset.widget_holder());
+			widgets.push(WidgetHolder::related_separator());
+		};
 
 		let entries = vec![
 			("WorkingColorsPrimary", "Primary Working Color", ToolColorType::Primary),
@@ -86,18 +94,13 @@ impl ToolColorOptions {
 		})
 		.collect();
 		let radio = RadioInput::new(entries).selected_index(self.color_type.clone() as u32).widget_holder();
+		widgets.push(radio);
+		widgets.push(WidgetHolder::related_separator());
 
 		let mut color_input = ColorInput::new(self.active_color()).allow_none(color_allow_none);
 		color_input.on_update = color_callback;
+		widgets.push(color_input.widget_holder());
 
-		vec![
-			label,
-			WidgetHolder::related_separator(),
-			reset.widget_holder(),
-			WidgetHolder::related_separator(),
-			radio,
-			WidgetHolder::related_separator(),
-			color_input.widget_holder(),
-		]
+		widgets
 	}
 }
