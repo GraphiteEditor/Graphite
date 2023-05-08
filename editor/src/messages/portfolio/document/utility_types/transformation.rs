@@ -374,6 +374,7 @@ impl<'a> Selected<'a> {
 		if !self.selected.is_empty() {
 			let doc_transform = self.document.root.transform;
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
+			
 			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
 			
