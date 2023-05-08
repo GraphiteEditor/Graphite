@@ -63,6 +63,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				selected.revert_operation();
 				typing.clear();
 			}
+			let transform = document.document_legacy.root.transform;
 
 			if using_path_tool {
 				if let Ok(layer) = document.document_legacy.layer(selected_layers[0]) {
@@ -82,15 +83,15 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 								.map(|position| viewspace.transform_point2(position))
 						};
 						let points = shape_editor.selected_points();
-						let transform = document.document_legacy.root.transform;
 
-						// let viewport_pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
-						// *selected.pivot = transform.inverse().transform_point2(viewport_pivot);
-						*selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
+						let viewport_pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
+						*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
+						// *selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
 					}
 				}
 			} else {
-				*selected.pivot = selected.mean_average_of_pivots(render_data);
+				let viewport_pivot = selected.mean_average_of_pivots(render_data);
+				*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
 			}
 			debug!("*selected.pivot {:?}", *selected.pivot);
 			*mouse_position = ipp.mouse.position;

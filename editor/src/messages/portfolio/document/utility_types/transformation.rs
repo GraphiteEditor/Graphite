@@ -372,7 +372,8 @@ impl<'a> Selected<'a> {
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool) {
 		if !self.selected.is_empty() {
-			let pivot_point = self.pivot.round();
+			let doc_transform = self.document.root.transform;
+			let pivot_point = doc_transform.transform_point2(*self.pivot);
 			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
 			debug!("pivot_point {:?}", pivot_point);
@@ -418,11 +419,10 @@ impl<'a> Selected<'a> {
 					for (point_id, position) in original {
 						//layerspace positon to viewport
 						let viewport_point = viewspace.transform_point2(*position);
-						let doc_transform = self.document.root.transform;
 
 						//apply transformation and convert from viewport to layerspace position
 						let layer_spacepos = layerspace_rotation.transform_point2(viewport_point);
-						
+
 						let mut position: DVec2 = layer_spacepos;
 						if grid {
 							let viewspace_pos = viewspace.transform_point2(layer_spacepos);
