@@ -2,9 +2,12 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, WidgetHolder};
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -12,6 +15,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use graphene_core::vector::style::Stroke;
+use graphene_core::Color;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -25,11 +29,15 @@ pub struct LineTool {
 
 pub struct LineOptions {
 	line_weight: f64,
+	stroke: ToolColorOptions,
 }
 
 impl Default for LineOptions {
 	fn default() -> Self {
-		Self { line_weight: 5. }
+		Self {
+			line_weight: 5.,
+			stroke: ToolColorOptions::new_primary(),
+		}
 	}
 }
 
@@ -40,6 +48,8 @@ pub enum LineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	DragStart,
@@ -56,6 +66,9 @@ pub enum LineToolMessage {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineOptionsUpdate {
 	LineWeight(f64),
+	StrokeColor(Option<Color>),
+	StrokeColorType(ToolColorType),
+	WorkingColors(Option<Color>, Option<Color>),
 }
 
 impl ToolMetadata for LineTool {
@@ -70,15 +83,28 @@ impl ToolMetadata for LineTool {
 	}
 }
 
+fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+	NumberInput::new(Some(line_weight))
+		.unit(" px")
+		.label("Weight")
+		.min(0.)
+		.on_update(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.widget_holder()
+}
+
 impl PropertyHolder for LineTool {
 	fn properties(&self) -> Layout {
-		let weight = NumberInput::new(Some(self.options.line_weight))
-			.unit(" px")
-			.label("Weight")
-			.min(0.)
-			.on_update(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
-			.widget_holder();
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![weight] }]))
+		let mut widgets = self.options.stroke.create_widgets(
+			"Stroke",
+			true,
+			WidgetCallback::new(|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value)).into()),
+		);
+		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(create_weight_widget(self.options.line_weight));
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -87,7 +113,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 		if let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message {
 			match action {
 				LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				LineOptionsUpdate::StrokeColor(color) => {
+					self.options.stroke.custom_color = color;
+					self.options.stroke.color_type = ToolColorType::Custom;
+				}
+				LineOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+				LineOptionsUpdate::WorkingColors(primary, secondary) => {
+					self.options.stroke.primary_working_color = primary;
+					self.options.stroke.secondary_working_color = secondary;
+				}
 			}
+
+			responses.add(LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target: LayoutTarget::ToolOptions,
+			});
+
 			return;
 		}
 
@@ -106,6 +147,7 @@ impl ToolTransition for LineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(LineToolMessage::Abort.into()),
+			working_color_changed: Some(LineToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
 	}
@@ -164,7 +206,7 @@ impl Fsm for LineToolFsmState {
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 					responses.add(GraphOperationMessage::StrokeSet {
 						layer: layer_path,
-						stroke: Stroke::new(Some(global_tool_data.primary_color), tool_options.line_weight),
+						stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 					});
 
 					tool_data.weight = tool_options.line_weight;
@@ -191,6 +233,13 @@ impl Fsm for LineToolFsmState {
 					responses.add(DocumentMessage::AbortTransaction);
 					tool_data.path = None;
 					Ready
+				}
+				(_, WorkingColorChanged) => {
+					responses.add(LineToolMessage::UpdateOptions(LineOptionsUpdate::WorkingColors(
+						Some(global_tool_data.primary_color),
+						Some(global_tool_data.secondary_color),
+					)));
+					self
 				}
 				_ => self,
 			}
