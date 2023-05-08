@@ -92,10 +92,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			} else {
 				let viewport_pivot = selected.mean_average_of_pivots(render_data);
 				*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
+				// *selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
 			debug!("*selected.pivot {:?}", *selected.pivot);
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
+			debug!("mouse_position {:?}", mouse_position);
 			selected.original_transforms.clear();
 		};
 
@@ -207,10 +209,17 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let start_offset = *selected.pivot - self.mouse_position;
 							let end_offset = *selected.pivot - ipp.mouse.position;
 							let angle = start_offset.angle_between(end_offset);
+							debug!("angle {:?}", angle);
+							debug!("start_offset {:?}", start_offset);
+							debug!("end_offset {:?}", end_offset);
+							debug!("*selected.pivot {:?}", *selected.pivot);
+							debug!("self.mouse_position {:?}", self.mouse_position);
+							debug!("ipp.mouse.position {:?}", ipp.mouse.position);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
+							debug!("rotation.increment_amount(change) {:?}", rotation.increment_amount(change));
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both, document.grid_enabled);
 						}
 						TransformOperation::Scaling(scale) => {
