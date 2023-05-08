@@ -330,9 +330,11 @@ impl SnapManager {
 			let doc_transform = document_message_handler.document_legacy.root.transform;
 			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position).round();
 			debug!("doc_space_pos {:?}", doc_space_pos);
-			snapped_position = doc_transform.transform_point2(doc_space_pos).round();
+			debug!("snapped_position {:?}", snapped_position);
+			snapped_position = doc_transform.transform_point2(doc_space_pos);
 		}
-		debug!("snapped_position {:?}", snapped_position);
+		debug!("snapped_position postc
+		 {:?}", snapped_position);
 
 		snapped_position
 	}
