@@ -101,6 +101,7 @@ impl PropertyHolder for FreehandTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
+			true,
 			WidgetCallback::new(|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value)).into()),
@@ -110,6 +111,7 @@ impl PropertyHolder for FreehandTool {
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
+			true,
 			WidgetCallback::new(|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value)).into()),

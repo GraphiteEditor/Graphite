@@ -95,6 +95,7 @@ impl PropertyHolder for EllipseTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
+			true,
 			WidgetCallback::new(|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value)).into()),
@@ -104,6 +105,7 @@ impl PropertyHolder for EllipseTool {
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
+			true,
 			WidgetCallback::new(|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value)).into()),

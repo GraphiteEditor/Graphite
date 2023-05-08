@@ -104,6 +104,7 @@ impl PropertyHolder for SplineTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
+			true,
 			WidgetCallback::new(|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value)).into()),
@@ -113,6 +114,7 @@ impl PropertyHolder for SplineTool {
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
+			true,
 			WidgetCallback::new(|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value)).into()),

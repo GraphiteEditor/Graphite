@@ -118,6 +118,7 @@ impl PropertyHolder for PenTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
+			true,
 			WidgetCallback::new(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value)).into()),
@@ -127,6 +128,7 @@ impl PropertyHolder for PenTool {
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
+			true,
 			WidgetCallback::new(|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value)).into()),

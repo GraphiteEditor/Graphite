@@ -61,6 +61,7 @@ impl ToolColorOptions {
 	pub fn create_widgets(
 		&self,
 		label_text: impl Into<String>,
+		color_allow_none: bool,
 		reset_callback: WidgetCallback<IconButton>,
 		radio_callback: fn(ToolColorType) -> WidgetCallback<()>,
 		color_callback: WidgetCallback<ColorInput>,
@@ -86,7 +87,7 @@ impl ToolColorOptions {
 		.collect();
 		let radio = RadioInput::new(entries).selected_index(self.color_type.clone() as u32).widget_holder();
 
-		let mut color_input = ColorInput::new(self.active_color());
+		let mut color_input = ColorInput::new(self.active_color()).allow_none(color_allow_none);
 		color_input.on_update = color_callback;
 
 		vec![

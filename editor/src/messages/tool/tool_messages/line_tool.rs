@@ -96,6 +96,7 @@ impl PropertyHolder for LineTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = self.options.stroke.create_widgets(
 			"Stroke",
+			true,
 			WidgetCallback::new(|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value)).into()),

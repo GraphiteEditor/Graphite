@@ -834,7 +834,7 @@ export class ColorInput extends WidgetProps {
 
 	// TODO: Implement
 	// allowTransparency!: boolean;
-	// allowNone!: boolean;
+	allowNone!: boolean;
 	// disabled!: boolean;
 
 	@Transform(({ value }: { value: string }) => value || undefined)

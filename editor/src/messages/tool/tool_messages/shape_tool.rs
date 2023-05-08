@@ -113,6 +113,7 @@ impl PropertyHolder for ShapeTool {
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
+			true,
 			WidgetCallback::new(|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(color.value)).into()),
@@ -122,6 +123,7 @@ impl PropertyHolder for ShapeTool {
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
+			true,
 			WidgetCallback::new(|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(color.value)).into()),

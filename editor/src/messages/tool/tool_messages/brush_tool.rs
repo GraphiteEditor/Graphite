@@ -96,6 +96,7 @@ impl PropertyHolder for BrushTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = self.options.color.create_widgets(
 			"Color",
+			false,
 			WidgetCallback::new(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into()),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into()),
@@ -369,7 +370,7 @@ fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, responses
 			// Flow
 			NodeInput::value(TaggedValue::F64(tool_options.flow), false),
 			// Color
-			NodeInput::value(TaggedValue::Color(tool_options.color.active_color().unwrap_or(Color::TRANSPARENT)), false),
+			NodeInput::value(TaggedValue::Color(tool_options.color.active_color().unwrap()), false),
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },
