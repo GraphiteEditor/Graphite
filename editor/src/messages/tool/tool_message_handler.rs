@@ -129,6 +129,9 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
 				responses.add(BroadcastEvent::DocumentIsDirty);
 
+				// Update the working colors for the active tool
+				responses.add(BroadcastEvent::WorkingColorChanged);
+
 				// Send tool options to the frontend
 				responses.add(ToolMessage::RefreshToolOptions);
 
