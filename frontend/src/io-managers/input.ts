@@ -43,7 +43,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		{ target: window, eventName: "wheel", action: (e: WheelEvent) => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 		{ target: window, eventName: "focusout", action: () => (canvasFocused = false) },
-		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => e.preventDefault() },
+		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e)  },
 		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => onPaste(e) },
 	];
@@ -215,6 +215,15 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		}
 	}
 
+	function onContextMenu(e: MouseEvent): void {
+		const { target } = e;
+		const inTextInput = target === textInput;
+			
+		if (!inTextInput && !targetIsTextField(target)) {
+			e.preventDefault();
+		}
+	}
+
 	function onModifyInputField(e: CustomEvent): void {
 		textInput = e.detail;
 	}
@@ -357,6 +366,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	return unbindListeners;
 }
 
-function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
-	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
+function targetIsTextField(target: EventTarget | HTMLElement | undefined | null): boolean {
+	return target != null && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 }
