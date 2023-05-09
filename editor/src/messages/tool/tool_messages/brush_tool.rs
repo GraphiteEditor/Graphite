@@ -1,18 +1,20 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
+use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
+use graphene_core::Color;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -28,6 +30,7 @@ pub struct BrushOptions {
 	diameter: f64,
 	hardness: f64,
 	flow: f64,
+	color: ToolColorOptions,
 }
 
 impl Default for BrushOptions {
@@ -36,6 +39,7 @@ impl Default for BrushOptions {
 			diameter: 40.,
 			hardness: 50.,
 			flow: 100.,
+			color: ToolColorOptions::default(),
 		}
 	}
 }
@@ -47,6 +51,8 @@ pub enum BrushToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	DragStart,
@@ -59,9 +65,12 @@ pub enum BrushToolMessage {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
 	ChangeDiameter(f64),
+	Color(Option<Color>),
+	ColorType(ToolColorType),
 	Diameter(f64),
 	Flow(f64),
 	Hardness(f64),
+	WorkingColors(Option<Color>, Option<Color>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -85,32 +94,42 @@ impl ToolMetadata for BrushTool {
 
 impl PropertyHolder for BrushTool {
 	fn properties(&self) -> Layout {
-		let diameter = NumberInput::new(Some(self.options.diameter))
-			.label("Diameter")
-			.min(1.)
-			.unit(" px")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
-			.widget_holder();
-		let hardness = NumberInput::new(Some(self.options.hardness))
-			.label("Hardness")
-			.min(0.)
-			.max(100.)
-			.unit("%")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
-			.widget_holder();
-		let flow = NumberInput::new(Some(self.options.flow))
-			.label("Flow")
-			.min(1.)
-			.max(100.)
-			.unit("%")
-			.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
-			.widget_holder();
+		let mut widgets = vec![
+			NumberInput::new(Some(self.options.diameter))
+				.label("Diameter")
+				.min(1.)
+				.unit(" px")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(self.options.hardness))
+				.label("Hardness")
+				.min(0.)
+				.max(100.)
+				.unit("%")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(self.options.flow))
+				.label("Flow")
+				.min(1.)
+				.max(100.)
+				.unit("%")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
+				.widget_holder(),
+		];
 
-		let separator = Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder();
+		widgets.push(WidgetHolder::section_separator());
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![diameter, separator.clone(), hardness, separator, flow],
-		}]))
+		widgets.append(&mut self.options.color.create_widgets(
+			"Color",
+			false,
+			WidgetCallback::new(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into()),
+		));
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -133,7 +152,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
+				BrushToolMessageOptionsUpdate::Color(color) => {
+					self.options.color.custom_color = color;
+					self.options.color.color_type = ToolColorType::Custom;
+				}
+				BrushToolMessageOptionsUpdate::ColorType(color_type) => self.options.color.color_type = color_type,
+				BrushToolMessageOptionsUpdate::WorkingColors(primary, secondary) => {
+					self.options.color.primary_working_color = primary;
+					self.options.color.secondary_working_color = secondary;
+				}
 			}
+
+			responses.add(LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target: LayoutTarget::ToolOptions,
+			});
+
 			return;
 		}
 
@@ -164,6 +198,7 @@ impl ToolTransition for BrushTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(BrushToolMessage::Abort.into()),
+			working_color_changed: Some(BrushToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
 	}
@@ -247,7 +282,7 @@ impl Fsm for BrushToolFsmState {
 					tool_data.points.push(vec![pos]);
 
 					if new_layer {
-						add_brush_render(tool_options, tool_data, global_tool_data, responses);
+						add_brush_render(tool_options, tool_data, responses);
 					} else {
 						//tool_data.update_image(node_graph, responses);
 						tool_data.update_points(responses);
@@ -291,6 +326,13 @@ impl Fsm for BrushToolFsmState {
 
 					Ready
 				}
+				(_, WorkingColorChanged) => {
+					responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::WorkingColors(
+						Some(global_tool_data.primary_color),
+						Some(global_tool_data.secondary_color),
+					)));
+					self
+				}
 				_ => self,
 			}
 		} else {
@@ -312,7 +354,7 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, tool_data: &DocumentToolData, responses: &mut VecDeque<Message>) {
+fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, responses: &mut VecDeque<Message>) {
 	let layer_path = data.path.clone().unwrap();
 
 	let brush_node = DocumentNode {
@@ -329,7 +371,7 @@ fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, tool_data
 			// Flow
 			NodeInput::value(TaggedValue::F64(tool_options.flow), false),
 			// Color
-			NodeInput::value(TaggedValue::Color(tool_data.primary_color), false),
+			NodeInput::value(TaggedValue::Color(tool_options.color.active_color().unwrap()), false),
 		],
 		implementation: DocumentNodeImplementation::Unresolved("graphene_std::brush::BrushNode".into()),
 		metadata: graph_craft::document::DocumentNodeMetadata { position: (8, 4).into() },

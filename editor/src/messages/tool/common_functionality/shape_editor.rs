@@ -186,6 +186,8 @@ impl ShapeState {
 
 					// If there is no opposing handle, we mirror even if mirror_angle doesn't contain the group
 					// and set angle mirroring to true.
+					// If there is no opposing handle, we mirror even if mirror_angle doesn't contain the group
+					// and set angle mirroring to true.
 					if !mirror && point.manipulator_type.opposite().get_position(group).is_none() {
 						responses.add(GraphOperationMessage::Vector {
 							layer: layer_path.clone(),
