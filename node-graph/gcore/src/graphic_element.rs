@@ -1,22 +1,19 @@
-use core::ops::{Deref, DerefMut};
+use crate::raster::{BlendMode, ImageFrame};
+use crate::vector::VectorData;
+use crate::{Color, Node};
 
-use crate::Node;
 use dyn_any::{DynAny, StaticType};
+
+use core::ops::{Deref, DerefMut};
 use glam::IVec2;
 use node_macro::node_fn;
-
-use crate::{
-	raster::{BlendMode, ImageFrame},
-	vector::VectorData,
-	Color,
-};
 
 /// A list of [`GraphicElement`]s
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup(Vec<GraphicElement>);
 
-/// Internal data for a [`GraphicElement`]. Can be [`VectorData`], [`ImageFrame`], text or a [`GraphicGroup`]
+/// Internal data for a [`GraphicElement`]. Can be [`VectorData`], [`ImageFrame`], text, or a nested [`GraphicGroup`]
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElementData {
@@ -25,7 +22,8 @@ pub enum GraphicElementData {
 	Text(String),
 	GraphicGroup(GraphicGroup),
 }
-/// A named [`GraphicElementData`] with a blend mode, opacity, visibility, locked and collapsed state.
+
+/// A named [`GraphicElementData`] with a blend mode, opacity, as well as visibility, locked, and collapsed states.
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicElement {
@@ -39,7 +37,7 @@ pub struct GraphicElement {
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds and a label, that can be exported.
-/// Similar to an inkscpae page: https://media.inkscape.org/media/doc/release_notes/1.2/Inkscape_1.2.html#Page_tool
+/// Similar to an Inkscape page: https://media.inkscape.org/media/doc/release_notes/1.2/Inkscape_1.2.html#Page_tool
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
@@ -137,6 +135,7 @@ impl From<ArtboardGroup> for ArtboardData {
 		Self::ArtboardGroup(artboard_group)
 	}
 }
+
 impl Deref for ArtboardGroup {
 	type Target = Vec<Artboard>;
 	fn deref(&self) -> &Self::Target {
@@ -148,6 +147,7 @@ impl DerefMut for ArtboardGroup {
 		&mut self.0
 	}
 }
+
 impl Deref for GraphicGroup {
 	type Target = Vec<GraphicElement>;
 	fn deref(&self) -> &Self::Target {
@@ -163,9 +163,11 @@ impl DerefMut for GraphicGroup {
 impl GraphicGroup {
 	pub const EMPTY: Self = Self(Vec::new());
 }
+
 impl ArtboardGroup {
 	pub const EMPTY: Self = Self(Vec::new());
 }
+
 impl core::hash::Hash for GraphicElement {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);

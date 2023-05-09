@@ -507,9 +507,9 @@ impl NodeNetwork {
 	}
 
 	pub fn is_acyclic(&self) -> bool {
-		let mut dependancies: HashMap<u64, Vec<u64>> = HashMap::new();
+		let mut dependencies: HashMap<u64, Vec<u64>> = HashMap::new();
 		for (node_id, node) in &self.nodes {
-			dependancies.insert(
+			dependencies.insert(
 				*node_id,
 				node.inputs
 					.iter()
@@ -517,13 +517,13 @@ impl NodeNetwork {
 					.collect(),
 			);
 		}
-		while !dependancies.is_empty() {
-			let Some((&disconnected, _)) = dependancies.iter().find(|(_, l)|l.is_empty()) else {
-				error!("Dependancies {dependancies:?}");
+		while !dependencies.is_empty() {
+			let Some((&disconnected, _)) = dependencies.iter().find(|(_, l)| l.is_empty()) else {
+				error!("Dependencies {dependencies:?}");
 				return false
 			};
-			dependancies.remove(&disconnected);
-			for connections in dependancies.values_mut() {
+			dependencies.remove(&disconnected);
+			for connections in dependencies.values_mut() {
 				connections.retain(|&id| id != disconnected);
 			}
 		}
@@ -786,19 +786,16 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			match node.implementation {
-				DocumentNodeImplementation::Extract => {
-					assert_eq!(node.inputs.len(), 1);
-					let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
-						panic!("Extract node has no input");
-					};
-					assert_eq!(output_index, 0);
-					assert!(lambda);
-					let input_node = self.nodes.get_mut(&node_id).unwrap();
-					node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
-					node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
-				}
-				_ => (),
+			if let DocumentNodeImplementation::Extract = node.implementation {
+				assert_eq!(node.inputs.len(), 1);
+				let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
+					panic!("Extract node has no input");
+				};
+				assert_eq!(output_index, 0);
+				assert!(lambda);
+				let input_node = self.nodes.get_mut(&node_id).unwrap();
+				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
 			}
 		}
 		self.nodes.extend(extraction_nodes);
