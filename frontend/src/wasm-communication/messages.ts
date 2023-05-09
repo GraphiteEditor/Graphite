@@ -74,7 +74,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "number";
+export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "vec2" | "graphic" | "artboard";
 
 export class NodeGraphInput {
 	readonly dataType!: FrontendGraphDataType;

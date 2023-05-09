@@ -75,7 +75,6 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-#[cfg(feature = "gpu")]
 fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
 
@@ -203,7 +202,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			WidgetHolder::unrelated_separator(),
 			number_props
 				.value(Some(x))
-				.on_update(update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
 				.widget_holder(),
 		])
 	} else if let NodeInput::Value {
@@ -215,7 +214,19 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			WidgetHolder::unrelated_separator(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(update_value(|x: &NumberInput| TaggedValue::U32(x.value.unwrap() as u32), node_id, index))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
+				.widget_holder(),
+		])
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::F32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap()) as f32), node_id, index))
 				.widget_holder(),
 		])
 	}
@@ -788,14 +799,8 @@ pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
 	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
-	let gamma_correction = number_widget(
-		document_node,
-		node_id,
-		3,
-		"Gamma Correction",
-		NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1),
-		true,
-	);
+	let gamma_input = NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1);
+	let gamma_correction = number_widget(document_node, node_id, 3, "Gamma Correction", gamma_input, true);
 
 	vec![
 		LayoutGroup::Row { widgets: exposure },
@@ -1434,7 +1439,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		};
 
 		let blur_radius = {
-			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", NumberInput::default().unit(" px").min(0.).max(25.).int(), true);
+			let number_props = NumberInput::default().unit(" px").min(0.).max(25.).int();
+			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", number_props, true);
 			LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
 		};
 
@@ -1589,4 +1595,26 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	}
 
 	widgets
+}
+
+pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let name = text_widget(document_node, node_id, 1, "Name", true);
+	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let visible = bool_widget(document_node, node_id, 4, "Visible", true);
+	let locked = bool_widget(document_node, node_id, 5, "Locked", true);
+	let collapsed = bool_widget(document_node, node_id, 6, "Collapsed", true);
+
+	vec![
+		LayoutGroup::Row { widgets: name },
+		blend_mode,
+		LayoutGroup::Row { widgets: opacity },
+		LayoutGroup::Row { widgets: visible },
+		LayoutGroup::Row { widgets: locked },
+		LayoutGroup::Row { widgets: collapsed },
+	]
+}
+pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let label = text_widget(document_node, node_id, 1, "Label", true);
+	vec![LayoutGroup::Row { widgets: label }]
 }

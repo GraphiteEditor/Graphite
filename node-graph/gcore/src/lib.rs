@@ -27,6 +27,10 @@ pub mod raster;
 pub mod transform;
 
 #[cfg(feature = "alloc")]
+mod graphic_element;
+#[cfg(feature = "alloc")]
+pub use graphic_element::*;
+#[cfg(feature = "alloc")]
 pub mod vector;
 
 pub mod quantization;
