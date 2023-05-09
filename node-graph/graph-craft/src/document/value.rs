@@ -58,7 +58,7 @@ pub enum TaggedValue {
 	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
-	ArtboardGroup(graphene_core::ArtboardGroup),
+	Artboard(graphene_core::Artboard),
 	Optional2IVec2(Option<[glam::IVec2; 2]>),
 }
 
@@ -128,7 +128,7 @@ impl Hash for TaggedValue {
 			Self::EditorApi(editor_api) => editor_api.hash(state),
 			Self::DocumentNode(document_node) => document_node.hash(state),
 			Self::GraphicGroup(graphic_group) => graphic_group.hash(state),
-			Self::ArtboardGroup(artboard_group) => artboard_group.hash(state),
+			Self::Artboard(artboard) => artboard.hash(state),
 			Self::Optional2IVec2(v) => v.hash(state),
 		}
 	}
@@ -180,7 +180,7 @@ impl<'a> TaggedValue {
 			TaggedValue::EditorApi(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
-			TaggedValue::ArtboardGroup(x) => Box::new(x),
+			TaggedValue::Artboard(x) => Box::new(x),
 			TaggedValue::Optional2IVec2(x) => Box::new(x),
 		}
 	}
@@ -243,7 +243,7 @@ impl<'a> TaggedValue {
 			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
-			TaggedValue::ArtboardGroup(_) => concrete!(graphene_core::ArtboardGroup),
+			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
 			TaggedValue::Optional2IVec2(_) => concrete!(Option<[glam::IVec2; 2]>),
 		}
 	}

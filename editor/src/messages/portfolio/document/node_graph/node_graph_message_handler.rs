@@ -37,7 +37,7 @@ pub enum FrontendGraphDataType {
 	#[serde(rename = "graphic")]
 	GraphicGroup,
 	#[serde(rename = "artboard")]
-	ArtboardGroup,
+	Artboard,
 }
 impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
@@ -51,7 +51,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
-			TaggedValue::ArtboardGroup(_) => Self::ArtboardGroup,
+			TaggedValue::Artboard(_) => Self::Artboard,
 			_ => Self::General,
 		}
 	}

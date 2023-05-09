@@ -126,7 +126,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Name", TaggedValue::String(String::new()), false),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
-				DocumentInputType::value("Opacity", TaggedValue::F32(1.), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 				DocumentInputType::value("Visible", TaggedValue::Bool(true), false),
 				DocumentInputType::value("Locked", TaggedValue::Bool(false), false),
 				DocumentInputType::value("Collapsed", TaggedValue::Bool(false), false),
@@ -138,14 +138,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Artboard",
 			category: "General",
-			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Label", TaggedValue::String(String::new()), false),
 				DocumentInputType::value("Bounds", TaggedValue::Optional2IVec2(None), false),
-				DocumentInputType::value("Stack", TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
 			],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::ArtboardGroup)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,
 		},
 		DocumentNodeType {

@@ -21,6 +21,7 @@ pub enum GraphicElementData {
 	ImageFrame(ImageFrame<Color>),
 	Text(String),
 	GraphicGroup(GraphicGroup),
+	Artboard(Artboard),
 }
 
 /// A named [`GraphicElementData`] with a blend mode, opacity, as well as visibility, locked, and collapsed states.
@@ -37,27 +38,13 @@ pub struct GraphicElement {
 	pub graphic_element_data: GraphicElementData,
 }
 
-/// Some [`ArtboardData`] with some optional clipping bounds and a label, that can be exported.
+/// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 /// Similar to an Inkscape page: https://media.inkscape.org/media/doc/release_notes/1.2/Inkscape_1.2.html#Page_tool
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
-	pub artboard_data: ArtboardData,
-	pub label: String,
+	pub graphic_group: GraphicGroup,
 	pub bounds: Option<[IVec2; 2]>,
-}
-
-/// A list of [`Artboard`]s
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ArtboardGroup(Vec<Artboard>);
-
-/// Either a [`GraphicGroup`] or a nested [`ArtboardGroup`].
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ArtboardData {
-	GraphicGroup(GraphicGroup),
-	ArtboardGroup(ArtboardGroup),
 }
 
 pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
@@ -93,20 +80,13 @@ fn construct_layer<Data: Into<GraphicElementData>>(
 	stack
 }
 
-pub struct ConstructArtboardNode<Label, Bounds, Stack> {
-	label: Label,
+pub struct ConstructArtboardNode<Bounds> {
 	bounds: Bounds,
-	stack: Stack,
 }
 
 #[node_fn(ConstructArtboardNode)]
-fn construct_artboard<D: Into<ArtboardData>>(data: D, label: String, bounds: Option<[IVec2; 2]>, mut stack: ArtboardGroup) -> ArtboardGroup {
-	stack.push(Artboard {
-		artboard_data: data.into(),
-		label,
-		bounds,
-	});
-	stack
+fn construct_artboard(graphic_group: GraphicGroup, bounds: Option<[IVec2; 2]>) -> Artboard {
+	Artboard { graphic_group, bounds }
 }
 
 impl From<ImageFrame<Color>> for GraphicElementData {
@@ -125,27 +105,9 @@ impl From<GraphicGroup> for GraphicElementData {
 	}
 }
 
-impl From<GraphicGroup> for ArtboardData {
-	fn from(graphic_group: GraphicGroup) -> Self {
-		Self::GraphicGroup(graphic_group)
-	}
-}
-
-impl From<ArtboardGroup> for ArtboardData {
-	fn from(artboard_group: ArtboardGroup) -> Self {
-		Self::ArtboardGroup(artboard_group)
-	}
-}
-
-impl Deref for ArtboardGroup {
-	type Target = Vec<Artboard>;
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-impl DerefMut for ArtboardGroup {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
+impl From<Artboard> for GraphicElementData {
+	fn from(artboard: Artboard) -> Self {
+		GraphicElementData::Artboard(artboard)
 	}
 }
 
@@ -162,10 +124,6 @@ impl DerefMut for GraphicGroup {
 }
 
 impl GraphicGroup {
-	pub const EMPTY: Self = Self(Vec::new());
-}
-
-impl ArtboardGroup {
 	pub const EMPTY: Self = Self(Vec::new());
 }
 

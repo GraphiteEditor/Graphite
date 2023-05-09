@@ -316,8 +316,8 @@ impl NodeGraphExecutor {
 				}];
 				responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
 			}
-		} else if core::any::TypeId::of::<graphene_core::ArtboardGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
-			let artboard: graphene_core::ArtboardGroup = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
+		} else if core::any::TypeId::of::<graphene_core::Artboard>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
+			let artboard: graphene_core::Artboard = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
 			info!("{artboard:#?}");
 			return Err(format!("Artboard (see console)"));
 		} else if core::any::TypeId::of::<graphene_core::GraphicGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
