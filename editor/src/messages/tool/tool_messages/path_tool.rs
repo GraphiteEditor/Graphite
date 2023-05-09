@@ -288,12 +288,12 @@ impl Fsm for PathToolFsmState {
 
 				// Mouse up
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
-					shape_editor.delete_selected_handles_with_zero_length(&document.document_legacy, responses);
-
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
 						.map(|(_, nearest_point)| nearest_point);
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+					shape_editor.delete_selected_handles_with_zero_length(&document.document_legacy, &tool_data.opposing_handle_lengths, responses);
 
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));

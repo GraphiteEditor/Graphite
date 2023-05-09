@@ -182,6 +182,8 @@ impl ShapeState {
 				if mirror_distance && point.manipulator_type != SelectedType::Anchor {
 					let mut mirror = vector_data.mirror_angle.contains(&point.group);
 
+					// If there is no opposing handle, we mirror even if mirror_angle doesn't contain the group
+					// and set angle mirroring to true.
 					if !mirror && point.manipulator_type.opposite().get_position(group).is_none() {
 						responses.add(GraphOperationMessage::Vector {
 							layer: layer_path.clone(),
@@ -209,12 +211,20 @@ impl ShapeState {
 		}
 	}
 
-	/// Delete handles with zero length when the drag stops.
-	pub fn delete_selected_handles_with_zero_length(&self, document: &Document, responses: &mut VecDeque<Message>) {
-		debug!("Delete selected handles start");
+	/// Delete selected and mirrored handles with zero length when the drag stops.
+	pub fn delete_selected_handles_with_zero_length(
+		&self,
+		document: &Document,
+		opposing_handle_lengths: &Option<HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, Option<f64>>>>,
+		responses: &mut VecDeque<Message>,
+	) {
 		for (layer_path, state) in &self.selected_shape_state {
 			let Ok(layer) = document.layer(layer_path) else { continue };
 			let Some(vector_data) = layer.as_vector_data() else { continue };
+
+			let opposing_handle_lengths = opposing_handle_lengths.as_ref().map(|lengths| lengths.get(layer_path));
+
+			let transform = document.multiply_transforms(&layer_path).unwrap_or(glam::DAffine2::IDENTITY);
 
 			for &point in state.selected_points.iter() {
 				if !point.manipulator_type.is_handle() {
@@ -223,24 +233,31 @@ impl ShapeState {
 
 				let Some(group) = vector_data.manipulator_from_id(point.group) else { continue };
 
-				let Some(point_position) = point.manipulator_type.get_position(group) else { return };
-				debug!("Group anchor {:?}", group.anchor);
-				debug!("Point position {:?}", point_position);
-				if (group.anchor - point_position).length() < DRAG_THRESHOLD {
+				let anchor_position = transform.transform_point2(group.anchor);
+
+				let point_position = if let Some(position) = point.manipulator_type.get_position(group) {
+					transform.transform_point2(position)
+				} else {
+					continue;
+				};
+
+				if (anchor_position - point_position).length() < DRAG_THRESHOLD {
 					responses.add(GraphOperationMessage::Vector {
 						layer: layer_path.clone(),
 						modification: VectorDataModification::RemoveManipulatorPoint { point },
 					});
-				}
 
-				let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-				if !state.is_selected(opposite_point) {
-					let Some(opposite_point_position) = opposite_point.manipulator_type.get_position(group) else { return };
-					if (group.anchor - opposite_point_position).length() < DRAG_THRESHOLD {
-						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.clone(),
-							modification: VectorDataModification::RemoveManipulatorPoint { point: opposite_point },
-						});
+					let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
+					// Remove opposing handle if it is not selected and is mirrored.
+					if !state.is_selected(opposite_point) && vector_data.mirror_angle.contains(&point.group) {
+						if let Some(Some(lengths)) = opposing_handle_lengths {
+							if lengths.contains_key(&point.group) {
+								responses.add(GraphOperationMessage::Vector {
+									layer: layer_path.clone(),
+									modification: VectorDataModification::RemoveManipulatorPoint { point: opposite_point },
+								});
+							}
+						}
 					}
 				}
 			}
@@ -249,8 +266,7 @@ impl ShapeState {
 
 	/// The opposing handle lengths.
 	pub fn opposing_handle_lengths(&self, document: &Document) -> HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, Option<f64>>> {
-		let lengths = self
-			.selected_shape_state
+		self.selected_shape_state
 			.iter()
 			.filter_map(|(path, state)| {
 				let layer = document.layer(path).ok()?;
@@ -261,9 +277,8 @@ impl ShapeState {
 					.flat_map(|subpath| {
 						subpath.manipulator_groups().iter().filter_map(|manipulator_group| {
 							// We will keep track of the opposing handle length when:
-							// i) Both handles exist and exactly one is selected.
+							// i) Exactly one handle is selected.
 							// ii) The anchor is not selected.
-							// iii) We have to mirror the angle between handles.
 
 							let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
 							let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
@@ -292,9 +307,7 @@ impl ShapeState {
 					.collect::<HashMap<_, _>>();
 				Some((path.clone(), opposing_handle_lengths))
 			})
-			.collect::<HashMap<_, _>>();
-		debug!("Opposing handle lengths: {lengths:?}");
-		lengths
+			.collect::<HashMap<_, _>>()
 	}
 
 	/// Reset the opposing handle lengths.
