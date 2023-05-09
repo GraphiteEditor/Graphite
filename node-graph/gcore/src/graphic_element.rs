@@ -29,6 +29,7 @@ pub enum GraphicElementData {
 pub struct GraphicElement {
 	pub name: String,
 	pub blend_mode: BlendMode,
+	/// In range 0..=1
 	pub opacity: f32,
 	pub visible: bool,
 	pub locked: bool,
@@ -83,7 +84,7 @@ fn construct_layer<Data: Into<GraphicElementData>>(
 	stack.push(GraphicElement {
 		name,
 		blend_mode,
-		opacity,
+		opacity: opacity / 100.,
 		visible,
 		locked,
 		collapsed,
