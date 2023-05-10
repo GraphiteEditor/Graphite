@@ -94,7 +94,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
 				// *selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
-			debug!("*selected.pivot here {:?}", *selected.pivot);
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;
 			selected.original_transforms.clear();

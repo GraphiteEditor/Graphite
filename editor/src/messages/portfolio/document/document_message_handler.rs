@@ -228,7 +228,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// 		});
 
 				self.grid_enabled = grid;
-				debug!("Grid Activated");
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {

@@ -682,7 +682,6 @@ impl Document {
 				let layer = self.layer_mut(&path).unwrap();
 				let transform = DAffine2::from_cols_array(&transform) * layer.transform;
 				layer.transform = transform;
-				debug!("layer.transform {:?}", layer.transform);
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}

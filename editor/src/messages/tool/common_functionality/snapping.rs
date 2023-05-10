@@ -310,11 +310,7 @@ impl SnapManager {
 			let doc_space_delta = doc_transform.inverse().transform_vector2(mouse_delta + snapping_delta);
 			let desired_document_space = (layer_document_space + doc_space_delta).round();
 			let viewspace_delta = doc_transform.transform_vector2(desired_document_space - layer_document_space) - mouse_delta;
-			debug!("doc_transform {:?}", doc_transform);
-			debug!("layer_document_space {:?}", layer_document_space);
-			debug!("doc_space_delta {:?}", doc_space_delta);
-			debug!("desired_document_space {:?}", desired_document_space);
-			debug!("viewspace_delta {:?}", viewspace_delta);
+
 			snapping_delta = viewspace_delta;
 		}
 		snapping_delta
@@ -331,7 +327,6 @@ impl SnapManager {
 			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position).round();
 			snapped_position = doc_transform.transform_point2(doc_space_pos);
 		}
-		debug!("snap position {:?}", snapped_position);
 		snapped_position
 	}
 

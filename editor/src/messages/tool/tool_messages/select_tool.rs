@@ -625,14 +625,65 @@ impl Fsm for SelectToolFsmState {
 						.collect();
 
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
+					let transform_vec = mouse_delta + closest_move;
+					let mut new_transform_vec = transform_vec.clone();
+					let transform_vec_round = transform_vec.round();
+					let empty_vec = DVec2 { x: 0.0, y: 0.0 };
 					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-						responses.add_front(GraphOperationMessage::TransformChange {
-							layer: path.to_vec(),
-							transform: DAffine2::from_translation(mouse_delta + closest_move),
-							transform_in: TransformIn::Viewport,
-							skip_rerender: true,
-						});
+						if !(transform_vec_round == empty_vec) && document.grid_enabled {
+							// Get the layer's position in viewport and convert to document space
+							let viewspace = document.document_legacy.generate_transform_relative_to_viewport(path).ok().unwrap_or_default();
+							let viewspace_top_left_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
+							let doc_pos = document.document_legacy.root.transform.inverse().transform_point2(viewspace_top_left_pos);
+
+							// Find the x and y offset on the grid, Given 1.55 -> 0.55
+							let grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
+							let grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
+
+							// Check if the x and y offsets are on a whole number
+							let scaling_factor = 100.0;
+							let rounded_grid_x = (grid_offset_x * scaling_factor).round() / scaling_factor;
+							let rounded_grid_y = (grid_offset_y * scaling_factor).round() / scaling_factor;
+							let x_aligned = rounded_grid_x % 1.0 == 0.0;
+							let y_aligned = rounded_grid_y % 1.0 == 0.0;
+
+							// Direction of original transform
+							let moving_right = transform_vec.x > 0.0;
+							let moving_down = transform_vec.y > 0.0;
+
+							// If the x or y positions are off the grid, calculate the new transform that alligns with grid
+							if !x_aligned && transform_vec_round.y == 0.0 {
+								let limiter_x = grid_offset_x;
+								if moving_right {
+									new_transform_vec.x = new_transform_vec.x.abs() * limiter_x;
+								} else {
+									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - limiter_x) * -1.0;
+								}
+							}
+							if !y_aligned && transform_vec_round.x == 0.0 {
+								let limiter_y = grid_offset_y;
+								if moving_down {
+									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - limiter_y);
+								} else {
+									new_transform_vec.y = new_transform_vec.y.abs() * limiter_y * -1.0;
+								}
+							}
+
+							responses.add_front(GraphOperationMessage::TransformChange {
+								layer: path.to_vec(),
+								transform: DAffine2::from_translation(new_transform_vec),
+								transform_in: TransformIn::Viewport,
+								skip_rerender: true,
+							});
+						} else {
+							responses.add_front(GraphOperationMessage::TransformChange {
+								layer: path.to_vec(),
+								transform: DAffine2::from_translation(transform_vec),
+								transform_in: TransformIn::Viewport,
+								skip_rerender: true,
+							});
+						}
 					}
 					tool_data.drag_current = mouse_position + closest_move;
 
@@ -650,18 +701,14 @@ impl Fsm for SelectToolFsmState {
 							let (center, axis_align) = (input.keyboard.get(center as usize), input.keyboard.get(axis_align as usize));
 
 							let mouse_position = input.mouse.position;
-							debug!("hit");
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
-							debug!("snapped pos {:?}", snapped_mouse_position);
 							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
 							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
-							debug!("_pivot {:?}", pivot);
 							let doc_transform = document.document_legacy.root.transform;
 							pivot = doc_transform.inverse().transform_point2(pivot);
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 							let grid = document.grid_enabled;
-							debug!("delta {:?}", delta);
 							selected.update_transforms(delta, grid);
 						}
 					}
