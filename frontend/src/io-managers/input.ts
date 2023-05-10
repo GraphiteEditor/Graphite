@@ -21,12 +21,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	app?.focus();
 
 	let viewportPointerInteractionOngoing = false;
-	let textInput = undefined as undefined | HTMLDivElement;
+	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
 	let canvasFocused = true;
-
-	function blurApp(): void {
-		canvasFocused = false;
-	}
 
 	// Event listeners
 
@@ -154,7 +150,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
-		const inTextInput = target === textInput;
+		const inTextInput = target === textToolInteractiveInputElement;
 
 		if (get(dialog).visible && !inDialog) {
 			dialog.dismissDialog();
@@ -163,7 +159,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		}
 
 		if (!inTextInput) {
-			if (textInput) editor.instance.onChangeText(textInputCleanup(textInput.innerText));
+			if (textToolInteractiveInputElement) editor.instance.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 
@@ -179,7 +175,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	function onPointerUp(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		if (!textInput) {
+		if (!textToolInteractiveInputElement) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 		}
@@ -188,7 +184,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	function onDoubleClick(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		if (!textInput) {
+		if (!textToolInteractiveInputElement) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.onDoubleClick(e.clientX, e.clientY, e.buttons, modifiers);
 		}
@@ -216,16 +212,15 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	}
 
 	function onContextMenu(e: MouseEvent): void {
-		const { target } = e;
-		const inTextInput = target === textInput;
-			
-		if (!inTextInput && !targetIsTextField(target)) {
+		if (!targetIsTextField(e.target || undefined) && e.target !== textToolInteractiveInputElement) {
 			e.preventDefault();
 		}
 	}
 
+	// Receives a custom event dispatched when the user begins interactively editing with the text tool.
+	// We keep a copy of the text input element to check against when it's active for text entry.
 	function onModifyInputField(e: CustomEvent): void {
-		textInput = e.detail;
+		textToolInteractiveInputElement = e.detail;
 	}
 
 	// Window events
@@ -366,6 +361,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	return unbindListeners;
 }
 
-function targetIsTextField(target: EventTarget | HTMLElement | undefined | null): boolean {
-	return target != null && target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
+function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
+	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 }
