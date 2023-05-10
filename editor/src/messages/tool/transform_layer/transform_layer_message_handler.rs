@@ -180,6 +180,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap, document.grid_enabled),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap, document.grid_enabled),
 			PointerMove { slow_key, snap_key } => {
+				let doc_transform = document.document_legacy.root.transform;
+				let new_pivot = doc_transform.transform_point2(*selected.pivot);
+
 				self.slow = ipp.keyboard.get(slow_key as usize);
 
 				let new_snap = ipp.keyboard.get(snap_key as usize);
@@ -205,12 +208,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let doc_transform = document.document_legacy.root.transform;
-							let new_pivot = doc_transform.transform_point2(*selected.pivot);
 							let start_offset = new_pivot - self.mouse_position;
 							let end_offset = new_pivot - ipp.mouse.position;
 							let angle = start_offset.angle_between(end_offset);
-							
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
@@ -219,9 +219,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
-								let previous_frame_dist = (self.mouse_position - *selected.pivot).length();
-								let current_frame_dist = (ipp.mouse.position - *selected.pivot).length();
-								let start_transform_dist = (self.start_mouse - *selected.pivot).length();
+								let previous_frame_dist = (self.mouse_position - new_pivot).length();
+								let current_frame_dist = (ipp.mouse.position - new_pivot).length();
+								let start_transform_dist = (self.start_mouse - new_pivot).length();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};

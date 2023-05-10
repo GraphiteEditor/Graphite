@@ -652,13 +652,16 @@ impl Fsm for SelectToolFsmState {
 							let mouse_position = input.mouse.position;
 							debug!("hit");
 							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
-
+							debug!("snapped pos {:?}", snapped_mouse_position);
 							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
-							let (delta, mut _pivot) = movement.bounds_to_scale_transform(position, size);
-
+							let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
+							debug!("_pivot {:?}", pivot);
+							let doc_transform = document.document_legacy.root.transform;
+							pivot = doc_transform.inverse().transform_point2(pivot);
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
+							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 							let grid = document.grid_enabled;
+							debug!("delta {:?}", delta);
 							selected.update_transforms(delta, grid);
 						}
 					}

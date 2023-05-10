@@ -190,7 +190,7 @@ impl TransformOperation {
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
 				TransformOperation::None => unreachable!(),
 			};
-			
+
 			selected.update_transforms(transformation, grid);
 			self.hints(snapping, axis_constraint, selected.responses);
 		}
@@ -372,16 +372,19 @@ impl<'a> Selected<'a> {
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool) {
 		if !self.selected.is_empty() {
+			debug!("*self.pivot {:?}", *self.pivot);
 			let doc_transform = self.document.root.transform;
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
-			
+			debug!("pivot_points {:?}", pivot_point);
+
 			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
-			
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
 				let parent_folder_path = &layer_path[..layer_path.len() - 1];
+				let viewspace = self.document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
+
 				if *self.tool_type == ToolType::Select {
 					let original_layer_transforms = match self.original_transforms {
 						OriginalTransforms::Layer(layer_map) => *layer_map.get(*layer_path).unwrap(),
@@ -392,6 +395,7 @@ impl<'a> Selected<'a> {
 					};
 					let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 					let new = to.inverse() * transformation * to * original_layer_transforms;
+
 					self.responses.add(GraphOperationMessage::TransformSet {
 						layer: layer_path.to_vec(),
 						transform: new,
@@ -400,7 +404,6 @@ impl<'a> Selected<'a> {
 					});
 				}
 				if *self.tool_type == ToolType::Path {
-					let viewspace = self.document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
 					let layerspace_rotation = viewspace.inverse() * transformation;
 					let initial_points = match self.original_transforms {
 						OriginalTransforms::Layer(_layer_map) => {
@@ -424,10 +427,10 @@ impl<'a> Selected<'a> {
 						let mut position: DVec2 = layer_spacepos;
 						if grid {
 							let viewspace_pos = viewspace.transform_point2(layer_spacepos);
-							//todo convert from layerspacepos to doc pos
+							//todo convert from viewspace_pos to doc position
 							let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
 
-							//todo convert from viewport pos to document pos
+							//todo convert from viewport pos to document pos (rounding happens here)
 							let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
 
 							//round document pos then convert back to viewport
