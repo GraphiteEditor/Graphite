@@ -532,6 +532,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: graphene_core::EditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: graphene_core::EditorApi, params: []),
+		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::vector::VectorData, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
+		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: ImageFrame<Color>, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
+		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::GraphicGroup, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
+		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::Artboard, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
+		register_node!(graphene_core::ConstructArtboardNode<_>, input: graphene_core::GraphicGroup, params: [Option<[glam::IVec2; 2]>]),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {
