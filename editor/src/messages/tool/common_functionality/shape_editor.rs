@@ -164,8 +164,6 @@ impl ShapeState {
 
 				let mut move_point = |point: ManipulatorPointId| {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
-					debug!("previous_position {:?}", previous_position);
-					debug!("delta {:?}", delta);
 					// let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
 
 					// let viewspace_pos = viewspace.transform_point2(previous_position + delta);

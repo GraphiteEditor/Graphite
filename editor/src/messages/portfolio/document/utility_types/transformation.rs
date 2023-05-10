@@ -372,10 +372,8 @@ impl<'a> Selected<'a> {
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool) {
 		if !self.selected.is_empty() {
-			debug!("*self.pivot {:?}", *self.pivot);
 			let doc_transform = self.document.root.transform;
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
-			debug!("pivot_points {:?}", pivot_point);
 
 			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
