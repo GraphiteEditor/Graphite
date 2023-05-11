@@ -226,7 +226,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// 			transform_in: TransformIn::Viewport,
 				// 			skip_rerender: false,
 				// 		});
-
 				self.grid_enabled = grid;
 			}
 			AddSelectedLayers { additional_layers } => {

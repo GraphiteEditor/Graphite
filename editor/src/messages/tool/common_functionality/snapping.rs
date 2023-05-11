@@ -324,8 +324,8 @@ impl SnapManager {
 		}
 		if document_message_handler.grid_enabled {
 			let doc_transform = document_message_handler.document_legacy.root.transform;
-			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position).round();
-			snapped_position = doc_transform.transform_point2(doc_space_pos);
+			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position);
+			snapped_position = doc_transform.transform_point2(doc_space_pos.round());
 		}
 		snapped_position
 	}
