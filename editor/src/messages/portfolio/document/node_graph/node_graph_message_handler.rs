@@ -652,6 +652,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					}
 				};
 
+				if data.is_empty() {
+					return;
+				}
+
 				// Shift nodes until it is not in the same position as another node
 				let mut shift = IVec2::ZERO;
 				while data
