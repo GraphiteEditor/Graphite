@@ -563,6 +563,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 
 					Self::send_graph(network, responses);
 					self.update_selected(document, responses);
+					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
