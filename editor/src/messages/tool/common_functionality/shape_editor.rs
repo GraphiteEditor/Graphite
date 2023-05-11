@@ -176,7 +176,7 @@ impl ShapeState {
 					// //round document pos then convert back to viewport
 					// let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
 
-					let position = previous_position - delta;
+					let position = previous_position + delta;
 					responses.add(GraphOperationMessage::Vector {
 						layer: layer_path.clone(),
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
