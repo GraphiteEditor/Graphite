@@ -121,7 +121,39 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Layer",
 			category: "General",
-			identifier: NodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>"),
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0; 8],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					(
+						0,
+						DocumentNode {
+							inputs: vec![
+								NodeInput::Network(concrete!(graphene_core::vector::VectorData)),
+								NodeInput::Network(concrete!(String)),
+								NodeInput::Network(concrete!(BlendMode)),
+								NodeInput::Network(concrete!(f32)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
+							],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>"),
+							..Default::default()
+						},
+					),
+					(
+						1,
+						DocumentNode {
+							inputs: vec![NodeInput::node(0, 0)],
+							implementation: DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"),
+							..Default::default()
+						},
+					),
+				]
+				.into(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Name", TaggedValue::String(String::new()), false),

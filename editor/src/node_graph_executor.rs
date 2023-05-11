@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 use document_legacy::{document::pick_safe_imaginate_resolution, layers::layer_info::LayerDataType};
 use document_legacy::{LayerId, Operation};
 use dyn_any::DynAny;
-use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
@@ -24,6 +24,7 @@ pub struct NodeGraphExecutor {
 	pub(crate) executor: DynamicExecutor,
 	// TODO: This is a memory leak since layers are never removed
 	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
+	pub(crate) thumbnails: HashMap<(LayerId, NodeId), String>,
 }
 
 impl NodeGraphExecutor {
@@ -319,13 +320,63 @@ impl NodeGraphExecutor {
 		} else if core::any::TypeId::of::<graphene_core::Artboard>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
 			let artboard: graphene_core::Artboard = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
 			info!("{artboard:#?}");
+			if self.update_thumbnails(&layer_path, &layer_layer.network) {
+				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+			}
 			return Err(format!("Artboard (see console)"));
 		} else if core::any::TypeId::of::<graphene_core::GraphicGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
 			let graphic_group: graphene_core::GraphicGroup = dyn_any::downcast(boxed_node_graph_output).map(|graphic| *graphic)?;
 			info!("{graphic_group:#?}");
+			if self.update_thumbnails(&layer_path, &layer_layer.network) {
+				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+			}
 			return Err(format!("Graphic group (see console)"));
 		}
 
 		Ok(())
+	}
+
+	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], network: &NodeNetwork) -> bool {
+		warn!("Update thumbnails");
+		let mut changed = false;
+		for (node, _network, node_path) in network.recursive_nodes() {
+			if node.implementation != DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>") {
+				continue;
+			}
+			let Some(value) = self.executor.introspect(&node_path).flatten() else {
+				continue;
+			};
+			if let Some(graphic_group) = value.downcast_ref::<graphene_core::GraphicGroup>() {
+				use graphene_core::renderer::*;
+				let bounds = graphic_group.bounding_box(DAffine2::IDENTITY);
+				let render_params = RenderParams {
+					view_mode: Default::default(),
+					culling_bounds: bounds,
+					thumbnail: true,
+				};
+				let mut render = SvgRender::new();
+				graphic_group.render_svg(&mut render, &render_params);
+				let [min, max] = bounds.unwrap_or_default();
+				let new_thumbnail = format!(
+					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs>{}</svg>"#,
+					min.x,
+					min.y,
+					max.x - min.x,
+					max.y - min.y,
+					render.svg_defs,
+					render.svg
+				);
+				warn!("{:#?}", new_thumbnail);
+				if let (Some(layer_id), Some(node_id)) = (layer_path.last(), node_path.get(node_path.len() - 2)) {
+					let old_thumbnail = self.thumbnails.entry((*layer_id, *node_id)).or_default();
+					if *old_thumbnail != new_thumbnail {
+						*old_thumbnail = new_thumbnail;
+						changed = true;
+						warn!("Changed {} {}", layer_id, node_id);
+					}
+				}
+			}
+		}
+		changed
 	}
 }

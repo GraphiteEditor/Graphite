@@ -105,6 +105,8 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
+
+	readonly thumbnail!: string | undefined;
 }
 
 export class FrontendNodeLink {
