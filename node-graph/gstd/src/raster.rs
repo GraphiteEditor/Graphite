@@ -175,9 +175,9 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InsertChannelNode<P, S, Stencil, UsedChannel> {
+pub struct InsertChannelNode<P, S, Stencil, TargetChannel> {
 	stencil: Stencil,
-	used_channel: UsedChannel,
+	target_channel: TargetChannel,
 	_p: PhantomData<P>,
 	_s: PhantomData<S>,
 }
@@ -198,7 +198,7 @@ fn insert_channel_node<
 >(
 	mut image: Input,
 	stencil: Stencil,
-	used_channel: ColorChannel,
+	target_channel: ColorChannel,
 ) -> Input {
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 	let mask_size = stencil.transform().decompose_scale();
@@ -221,7 +221,7 @@ fn insert_channel_node<
 			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
 			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
 				let channel_value = mask_pixel.l().to_channel();
-				*image_pixel = match used_channel {
+				*image_pixel = match target_channel {
 					ColorChannel::Red => image_pixel.with_red(channel_value),
 					ColorChannel::Green => image_pixel.with_green(channel_value),
 					ColorChannel::Blue => image_pixel.with_blue(channel_value),
