@@ -295,7 +295,7 @@ impl NodeNetwork {
 		self.previous_outputs.as_ref().unwrap_or(&self.outputs)
 	}
 
-	pub fn input_types<'a>(&'a self) -> impl Iterator<Item = Type> + 'a {
+	pub fn input_types(&self) -> impl Iterator<Item = Type> + '_ {
 		self.inputs.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty()).unwrap_or(concrete!(())))
 	}
 

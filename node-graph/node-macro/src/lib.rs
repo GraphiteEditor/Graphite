@@ -26,6 +26,9 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 			.collect::<Vec<_>>(),
 		_ => Default::default(),
 	};
+
+	let asyncness = function.sig.asyncness.is_some();
+
 	let arg_idents = args
 		.iter()
 		.filter(|x| x.to_token_stream().to_string().starts_with('_'))
@@ -141,21 +144,43 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	let input_lifetime = if generics.is_empty() { quote::quote!() } else { quote::quote!('input,) };
 
-	quote::quote! {
+	let node_impl = if asyncness {
+		quote::quote! {
 
-		impl <'input, #generics> Node<'input, #primary_input_ty> for #node_name<#(#args),*>
-			#where_clause
-		{
-			type Output = #output;
-			#[inline]
-			fn eval(&'input self, #primary_input_mutability #primary_input_ident: #primary_input_ty) -> Self::Output {
-				#(
-					let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(());
-				)*
+			impl <'input, #generics> Node<'input, #primary_input_ty> for #node_name<#(#args),*>
+				#where_clause
+			{
+				type Output = core::pin::Pin<Box<dyn core::future::Future< Output = #output> + 'input>>;
+				#[inline]
+				fn eval(&'input self, #primary_input_mutability #primary_input_ident: #primary_input_ty) -> Self::Output {
+					#(
+						let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(());
+					)*
 
-				#body
+					Box::pin(async move {#body})
+				}
 			}
 		}
+	} else {
+		quote::quote! {
+
+			impl <'input, #generics> Node<'input, #primary_input_ty> for #node_name<#(#args),*>
+				#where_clause
+			{
+				type Output = #output;
+				#[inline]
+				fn eval(&'input self, #primary_input_mutability #primary_input_ident: #primary_input_ty) -> Self::Output {
+					#(
+						let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(());
+					)*
+
+					#body
+				}
+			}
+		}
+	};
+
+	let new_fn = quote::quote! {
 
 		impl <#input_lifetime #new_fn_generics> #node_name<#(#args),*>
 			where #(#extra_where_clause),*
@@ -168,6 +193,10 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 			}
 		}
 
+	};
+	quote::quote! {
+		#node_impl
+		#new_fn
 	}
 	.into()
 }

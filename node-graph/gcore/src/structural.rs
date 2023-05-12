@@ -32,6 +32,39 @@ where
 	}
 }
 
+#[derive(Clone)]
+pub struct AsyncComposeNode<First, Second, I> {
+	first: First,
+	second: Second,
+	phantom: PhantomData<I>,
+}
+
+impl<'i, 'f: 'i, 's: 'i, Input: 'static, First, Second> Node<'i, Input> for AsyncComposeNode<First, Second, Input>
+where
+	First: Node<'i, Input>,
+	First::Output: core::future::Future,
+	Second: Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output> + 'i,
+{
+	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = <Second as Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output>>::Output> + 'i>>;
+	fn eval(&'i self, input: Input) -> Self::Output {
+		Box::pin(async move {
+			let arg = self.first.eval(input).await;
+			self.second.eval(arg)
+		})
+	}
+}
+
+impl<'i, First, Second, Input: 'i> AsyncComposeNode<First, Second, Input>
+where
+	First: Node<'i, Input>,
+	First::Output: core::future::Future,
+	Second: Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output> + 'i,
+{
+	pub const fn new(first: First, second: Second) -> Self {
+		AsyncComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
+	}
+}
+
 pub trait Then<'i, Input: 'i>: Sized {
 	fn then<Second>(self, second: Second) -> ComposeNode<Self, Second, Input>
 	where
@@ -43,6 +76,19 @@ pub trait Then<'i, Input: 'i>: Sized {
 }
 
 impl<'i, First: Node<'i, Input>, Input: 'i> Then<'i, Input> for First {}
+
+pub trait AndThen<'i, Input: 'i>: Sized {
+	fn and_then<Second>(self, second: Second) -> AsyncComposeNode<Self, Second, Input>
+	where
+		Self: Node<'i, Input>,
+		Self::Output: core::future::Future,
+		Second: Node<'i, <<Self as Node<'i, Input>>::Output as core::future::Future>::Output> + 'i,
+	{
+		AsyncComposeNode::new(self, second)
+	}
+}
+
+impl<'i, First: Node<'i, Input>, Input: 'i> AndThen<'i, Input> for First {}
 
 pub struct ConsNode<I: From<()>, Root>(pub Root, PhantomData<I>);
 

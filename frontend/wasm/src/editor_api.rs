@@ -59,16 +59,17 @@ fn window() -> web_sys::Window {
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
+	window().request_idle_callback(f.as_ref().unchecked_ref()).unwrap();
+	//window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
 }
 
 // Sends a message to the dispatcher in the Editor Backend
-fn poll_node_graph_evaluation() {
+async fn poll_node_graph_evaluation() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
-	editor::node_graph_executor::run_node_graph();
+	editor::node_graph_executor::run_node_graph().await;
 
 	// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
 	EDITOR_INSTANCES.with(|instances| {
@@ -218,7 +219,7 @@ impl JsEditorHandle {
 		let g = f.clone();
 
 		*g.borrow_mut() = Some(Closure::new(move || {
-			poll_node_graph_evaluation();
+			wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 			// Schedule ourself for another requestAnimationFrame callback.
 			request_animation_frame(f.borrow().as_ref().unwrap());
@@ -788,7 +789,7 @@ impl JsEditorHandle {
 				Some(message_data)
 			})
 		});
-		frontend_messages.unwrap().unwrap_or_default().into()
+		frontend_messages.unwrap().unwrap_or_default()
 	}
 }
 

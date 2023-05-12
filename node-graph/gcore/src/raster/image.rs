@@ -329,6 +329,7 @@ impl<'a> AsRef<EditorApi<'a>> for EditorApi<'a> {
 	}
 }
 
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ExtractImageFrame;
 
 impl<'a: 'input, 'input> Node<'input, EditorApi<'a>> for ExtractImageFrame {

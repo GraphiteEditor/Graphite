@@ -10,6 +10,8 @@ pub mod memo;
 
 pub mod raster;
 
+pub mod http;
+
 pub mod any;
 
 #[cfg(feature = "gpu")]
