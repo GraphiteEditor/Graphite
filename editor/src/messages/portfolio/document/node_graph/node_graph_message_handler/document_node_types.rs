@@ -394,7 +394,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "GreenNode".to_string(),
@@ -404,7 +404,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 							NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Green), false),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::InsertChannelNode<_, _, _, _>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "BlueNode".to_string(),
@@ -414,13 +414,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 							NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Blue), false),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::InsertChannelNode<_, _, _, _>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "AlphaNode".to_string(),
 						inputs: vec![NodeInput::node(2, 0), NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MaskImageNode<_, _, _>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 				]
 				.into_iter()
@@ -581,31 +581,31 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "RedNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Red), false)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "GreenNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Green), false)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "BlueNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Blue), false)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 					DocumentNode {
 						name: "AlphaNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
-						..Default::default()
+						metadata: Default::default(),
 					},
 				]
 				.into_iter()
