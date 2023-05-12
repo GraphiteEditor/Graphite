@@ -1,4 +1,7 @@
-use crate::{Color, Node};
+use crate::{
+	raster::spline::{CubicSplines, ValueMapperNode},
+	Color, Node,
+};
 
 // LEGACY BRIGHTNESS/CONTRAST
 
@@ -39,25 +42,6 @@ fn brightness_contrast_legacy_node(_primary: (), brightness: f32, contrast: f32)
 
 // NORMAL BRIGHTNESS/CONTRAST
 
-pub struct BrightnessContrastMapperNode {
-	combined_lut: [f32; WINDOW_SIZE],
-}
-
-impl<'i> Node<'i, Color> for BrightnessContrastMapperNode {
-	type Output = Color;
-
-	fn eval(&'i self, color: Color) -> Color {
-		let color = color.to_gamma_srgb();
-
-		let color = color.map_rgb(|c| {
-			let index_in_combined_lut = (c * (self.combined_lut.len() - 1) as f32).round() as usize;
-			self.combined_lut[index_in_combined_lut]
-		});
-
-		color.to_linear_srgb()
-	}
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct GenerateBrightnessContrastMapperNode<Brightness, Contrast> {
 	brightness: Brightness,
@@ -65,7 +49,7 @@ pub struct GenerateBrightnessContrastMapperNode<Brightness, Contrast> {
 }
 
 #[node_macro::node_fn(GenerateBrightnessContrastMapperNode)]
-fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> BrightnessContrastMapperNode {
+fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> ValueMapperNode {
 	// Brightness LUT
 	let brightness_is_negative = brightness < 0.;
 	let brightness = brightness.abs() / 100.;
@@ -73,10 +57,10 @@ fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> Bri
 		x: [0., 130. - brightness * 26., 233. - brightness * 48., 255.].map(|x| x / 255.),
 		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
 	};
-	let brightness_curve_solutions = solve_cubic_splines(&brightness_curve_points);
+	let brightness_curve_solutions = brightness_curve_points.solve_cubic_splines();
 	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		interpolate_cubic_splines(x, &brightness_curve_points, &brightness_curve_solutions)
+		brightness_curve_points.interpolate_cubic_splines(x, &brightness_curve_solutions)
 	});
 	// Special handling for when brightness is negative
 	if brightness_is_negative {
@@ -95,10 +79,10 @@ fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> Bri
 		x: [0., 64., 192., 255.].map(|x| x / 255.),
 		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
 	};
-	let contrast_curve_solutions = solve_cubic_splines(&contrast_curve_points);
+	let contrast_curve_solutions = contrast_curve_points.solve_cubic_splines();
 	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		interpolate_cubic_splines(x, &contrast_curve_points, &contrast_curve_solutions)
+		contrast_curve_points.interpolate_cubic_splines(x, &contrast_curve_solutions)
 	});
 
 	// Composed brightness and contrast LUTs
@@ -107,131 +91,10 @@ fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> Bri
 		contrast_lut[index_in_contrast_lut]
 	});
 
-	BrightnessContrastMapperNode { combined_lut }
+	ValueMapperNode::new(combined_lut.to_vec())
 }
 
 const WINDOW_SIZE: usize = 1024;
-
-struct CubicSplines {
-	x: [f32; 4],
-	y: [f32; 4],
-}
-
-fn solve_cubic_splines(cubic_spline_values: &CubicSplines) -> [f32; 4] {
-	let (x, y) = (&cubic_spline_values.x, &cubic_spline_values.y);
-
-	// Build an augmented matrix to solve the system of equations using Gaussian elimination
-	let mut augmented_matrix = [
-		[
-			2. / (x[1] - x[0]),
-			1. / (x[1] - x[0]),
-			0.,
-			0.,
-			// |
-			3. * (y[1] - y[0]) / ((x[1] - x[0]) * (x[1] - x[0])),
-		],
-		[
-			1. / (x[1] - x[0]),
-			2. * (1. / (x[1] - x[0]) + 1. / (x[2] - x[1])),
-			1. / (x[2] - x[1]),
-			0.,
-			// |
-			3. * ((y[1] - y[0]) / ((x[1] - x[0]) * (x[1] - x[0])) + (y[2] - y[1]) / ((x[2] - x[1]) * (x[2] - x[1]))),
-		],
-		[
-			0.,
-			1. / (x[2] - x[1]),
-			2. * (1. / (x[2] - x[1]) + 1. / (x[3] - x[2])),
-			1. / (x[3] - x[2]),
-			// |
-			3. * ((y[2] - y[1]) / ((x[2] - x[1]) * (x[2] - x[1])) + (y[3] - y[2]) / ((x[3] - x[2]) * (x[3] - x[2]))),
-		],
-		[
-			0.,
-			0.,
-			1. / (x[3] - x[2]),
-			2. / (x[3] - x[2]),
-			// |
-			3. * (y[3] - y[2]) / ((x[3] - x[2]) * (x[3] - x[2])),
-		],
-	];
-
-	// Gaussian elimination: forward elimination
-	for row in 0..4 {
-		let pivot_row_index = (row..4)
-			.max_by(|&a_row, &b_row| {
-				augmented_matrix[a_row][row]
-					.abs()
-					.partial_cmp(&augmented_matrix[b_row][row].abs())
-					.unwrap_or(core::cmp::Ordering::Equal)
-			})
-			.unwrap();
-
-		// Swap the current row with the row that has the largest pivot element
-		augmented_matrix.swap(row, pivot_row_index);
-
-		// Eliminate the current column in all rows below the current one
-		for row_below_current in row + 1..4 {
-			assert!(augmented_matrix[row][row].abs() > core::f32::EPSILON);
-
-			let scale_factor = augmented_matrix[row_below_current][row] / augmented_matrix[row][row];
-			for col in row..5 {
-				augmented_matrix[row_below_current][col] -= augmented_matrix[row][col] * scale_factor
-			}
-		}
-	}
-
-	// Gaussian elimination: back substitution
-	let mut solutions = [0.; 4];
-	for col in (0..4).rev() {
-		assert!(augmented_matrix[col][col].abs() > core::f32::EPSILON);
-
-		solutions[col] = augmented_matrix[col][4] / augmented_matrix[col][col];
-
-		for row in (0..col).rev() {
-			augmented_matrix[row][4] -= augmented_matrix[row][col] * solutions[col];
-			augmented_matrix[row][col] = 0.;
-		}
-	}
-
-	solutions
-}
-
-fn interpolate_cubic_splines(input: f32, points: &CubicSplines, solutions: &[f32]) -> f32 {
-	if input <= points.x[0] {
-		return points.y[0];
-	}
-	if input >= points.x[points.x.len() - 1] {
-		return points.y[points.x.len() - 1];
-	}
-
-	// Find the segment that the input falls between
-	let mut segment = 1;
-	while points.x[segment] < input {
-		segment += 1;
-	}
-	let segment_start = segment - 1;
-	let segment_end = segment;
-
-	// Calculate the output value using quadratic interpolation
-	let input_value = points.x[segment_start];
-	let input_value_prev = points.x[segment_end];
-	let output_value = points.y[segment_start];
-	let output_value_prev = points.y[segment_end];
-	let solutions_value = solutions[segment_start];
-	let solutions_value_prev = solutions[segment_end];
-
-	let output_delta = solutions_value_prev * (input_value - input_value_prev) - (output_value - output_value_prev);
-	let solution_delta = (output_value - output_value_prev) - solutions_value * (input_value - input_value_prev);
-
-	let input_ratio = (input - input_value_prev) / (input_value - input_value_prev);
-	let prev_output_ratio = (1. - input_ratio) * output_value_prev;
-	let output_ratio = input_ratio * output_value;
-	let quadratic_ratio = input_ratio * (1. - input_ratio) * (output_delta * (1. - input_ratio) + solution_delta * input_ratio);
-
-	let result = prev_output_ratio + output_ratio + quadratic_ratio;
-	result.clamp(0., 1.)
-}
 
 mod tests {
 	#[allow(unused_imports)]

@@ -15,6 +15,7 @@ pub mod adjustments;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brightness_contrast;
 pub mod color;
+pub mod spline;
 pub use adjustments::*;
 
 pub trait Channel: Copy + Debug + Num + NumCast {
