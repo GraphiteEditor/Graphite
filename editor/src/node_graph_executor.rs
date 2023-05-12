@@ -394,7 +394,7 @@ impl NodeGraphExecutor {
 						warn!("Changed {} {}", layer_id, node_id);
 					}
 				}
-				let resize = None;
+				let resize = Some(DVec2::splat(100.));
 				image_data.extend(
 					render
 						.image_data
