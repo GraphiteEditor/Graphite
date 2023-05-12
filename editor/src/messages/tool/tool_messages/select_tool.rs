@@ -664,9 +664,9 @@ impl Fsm for SelectToolFsmState {
 							if !x_aligned && transform_vec_round.y == 0.0 {
 								let limiter_x = grid_offset_x;
 								if moving_right {
-									new_transform_vec.x = new_transform_vec.x.abs() * limiter_x;
+									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - limiter_x);
 								} else {
-									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - limiter_x) * -1.0;
+									new_transform_vec.x = new_transform_vec.x.abs() * limiter_x * -1.0;
 								}
 							}
 							if !y_aligned && transform_vec_round.x == 0.0 {
