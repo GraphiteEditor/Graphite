@@ -38,6 +38,15 @@ impl RGB for Luma {
 	fn blue(&self) -> f32 {
 		self.0
 	}
+	fn with_red(&self, red: Self::ColorChannel) -> Self {
+		Self(red)
+	}
+	fn with_green(&self, green: Self::ColorChannel) -> Self {
+		Self(green)
+	}
+	fn with_blue(&self, blue: Self::ColorChannel) -> Self {
+		Self(blue)
+	}
 }
 
 impl Pixel for Luma {}
@@ -72,11 +81,35 @@ impl RGB for Color {
 	fn red(&self) -> f32 {
 		self.red
 	}
+	fn with_red(&self, red: f32) -> Self {
+		Self {
+			red,
+			green: self.green,
+			blue: self.blue,
+			alpha: self.alpha,
+		}
+	}
 	fn green(&self) -> f32 {
 		self.green
 	}
+	fn with_green(&self, green: f32) -> Self {
+		Self {
+			red: self.red,
+			green,
+			blue: self.blue,
+			alpha: self.alpha,
+		}
+	}
 	fn blue(&self) -> f32 {
 		self.blue
+	}
+	fn with_blue(&self, blue: f32) -> Self {
+		Self {
+			red: self.red,
+			green: self.green,
+			blue,
+			alpha: self.alpha,
+		}
 	}
 }
 

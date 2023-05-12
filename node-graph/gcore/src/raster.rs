@@ -119,14 +119,17 @@ pub trait RGB: Pixel {
 	fn r(&self) -> Self::ColorChannel {
 		self.red()
 	}
+	fn with_red(&self, red: Self::ColorChannel) -> Self;
 	fn green(&self) -> Self::ColorChannel;
 	fn g(&self) -> Self::ColorChannel {
 		self.green()
 	}
+	fn with_green(&self, green: Self::ColorChannel) -> Self;
 	fn blue(&self) -> Self::ColorChannel;
 	fn b(&self) -> Self::ColorChannel {
 		self.blue()
 	}
+	fn with_blue(&self, blue: Self::ColorChannel) -> Self;
 }
 
 pub trait AssociatedAlpha: RGB + Alpha {

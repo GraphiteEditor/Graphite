@@ -372,6 +372,74 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::mask_properties,
 		},
 		DocumentNodeType {
+			name: "Insert Channel",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_std::raster::InsertChannelNode<_, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("ColorChannel", TaggedValue::ColorChannel(ColorChannel::Red), true),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::insert_channel_properties,
+		},
+		DocumentNodeType {
+			name: "Combine Channel Node",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![3, 0, 1, 2],
+				outputs: vec![NodeOutput::new(3, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Identity".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "GreenNode".to_string(),
+						inputs: vec![
+							NodeInput::node(0, 0),
+							NodeInput::Network(concrete!(ImageFrame<Color>)),
+							NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Green), false),
+						],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::InsertChannelNode<_, _, _, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "BlueNode".to_string(),
+						inputs: vec![
+							NodeInput::node(1, 0),
+							NodeInput::Network(concrete!(ImageFrame<Color>)),
+							NodeInput::value(TaggedValue::ColorChannel(ColorChannel::Blue), false),
+						],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::InsertChannelNode<_, _, _, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "AlphaNode".to_string(),
+						inputs: vec![NodeInput::node(2, 0), NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MaskImageNode<_, _, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Alpha Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Red Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Green Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Blue Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Combined Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
 			name: "Blend",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),

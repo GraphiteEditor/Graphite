@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, ColorChannel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample, RGB};
 use graphene_core::transform::Transform;
 
 use graphene_core::value::CopiedNode;
@@ -172,6 +172,65 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 		bottom_left: transform(bottom_left),
 		bottom_right: transform(bottom_right),
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InsertChannelNode<P, S, Stencil, UsedChannel> {
+	stencil: Stencil,
+	used_channel: UsedChannel,
+	_p: PhantomData<P>,
+	_s: PhantomData<S>,
+}
+
+#[node_macro::node_fn(InsertChannelNode<_P, _S>)]
+fn insert_channel_node<
+	// _P is the color of the input image. It must have an alpha channel because that is going to
+	// be modified by the mask
+	_P: Copy + Alpha + RGB,
+	// _S is the color of the stencil. It must have a luminance channel because that is used to
+	// mask the input image
+	_S: Luminance,
+	// The channel of the input image that is used to insert the stencil
+	// Input image
+	Input: Transform + RasterMut<Pixel = _P>,
+	// Stencil
+	Stencil: Transform + Sample<Pixel = _S>,
+>(
+	mut image: Input,
+	stencil: Stencil,
+	used_channel: ColorChannel,
+) -> Input {
+	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
+	let mask_size = stencil.transform().decompose_scale();
+
+	if mask_size == DVec2::ZERO {
+		return image;
+	}
+
+	// Transforms a point from the background image to the forground image
+	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
+    let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
+
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_point = DVec2::new(x as f64, y as f64);
+			let mut mask_point = bg_to_fg.transform_point2(image_point);
+			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
+			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+
+			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
+			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
+				let channel_value = mask_pixel.l().to_channel();
+				*image_pixel = match used_channel {
+					ColorChannel::Red => image_pixel.with_red(channel_value),
+					ColorChannel::Green => image_pixel.with_green(channel_value),
+					ColorChannel::Blue => image_pixel.with_blue(channel_value),
+				}
+			}
+		}
+	}
+
+	image
 }
 
 #[derive(Debug, Clone, Copy)]

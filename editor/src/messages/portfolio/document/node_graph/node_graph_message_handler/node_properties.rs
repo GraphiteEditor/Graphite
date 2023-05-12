@@ -606,6 +606,12 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	vec![mask]
 }
 
+pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_channel = color_channel(document_node, node_id, 2, "Target Channel", true);
+
+	vec![color_channel]
+}
+
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
