@@ -20,6 +20,7 @@ use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::Image;
+use graphene_core::renderer::SvgSegment;
 use graphene_core::text::Font;
 
 #[derive(Debug, Clone, Default)]
@@ -503,9 +504,19 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::SetImageBlobUrl {
 				document_id,
 				layer_path,
+				node_id,
 				blob_url,
 				resolution,
 			} => {
+				if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_id) {
+					if let Some(layer) = self.executor.thumbnails.get_mut(&layer_id) {
+						if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
+							*segment = SvgSegment::String(blob_url);
+							responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+							return;
+						}
+					}
+				}
 				let message = DocumentMessage::SetImageBlobUrl {
 					layer_path,
 					blob_url,

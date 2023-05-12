@@ -128,7 +128,7 @@ export function createPortfolioState(editor: Editor) {
 			image.src = blobURL;
 			await image.decode();
 
-			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
+			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, element.nodeId, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRasterizeRegionBelowLayer, async (triggerRasterizeRegionBelowLayer) => {

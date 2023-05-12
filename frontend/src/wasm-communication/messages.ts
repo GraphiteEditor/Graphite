@@ -773,6 +773,8 @@ export type LayerTypeData = {
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
 
+	readonly nodeId!: bigint;
+
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;

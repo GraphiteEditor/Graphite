@@ -323,7 +323,10 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
-				thumbnail: layer_id.and_then(|layer_id| executor.thumbnails.get(&(layer_id, *id))).cloned(),
+				thumbnail: layer_id
+					.and_then(|layer_id| executor.thumbnails.get(&layer_id))
+					.and_then(|layer| layer.get(id))
+					.map(|svg| svg.to_string()),
 			})
 		}
 		responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });

@@ -11,6 +11,7 @@ use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, N
 use graph_craft::executor::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::renderer::SvgSegmentList;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, EditorApi};
 use interpreted_executor::executor::DynamicExecutor;
@@ -24,17 +25,26 @@ pub struct NodeGraphExecutor {
 	pub(crate) executor: DynamicExecutor,
 	// TODO: This is a memory leak since layers are never removed
 	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
-	pub(crate) thumbnails: HashMap<(LayerId, NodeId), String>,
+	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 }
 
 impl NodeGraphExecutor {
-	/// Execute the network by flattening it and creating a borrow stack.
-	fn execute_network<'a>(&'a mut self, network: NodeNetwork, editor_api: EditorApi<'a>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
+	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
 		let mut scoped_network = wrap_network_in_scope(network);
 
 		scoped_network.duplicate_outputs(&mut generate_uuid);
 		scoped_network.remove_dead_nodes();
+		scoped_network.generate_node_paths(&[]);
+		let nodes = scoped_network
+			.recursive_nodes()
+			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))
+			.map(|(_, _, path)| path)
+			.collect();
+		(scoped_network, nodes)
+	}
 
+	/// Execute the network by flattening it and creating a borrow stack.
+	fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, editor_api: EditorApi<'a>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
@@ -101,6 +111,7 @@ impl NodeGraphExecutor {
 			}
 		}
 
+		let (network, _) = Self::wrap_network(network);
 		let boxed = self.execute_network(network, editor_api.into_owned())?;
 
 		dyn_any::downcast::<T>(boxed).map(|v| *v)
@@ -240,6 +251,22 @@ impl NodeGraphExecutor {
 		.into())
 	}
 
+	fn to_frontend_image_data(image: Image<Color>, transform: Option<[f64; 6]>, layer_path: &[LayerId], node_id: Option<u64>, resize: Option<DVec2>) -> Result<FrontendImageData, String> {
+		// Update the image data
+		let (image_data, _size) = Self::encode_img(image, resize, image::ImageOutputFormat::Bmp)?;
+
+		let mime = "image/bmp".to_string();
+		let image_data = std::sync::Arc::new(image_data);
+
+		Ok(FrontendImageData {
+			path: layer_path.to_vec(),
+			node_id,
+			image_data,
+			mime,
+			transform,
+		})
+	}
+
 	/// Evaluates a node graph, computing either the Imaginate node or the entire graph
 	pub fn evaluate_node_graph(
 		&mut self,
@@ -277,6 +304,7 @@ impl NodeGraphExecutor {
 			return Ok(());
 		}
 		// Execute the node graph
+		let (network, monitor_nodes) = Self::wrap_network(network);
 		let boxed_node_graph_output = self.execute_network(network, editor_api)?;
 
 		// Check if the output is vector data
@@ -304,45 +332,31 @@ impl NodeGraphExecutor {
 					responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 				}
 			} else {
-				// Update the image data
-				let (image_data, _size) = Self::encode_img(image, None, image::ImageOutputFormat::Bmp)?;
-
-				let mime = "image/bmp".to_string();
-				let image_data = std::sync::Arc::new(image_data);
-				let image_data = vec![FrontendImageData {
-					path: layer_path.clone(),
-					image_data,
-					mime,
-					transform,
-				}];
+				let image_data = vec![Self::to_frontend_image_data(image, transform, &layer_path, None, None)?];
 				responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
 			}
 		} else if core::any::TypeId::of::<graphene_core::Artboard>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
 			let artboard: graphene_core::Artboard = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
 			info!("{artboard:#?}");
-			if self.update_thumbnails(&layer_path, &layer_layer.network) {
-				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-			}
+			self.update_thumbnails(&layer_path, monitor_nodes, responses);
+
 			return Err(format!("Artboard (see console)"));
 		} else if core::any::TypeId::of::<graphene_core::GraphicGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
 			let graphic_group: graphene_core::GraphicGroup = dyn_any::downcast(boxed_node_graph_output).map(|graphic| *graphic)?;
 			info!("{graphic_group:#?}");
-			if self.update_thumbnails(&layer_path, &layer_layer.network) {
-				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-			}
+			self.update_thumbnails(&layer_path, monitor_nodes, responses);
+
 			return Err(format!("Graphic group (see console)"));
 		}
 
 		Ok(())
 	}
 
-	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], network: &NodeNetwork) -> bool {
+	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: Vec<Vec<u64>>, responses: &mut VecDeque<Message>) {
 		warn!("Update thumbnails");
-		let mut changed = false;
-		for (node, _network, node_path) in network.recursive_nodes() {
-			if node.implementation != DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>") {
-				continue;
-			}
+		let mut changed: bool = false;
+		let mut image_data: Vec<_> = Vec::new();
+		for node_path in monitor_nodes {
 			let Some(value) = self.executor.introspect(&node_path).flatten() else {
 				continue;
 			};
@@ -357,26 +371,41 @@ impl NodeGraphExecutor {
 				let mut render = SvgRender::new();
 				graphic_group.render_svg(&mut render, &render_params);
 				let [min, max] = bounds.unwrap_or_default();
-				let new_thumbnail = format!(
-					r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs>{}</svg>"#,
-					min.x,
-					min.y,
-					max.x - min.x,
-					max.y - min.y,
-					render.svg_defs,
-					render.svg
+				render.svg.insert(
+					0,
+					format!(
+						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs>"#,
+						min.x,
+						min.y,
+						max.x - min.x,
+						max.y - min.y,
+						render.svg_defs,
+					)
+					.into(),
 				);
-				warn!("{:#?}", new_thumbnail);
+				render.svg.push("</svg>".into());
+
+				warn!("{}", render.svg);
 				if let (Some(layer_id), Some(node_id)) = (layer_path.last(), node_path.get(node_path.len() - 2)) {
-					let old_thumbnail = self.thumbnails.entry((*layer_id, *node_id)).or_default();
-					if *old_thumbnail != new_thumbnail {
-						*old_thumbnail = new_thumbnail;
+					let old_thumbnail = self.thumbnails.entry(*layer_id).or_default().entry(*node_id).or_default();
+					if *old_thumbnail != render.svg {
+						*old_thumbnail = render.svg;
 						changed = true;
 						warn!("Changed {} {}", layer_id, node_id);
 					}
 				}
+				let resize = None;
+				image_data.extend(
+					render
+						.image_data
+						.into_iter()
+						.filter_map(|(node_id, image)| Self::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok()),
+				)
 			}
 		}
-		changed
+		if changed {
+			responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+		}
+		responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
 	}
 }

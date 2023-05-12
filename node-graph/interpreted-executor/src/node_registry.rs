@@ -368,6 +368,26 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(VectorData)]),
 			),
 			(
+				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
+				|args| {
+					let input: DowncastBothNode<(), graphene_core::GraphicGroup> = DowncastBothNode::new(args[0]);
+					let node = graphene_std::memo::EndLetNode::new(input);
+					let any: DynAnyInRefNode<graphene_core::EditorApi, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(graphene_core::GraphicGroup)]),
+			),
+			(
+				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
+				|args| {
+					let input: DowncastBothNode<(), graphene_core::Artboard> = DowncastBothNode::new(args[0]);
+					let node = graphene_std::memo::EndLetNode::new(input);
+					let any: DynAnyInRefNode<graphene_core::EditorApi, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(graphene_core::Artboard)]),
+			),
+			(
 				NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),
 				|args| {
 					let map_fn: DowncastBothRefNode<Option<graphene_core::EditorApi>, graphene_core::EditorApi> = DowncastBothRefNode::new(args[0]);
