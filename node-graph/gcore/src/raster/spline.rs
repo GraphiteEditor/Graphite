@@ -1,4 +1,14 @@
-use crate::{Color, Node};
+use dyn_any::{DynAny, StaticType};
+
+use crate::Node;
+
+use super::{Channel, LuminanceMut};
+
+#[derive(Debug, Clone, Copy, DynAny)]
+pub struct SplineSample {
+	pub pos: [f32; 2],
+	pub params: [[f32; 2]; 2],
+}
 
 pub struct CubicSplines {
 	pub x: [f32; 4],
@@ -6,7 +16,7 @@ pub struct CubicSplines {
 }
 
 impl CubicSplines {
-	pub fn solve_cubic_splines(&self) -> [f32; 4] {
+	pub fn solve(&self) -> [f32; 4] {
 		let (x, y) = (&self.x, &self.y);
 
 		// Build an augmented matrix to solve the system of equations using Gaussian elimination
@@ -86,7 +96,7 @@ impl CubicSplines {
 		solutions
 	}
 
-	pub fn interpolate_cubic_splines(&self, input: f32, solutions: &[f32]) -> f32 {
+	pub fn interpolate(&self, input: f32, solutions: &[f32]) -> f32 {
 		if input <= self.x[0] {
 			return self.y[0];
 		}
@@ -123,30 +133,26 @@ impl CubicSplines {
 	}
 }
 
-pub struct ValueMapperNode {
-	lut: Vec<f32>,
+pub struct ValueMapperNode<C> {
+	lut: Vec<C>,
 }
 
-impl ValueMapperNode {
-	pub const fn new(lut: Vec<f32>) -> Self {
+impl<C> ValueMapperNode<C> {
+	pub const fn new(lut: Vec<C>) -> Self {
 		Self { lut }
 	}
 }
 
-impl<'i> Node<'i, Color> for ValueMapperNode {
-	type Output = Color;
+impl<'i, L: LuminanceMut + 'i> Node<'i, L> for ValueMapperNode<L::LuminanceChannel> {
+	type Output = L;
 
-	fn eval(&'i self, color: Color) -> Color {
-		let color = color.to_gamma_srgb();
-
-		let color = color.map_rgb(|c| {
-			let floating_sample_index = c * (self.lut.len() - 1) as f32;
-			let index_in_lut = floating_sample_index.floor() as usize;
-			let a = self.lut[index_in_lut];
-			let b = self.lut[(index_in_lut + 1).clamp(0, self.lut.len() - 1)];
-			a + floating_sample_index.fract() * (b - a)
-		});
-
-		color.to_linear_srgb()
+	fn eval(&'i self, mut val: L) -> L {
+		let floating_sample_index = val.luminance().to_f32() * (self.lut.len() - 1) as f32;
+		let index_in_lut = floating_sample_index.floor() as usize;
+		let a = self.lut[index_in_lut];
+		let b = self.lut[(index_in_lut + 1).clamp(0, self.lut.len() - 1)];
+		let result = a.lerp(b, floating_sample_index.fract());
+		val.set_luminance(result);
+		val
 	}
 }

@@ -1,5 +1,8 @@
 use crate::{
-	raster::spline::{CubicSplines, ValueMapperNode},
+	raster::{
+		spline::{CubicSplines, ValueMapperNode},
+		Channel,
+	},
 	Color, Node,
 };
 
@@ -43,13 +46,14 @@ fn brightness_contrast_legacy_node(_primary: (), brightness: f32, contrast: f32)
 // NORMAL BRIGHTNESS/CONTRAST
 
 #[derive(Debug, Clone, Copy)]
-pub struct GenerateBrightnessContrastMapperNode<Brightness, Contrast> {
+pub struct GenerateBrightnessContrastMapperNode<OutputChannel, Brightness, Contrast> {
 	brightness: Brightness,
 	contrast: Contrast,
+	_channel: core::marker::PhantomData<OutputChannel>,
 }
 
-#[node_macro::node_fn(GenerateBrightnessContrastMapperNode)]
-fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> ValueMapperNode {
+#[node_macro::node_fn(GenerateBrightnessContrastMapperNode<_Channel>)]
+fn brightness_contrast_node<_Channel: Channel>(_primary: (), brightness: f32, contrast: f32) -> ValueMapperNode<_Channel> {
 	// Brightness LUT
 	let brightness_is_negative = brightness < 0.;
 	let brightness = brightness.abs() / 100.;
@@ -57,10 +61,10 @@ fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> Val
 		x: [0., 130. - brightness * 26., 233. - brightness * 48., 255.].map(|x| x / 255.),
 		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
 	};
-	let brightness_curve_solutions = brightness_curve_points.solve_cubic_splines();
+	let brightness_curve_solutions = brightness_curve_points.solve();
 	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		brightness_curve_points.interpolate_cubic_splines(x, &brightness_curve_solutions)
+		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
 	});
 	// Special handling for when brightness is negative
 	if brightness_is_negative {
@@ -79,16 +83,16 @@ fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> Val
 		x: [0., 64., 192., 255.].map(|x| x / 255.),
 		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
 	};
-	let contrast_curve_solutions = contrast_curve_points.solve_cubic_splines();
+	let contrast_curve_solutions = contrast_curve_points.solve();
 	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		contrast_curve_points.interpolate_cubic_splines(x, &contrast_curve_solutions)
+		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
 	});
 
 	// Composed brightness and contrast LUTs
 	let combined_lut = brightness_lut.map(|brightness| {
 		let index_in_contrast_lut = (brightness * (contrast_lut.len() - 1) as f32).round() as usize;
-		contrast_lut[index_in_contrast_lut]
+		_Channel::from_f32(contrast_lut[index_in_contrast_lut])
 	});
 
 	ValueMapperNode::new(combined_lut.to_vec())

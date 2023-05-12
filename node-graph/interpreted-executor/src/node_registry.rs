@@ -317,13 +317,28 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
 					Box::pin(any)
 				} else {
-					let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::new(brightness, contrast);
+					let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::<f32, _, _>::new(brightness, contrast);
 					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
 					Box::pin(any)
 				}
 			},
 			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(f64), value_fn!(f64), value_fn!(bool)]),
+		)],
+		vec![(
+			NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+			|args| {
+				use graphene_core::raster::{spline::SplineSample, GenerateCurvesNode};
+
+				let samples: DowncastBothNode<(), Vec<SplineSample>> = DowncastBothNode::new(args[0]);
+				let samples = ClonedNode::new(samples.eval(()));
+
+				let generate_curves_node = GenerateCurvesNode::<f32, _>::new(samples);
+				let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
+				let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+				Box::pin(any)
+			},
+			NodeIOTypes::new(concrete!(ImageFrame<Luma>), concrete!(ImageFrame<Luma>), vec![value_fn!(Vec<(f64, f64)>)]),
 		)],
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),

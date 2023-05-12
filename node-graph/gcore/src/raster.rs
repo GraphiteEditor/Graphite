@@ -5,7 +5,7 @@ use crate::Node;
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
 #[cfg(not(target_arch = "spirv"))]
-use num_traits::{cast::cast as num_cast, Num, NumCast};
+use num_traits::{cast::cast as num_cast, Float, Num, NumCast};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::{cast::cast as num_cast, float::Float, FromPrimitive, Num, NumCast, ToPrimitive};
 
@@ -35,6 +35,9 @@ pub trait Channel: Copy + Debug + Num + NumCast {
 	}
 	fn to_channel<Out: Channel>(self) -> Out {
 		num_cast(self).expect("Failed to convert channel to channel")
+	}
+	fn lerp<F: Float>(self, other: Self, value: F) -> Self {
+		Self::from(F::from(other - self).unwrap_or_else(|| F::zero()) * value).map(|x| self + x).unwrap_or_else(|| self)
 	}
 }
 
@@ -167,6 +170,10 @@ pub trait Luminance {
 	fn l(&self) -> Self::LuminanceChannel {
 		self.luminance()
 	}
+}
+
+pub trait LuminanceMut: Luminance {
+	fn set_luminance(&mut self, luminance: Self::LuminanceChannel);
 }
 
 // TODO: We might rename this to Raster at some point
