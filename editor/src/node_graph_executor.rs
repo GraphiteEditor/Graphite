@@ -9,9 +9,12 @@ use document_legacy::{LayerId, Operation};
 use dyn_any::DynAny;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::executor::Compiler;
+use graph_craft::imaginate_input::*;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::renderer::SvgSegment;
 use graphene_core::renderer::SvgSegmentList;
+use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, EditorApi};
 use interpreted_executor::executor::DynamicExecutor;
@@ -28,19 +31,25 @@ pub struct NodeGraphExecutor {
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 }
 
+fn get_imaginate_index(name: &str) -> usize {
+	use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
+	IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"))
+}
+
 impl NodeGraphExecutor {
+	/// Wraps a network in a scope and returns the new network and the paths to the monitor nodes.
 	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
 		let mut scoped_network = wrap_network_in_scope(network);
 
 		scoped_network.duplicate_outputs(&mut generate_uuid);
 		scoped_network.remove_dead_nodes();
 		scoped_network.generate_node_paths(&[]);
-		let nodes = scoped_network
+		let monitor_nodes = scoped_network
 			.recursive_nodes()
 			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))
 			.map(|(_, _, path)| path)
 			.collect();
-		(scoped_network, nodes)
+		(scoped_network, monitor_nodes)
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack.
@@ -137,73 +146,61 @@ impl NodeGraphExecutor {
 		Ok::<_, String>((image_data, size))
 	}
 
-	fn generate_imaginate(
-		&mut self,
-		network: NodeNetwork,
-		imaginate_node_path: Vec<NodeId>,
-		(document, document_id): (&mut DocumentMessageHandler, u64),
-		layer_path: Vec<LayerId>,
-		mut editor_api: EditorApi<'_>,
-		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
-	) -> Result<Message, String> {
-		use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
-		use graph_craft::imaginate_input::*;
-
-		let image = editor_api.image_frame.take();
-
-		let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-
-		// Get the node graph layer
-		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
-		let transform = layer.transform;
-
-		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node_path, get("Resolution"), Cow::Borrowed(&editor_api))?;
-		let resolution = resolution.unwrap_or_else(|| {
-			let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
-			DVec2::new(x as f64, y as f64)
-		});
-
-		let parameters = ImaginateGenerationParameters {
-			seed: self.compute_input::<f64>(&network, &imaginate_node_path, get("Seed"), Cow::Borrowed(&editor_api))? as u64,
+	fn imaginate_parameters(&mut self, network: &NodeNetwork, node_path: &[LayerId], resolution: DVec2, editor_api: &EditorApi) -> Result<ImaginateGenerationParameters, String> {
+		let get = get_imaginate_index;
+		Ok(ImaginateGenerationParameters {
+			seed: self.compute_input::<f64>(network, node_path, get("Seed"), Cow::Borrowed(editor_api))? as u64,
 			resolution: resolution.as_uvec2().into(),
-			samples: self.compute_input::<f64>(&network, &imaginate_node_path, get("Samples"), Cow::Borrowed(&editor_api))? as u32,
+			samples: self.compute_input::<f64>(network, node_path, get("Samples"), Cow::Borrowed(editor_api))? as u32,
 			sampling_method: self
-				.compute_input::<ImaginateSamplingMethod>(&network, &imaginate_node_path, get("Sampling Method"), Cow::Borrowed(&editor_api))?
+				.compute_input::<ImaginateSamplingMethod>(network, node_path, get("Sampling Method"), Cow::Borrowed(editor_api))?
 				.api_value()
 				.to_string(),
-			text_guidance: self.compute_input(&network, &imaginate_node_path, get("Prompt Guidance"), Cow::Borrowed(&editor_api))?,
-			text_prompt: self.compute_input(&network, &imaginate_node_path, get("Prompt"), Cow::Borrowed(&editor_api))?,
-			negative_prompt: self.compute_input(&network, &imaginate_node_path, get("Negative Prompt"), Cow::Borrowed(&editor_api))?,
-			image_creativity: Some(self.compute_input::<f64>(&network, &imaginate_node_path, get("Image Creativity"), Cow::Borrowed(&editor_api))? / 100.),
-			restore_faces: self.compute_input(&network, &imaginate_node_path, get("Improve Faces"), Cow::Borrowed(&editor_api))?,
-			tiling: self.compute_input(&network, &imaginate_node_path, get("Tiling"), Cow::Borrowed(&editor_api))?,
-		};
-		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node_path, get("Adapt Input Image"), Cow::Borrowed(&editor_api))?;
+			text_guidance: self.compute_input(network, node_path, get("Prompt Guidance"), Cow::Borrowed(editor_api))?,
+			text_prompt: self.compute_input(network, node_path, get("Prompt"), Cow::Borrowed(editor_api))?,
+			negative_prompt: self.compute_input(network, node_path, get("Negative Prompt"), Cow::Borrowed(editor_api))?,
+			image_creativity: Some(self.compute_input::<f64>(network, node_path, get("Image Creativity"), Cow::Borrowed(editor_api))? / 100.),
+			restore_faces: self.compute_input(network, node_path, get("Improve Faces"), Cow::Borrowed(editor_api))?,
+			tiling: self.compute_input(network, node_path, get("Tiling"), Cow::Borrowed(editor_api))?,
+		})
+	}
 
-		editor_api.image_frame = image;
+	fn imaginate_base_image(&mut self, network: &NodeNetwork, imaginate_node_path: &[LayerId], resolution: DVec2, editor_api: &EditorApi) -> Result<Option<(ImaginateBaseImage, DAffine2)>, String> {
+		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node_path, get_imaginate_index("Adapt Input Image"), Cow::Borrowed(editor_api))?;
 		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
-			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node_path, get("Input Image"), Cow::Borrowed(&editor_api))?)
+			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node_path, get_imaginate_index("Input Image"), Cow::Borrowed(editor_api))?)
 		} else {
 			None
 		};
 
-		let image_transform = input_image_frame.as_ref().map(|image_frame| image_frame.transform);
-		let base_image = if let Some(ImageFrame { image, .. }) = input_image_frame {
+		let base_image = if let Some(ImageFrame { image, transform }) = input_image_frame {
 			// Only use if has size
 			if image.width > 0 && image.height > 0 {
 				let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
 				let size = DVec2::new(size.0 as f64, size.1 as f64);
 				let mime = "image/png".to_string();
-				Some(ImaginateBaseImage { image_data, size, mime })
+				Some((ImaginateBaseImage { image_data, size, mime }, transform))
 			} else {
+				info!("Base image is input but has no size.");
 				None
 			}
 		} else {
 			None
 		};
+		Ok(base_image)
+	}
 
-		let mask_image = if let Some(transform) = image_transform {
-			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &imaginate_node_path, get("Masking Layer"), Cow::Borrowed(&editor_api))?;
+	fn imaginate_mask_image(
+		&mut self,
+		network: &NodeNetwork,
+		node_path: &[LayerId],
+		editor_api: &EditorApi<'_>,
+		image_transform: Option<DAffine2>,
+		document: &mut DocumentMessageHandler,
+		persistent_data: &PersistentData,
+	) -> Result<Option<ImaginateMaskImage>, String> {
+		if let Some(transform) = image_transform {
+			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &node_path, get_imaginate_index("Masking Layer"), Cow::Borrowed(&editor_api))?;
 
 			// Calculate the size of the frame
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
@@ -226,22 +223,53 @@ impl NodeGraphExecutor {
 			}
 
 			document.restore_document_transform(old_transforms);
-			mask_image
+			Ok(mask_image)
 		} else {
-			None
-		};
+			Ok(None)
+		}
+	}
+
+	fn generate_imaginate(
+		&mut self,
+		network: NodeNetwork,
+		imaginate_node_path: Vec<NodeId>,
+		(document, document_id): (&mut DocumentMessageHandler, u64),
+		layer_path: Vec<LayerId>,
+		mut editor_api: EditorApi<'_>,
+		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
+	) -> Result<Message, String> {
+		let image = editor_api.image_frame.take();
+
+		// Get the node graph layer
+		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+		let transform = layer.transform;
+
+		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node_path, get_imaginate_index("Resolution"), Cow::Borrowed(&editor_api))?;
+		let resolution = resolution.unwrap_or_else(|| {
+			let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
+			DVec2::new(x as f64, y as f64)
+		});
+
+		let parameters = self.imaginate_parameters(&network, &imaginate_node_path, resolution, &editor_api)?;
+
+		editor_api.image_frame = image;
+		let base = self.imaginate_base_image(&network, &imaginate_node_path, resolution, &editor_api)?;
+		let image_transform = base.as_ref().map(|base| base.1);
+		let base_image = base.map(|base| base.0);
+
+		let mask_image = self.imaginate_mask_image(&network, &imaginate_node_path, &editor_api, image_transform, document, persistent_data)?;
 
 		Ok(FrontendMessage::TriggerImaginateGenerate {
 			parameters: Box::new(parameters),
 			base_image: base_image.map(Box::new),
 			mask_image: mask_image.map(Box::new),
-			mask_paint_mode: if self.compute_input::<bool>(&network, &imaginate_node_path, get("Inpaint"), Cow::Borrowed(&editor_api))? {
+			mask_paint_mode: if self.compute_input::<bool>(&network, &imaginate_node_path, get_imaginate_index("Inpaint"), Cow::Borrowed(&editor_api))? {
 				ImaginateMaskPaintMode::Inpaint
 			} else {
 				ImaginateMaskPaintMode::Outpaint
 			},
-			mask_blur_px: self.compute_input::<f64>(&network, &imaginate_node_path, get("Mask Blur"), Cow::Borrowed(&editor_api))? as u32,
-			imaginate_mask_starting_fill: self.compute_input(&network, &imaginate_node_path, get("Mask Starting Fill"), Cow::Borrowed(&editor_api))?,
+			mask_blur_px: self.compute_input::<f64>(&network, &imaginate_node_path, get_imaginate_index("Mask Blur"), Cow::Borrowed(&editor_api))? as u32,
+			imaginate_mask_starting_fill: self.compute_input(&network, &imaginate_node_path, get_imaginate_index("Mask Starting Fill"), Cow::Borrowed(&editor_api))?,
 			hostname: preferences.imaginate_server_hostname.clone(),
 			refresh_frequency: preferences.imaginate_refresh_frequency,
 			document_id,
@@ -251,8 +279,8 @@ impl NodeGraphExecutor {
 		.into())
 	}
 
+	/// Generate a new [`FrontendImageData`] from the [`Image`].
 	fn to_frontend_image_data(image: Image<Color>, transform: Option<[f64; 6]>, layer_path: &[LayerId], node_id: Option<u64>, resize: Option<DVec2>) -> Result<FrontendImageData, String> {
-		// Update the image data
 		let (image_data, _size) = Self::encode_img(image, resize, image::ImageOutputFormat::Bmp)?;
 
 		let mime = "image/bmp".to_string();
@@ -352,60 +380,54 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
+	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
 	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: Vec<Vec<u64>>, responses: &mut VecDeque<Message>) {
-		warn!("Update thumbnails");
-		let mut changed: bool = false;
+		let mut thumbnails_changed: bool = false;
 		let mut image_data: Vec<_> = Vec::new();
 		for node_path in monitor_nodes {
 			let Some(value) = self.executor.introspect(&node_path).flatten() else {
+				warn!("No introspect");
 				continue;
 			};
-			if let Some(graphic_group) = value.downcast_ref::<graphene_core::GraphicGroup>() {
-				use graphene_core::renderer::*;
-				let bounds = graphic_group.bounding_box(DAffine2::IDENTITY);
-				let render_params = RenderParams {
-					view_mode: Default::default(),
-					culling_bounds: bounds,
-					thumbnail: true,
-				};
-				let mut render = SvgRender::new();
-				graphic_group.render_svg(&mut render, &render_params);
-				let [min, max] = bounds.unwrap_or_default();
-				render.svg.insert(
-					0,
-					format!(
-						r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs>"#,
-						min.x,
-						min.y,
-						max.x - min.x,
-						max.y - min.y,
-						render.svg_defs,
-					)
-					.into(),
-				);
-				render.svg.push("</svg>".into());
+			let Some(graphic_group) = value.downcast_ref::<graphene_core::GraphicGroup>() else {
+				warn!("Not graphic");
+				continue;
+			};
+			use graphene_core::renderer::*;
+			let bounds = graphic_group.bounding_box(DAffine2::IDENTITY);
+			let render_params = RenderParams::new(ViewMode::Normal, bounds, true);
+			let mut render = SvgRender::new();
+			graphic_group.render_svg(&mut render, &render_params);
+			let [min, max] = bounds.unwrap_or_default();
+			render.format_svg(min, max);
+			info!("SVG {}", render.svg);
 
-				warn!("{}", render.svg);
-				if let (Some(layer_id), Some(node_id)) = (layer_path.last(), node_path.get(node_path.len() - 2)) {
-					let old_thumbnail = self.thumbnails.entry(*layer_id).or_default().entry(*node_id).or_default();
-					if *old_thumbnail != render.svg {
-						*old_thumbnail = render.svg;
-						changed = true;
-						warn!("Changed {} {}", layer_id, node_id);
-					}
+			if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_path.get(node_path.len() - 2).copied()) {
+				let old_thumbnail = self.thumbnails.entry(layer_id).or_default().entry(node_id).or_default();
+				if *old_thumbnail != render.svg {
+					*old_thumbnail = render.svg;
+					thumbnails_changed = true;
 				}
-				let resize = Some(DVec2::splat(100.));
-				image_data.extend(
-					render
-						.image_data
-						.into_iter()
-						.filter_map(|(node_id, image)| Self::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok()),
-				)
 			}
+			let resize = Some(DVec2::splat(100.));
+			let create_image_data = |(node_id, image)| Self::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok();
+			image_data.extend(render.image_data.into_iter().filter_map(create_image_data))
 		}
-		if changed {
+		if !image_data.is_empty() {
+			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
+		} else if thumbnails_changed {
 			responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 		}
-		responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
+	}
+
+	/// When a blob url for a thumbnail is loaded, update the state and the UI.
+	pub fn insert_thumbnail_bloburl(&mut self, blob_url: String, layer_id: LayerId, node_id: NodeId, responses: &mut VecDeque<Message>) {
+		if let Some(layer) = self.thumbnails.get_mut(&layer_id) {
+			if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
+				*segment = SvgSegment::String(blob_url);
+				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+				return;
+			}
+		}
 	}
 }

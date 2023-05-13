@@ -49,6 +49,7 @@ impl core::ops::Mul<Quad> for DAffine2 {
 	}
 }
 
+/// Take the outside bounds of two axis aligned rectangles, which are defined by two corner points.
 pub fn combine_bounds(a: [DVec2; 2], b: [DVec2; 2]) -> [DVec2; 2] {
 	[a[0].min(b[0]), a[1].max(b[1])]
 }

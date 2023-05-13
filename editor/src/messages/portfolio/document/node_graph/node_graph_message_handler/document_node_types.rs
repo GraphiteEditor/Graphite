@@ -142,6 +142,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 							..Default::default()
 						},
 					),
+					// The monitor node is used to display a thumbnail in the UI.
 					(
 						1,
 						DocumentNode {
@@ -560,7 +561,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
 				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: vec![
+				nodes: [
 					(
 						0,
 						DocumentNode {
@@ -580,8 +581,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						},
 					),
 				]
-				.into_iter()
-				.collect(),
+				.into(),
 				..Default::default()
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],

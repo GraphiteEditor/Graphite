@@ -85,7 +85,8 @@ pub struct FrontendNode {
 	pub position: (i32, i32),
 	pub disabled: bool,
 	pub previewed: bool,
-	pub thumbnail: Option<String>,
+	#[serde(rename = "thumbnailSvg")]
+	pub thumbnail_svg: Option<String>,
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -292,41 +293,49 @@ impl NodeGraphMessageHandler {
 				warn!("Node '{}' does not exist in library", node.name);
 				continue;
 			};
+
+			let primary_input = node
+				.inputs
+				.first()
+				.filter(|input| input.is_exposed())
+				.and_then(|_| node_type.inputs.get(0))
+				.map(|input_type| input_type.data_type);
+			let exposed_inputs = node
+				.inputs
+				.iter()
+				.zip(node_type.inputs.iter())
+				.skip(1)
+				.filter(|(input, _)| input.is_exposed())
+				.map(|(_, input_type)| NodeGraphInput {
+					data_type: input_type.data_type,
+					name: input_type.name.to_string(),
+				})
+				.collect();
+
+			let outputs = node_type
+				.outputs
+				.iter()
+				.map(|output_type| NodeGraphOutput {
+					data_type: output_type.data_type,
+					name: output_type.name.to_string(),
+				})
+				.collect();
+
+			let thumbnail_svg = layer_id
+				.and_then(|layer_id| executor.thumbnails.get(&layer_id))
+				.and_then(|layer| layer.get(id))
+				.map(|svg| svg.to_string());
+
 			nodes.push(FrontendNode {
 				id: *id,
 				display_name: node.name.clone(),
-				primary_input: node
-					.inputs
-					.first()
-					.filter(|input| input.is_exposed())
-					.and_then(|_| node_type.inputs.get(0))
-					.map(|input_type| input_type.data_type),
-				exposed_inputs: node
-					.inputs
-					.iter()
-					.zip(node_type.inputs.iter())
-					.skip(1)
-					.filter(|(input, _)| input.is_exposed())
-					.map(|(_, input_type)| NodeGraphInput {
-						data_type: input_type.data_type,
-						name: input_type.name.to_string(),
-					})
-					.collect(),
-				outputs: node_type
-					.outputs
-					.iter()
-					.map(|output_type| NodeGraphOutput {
-						data_type: output_type.data_type,
-						name: output_type.name.to_string(),
-					})
-					.collect(),
+				primary_input,
+				exposed_inputs,
+				outputs,
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
-				thumbnail: layer_id
-					.and_then(|layer_id| executor.thumbnails.get(&layer_id))
-					.and_then(|layer| layer.get(id))
-					.map(|svg| svg.to_string()),
+				thumbnail_svg,
 			})
 		}
 		responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });

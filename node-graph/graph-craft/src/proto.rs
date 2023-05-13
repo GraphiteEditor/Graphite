@@ -156,6 +156,7 @@ impl ProtoNode {
 
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
+		self.document_node_path.hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => "none".hash(&mut hasher),
 			ProtoNodeInput::ShortCircut(ref ty) => {

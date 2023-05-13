@@ -5,6 +5,7 @@ use crate::{uuid::generate_uuid, vector::VectorData, Artboard, Color, GraphicEle
 mod quad;
 use quad::{combine_bounds, Quad};
 
+/// Mutable state used whilst rendering to an SVG
 pub struct SvgRender {
 	pub svg: SvgSegmentList,
 	pub svg_defs: String,
@@ -21,15 +22,32 @@ impl SvgRender {
 			image_data: Vec::new(),
 		}
 	}
+
+	/// Add an outer `<svg />` tag with a `viewBox` and the `<defs />`
+	pub fn format_svg(&mut self, bounds_min: DVec2, bounds_max: DVec2) {
+		let (x, y) = bounds_min.into();
+		let (size_x, size_y) = (bounds_max - bounds_min).into();
+		let defs = &self.svg_defs;
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
+		self.svg.insert(0, svg_header.into());
+		self.svg.push("</svg>".into());
+	}
 }
 
+/// Static state used whilst rendering
 pub struct RenderParams {
 	pub view_mode: crate::vector::style::ViewMode,
 	pub culling_bounds: Option<[DVec2; 2]>,
 	pub thumbnail: bool,
 }
 
-fn format_transform(transform: DAffine2) -> String {
+impl RenderParams {
+	pub fn new(view_mode: crate::vector::style::ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool) -> Self {
+		Self { view_mode, culling_bounds, thumbnail }
+	}
+}
+
+fn format_transform_matrix(transform: DAffine2) -> String {
 	transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
 }
 
@@ -81,7 +99,7 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		let transform: String = format_transform(self.transform * render.transform);
+		let transform: String = format_transform_matrix(self.transform * render.transform);
 		render
 			.svg
 			.push(format!(r#"<image width="1" height="1" preserveAspectRatio="none" transform="matrix({transform})" href=""#).into());
@@ -162,7 +180,7 @@ impl core::fmt::Display for SvgSegmentList {
 			f.write_str(match segment {
 				SvgSegment::Slice(x) => x,
 				SvgSegment::String(x) => x,
-				SvgSegment::BlobUrl(_) => "",
+				SvgSegment::BlobUrl(_) => "<!-- Blob url not yet loaded -->",
 			})?;
 		}
 		Ok(())

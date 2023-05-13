@@ -548,8 +548,8 @@
 								</div>
 							{/if}
 						</div>
-						{#if node.thumbnail}
-							{@html node.thumbnail}
+						{#if node.thumbnailSvg}
+							{@html node.thumbnailSvg}
 						{:else}
 							<IconLabel icon={nodeIcon(node.displayName)} />
 						{/if}
