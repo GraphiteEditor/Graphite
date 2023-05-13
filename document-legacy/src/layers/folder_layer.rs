@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct FolderLayer {
 	/// The ID that will be assigned to the next layer that is added to the folder
-	/// CHANGE BACK TO PRIVATE BELOW
 	pub next_assignment_id: LayerId,
 	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
@@ -48,6 +47,13 @@ impl LayerData for FolderLayer {
 }
 
 impl FolderLayer {
+	pub fn next_assignment_id(&mut self) -> LayerId {
+		while self.layer_ids.contains(&self.next_assignment_id) {
+			self.next_assignment_id += 1;
+		}
+		self.next_assignment_id
+	}
+
 	/// When a insertion ID is provided, try to insert the layer with the given ID.
 	/// If that ID is already used, return `None`.
 	/// When no insertion ID is provided, search for the next free ID and insert it with that.
@@ -68,13 +74,6 @@ impl FolderLayer {
 	/// folder.add_layer(shape_layer.into(), None, -1);
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
-	pub fn next_assignment_id(&mut self) -> LayerId {
-		while self.layer_ids.contains(&self.next_assignment_id) {
-			self.next_assignment_id += 1;
-		}
-		return self.next_assignment_id;
-	}
-
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 

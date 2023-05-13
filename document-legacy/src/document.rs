@@ -6,8 +6,9 @@ use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
 
-use glam::{DAffine2, DVec2};
 use graph_craft::document::generate_uuid;
+
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
@@ -480,21 +481,57 @@ impl Document {
 
 				self.set_layer(&path, layer, insert_index)?;
 
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
+				Some(
+					[
+						vec![
+							DocumentChanged,
+							CreatedLayer {
+								path: path.clone(),
+								is_selected: true,
+							},
+						],
+						update_thumbnails_upstream(&path),
+					]
+					.concat(),
+				)
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
 				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::rectangle(style)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
+				Some(
+					[
+						vec![
+							DocumentChanged,
+							CreatedLayer {
+								path: path.clone(),
+								is_selected: true,
+							},
+						],
+						update_thumbnails_upstream(&path),
+					]
+					.concat(),
+				)
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
 				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::line(style)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
+				Some(
+					[
+						vec![
+							DocumentChanged,
+							CreatedLayer {
+								path: path.clone(),
+								is_selected: true,
+							},
+						],
+						update_thumbnails_upstream(&path),
+					]
+					.concat(),
+				)
 			}
 			Operation::AddFrame {
 				path,
@@ -506,7 +543,19 @@ impl Document {
 
 				self.set_layer(&path, layer, insert_index)?;
 
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
+				Some(
+					[
+						vec![
+							DocumentChanged,
+							CreatedLayer {
+								path: path.clone(),
+								is_selected: true,
+							},
+						],
+						update_thumbnails_upstream(&path),
+					]
+					.concat(),
+				)
 			}
 			Operation::SetLayerPreserveAspect { layer_path, preserve_aspect } => {
 				if let Ok(layer) = self.layer_mut(&layer_path) {
@@ -523,7 +572,7 @@ impl Document {
 			} => {
 				let shape = ShapeLayer::new(subpath, style);
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(shape), transform), insert_index)?;
-				Some([vec![DocumentChanged, CreatedLayer { path, select: true }]].concat())
+				Some([vec![DocumentChanged, CreatedLayer { path, is_selected: true }]].concat())
 			}
 			Operation::AddPolyline {
 				path,
@@ -534,7 +583,19 @@ impl Document {
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(ShapeLayer::poly_line(points, style)), transform), insert_index)?;
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
+				Some(
+					[
+						vec![
+							DocumentChanged,
+							CreatedLayer {
+								path: path.clone(),
+								is_selected: true,
+							},
+						],
+						update_thumbnails_upstream(&path),
+					]
+					.concat(),
+				)
 			}
 			Operation::DeleteLayer { path } => {
 				fn aggregate_deletions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
@@ -567,46 +628,52 @@ impl Document {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
 				let mut responses = Vec::new();
 
-				// If were duplicating, use the parent layer path as the folder we insert to
+				// If we are duplicating, use the parent layer path as the folder we insert to
 				if duplicating {
-					let folder = Some(self.folder_mut(&destination_path)?);
-					let new_id = folder.unwrap().add_layer(*layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
-					let updated_layer_path: Vec<u64> = [destination_path.clone(), vec![new_id]].concat();
+					let folder = self.folder_mut(&destination_path)?;
+					let new_layer_id = folder.add_layer(*layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+
+					let mut updated_layer_path = destination_path.clone();
+					updated_layer_path.push(new_layer_id);
 
 					responses.extend([
 						DocumentChanged,
 						CreatedLayer {
 							path: updated_layer_path,
-							select: false,
+							is_selected: false,
 						},
 						FolderChanged { path: destination_path.clone() },
 					]);
 				} else {
-					let folder = Some(self.folder_mut(folder_path)?);
-					folder.unwrap().add_layer(*layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+					let folder = self.folder_mut(folder_path)?;
+					folder.add_layer(*layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
+
 					responses.extend([
 						DocumentChanged,
 						CreatedLayer {
 							path: destination_path.clone(),
-							select: true,
+							is_selected: true,
 						},
 						FolderChanged { path: folder_path.to_vec() },
 					]);
 				}
+
 				responses.extend(update_thumbnails_upstream(&destination_path));
 				self.mark_as_dirty(&destination_path)?;
 
+				// Recursively iterate through each layer in a folder and add it to the responses vector
 				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>, duplicating: bool) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
-						if duplicating {
-							responses.push(DocumentResponse::CreatedLayer { path: path.clone(), select: false });
-						} else {
-							responses.push(DocumentResponse::CreatedLayer { path: path.clone(), select: true });
-						}
+
+						responses.push(DocumentResponse::CreatedLayer {
+							path: path.clone(),
+							is_selected: !duplicating,
+						});
 						if let LayerDataType::Folder(f) = &layer.data {
 							aggregate_insertions(f, path, responses, duplicating);
 						}
+
 						path.pop();
 					}
 				}
@@ -621,7 +688,7 @@ impl Document {
 				let layer = self.layer(&path)?.clone();
 				let (folder_path, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
 
-				let layer_is_folder = (&layer).as_folder().is_ok();
+				let layer_is_folder = layer.as_folder().is_ok();
 				// Recursively collect each of the nested folders and shapes if the Layer is a folder
 				let mut duplicated_layers = if layer_is_folder { recursive_collect(self, &path) } else { Vec::new() };
 
@@ -630,7 +697,7 @@ impl Document {
 				let duplicated_layers_objects: Vec<Layer> = duplicated_layers.iter().map(|p| self.layer(p.as_slice()).unwrap()).cloned().collect();
 				let mut indices: Vec<usize> = (0..duplicated_layers.len()).collect();
 				indices.sort_by_key(|&i| duplicated_layers[i].len());
-				duplicated_layers.sort_by(|a, b| a.len().cmp(&b.len()));
+				duplicated_layers.sort_by_key(|a| a.len());
 				let duplicate_layer_objects_sorted: Vec<&Layer> = indices.iter().map(|&i| &duplicated_layers_objects[i]).collect();
 
 				let folder = self.folder_mut(folder_path)?;
@@ -646,7 +713,7 @@ impl Document {
 						DocumentChanged,
 						CreatedLayer {
 							path: new_path.to_vec(),
-							select: true,
+							is_selected: true,
 						},
 						FolderChanged { path: folder_path.to_vec() },
 					]);
@@ -659,9 +726,8 @@ impl Document {
 						new_folder.layers = vec![];
 						new_folder.next_assignment_id = generate_uuid();
 
-						let mut counter = 0;
-						for duplicate_layer in duplicated_layers {
-							let old_layer_id = *(&duplicate_layer).last().unwrap_or(&0);
+						for (counter, duplicate_layer) in duplicated_layers.into_iter().enumerate() {
+							let old_layer_id = *duplicate_layer.last().unwrap_or(&0);
 
 							// Iterate through each ID of the current duplicate layer
 							// If the the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one
@@ -694,16 +760,12 @@ impl Document {
 
 							// Collect the new ID of the duplicated layer from the InsertLayer Operation
 							// Map the layer ID of the layer were duplicating to the new ID
-							if let DocumentResponse::CreatedLayer { path, select: _ } = result.get(1).unwrap() {
+							if let DocumentResponse::CreatedLayer { path, .. } = result.get(1).unwrap() {
 								let new_layer_id = path.last().unwrap();
-								if !old_to_new_layer_id.contains_key(&old_layer_id) {
-									old_to_new_layer_id.insert(old_layer_id, *new_layer_id);
-								}
+								old_to_new_layer_id.entry(old_layer_id).or_insert(*new_layer_id);
 							}
 
 							responses.extend(result);
-
-							counter = counter + 1;
 						}
 					}
 					self.mark_as_dirty(folder_path)?;
@@ -720,7 +782,19 @@ impl Document {
 				self.set_layer(&path, Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()), insert_index)?;
 				self.mark_as_dirty(&path)?;
 
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
+				Some(
+					[
+						vec![
+							DocumentChanged,
+							CreatedLayer {
+								path: path.clone(),
+								is_selected: true,
+							},
+						],
+						update_thumbnails_upstream(&path),
+					]
+					.concat(),
+				)
 			}
 			Operation::TransformLayer { path, transform } => {
 				let layer = self.layer_mut(&path).unwrap();
@@ -913,16 +987,18 @@ pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64)
 	}
 }
 
-fn recursive_collect(document: &mut Document, layer_path: &Vec<u64>) -> Vec<Vec<u64>> {
+fn recursive_collect(document: &mut Document, layer_path: &[u64]) -> Vec<Vec<u64>> {
 	let mut duplicated_layers = vec![];
-	let children = document.folder_children_paths(&layer_path);
+
+	let children = document.folder_children_paths(layer_path);
 	for child in children {
 		if !document.is_folder(&child) {
 			duplicated_layers.push(child);
 		} else {
-			duplicated_layers.push((&child).to_vec());
+			duplicated_layers.push(child.to_vec());
 			duplicated_layers.append(&mut recursive_collect(document, &child));
 		}
 	}
-	return duplicated_layers;
+
+	duplicated_layers
 }

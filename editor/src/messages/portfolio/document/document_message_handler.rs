@@ -140,7 +140,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									insert_index: insert_index.clone(),
 									reverse_index: reverse_index.clone(),
 								}),
-								DocumentResponse::CreatedLayer { path, select } => {
+								DocumentResponse::CreatedLayer { path, is_selected } => {
 									if self.layer_metadata.contains_key(path) {
 										warn!("CreatedLayer overrides existing layer metadata.");
 									}
@@ -148,7 +148,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 									responses.add(LayerChanged { affected_layer_path: path.clone() });
 									self.layer_range_selection_reference = path.clone();
-									if *select {
+
+									if *is_selected {
 										responses.add(AddSelectedLayers {
 											additional_layers: vec![path.clone()],
 										});
@@ -436,12 +437,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			GroupSelectedLayers => {
 				// Necessary because the shallowest common folder of a single folder is the folder which causes errors
-				let mut new_folder_path: Vec<u64>;
-				if self.selected_layers_sorted().len() == 1 {
-					new_folder_path = [].to_vec();
+				let new_folder_path = if self.selected_layers_sorted().len() == 1 {
+					Vec::new()
 				} else {
-					new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
-				}
+					self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec()
+				};
 
 				// 	<---------------------------- Workinging HERE
 				// Check which child of the shallowest common folder contains a selected layer
@@ -452,11 +452,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let level_of_children = children.first().unwrap_or(&vec![0]).len();
 				let selected_sub_layers: Vec<Vec<u64>> = self.selected_layers().map(|layer| layer[..level_of_children].to_vec()).collect();
+
 				for child in children {
 					if selected_sub_layers.contains(&child) {
-						child_layers_deleted = child_layers_deleted + 1
+						child_layers_deleted += 1;
 					}
-					new_index = new_index + 1;
+					new_index += 1;
 				}
 
 				// ------------------------------>
