@@ -637,7 +637,7 @@ impl Fsm for SelectToolFsmState {
 							let viewspace_top_left_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
 							let doc_pos = document.document_legacy.root.transform.inverse().transform_point2(viewspace_top_left_pos);
 
-							// Find the x and y offset on the grid, Given 1.55 -> 0.55
+							// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
 							let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
 							let mut grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
 
@@ -662,19 +662,17 @@ impl Fsm for SelectToolFsmState {
 
 							// If the x or y positions are off the grid, calculate the new transform that alligns with grid
 							if !x_aligned && transform_vec_round.y == 0.0 {
-								let limiter_x = grid_offset_x;
 								if moving_right {
-									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - limiter_x);
+									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - grid_offset_x);
 								} else {
-									new_transform_vec.x = new_transform_vec.x.abs() * limiter_x * -1.0;
+									new_transform_vec.x = new_transform_vec.x.abs() * grid_offset_x * -1.0;
 								}
 							}
 							if !y_aligned && transform_vec_round.x == 0.0 {
-								let limiter_y = grid_offset_y;
 								if moving_down {
-									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - limiter_y);
+									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - grid_offset_y);
 								} else {
-									new_transform_vec.y = new_transform_vec.y.abs() * limiter_y * -1.0;
+									new_transform_vec.y = new_transform_vec.y.abs() * grid_offset_y * -1.0;
 								}
 							}
 
@@ -717,7 +715,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 							let grid = document.grid_enabled;
-							selected.update_transforms(delta, grid);
+							selected.update_transforms(delta, grid, None);
 						}
 					}
 					ResizingBounds
@@ -751,7 +749,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 						let grid = document.grid_enabled;
-						selected.update_transforms(delta, grid);
+						selected.update_transforms(delta, grid, None);
 					}
 
 					RotatingBounds
