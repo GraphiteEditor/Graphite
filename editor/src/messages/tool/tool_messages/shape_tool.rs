@@ -2,7 +2,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, NumberInput, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::{CheckboxInput, ColorInput, NumberInput, WidgetHolder};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -28,6 +28,7 @@ pub struct ShapeOptions {
 	fill: ToolColorOptions,
 	stroke: ToolColorOptions,
 	vertices: u32,
+	is_star: bool,
 }
 
 impl Default for ShapeOptions {
@@ -37,6 +38,7 @@ impl Default for ShapeOptions {
 			line_weight: 5.,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
+			is_star: false,
 		}
 	}
 }
@@ -66,6 +68,7 @@ pub enum ShapeToolMessage {
 pub enum ShapeOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
+	IsStar(bool),
 	LineWeight(f64),
 	StrokeColor(Option<Color>),
 	StrokeColorType(ToolColorType),
@@ -96,6 +99,13 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.widget_holder()
 }
 
+fn create_star_option_widget(is_star: bool) -> WidgetHolder {
+	CheckboxInput::new(is_star)
+		.tooltip("Star")
+		.on_update(|checkbox_input: &CheckboxInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::IsStar(checkbox_input.checked)).into())
+		.widget_holder()
+}
+
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
@@ -107,7 +117,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = vec![create_sides_widget(self.options.vertices)];
+		let mut widgets = vec![create_sides_widget(self.options.vertices), create_star_option_widget(self.options.is_star)];
 
 		widgets.push(WidgetHolder::section_separator());
 
@@ -139,6 +149,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 		if let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message {
 			match action {
 				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
+				ShapeOptionsUpdate::IsStar(is_star) => self.options.is_star = is_star,
 				ShapeOptionsUpdate::FillColor(color) => {
 					self.options.fill.custom_color = color;
 					self.options.fill.color_type = ToolColorType::Custom;
@@ -238,7 +249,11 @@ impl Fsm for ShapeToolFsmState {
 					let layer_path = document.get_path_for_new_layer();
 					shape_data.path = Some(layer_path.clone());
 
-					let subpath = bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.);
+					let subpath = if tool_options.is_star {
+						bezier_rs::Subpath::new_regular_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5)
+					} else {
+						bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.)
+					};
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 
 					let fill_color = tool_options.fill.active_color();
