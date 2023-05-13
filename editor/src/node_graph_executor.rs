@@ -17,10 +17,13 @@ use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeGraphExecutor {
-	executor: DynamicExecutor,
+	pub(crate) executor: DynamicExecutor,
+	// TODO: This is a memory leak since layers are never removed
+	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
 }
 
 impl NodeGraphExecutor {
@@ -35,6 +38,7 @@ impl NodeGraphExecutor {
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
 		let proto_network = c.compile_single(scoped_network, true)?;
+
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network) {
 			error!("Failed to update executor:\n{}", e);
@@ -51,8 +55,12 @@ impl NodeGraphExecutor {
 		}
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<String> {
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
 		self.executor.introspect(path).flatten()
+	}
+
+	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {
+		self.last_output_type.get(path).cloned().flatten()
 	}
 
 	/// Computes an input for a node in the graph
@@ -123,11 +131,13 @@ impl NodeGraphExecutor {
 		imaginate_node_path: Vec<NodeId>,
 		(document, document_id): (&mut DocumentMessageHandler, u64),
 		layer_path: Vec<LayerId>,
-		editor_api: EditorApi<'_>,
+		mut editor_api: EditorApi<'_>,
 		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
 	) -> Result<Message, String> {
 		use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 		use graph_craft::imaginate_input::*;
+
+		let image = editor_api.image_frame.take();
 
 		let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 
@@ -158,6 +168,7 @@ impl NodeGraphExecutor {
 		};
 		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node_path, get("Adapt Input Image"), Cow::Borrowed(&editor_api))?;
 
+		editor_api.image_frame = image;
 		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
 			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node_path, get("Input Image"), Cow::Borrowed(&editor_api))?)
 		} else {
@@ -249,7 +260,7 @@ impl NodeGraphExecutor {
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
 		let editor_api = EditorApi {
-			image_frame: Some(&image_frame),
+			image_frame: Some(image_frame),
 			font_cache: Some(&persistent_data.1.font_cache),
 		};
 
@@ -272,11 +283,13 @@ impl NodeGraphExecutor {
 			// Update the cached vector data on the layer
 			let vector_data: VectorData = dyn_any::downcast(boxed_node_graph_output).map(|v| *v)?;
 			let transform = vector_data.transform.to_cols_array();
+			self.last_output_type.insert(layer_path.clone(), Some(concrete!(VectorData)));
 			responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 			responses.add(Operation::SetVectorData { path: layer_path, vector_data });
-		} else {
+		} else if core::any::TypeId::of::<ImageFrame<Color>>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
 			// Attempt to downcast to an image frame
 			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
+			self.last_output_type.insert(layer_path.clone(), Some(concrete!(ImageFrame<Color>)));
 
 			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
 			let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
@@ -303,6 +316,14 @@ impl NodeGraphExecutor {
 				}];
 				responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
 			}
+		} else if core::any::TypeId::of::<graphene_core::Artboard>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
+			let artboard: graphene_core::Artboard = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
+			info!("{artboard:#?}");
+			return Err(format!("Artboard (see console)"));
+		} else if core::any::TypeId::of::<graphene_core::GraphicGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
+			let graphic_group: graphene_core::GraphicGroup = dyn_any::downcast(boxed_node_graph_output).map(|graphic| *graphic)?;
+			info!("{graphic_group:#?}");
+			return Err(format!("Graphic group (see console)"));
 		}
 
 		Ok(())

@@ -449,7 +449,7 @@ impl Layer {
 
 	/// Get a mutable reference to the NodeNetwork
 	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Layer`.
-	pub fn as_node_graph_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
+	pub fn as_layer_network_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Layer(layer) => Ok(&mut layer.network),
 			_ => Err(DocumentError::NotNodeGraph),
@@ -458,14 +458,14 @@ impl Layer {
 
 	/// Get a reference to the NodeNetwork
 	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Layer`.
-	pub fn as_node_graph(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
+	pub fn as_layer_network(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
 		match &self.data {
 			LayerDataType::Layer(layer) => Ok(&layer.network),
 			_ => Err(DocumentError::NotNodeGraph),
 		}
 	}
 
-	pub fn as_graph_frame(&self) -> Result<&LayerLayer, DocumentError> {
+	pub fn as_layer(&self) -> Result<&LayerLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Layer(layer) => Ok(layer),
 			_ => Err(DocumentError::NotNodeGraph),

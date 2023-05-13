@@ -47,7 +47,7 @@ impl Subpath {
 	}
 
 	/// Convert to the legacy Subpath from the `bezier_rs::Subpath`.
-	pub fn from_bezier_crate(value: &[bezier_rs::Subpath<ManipulatorGroupId>]) -> Self {
+	pub fn from_bezier_rs(value: &[bezier_rs::Subpath<ManipulatorGroupId>]) -> Self {
 		let mut groups = IdBackedVec::new();
 		for subpath in value {
 			for group in subpath.manipulator_groups() {

@@ -56,13 +56,13 @@ impl OverlayRenderer {
 
 				// Create an outline if we do not have a cached one
 				if outline_cache.is_none() {
-					let outline_path = self.create_shape_outline_overlay(graphene_core::vector::Subpath::from_bezier_crate(&vector_data.subpaths), responses);
+					let outline_path = self.create_shape_outline_overlay(graphene_core::vector::Subpath::from_bezier_rs(&vector_data.subpaths), responses);
 					self.shape_overlay_cache.insert(*layer_id, outline_path.clone());
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 					trace!("Overlay: Creating new outline {:?}", &outline_path);
 				} else if let Some(outline_path) = outline_cache {
 					trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer_id);
-					Self::modify_outline_overlays(outline_path.clone(), graphene_core::vector::Subpath::from_bezier_crate(&vector_data.subpaths), responses);
+					Self::modify_outline_overlays(outline_path.clone(), graphene_core::vector::Subpath::from_bezier_rs(&vector_data.subpaths), responses);
 					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 				}
 

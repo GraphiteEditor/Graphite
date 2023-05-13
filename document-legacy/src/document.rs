@@ -1,4 +1,3 @@
-use crate::boolean_ops::composite_boolean_operation;
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -10,7 +9,6 @@ use crate::{DocumentError, DocumentResponse, Operation};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::generate_uuid;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -156,25 +154,6 @@ impl Document {
 		}
 		let (path, id) = split_path(path)?;
 		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
-	}
-
-	/// Returns vector `Shape`s for each specified in `paths`.
-	/// If any path is not a shape, or does not exist, `DocumentError::InvalidPath` is returned.
-	fn transformed_shapes(&self, paths: &[Vec<LayerId>]) -> Result<Vec<ShapeLayer>, DocumentError> {
-		let mut shapes: Vec<ShapeLayer> = Vec::new();
-		let undo_viewport = self.root.transform.inverse();
-		for path in paths {
-			match (self.multiply_transforms(path), &self.layer(path)?.data) {
-				(Ok(shape_transform), LayerDataType::Shape(shape)) => {
-					let mut new_shape = shape.clone();
-					new_shape.shape.apply_affine(undo_viewport * shape_transform);
-					shapes.push(new_shape);
-				}
-				(Ok(_), _) => return Err(DocumentError::InvalidPath),
-				(Err(err), _) => return Err(err),
-			}
-		}
-		Ok(shapes)
 	}
 
 	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
@@ -490,7 +469,7 @@ impl Document {
 
 	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
 	/// reaction from the frontend, responses may be returned.
-	pub fn handle_operation(&mut self, operation: Operation, render_data: &RenderData) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
+	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
 		use DocumentResponse::*;
 
 		operation.pseudo_hash().hash(&mut self.state_identifier);
@@ -535,19 +514,6 @@ impl Document {
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
 			}
-			Operation::AddNgon {
-				path,
-				insert_index,
-				transform,
-				style,
-				sides,
-			} => {
-				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::ngon(sides, style)), transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
-			}
 			Operation::AddShape {
 				path,
 				transform,
@@ -568,33 +534,6 @@ impl Document {
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
 				self.set_layer(&path, Layer::new(LayerDataType::Shape(ShapeLayer::poly_line(points, style)), transform), insert_index)?;
-				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::BooleanOperation { operation, selected } => {
-				let mut responses = Vec::new();
-				if selected.len() > 1 {
-					let new_shapes = composite_boolean_operation(operation, &mut self.transformed_shapes(&selected)?.into_iter().rev().map(RefCell::new).collect())?;
-
-					for path in selected {
-						self.delete(&path)?;
-						responses.push(DocumentResponse::DeletedLayer { path })
-					}
-					for new_shape in new_shapes {
-						let new_id = self.add_layer(&[], Layer::new(LayerDataType::Shape(new_shape), DAffine2::IDENTITY.to_cols_array()), -1)?;
-						responses.push(DocumentResponse::CreatedLayer { path: vec![new_id], select: true })
-					}
-				}
-				Some([vec![DocumentChanged, DocumentResponse::FolderChanged { path: vec![] }], responses].concat())
-			}
-			Operation::AddSpline {
-				path,
-				insert_index,
-				points,
-				transform,
-				style,
-			} => {
-				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				self.set_layer(&path, Layer::new(LayerDataType::Shape(ShapeLayer::spline(points, style)), transform), insert_index)?;
 				Some([vec![DocumentChanged, CreatedLayer { path: path.clone(), select: true }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::DeleteLayer { path } => {
@@ -626,13 +565,11 @@ impl Document {
 				duplicating,
 			} => {
 				let (folder_path, layer_id) = split_path(&destination_path)?;
-				let mut folder: Option<&mut FolderLayer> = None;
-
 				let mut responses = Vec::new();
 
 				// If were duplicating, use the parent layer path as the folder we insert to
 				if duplicating {
-					folder = Some(self.folder_mut(&destination_path)?);
+					let folder = Some(self.folder_mut(&destination_path)?);
 					let new_id = folder.unwrap().add_layer(*layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 					let updated_layer_path: Vec<u64> = [destination_path.clone(), vec![new_id]].concat();
 
@@ -645,7 +582,7 @@ impl Document {
 						FolderChanged { path: destination_path.clone() },
 					]);
 				} else {
-					folder = Some(self.folder_mut(folder_path)?);
+					let folder = Some(self.folder_mut(folder_path)?);
 					folder.unwrap().add_layer(*layer, Some(layer_id), insert_index).ok_or(DocumentError::IndexOutOfBounds)?;
 					responses.extend([
 						DocumentChanged,
@@ -745,15 +682,12 @@ impl Document {
 							}
 
 							let result = self
-								.handle_operation(
-									Operation::InsertLayer {
-										layer: Box::new(updated_layer),
-										destination_path: updated_layer_path_parent.clone(),
-										insert_index: -1,
-										duplicating: true,
-									},
-									render_data,
-								)
+								.handle_operation(Operation::InsertLayer {
+									layer: Box::new(updated_layer),
+									destination_path: updated_layer_path_parent.clone(),
+									insert_index: -1,
+									duplicating: true,
+								})
 								.ok()
 								.flatten()
 								.unwrap_or_default();
@@ -852,83 +786,6 @@ impl Document {
 				}
 				Some(Vec::new())
 			}
-			Operation::InsertManipulatorGroup {
-				layer_path,
-				manipulator_group,
-				after_id,
-			} => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					shape.manipulator_groups_mut().insert(manipulator_group, after_id);
-					self.mark_as_dirty(&layer_path)?;
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::PushManipulatorGroup { layer_path, manipulator_group } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					shape.manipulator_groups_mut().push(manipulator_group);
-					self.mark_as_dirty(&layer_path)?;
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::PushFrontManipulatorGroup { layer_path, manipulator_group } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					shape.manipulator_groups_mut().push_front(manipulator_group);
-					self.mark_as_dirty(&layer_path)?;
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::RemoveManipulatorGroup { layer_path, id } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					shape.manipulator_groups_mut().remove(id);
-					self.mark_as_dirty(&layer_path)?;
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::MoveManipulatorPoint {
-				layer_path,
-				id,
-				manipulator_type: control_type,
-				position,
-			} => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
-						manipulator_group.set_point_position(control_type as usize, position.into());
-						self.mark_as_dirty(&layer_path)?;
-					}
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::SetManipulatorPoints {
-				layer_path,
-				id,
-				manipulator_type,
-				position,
-			} => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
-						if let Some(position) = position {
-							manipulator_group.set_point_position(manipulator_type as usize, position.into());
-						} else {
-							manipulator_group.points[manipulator_type] = None;
-						}
-						self.mark_as_dirty(&layer_path)?;
-					}
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::RemoveManipulatorPoint {
-				layer_path,
-				id,
-				manipulator_type: control_type,
-			} => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
-						manipulator_group.points[control_type as usize] = None;
-						self.mark_as_dirty(&layer_path)?;
-					}
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				let scope = DAffine2::from_cols_array(&scope);
@@ -940,17 +797,6 @@ impl Document {
 				let transform = DAffine2::from_cols_array(&transform);
 				let scope = DAffine2::from_cols_array(&scope);
 				self.set_transform_relative_to_scope(&path, Some(scope), transform)?;
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::TransformLayerScaleAroundPivot { path, scale_factor } => {
-				let layer = self.layer_mut(&path)?;
-
-				let offset = DAffine2::from_translation(-layer.pivot);
-				let scale = DAffine2::from_scale(scale_factor.into());
-				let offset_back = DAffine2::from_translation(layer.pivot);
-				layer.transform = layer.transform * offset_back * scale * offset;
-
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
@@ -975,12 +821,6 @@ impl Document {
 				let layer = self.layer_mut(&path)?;
 				layer.transform = transform;
 				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::ToggleLayerVisibility { path } => {
-				self.mark_as_dirty(&path)?;
-				let layer = self.layer_mut(&path)?;
-				layer.visible = !layer.visible;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerVisibility { path, visible } => {
@@ -1028,101 +868,6 @@ impl Document {
 				layer.style_mut()?.set_fill(fill);
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-
-			// We may not want the concept of selection here. For now leaving though.
-			Operation::SelectManipulatorPoints { layer_path, point_ids, add } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_subpath_mut() {
-					if !add {
-						shape.clear_selected_manipulator_groups();
-					}
-					shape.select_points(&point_ids, true);
-				}
-				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::DeselectManipulatorPoints { layer_path, point_ids } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_subpath_mut() {
-					shape.select_points(&point_ids, false);
-				}
-				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::SelectAllAnchors { layer_path } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(subpath) = layer.as_subpath_mut() {
-					subpath.select_all_anchors();
-				}
-				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::DeselectAllManipulatorPoints { layer_path } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_subpath_mut() {
-					shape.clear_selected_manipulator_groups();
-				}
-				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::DeleteSelectedManipulatorPoints { layer_paths } => {
-				let mut responses = vec![];
-				for layer_path in layer_paths {
-					let layer = self.layer_mut(&layer_path)?;
-					if let Some(shape) = layer.as_subpath_mut() {
-						// Delete the selected points.
-						shape.delete_selected();
-
-						// Delete the layer if there are no longer any manipulator groups
-						if (shape.manipulator_groups().len() - 1) == 0 {
-							// Delegate deletion to DeleteLayer to update Layer Tree in frontend
-							match self.handle_operation(Operation::DeleteLayer { path: layer_path.clone() }, render_data) {
-								Ok(Some(delete_responses)) => {
-									responses.extend(delete_responses);
-									responses.push(DocumentResponse::DeletedSelectedManipulatorPoints);
-									return Ok(Some(responses));
-								}
-								Err(e) => error!("DocumentError: {:?}", e),
-								Ok(_) => {}
-							}
-						}
-
-						// If we still have manipulator groups, update the layer and thumbnails
-						self.mark_as_dirty(&layer_path)?;
-						responses.push(DocumentChanged);
-						responses.push(LayerChanged { path: layer_path.clone() });
-						responses.append(&mut update_thumbnails_upstream(&layer_path));
-					}
-				}
-				Some(responses)
-			}
-			Operation::MoveSelectedManipulatorPoints { layer_path, delta, mirror_distance } => {
-				if let Ok(viewspace) = self.generate_transform_relative_to_viewport(&layer_path) {
-					let objectspace = &viewspace.inverse();
-					let delta = objectspace.transform_vector2(DVec2::new(delta.0, delta.1));
-					let layer = self.layer_mut(&layer_path)?;
-					if let Some(shape) = layer.as_subpath_mut() {
-						shape.move_selected(delta, mirror_distance);
-					}
-				}
-				self.mark_as_dirty(&layer_path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
-			}
-			Operation::SetManipulatorHandleMirroring { layer_path, id, mirror_angle } => {
-				if let Ok(Some(shape)) = self.layer_mut(&layer_path).map(|layer| layer.as_subpath_mut()) {
-					if let Some(manipulator_group) = shape.manipulator_groups_mut().by_id_mut(id) {
-						manipulator_group.editor_state.mirror_angle_between_handles = mirror_angle;
-						self.mark_as_dirty(&layer_path)?;
-					}
-				}
-				Some([update_thumbnails_upstream(&layer_path), vec![DocumentChanged, LayerChanged { path: layer_path }]].concat())
-			}
-			Operation::SetSelectedHandleMirroring { layer_path, toggle_angle } => {
-				let layer = self.layer_mut(&layer_path)?;
-				if let Some(shape) = layer.as_subpath_mut() {
-					for manipulator_group in shape.selected_manipulator_groups_any_points_mut() {
-						manipulator_group.toggle_mirroring(toggle_angle);
-					}
-				}
-				// This does nothing visually so we don't need to send any messages
-				None
 			}
 		};
 		Ok(responses)

@@ -27,6 +27,10 @@ pub mod raster;
 pub mod transform;
 
 #[cfg(feature = "alloc")]
+mod graphic_element;
+#[cfg(feature = "alloc")]
+pub use graphic_element::*;
+#[cfg(feature = "alloc")]
 pub mod vector;
 
 pub mod quantization;
@@ -39,8 +43,9 @@ pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
 	fn reset(self: Pin<&mut Self>) {}
-	#[cfg(feature = "alloc")]
-	fn serialize(&self) -> Option<String> {
+	#[cfg(feature = "std")]
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
 	}
 }

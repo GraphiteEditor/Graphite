@@ -18,14 +18,10 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(operation) => {
-				let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, Some(ipp.document_bounds()));
-
-				match self.overlays_document.handle_operation(*operation, &render_data) {
-					Ok(_) => responses.add(OverlaysMessage::Rerender),
-					Err(e) => error!("OverlaysError: {:?}", e),
-				}
-			}
+			DispatchOperation(operation) => match self.overlays_document.handle_operation(*operation) {
+				Ok(_) => responses.add(OverlaysMessage::Rerender),
+				Err(e) => error!("OverlaysError: {:?}", e),
+			},
 
 			// Messages
 			ClearAllOverlays => {

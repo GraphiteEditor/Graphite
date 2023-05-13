@@ -139,6 +139,7 @@ pub trait UnassociatedAlpha: RGB + Alpha {
 
 pub trait Alpha {
 	type AlphaChannel: Channel;
+	const TRANSPARENT: Self;
 	fn alpha(&self) -> Self::AlphaChannel;
 	fn a(&self) -> Self::AlphaChannel {
 		self.alpha()
