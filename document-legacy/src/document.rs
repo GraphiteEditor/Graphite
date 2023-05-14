@@ -6,8 +6,6 @@ use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
 
-use graph_craft::document::generate_uuid;
-
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::cmp::max;

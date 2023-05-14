@@ -436,31 +436,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(DocumentOperation::ClearBlobURL { path: layer_path.into() });
 			}
 			GroupSelectedLayers => {
-				// Necessary because the shallowest common folder of a single folder is the folder which causes errors
-				let new_folder_path = if self.selected_layers_sorted().len() == 1 {
-					Vec::new()
-				} else {
-					self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec()
-				};
-
-				// 	<---------------------------- Workinging HERE
-				// Check which child of the shallowest common folder contains a selected layer
-				// Use the top-most child of the children as the insert index of the new grouped folder
-				let children = self.document_legacy.folder_children_paths(&new_folder_path);
-				let mut child_layers_deleted = -1;
-				let mut new_index = 0;
-
-				let level_of_children = children.first().unwrap_or(&vec![0]).len();
-				let selected_sub_layers: Vec<Vec<u64>> = self.selected_layers().map(|layer| layer[..level_of_children].to_vec()).collect();
-
-				for child in children {
-					if selected_sub_layers.contains(&child) {
-						child_layers_deleted += 1;
-					}
-					new_index += 1;
-				}
-
-				// ------------------------------>
+				// TODO: Add code that changes the insert index of the new folder based on the selected layer
+				let mut new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
 				// Required for grouping parent folders with their own children
 				if !new_folder_path.is_empty() && self.selected_layers_contains(&new_folder_path) {
