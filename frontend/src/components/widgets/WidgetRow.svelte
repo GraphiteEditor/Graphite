@@ -97,7 +97,7 @@
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
-			<CurveInput {...exclude(curvesInput)} sharpRightCorners={nextIsSuffix} />
+			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}

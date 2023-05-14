@@ -1,5 +1,5 @@
 use super::{
-	curve::{CubicSplines, CurveSample, ValueMapperNode},
+	curve::{CubicSplines, Curve, CurveSample, ValueMapperNode},
 	Channel, Color,
 };
 use crate::Node;
@@ -808,17 +808,17 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 const WINDOW_SIZE: usize = 1024;
 
 #[derive(Debug, Clone, Copy)]
-pub struct GenerateCurvesNode<OutputChannel, Samples> {
-	samples: Samples,
+pub struct GenerateCurvesNode<OutputChannel, Curve> {
+	curve: Curve,
 	_channel: core::marker::PhantomData<OutputChannel>,
 }
 
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
-fn generate_curves<_Channel: Channel>(_primary: (), samples: Vec<CurveSample>) -> ValueMapperNode<_Channel> {
+fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2]; 2];
 	let mut lut = vec![_Channel::zero(); WINDOW_SIZE];
 	let end = CurveSample { pos: [1.0; 2], params: [[1.0; 2]; 2] };
-	for sample in samples.iter().chain(core::iter::once(&end)) {
+	for sample in curve.samples.iter().chain(core::iter::once(&end)) {
 		let points = CubicSplines {
 			x: [pos[0], param[0], sample.params[0][0], sample.pos[0]],
 			y: [pos[1], param[1], sample.params[0][1], sample.pos[1]],

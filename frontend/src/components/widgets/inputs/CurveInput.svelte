@@ -7,6 +7,11 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
+	// emits: ["update:value"],
+	const dispatch = createEventDispatcher<{
+		value: Curve;
+	}>();
+
 	export let classes: Record<string, boolean> = {};
 	let styleName = "";
 	export { styleName as style };
@@ -14,6 +19,8 @@
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
+	export let value: Curve;
+
 	let samples: CurveSample[] = [
 		{
 			pos: [0, 0],
@@ -33,6 +40,10 @@
 	let draggedNodeIndex: number | undefined  = undefined;
 	let gridSize: number = 4;
 
+	function updateCurve() {
+		dispatch("value", { samples: samples.slice(1, samples.length - 1) } );
+	}
+
 	function recalculateSvgPath() {
 		let d: string = "";
 		let pos: [number, number] = samples[0].pos;
@@ -50,6 +61,11 @@
 
 	let d: string = recalculateSvgPath();
 
+	$: {
+		samples = [samples[0]].concat(value.samples).concat([samples[samples.length - 1]]);
+		d = recalculateSvgPath();
+	}
+
 	function handleSampleMouseDown(e: MouseEvent, i: number) {
 		// delete a sample with right- or middle-click
 		if (e.button > 0 && i > 0 && i < samples.length - 1) {
@@ -59,6 +75,7 @@
 			// when we do `samples.splice(i, 1)`, so here we are:
 			samples = samples.slice(0, i).concat(samples.slice(i + 1));
 			d = recalculateSvgPath();
+			updateCurve();
 			return;
 		}
 		draggedNodeIndex = i;
@@ -106,6 +123,7 @@
 		selectedNodeIndex = nodeIndex;
 		clampParameters();
 		d = recalculateSvgPath();
+		updateCurve();
 	}
 
 	function handleMouseMove(e: MouseEvent) {
@@ -119,6 +137,7 @@
 			samples[selectedNodeIndex].params[-draggedNodeIndex - 1] = pos;
 		clampParameters();
 		d = recalculateSvgPath();
+		updateCurve();
 	}
 
 </script>

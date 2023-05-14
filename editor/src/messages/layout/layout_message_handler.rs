@@ -123,7 +123,10 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::CurveInput(curve_input) => {
+						let curve = serde_json::from_value(value).expect("CurveInput event data could not be deserialized");
+						curve_input.value = curve;
 						let callback_message = (curve_input.on_update.callback)(curve_input);
+						info!("callback message: {callback_message:?}");
 						responses.add(callback_message);
 					}
 					Widget::DropdownInput(dropdown_input) => {
