@@ -1,5 +1,5 @@
 use super::{
-	spline::{CubicSplines, SplineSample, ValueMapperNode},
+	spline::{CubicSplines, CurveSample, ValueMapperNode},
 	Channel, Color,
 };
 use crate::Node;
@@ -814,10 +814,10 @@ pub struct GenerateCurvesNode<OutputChannel, Samples> {
 }
 
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
-fn generate_curves<_Channel: Channel>(_primary: (), samples: Vec<SplineSample>) -> ValueMapperNode<_Channel> {
+fn generate_curves<_Channel: Channel>(_primary: (), samples: Vec<CurveSample>) -> ValueMapperNode<_Channel> {
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2]; 2];
 	let mut lut = vec![_Channel::zero(); WINDOW_SIZE];
-	let end = SplineSample { pos: [1.0; 2], params: [[1.0; 2]; 2] };
+	let end = CurveSample { pos: [1.0; 2], params: [[1.0; 2]; 2] };
 	for sample in samples.iter().chain(core::iter::once(&end)) {
 		let points = CubicSplines {
 			x: [pos[0], param[0], sample.params[0][0], sample.pos[0]],

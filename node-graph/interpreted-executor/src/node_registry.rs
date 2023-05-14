@@ -328,9 +328,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		vec![(
 			NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
 			|args| {
-				use graphene_core::raster::{spline::SplineSample, GenerateCurvesNode};
+				use graphene_core::raster::{spline::CurveSample, GenerateCurvesNode};
 
-				let samples: DowncastBothNode<(), Vec<SplineSample>> = DowncastBothNode::new(args[0]);
+				let samples: DowncastBothNode<(), Vec<CurveSample>> = DowncastBothNode::new(args[0]);
 				let samples = ClonedNode::new(samples.eval(()));
 
 				let generate_curves_node = GenerateCurvesNode::<f32, _>::new(samples);

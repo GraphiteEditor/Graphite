@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::LayerId;
-use graphene_core::raster::color::Color;
+use graphene_core::raster::{color::Color, spline::Curve};
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;
@@ -414,4 +414,25 @@ pub struct TextInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextInput>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct CurveInput {
+	#[widget_builder(constructor)]
+	pub value: Curve,
+
+	pub disabled: bool,
+
+	pub tooltip: String,
+
+	pub centered: bool,
+
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<CurveInput>,
 }

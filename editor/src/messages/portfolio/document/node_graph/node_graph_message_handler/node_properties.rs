@@ -491,6 +491,25 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 	}
 	LayoutGroup::Row { widgets }
 }
+
+fn curves_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::Curve(curve),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			CurveInput::new(curve.clone())
+				.on_update(update_value(|x: &CurveInput| TaggedValue::Curve(x.value.clone()), node_id, index))
+				.widget_holder(),
+		])
+	}
+	LayoutGroup::Row { widgets }
+}
+
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let information = WidgetHolder::text_widget("The graph's input frame is the rasterized artwork under the layer");
@@ -614,6 +633,12 @@ pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: Nod
 		LayoutGroup::Row { widgets: contrast },
 		LayoutGroup::Row { widgets: use_legacy },
 	]
+}
+
+pub fn curves_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let curves = curves_widget(document_node, node_id, 1, "Curve", true);
+
+	vec![curves]
 }
 
 pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

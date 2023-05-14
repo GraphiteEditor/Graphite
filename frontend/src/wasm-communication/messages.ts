@@ -418,6 +418,15 @@ export class Color {
 	}
 }
 
+export class CurveSample {
+	pos!: [number, number];
+	params!: [[number, number], [number, number]];
+}
+
+export class Curve {
+	samples!: CurveSample[];
+}
+
 export class UpdateActiveDocument extends JsMessage {
 	readonly documentId!: bigint;
 }
@@ -516,7 +525,7 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
-	
+
 	readonly blobUrl!: string;
 }
 
@@ -778,7 +787,7 @@ export class ImaginateImageData {
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;
-	
+
 	readonly transform!: Float64Array ;
 }
 
@@ -870,6 +879,17 @@ export type MenuListEntry = MenuEntryCommon & {
 	font?: URL;
 	ref?: any;
 };
+
+export class CurveInput extends WidgetProps {
+	value!: Curve;
+
+	disabled!: boolean;
+
+	minWidth!: number;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
 
 export class DropdownInput extends WidgetProps {
 	entries!: MenuListEntry[][];
@@ -1160,6 +1180,7 @@ const widgetSubTypes = [
 	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
 	{ value: ColorInput, name: "ColorInput" },
+	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },

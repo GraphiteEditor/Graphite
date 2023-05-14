@@ -4,10 +4,25 @@ use crate::Node;
 
 use super::{Channel, LuminanceMut};
 
-#[derive(Debug, Clone, Copy, DynAny)]
-pub struct SplineSample {
+#[derive(Debug, Default, Clone, PartialEq, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Curve {
+	pub samples: Vec<CurveSample>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CurveSample {
 	pub pos: [f32; 2],
 	pub params: [[f32; 2]; 2],
+}
+
+impl std::hash::Hash for CurveSample {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		for c in self.params.iter().chain([&self.pos]).flatten() {
+			c.to_bits().hash(state);
+		}
+	}
 }
 
 pub struct CubicSplines {

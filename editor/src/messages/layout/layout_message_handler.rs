@@ -122,6 +122,10 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let callback_message = (color_input.on_update.callback)(color_input);
 						responses.add(callback_message);
 					}
+					Widget::CurveInput(curve_input) => {
+						let callback_message = (curve_input.on_update.callback)(curve_input);
+						responses.add(callback_message);
+					}
 					Widget::DropdownInput(dropdown_input) => {
 						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
 						dropdown_input.selected_index = Some(update_value as u32);

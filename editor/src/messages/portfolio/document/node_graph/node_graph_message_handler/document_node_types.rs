@@ -720,6 +720,17 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::brightness_contrast_properties,
 		},
 		DocumentNodeType {
+			name: "Curves",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::CurvesNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Curve", TaggedValue::Curve(Default::default()), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::curves_properties,
+		},
+		DocumentNodeType {
 			name: "Threshold",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),

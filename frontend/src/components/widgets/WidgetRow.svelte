@@ -12,6 +12,7 @@
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
 	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
+	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
 	import LayerReferenceInput from "@graphite/components/widgets/inputs/LayerReferenceInput.svelte";
@@ -93,6 +94,10 @@
 		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
 			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+		{/if}
+		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
+		{#if curvesInput}
+			<CurveInput {...exclude(curvesInput)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
