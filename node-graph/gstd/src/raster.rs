@@ -209,13 +209,14 @@ fn insert_channel_node<
 
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
-	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
+	let area = bg_to_fg.transform_vector2(DVec2::ONE);
+	let inverse_stencile_transform = stencil.transform().inverse();
 
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_point = DVec2::new(x as f64, y as f64);
 			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
+			let local_mask_point = inverse_stencile_transform.transform_point2(mask_point);
 			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
