@@ -34,6 +34,10 @@ pub enum FrontendGraphDataType {
 	Boolean,
 	#[serde(rename = "vec2")]
 	Vector,
+	#[serde(rename = "graphic")]
+	GraphicGroup,
+	#[serde(rename = "artboard")]
+	Artboard,
 }
 impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
@@ -46,6 +50,8 @@ impl FrontendGraphDataType {
 			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
+			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
+			TaggedValue::Artboard(_) => Self::Artboard,
 			_ => Self::General,
 		}
 	}
@@ -118,11 +124,14 @@ pub struct NodeGraphMessageHandler {
 
 impl NodeGraphMessageHandler {
 	fn get_root_network<'a>(&self, document: &'a Document) -> Option<&'a graph_craft::document::NodeNetwork> {
-		self.layer_path.as_ref().and_then(|path| document.layer(path).ok()).and_then(|layer| layer.as_node_graph().ok())
+		self.layer_path.as_ref().and_then(|path| document.layer(path).ok()).and_then(|layer| layer.as_layer_network().ok())
 	}
 
 	fn get_root_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
-		self.layer_path.as_ref().and_then(|path| document.layer_mut(path).ok()).and_then(|layer| layer.as_node_graph_mut().ok())
+		self.layer_path
+			.as_ref()
+			.and_then(|path| document.layer_mut(path).ok())
+			.and_then(|layer| layer.as_layer_network_mut().ok())
 	}
 
 	/// Get the active graph_craft NodeNetwork struct
@@ -726,7 +735,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				let network = document
 					.layer_mut(&layer_path)
 					.ok()
-					.and_then(|layer| layer.as_node_graph_mut().ok())
+					.and_then(|layer| layer.as_layer_network_mut().ok())
 					.and_then(|network| network.nested_network_mut(node_path));
 
 				if let Some(network) = network {
@@ -747,6 +756,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					warn!("No network");
 					return;
 				};
+				debug_assert!(network.is_acyclic(), "Not acyclic. Network: {network:#?}");
 				let outwards_links = network.collect_outwards_links();
 				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
 					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {

@@ -95,6 +95,7 @@ import BooleanUnion from "@graphite-frontend/assets/icon-16px-solid/boolean-unio
 import CheckboxChecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-checked.svg";
 import CheckboxUnchecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-unchecked.svg";
 import Copy from "@graphite-frontend/assets/icon-16px-solid/copy.svg";
+import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
 import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
 import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
 import EyeHidden from "@graphite-frontend/assets/icon-16px-solid/eye-hidden.svg";
@@ -155,6 +156,7 @@ const SOLID_16PX = {
 	CheckboxChecked: { svg: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { svg: CheckboxUnchecked, size: 16 },
 	Copy: { svg: Copy, size: 16 },
+	CustomColor: { svg: CustomColor, size: 16 },
 	Edit: { svg: Edit, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
 	EyeHidden: { svg: EyeHidden, size: 16 },

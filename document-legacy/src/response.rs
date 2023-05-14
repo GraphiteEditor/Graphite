@@ -16,7 +16,7 @@ pub enum DocumentResponse {
 	},
 	CreatedLayer {
 		path: Vec<LayerId>,
-		select: bool,
+		is_selected: bool,
 	},
 	DeletedLayer {
 		path: Vec<LayerId>,

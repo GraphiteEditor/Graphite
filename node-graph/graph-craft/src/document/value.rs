@@ -57,6 +57,9 @@ pub enum TaggedValue {
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
+	GraphicGroup(graphene_core::GraphicGroup),
+	Artboard(graphene_core::Artboard),
+	Optional2IVec2(Option<[glam::IVec2; 2]>),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -88,15 +91,8 @@ impl Hash for TaggedValue {
 			Self::ImaginateMaskStartingFill(f) => f.hash(state),
 			Self::ImaginateStatus(s) => s.hash(state),
 			Self::LayerPath(p) => p.hash(state),
-			Self::ImageFrame(i) => {
-				i.image.hash(state);
-				i.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-			}
-			Self::VectorData(vector_data) => {
-				vector_data.subpaths.hash(state);
-				vector_data.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-				vector_data.style.hash(state);
-			}
+			Self::ImageFrame(i) => i.hash(state),
+			Self::VectorData(vector_data) => vector_data.hash(state),
 			Self::Fill(fill) => fill.hash(state),
 			Self::Stroke(stroke) => stroke.hash(state),
 			Self::VecF32(vec_f32) => vec_f32.iter().for_each(|val| val.to_bits().hash(state)),
@@ -131,6 +127,9 @@ impl Hash for TaggedValue {
 			}
 			Self::EditorApi(editor_api) => editor_api.hash(state),
 			Self::DocumentNode(document_node) => document_node.hash(state),
+			Self::GraphicGroup(graphic_group) => graphic_group.hash(state),
+			Self::Artboard(artboard) => artboard.hash(state),
+			Self::Optional2IVec2(v) => v.hash(state),
 		}
 	}
 }
@@ -180,6 +179,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Segments(x) => Box::new(x),
 			TaggedValue::EditorApi(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
+			TaggedValue::GraphicGroup(x) => Box::new(x),
+			TaggedValue::Artboard(x) => Box::new(x),
+			TaggedValue::Optional2IVec2(x) => Box::new(x),
 		}
 	}
 
@@ -240,6 +242,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
+			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
+			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
+			TaggedValue::Optional2IVec2(_) => concrete!(Option<[glam::IVec2; 2]>),
 		}
 	}
 }

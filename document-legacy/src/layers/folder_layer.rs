@@ -48,6 +48,13 @@ impl LayerData for FolderLayer {
 }
 
 impl FolderLayer {
+	pub fn next_assignment_id(&mut self) -> LayerId {
+		while self.layer_ids.contains(&self.next_assignment_id) {
+			self.next_assignment_id += 1;
+		}
+		self.next_assignment_id
+	}
+
 	/// When a insertion ID is provided, try to insert the layer with the given ID.
 	/// If that ID is already used, return `None`.
 	/// When no insertion ID is provided, search for the next free ID and insert it with that.

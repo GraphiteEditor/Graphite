@@ -330,8 +330,10 @@ impl NodeNetwork {
 	pub fn push_node(&mut self, mut node: DocumentNode, connect_to_previous: bool) -> NodeId {
 		let id = self.nodes.len().try_into().expect("Too many nodes in network");
 		// Set the correct position for the new node
-		if let Some(pos) = self.original_outputs().first().and_then(|first| self.nodes.get(&first.node_id)).map(|n| n.metadata.position) {
-			node.metadata.position = pos + IVec2::new(8, 0);
+		if node.metadata.position == IVec2::default() {
+			if let Some(pos) = self.original_outputs().first().and_then(|first| self.nodes.get(&first.node_id)).map(|n| n.metadata.position) {
+				node.metadata.position = pos + IVec2::new(8, 0);
+			}
 		}
 		if connect_to_previous && !self.outputs.is_empty() {
 			let input = NodeInput::node(self.outputs[0].node_id, self.outputs[0].node_output_index);
@@ -502,6 +504,30 @@ impl NodeNetwork {
 			stack: self.outputs.iter().map(|output| output.node_id).collect(),
 			network: self,
 		}
+	}
+
+	pub fn is_acyclic(&self) -> bool {
+		let mut dependencies: HashMap<u64, Vec<u64>> = HashMap::new();
+		for (node_id, node) in &self.nodes {
+			dependencies.insert(
+				*node_id,
+				node.inputs
+					.iter()
+					.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None })
+					.collect(),
+			);
+		}
+		while !dependencies.is_empty() {
+			let Some((&disconnected, _)) = dependencies.iter().find(|(_, l)| l.is_empty()) else {
+				error!("Dependencies {dependencies:?}");
+				return false
+			};
+			dependencies.remove(&disconnected);
+			for connections in dependencies.values_mut() {
+				connections.retain(|&id| id != disconnected);
+			}
+		}
+		true
 	}
 }
 
@@ -760,19 +786,16 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			match node.implementation {
-				DocumentNodeImplementation::Extract => {
-					assert_eq!(node.inputs.len(), 1);
-					let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
-						panic!("Extract node has no input");
-					};
-					assert_eq!(output_index, 0);
-					assert!(lambda);
-					let input_node = self.nodes.get_mut(&node_id).unwrap();
-					node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
-					node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
-				}
-				_ => (),
+			if let DocumentNodeImplementation::Extract = node.implementation {
+				assert_eq!(node.inputs.len(), 1);
+				let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
+					panic!("Extract node has no input");
+				};
+				assert_eq!(output_index, 0);
+				assert!(lambda);
+				let input_node = self.nodes.get_mut(&node_id).unwrap();
+				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
 			}
 		}
 		self.nodes.extend(extraction_nodes);
