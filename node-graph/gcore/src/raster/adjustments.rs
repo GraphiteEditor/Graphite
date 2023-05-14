@@ -12,22 +12,6 @@ use spirv_std::num_traits::float::Float;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
-pub enum ColorChannel {
-	#[default]
-	Red,
-	Green,
-	Blue,
-}
-
-impl ColorChannel {
-	pub fn list() -> [ColorChannel; 3] {
-		[ColorChannel::Red, ColorChannel::Green, ColorChannel::Blue]
-	}
-}
-
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
 pub enum LuminanceCalculation {
 	#[default]
 	SRGB,
@@ -35,16 +19,6 @@ pub enum LuminanceCalculation {
 	AverageChannels,
 	MinimumChannels,
 	MaximumChannels,
-}
-
-impl core::fmt::Display for ColorChannel {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			ColorChannel::Red => write!(f, "Red"),
-			ColorChannel::Green => write!(f, "Green"),
-			ColorChannel::Blue => write!(f, "Blue"),
-		}
-	}
 }
 
 impl LuminanceCalculation {
@@ -217,16 +191,16 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractChannelNode<ColorChannel> {
-	channel: ColorChannel,
+pub struct ExtractChannelNode<TargetChannel> {
+	channel: TargetChannel,
 }
 
 #[node_macro::node_fn(ExtractChannelNode)]
-fn extract_channel_node(color: Color, channel: ColorChannel) -> Color {
+fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
 	let extracted_value = match channel {
-		ColorChannel::Red => color.r(),
-		ColorChannel::Green => color.g(),
-		ColorChannel::Blue => color.b(),
+		RedGreenBlue::Red => color.r(),
+		RedGreenBlue::Green => color.g(),
+		RedGreenBlue::Blue => color.b(),
 	};
 	return color.map_rgb(|_| extracted_value);
 }

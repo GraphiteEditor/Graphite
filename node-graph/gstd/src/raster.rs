@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, ColorChannel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample, RGB};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, RedGreenBlue, Sample, RGB};
 use graphene_core::transform::Transform;
 
 use graphene_core::value::CopiedNode;
@@ -198,7 +198,7 @@ fn insert_channel_node<
 >(
 	mut image: Input,
 	stencil: Stencil,
-	target_channel: ColorChannel,
+	target_channel: RedGreenBlue,
 ) -> Input {
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 	let mask_size = stencil.transform().decompose_scale();
@@ -218,13 +218,13 @@ fn insert_channel_node<
 			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
 			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
-			let image_pixel = image.get_pixel_mut(x as u32, y as u32).unwrap();
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
 			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
 				let channel_value = mask_pixel.l().to_channel();
 				*image_pixel = match target_channel {
-					ColorChannel::Red => image_pixel.with_red(channel_value),
-					ColorChannel::Green => image_pixel.with_green(channel_value),
-					ColorChannel::Blue => image_pixel.with_blue(channel_value),
+					RedGreenBlue::Red => image_pixel.with_red(channel_value),
+					RedGreenBlue::Green => image_pixel.with_green(channel_value),
+					RedGreenBlue::Blue => image_pixel.with_blue(channel_value),
 				}
 			}
 		}

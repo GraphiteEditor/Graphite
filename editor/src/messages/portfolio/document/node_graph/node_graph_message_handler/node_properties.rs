@@ -8,7 +8,7 @@ use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::{concrete, imaginate_input::*};
-use graphene_core::raster::{BlendMode, Color, ColorChannel, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::EditorApi;
@@ -237,20 +237,20 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
-		tagged_value: TaggedValue::ColorChannel(mode),
+		tagged_value: TaggedValue::RedGreenBlue(mode),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let calculation_modes = ColorChannel::list();
+		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
-			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::ColorChannel(method), node_id, index)));
+			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index)));
 		}
 		let entries = vec![entries];
 
 		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
 	}
-	LayoutGroup::Row { widgets }.with_tooltip("Channel to extract")
+	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
 //TODO Use generalized Version of this as soon as it's available
@@ -607,7 +607,7 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 2, "Target Channel", true);
+	let color_channel = color_channel(document_node, node_id, 2, "Target Channel", false);
 
 	vec![color_channel]
 }
