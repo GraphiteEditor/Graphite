@@ -384,7 +384,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::insert_channel_properties,
 		},
 		DocumentNodeType {
-			name: "Combine Channel Node",
+			name: "Combine Channels",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![3, 0, 1, 2],
@@ -431,10 +431,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				..Default::default()
 			}),
 			inputs: vec![
-				DocumentInputType::value("Alpha Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Red Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Green Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Blue Channel", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Alpha", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Red", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Green", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Blue", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Combined Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::no_properties,
@@ -552,7 +552,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::luminance_properties,
 		},
 		DocumentNodeType {
-			name: "Channel Extraction",
+			name: "Extract Channel",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 			inputs: vec![
@@ -571,7 +571,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
-			name: "Channel Extraction (RGB)",
+			name: "Split Channels",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
@@ -617,10 +617,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![
-				DocumentOutputType::new("Alpha Channel", FrontendGraphDataType::Raster),
-				DocumentOutputType::new("Red Channel", FrontendGraphDataType::Raster),
-				DocumentOutputType::new("Green Channel", FrontendGraphDataType::Raster),
-				DocumentOutputType::new("Blue Channel", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Red", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Green", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Blue", FrontendGraphDataType::Raster),
 			],
 			properties: node_properties::no_properties,
 		},
