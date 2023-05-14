@@ -720,7 +720,7 @@ impl Document {
 						// Clear the new folders layer_ids/layers because they contain the layer_ids/layers of the layer were duplicated
 						new_folder.layer_ids = vec![];
 						new_folder.layers = vec![];
-						new_folder.next_assignment_id = generate_uuid();
+						new_folder.generate_new_folder_ids();
 
 						let mut counter = 0;
 						for duplicate_layer in duplicated_layers {
@@ -741,7 +741,7 @@ impl Document {
 								let updated_layer_as_folder: &mut FolderLayer = updated_layer.as_folder_mut()?;
 								updated_layer_as_folder.layer_ids = vec![];
 								updated_layer_as_folder.layers = vec![];
-								updated_layer_as_folder.next_assignment_id = generate_uuid();
+								updated_layer_as_folder.generate_new_folder_ids()
 							}
 
 							let result = self

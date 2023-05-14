@@ -4,6 +4,7 @@ use crate::intersection::Quad;
 use crate::{DocumentError, LayerId};
 
 use glam::DVec2;
+use graphene_core::uuid::generate_uuid;
 use serde::{Deserialize, Serialize};
 
 /// A layer that encapsulates other layers, including potentially more folders.
@@ -12,8 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct FolderLayer {
 	/// The ID that will be assigned to the next layer that is added to the folder
-	/// CHANGE BACK TO PRIVATE BELOW
-	pub next_assignment_id: LayerId,
+	next_assignment_id: LayerId,
 	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
 	/// The [Layer]s contained in the folder
@@ -68,13 +68,6 @@ impl FolderLayer {
 	/// folder.add_layer(shape_layer.into(), None, -1);
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
-	pub fn next_assignment_id(&mut self) -> LayerId {
-		while self.layer_ids.contains(&self.next_assignment_id) {
-			self.next_assignment_id += 1;
-		}
-		return self.next_assignment_id;
-	}
-
 	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 
@@ -153,6 +146,10 @@ impl FolderLayer {
 	pub fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
 		let pos = self.position_of_layer(id).ok()?;
 		Some(&mut self.layers[pos])
+	}
+
+	pub fn generate_new_folder_ids(&mut self) {
+		self.next_assignment_id = generate_uuid();
 	}
 
 	/// Returns `true` if the folder contains a layer with the given [LayerId].
