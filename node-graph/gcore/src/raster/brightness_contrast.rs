@@ -1,6 +1,6 @@
 use crate::{
 	raster::{
-		spline::{CubicSplines, ValueMapperNode},
+		curve::{CubicSplines, ValueMapperNode},
 		Channel,
 	},
 	Color, Node,

@@ -60,7 +60,7 @@ pub enum TaggedValue {
 	GraphicGroup(graphene_core::GraphicGroup),
 	Artboard(graphene_core::Artboard),
 	Optional2IVec2(Option<[glam::IVec2; 2]>),
-	Curve(graphene_core::raster::spline::Curve),
+	Curve(graphene_core::raster::curve::Curve),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -248,7 +248,7 @@ impl<'a> TaggedValue {
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
 			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
 			TaggedValue::Optional2IVec2(_) => concrete!(Option<[glam::IVec2; 2]>),
-			TaggedValue::Curve(_) => concrete!(graphene_core::raster::spline::Curve),
+			TaggedValue::Curve(_) => concrete!(graphene_core::raster::curve::Curve),
 		}
 	}
 }

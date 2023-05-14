@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
 
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::LayerId;
-use graphene_core::raster::{color::Color, spline::Curve};
+use graphene_core::raster::{color::Color, curve::Curve};
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;

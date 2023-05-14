@@ -1,5 +1,5 @@
 use super::{
-	spline::{CubicSplines, CurveSample, ValueMapperNode},
+	curve::{CubicSplines, CurveSample, ValueMapperNode},
 	Channel, Color,
 };
 use crate::Node;
