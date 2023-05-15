@@ -186,9 +186,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
 			}
 			#[remain::unsorted]
-			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor));
-			}
+			NodeGraph(message) => self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor, document_id)),
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
 
@@ -480,7 +478,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				});
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => {
-				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
+				if layer_path.is_empty() {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
 					responses.add(message);
 				}
 			}

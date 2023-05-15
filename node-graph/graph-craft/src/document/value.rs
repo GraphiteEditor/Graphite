@@ -59,7 +59,7 @@ pub enum TaggedValue {
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
 	Artboard(graphene_core::Artboard),
-	Optional2IVec2(Option<[glam::IVec2; 2]>),
+	IVec2(glam::IVec2),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -129,7 +129,7 @@ impl Hash for TaggedValue {
 			Self::DocumentNode(document_node) => document_node.hash(state),
 			Self::GraphicGroup(graphic_group) => graphic_group.hash(state),
 			Self::Artboard(artboard) => artboard.hash(state),
-			Self::Optional2IVec2(v) => v.hash(state),
+			Self::IVec2(v) => v.hash(state),
 		}
 	}
 }
@@ -181,7 +181,7 @@ impl<'a> TaggedValue {
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
 			TaggedValue::Artboard(x) => Box::new(x),
-			TaggedValue::Optional2IVec2(x) => Box::new(x),
+			TaggedValue::IVec2(x) => Box::new(x),
 		}
 	}
 
@@ -244,7 +244,7 @@ impl<'a> TaggedValue {
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
 			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
-			TaggedValue::Optional2IVec2(_) => concrete!(Option<[glam::IVec2; 2]>),
+			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 		}
 	}
 }

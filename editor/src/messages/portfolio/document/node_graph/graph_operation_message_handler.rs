@@ -70,7 +70,7 @@ impl<'a> ModifyInputsContext<'a> {
 		} else {
 			self.modify_new_node(name, update_input);
 		}
-		self.node_graph.layer_path = Some(self.layer.to_vec());
+		self.node_graph.update_layer_path(Some(self.layer.to_vec()), self.responses);
 		self.node_graph.nested_path.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
