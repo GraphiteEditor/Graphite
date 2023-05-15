@@ -41,11 +41,7 @@ impl core::ops::Mul<Quad> for DAffine2 {
 	type Output = Quad;
 
 	fn mul(self, rhs: Quad) -> Self::Output {
-		let mut output = Quad::default();
-		for (i, point) in rhs.0.iter().enumerate() {
-			output.0[i] = self.transform_point2(*point);
-		}
-		output
+		Quad(rhs.0.map(|point| self.transform_point2(point)))
 	}
 }
 
