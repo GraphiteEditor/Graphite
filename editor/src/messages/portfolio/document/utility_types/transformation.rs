@@ -408,11 +408,6 @@ impl<'a> Selected<'a> {
 									// Find the current position in doc space
 									let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
 									let doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
-									// debug!("trans: {:?}", transformation.translation);
-									// debug!("view: {:?}", viewspace_pos);
-									// debug!("doc: {:?}", &doc_pos);
-									// debug!("trans - view: {:?}", transformation.translation - viewspace_pos);
-									// debug!("new: {:?}", new.translation);
 
 									// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
 									let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
@@ -428,6 +423,8 @@ impl<'a> Selected<'a> {
 									// Notes: New is the output we need to edit. New.translation is a Vec<x,y> where x,y is nearly doc pos?
 									// We also have the doc_pos: the x,y of transform in pixels which is based on what we set new to be
 									// We have transformation which is the x,y delta from initial grab call
+									// One thing I noticed when simply rounding is that if the user moves any direction
+									// Need to find a way to detect which direction we move the shape, so if the user only moves up we round y up
 
 									// Direction of original transform
 									// Wrong delta is calculation on intial grab not each movement
@@ -455,9 +452,6 @@ impl<'a> Selected<'a> {
 									// 		new.translation.y = new.translation.y.ceil();
 									// 	}
 									// }
-
-									// One thing I noticed when simply rounding is that if the user moves any direction
-									// Need to find a way to detect which direction we move the shape, so if the user only moves up we round y up
 
 									// debug!("new: {:?}", &new_new.translation);
 									new_new.translation = new_new.translation.round();
@@ -517,17 +511,24 @@ impl<'a> Selected<'a> {
 						let layer_spacepos = layerspace_rotation.transform_point2(viewport_point);
 
 						let mut position: DVec2 = layer_spacepos;
-						if grid {
-							let viewspace_pos = viewspace.transform_point2(layer_spacepos);
-							//todo convert from viewspace_pos to doc position
-							let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
+						match transform_operator {
+							Some(TransformOperation) => {
+								if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
+									if grid {
+										let viewspace_pos = viewspace.transform_point2(layer_spacepos);
+										//todo convert from viewspace_pos to doc position
+										let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
 
-							//todo convert from viewport pos to document pos (rounding happens here)
-							let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
+										//todo convert from viewport pos to document pos (rounding happens here)
+										let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
 
-							//round document pos then convert back to viewport
-							let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
-							position = new_layerspace;
+										//round document pos then convert back to viewport
+										let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
+										position = new_layerspace;
+									}
+								}
+							}
+							None => {}
 						}
 
 						let point = *point_id;
