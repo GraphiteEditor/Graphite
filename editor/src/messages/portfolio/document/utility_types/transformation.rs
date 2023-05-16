@@ -373,11 +373,9 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool, transform_operator: Option<TransformOperation>) {
-		// debug!("update");
 		if !self.selected.is_empty() {
 			let doc_transform = self.document.root.transform;
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
-			// debug!("delta: {:?}", &delta);
 
 			let pivot = DAffine2::from_translation(pivot_point);
 			let transformation = pivot * delta * pivot.inverse();
@@ -396,87 +394,89 @@ impl<'a> Selected<'a> {
 						}
 					};
 
-					// Note: Can't use new as it get reset each time based on mouse position
 					let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 					let mut new = to.inverse() * transformation * to * original_layer_transforms;
+					// debug!("delta: {:?}", delta.translation);
+					// debug!("new: {:?}", new.translation);
 
 					match transform_operator {
 						Some(TransformOperation) => {
 							if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
-								// IDEA: maybe use the transformation in combination with the 'new' variable
-								// we need to somehow reallign grid too
-								let mut new_delta = delta.clone();
+								if grid {
+									let mut new_new = new.clone();
 
-								// Find the current position in doc space
-								let viewspace_top_left_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 1.0 });
-								let doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_top_left_pos);
-								// debug!("view: {:?}", &viewspace_top_left_pos);
-								// debug!("doc_pos: {:?}", &doc_pos);
+									// Find the current position in doc space
+									let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
+									let doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
+									// debug!("trans: {:?}", transformation.translation);
+									// debug!("view: {:?}", viewspace_pos);
+									// debug!("doc: {:?}", &doc_pos);
+									// debug!("trans - view: {:?}", transformation.translation - viewspace_pos);
+									// debug!("new: {:?}", new.translation);
 
-								// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
-								let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
-								let mut grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
+									// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
+									let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
+									let mut grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
 
-								if new.translation.x < 0.0 {
-									grid_offset_x = 1.0 - grid_offset_x
+									let scaling_factor = 100.0;
+									let rounded_grid_x = (grid_offset_x * scaling_factor).round() / scaling_factor;
+									let rounded_grid_y = (grid_offset_y * scaling_factor).round() / scaling_factor;
+									let x_aligned = rounded_grid_x % 1.0 == 0.0;
+									let y_aligned = rounded_grid_y % 1.0 == 0.0;
+									// This code above should check out
+
+									// Notes: New is the output we need to edit. New.translation is a Vec<x,y> where x,y is nearly doc pos?
+									// We also have the doc_pos: the x,y of transform in pixels which is based on what we set new to be
+									// We have transformation which is the x,y delta from initial grab call
+
+									// Direction of original transform
+									// Wrong delta is calculation on intial grab not each movement
+									// let moving_right = new_delta.translation.x > 0.0;
+									// let moving_down = new_delta.translation.y > 0.0;
+									// debug!("moving right: {:?}", &moving_right);
+									// debug!("moving down: {:?}", &moving_down);
+
+									// If the x or y positions are off the grid, calculate the new transform that alligns with grid
+									// if new_delta.translation.y == 0.0 {
+									// 	if moving_right {
+									// 		// debug!("1");
+									// 		new.translation.x = new.translation.x.ceil();
+									// 	} else {
+									// 		// debug!("2");
+									// 		new.translation.x = new.translation.x.floor();
+									// 	}
+									// }
+									// if !y_aligned && new_delta.translation.x == 0.0 {
+									// 	if moving_down {
+									// 		// debug!("3");
+									// 		new.translation.y = new.translation.x.ceil();
+									// 	} else {
+									// 		// debug!("4");
+									// 		new.translation.y = new.translation.y.ceil();
+									// 	}
+									// }
+
+									// One thing I noticed when simply rounding is that if the user moves any direction
+									// Need to find a way to detect which direction we move the shape, so if the user only moves up we round y up
+
+									// debug!("new: {:?}", &new_new.translation);
+									new_new.translation = new_new.translation.round();
+									// debug!("new after: {:?}", &new_new.translation);
+
+									self.responses.add(GraphOperationMessage::TransformSet {
+										layer: layer_path.to_vec(),
+										transform: new_new,
+										transform_in: TransformIn::Local,
+										skip_rerender: true,
+									});
+								} else if !grid {
+									self.responses.add(GraphOperationMessage::TransformSet {
+										layer: layer_path.to_vec(),
+										transform: new,
+										transform_in: TransformIn::Local,
+										skip_rerender: true,
+									});
 								}
-								if new.translation.y < 0.0 {
-									grid_offset_y = 1.0 - grid_offset_y
-								}
-
-								let scaling_factor = 100.0;
-								let rounded_grid_x = (grid_offset_x * scaling_factor).round() / scaling_factor;
-								let rounded_grid_y = (grid_offset_y * scaling_factor).round() / scaling_factor;
-								// debug!("rounded_grid_x: {:?}", &rounded_grid_x);
-								let x_aligned = rounded_grid_x % 1.0 == 0.0;
-								let y_aligned = rounded_grid_y % 1.0 == 0.0;
-								// debug!("x allign: {:?}", &x_aligned);
-								// debug!("y allign: {:?}", &y_aligned);
-
-								// Direction of original transform
-								let moving_right = new_delta.translation.x > 0.0;
-								let moving_down = new_delta.translation.y > 0.0;
-								// debug!("moving right: {:?}", &moving_right);
-								// debug!("moving down: {:?}", &moving_down);
-								// debug!("old: {:?}", &new.translation);
-
-								// If the x or y positions are off the grid, calculate the new transform that alligns with grid
-								// if new_delta.translation.y == 0.0 {
-								// 	if moving_right {
-								// 		// debug!("1");
-								// 		new.translation.x = new.translation.x.ceil();
-								// 	} else {
-								// 		// debug!("2");
-								// 		new.translation.x = new.translation.x.floor();
-								// 	}
-								// }
-								// if !y_aligned && new_delta.translation.x == 0.0 {
-								// 	if moving_down {
-								// 		// debug!("3");
-								// 		new.translation.y = new.translation.x.ceil();
-								// 	} else {
-								// 		// debug!("4");
-								// 		new.translation.y = new.translation.y.ceil();
-								// 	}
-								// }
-								// debug!("new delta: {:?}", &new_delta);
-								debug!("new: {:?}", &new);
-
-								let new_transformation = pivot * new_delta * pivot.inverse();
-								let new_grid = to.inverse() * transformation * to * original_layer_transforms;
-
-								// self.responses.add(GraphOperationMessage::TransformSet {
-								// 	layer: layer_path.to_vec(),
-								// 	transform: DAffine2::from_translation(viewspace_top_left_pos),
-								// 	transform_in: TransformIn::Viewport,
-								// 	skip_rerender: true,
-								// });
-								self.responses.add(GraphOperationMessage::TransformSet {
-									layer: layer_path.to_vec(),
-									transform: new,
-									transform_in: TransformIn::Local,
-									skip_rerender: true,
-								});
 							}
 							if let TransformOperation::Rotating(_) = transform_operator.unwrap() {
 								debug!("rotate");

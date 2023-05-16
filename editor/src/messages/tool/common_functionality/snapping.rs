@@ -304,13 +304,13 @@ impl SnapManager {
 		if document_message_handler.snapping_enabled {
 			snapping_delta = self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
 		}
+		//
 		if document_message_handler.grid_enabled {
 			let doc_transform = document_message_handler.document_legacy.root.transform;
 			let layer_document_space = doc_transform.transform_point2(DVec2::ZERO);
 			let doc_space_delta = doc_transform.inverse().transform_vector2(mouse_delta + snapping_delta);
 			let desired_document_space = (layer_document_space + doc_space_delta).round();
 			let viewspace_delta = doc_transform.transform_vector2(desired_document_space - layer_document_space) - mouse_delta;
-
 			snapping_delta = viewspace_delta;
 		}
 		snapping_delta

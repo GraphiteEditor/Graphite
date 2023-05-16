@@ -634,19 +634,21 @@ impl Fsm for SelectToolFsmState {
 						if !(transform_vec_round == empty_vec) && document.grid_enabled {
 							// Get the layer's position in viewport and convert to document space
 							let viewspace = document.document_legacy.generate_transform_relative_to_viewport(path).ok().unwrap_or_default();
-							let viewspace_top_left_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
-							let doc_pos = document.document_legacy.root.transform.inverse().transform_point2(viewspace_top_left_pos);
+							// Change values of viewspace_port to x: 0.5, y: 0.5 for the grid to be based on pivot
+							let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
+							let doc_pos = document.document_legacy.root.transform.inverse().transform_point2(viewspace_pos);
 
 							// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
 							let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
 							let mut grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
+							let mut adjustment = DVec2 { x: grid_offset_x, y: grid_offset_y };
 
-							// If the original position is negative, flip the grid offset to used in math to calculate transform
+							// If the original position is negative, flip the grid offset to be used in math to calculate transform
 							if doc_pos.x < 0.0 {
-								grid_offset_x = 1.0 - grid_offset_x
+								adjustment.x = 1.0 - adjustment.x
 							}
 							if doc_pos.y < 0.0 {
-								grid_offset_y = 1.0 - grid_offset_y
+								adjustment.y = 1.0 - adjustment.y
 							}
 
 							// Check if the x and y offsets are on a whole number
@@ -663,16 +665,16 @@ impl Fsm for SelectToolFsmState {
 							// If the x or y positions are off the grid, calculate the new transform that alligns with grid
 							if !x_aligned && transform_vec_round.y == 0.0 {
 								if moving_right {
-									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - grid_offset_x);
+									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - adjustment.x);
 								} else {
-									new_transform_vec.x = new_transform_vec.x.abs() * grid_offset_x * -1.0;
+									new_transform_vec.x = new_transform_vec.x.abs() * adjustment.x * -1.0;
 								}
 							}
 							if !y_aligned && transform_vec_round.x == 0.0 {
 								if moving_down {
-									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - grid_offset_y);
+									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - adjustment.y);
 								} else {
-									new_transform_vec.y = new_transform_vec.y.abs() * grid_offset_y * -1.0;
+									new_transform_vec.y = new_transform_vec.y.abs() * adjustment.y * -1.0;
 								}
 							}
 
