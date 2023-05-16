@@ -692,7 +692,7 @@ impl Document {
 
 				// Recursively collect each of the nested folders and shapes if the layer is a folder
 				let mut duplicated_layers = if layer_is_folder { recursive_collect(self, &path) } else { Vec::new() };
-				// Duplicate the Layer objects for our duplicated layers
+				// Iterate through each layer path and collect the corresponding Layer objects into one vector
 				// Sort both vectors by the layer path size, from shallowest to deepest
 				let duplicated_layers_objects: Vec<Layer> = duplicated_layers.iter().map(|p| self.layer(p.as_slice()).unwrap()).cloned().collect();
 				let mut indices: Vec<usize> = (0..duplicated_layers.len()).collect();
@@ -728,45 +728,46 @@ impl Document {
 						new_folder.generate_new_folder_ids();
 
 						for (counter, duplicate_layer) in duplicated_layers.into_iter().enumerate() {
-							let old_layer_id = *duplicate_layer.last().unwrap_or(&0);
+							if let Some(old_layer_id) = duplicate_layer.clone().last() {
+								// Iterate through each ID of the current duplicate layer
+								// If the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one
+								let sub_layer = &duplicate_layer[new_path.len()..];
+								let new_sub_path: Vec<u64> = sub_layer.iter().filter_map(|id| old_to_new_layer_id.get(id).cloned()).collect();
 
-							// Iterate through each ID of the current duplicate layer
-							// If the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one
-							let sub_layer = &duplicate_layer[new_path.len()..];
-							let new_sub_path: Vec<u64> = sub_layer.iter().filter_map(|id| old_to_new_layer_id.get(id).cloned()).collect();
+								// Combine the new path with the IDs of the duplicate layer path to create the path where we insert the duplicate layer
+								let updated_layer_ref: &Layer = duplicate_layer_objects_sorted.get(counter).unwrap();
+								let mut updated_layer = updated_layer_ref.clone();
+								let updated_layer_path_parent: Vec<u64> = [new_path.to_vec(), new_sub_path].concat();
 
-							// Combine the new path with the IDs of the duplicate layer path to create the path where we insert the duplicate layer
-							let updated_layer_ref: &Layer = duplicate_layer_objects_sorted.get(counter).unwrap();
-							let mut updated_layer = updated_layer_ref.clone();
-							let updated_layer_path_parent: Vec<u64> = [new_path.to_vec(), new_sub_path].concat();
+								// Clear the new folder's layer_ids and layers because they contain the layer_ids/layers of the layer were duplicated
+								if self.is_folder(duplicate_layer) {
+									let updated_layer_as_folder: &mut FolderLayer = updated_layer.as_folder_mut()?;
+									updated_layer_as_folder.layer_ids = vec![];
+									updated_layer_as_folder.layers = vec![];
+									updated_layer_as_folder.generate_new_folder_ids()
+								}
 
-							// Clear the new folder's layer_ids and layers because they contain the layer_ids/layers of the layer were duplicated
-							if self.is_folder(duplicate_layer) {
-								let updated_layer_as_folder: &mut FolderLayer = updated_layer.as_folder_mut()?;
-								updated_layer_as_folder.layer_ids = vec![];
-								updated_layer_as_folder.layers = vec![];
-								updated_layer_as_folder.generate_new_folder_ids()
+								let result = self
+									.handle_operation(Operation::InsertLayer {
+										layer: Box::new(updated_layer),
+										destination_path: updated_layer_path_parent,
+										insert_index: -1,
+										duplicating: true,
+									})
+									.ok()
+									.flatten()
+									.unwrap_or_default();
+
+								// Collect the new ID of the duplicated layer from the InsertLayer Operation
+								// Map the layer ID of the layer we're duplicating to the new ID
+								if let DocumentResponse::CreatedLayer { path, .. } = result.get(1).unwrap() {
+									if let Some(new_layer_id) = path.last() {
+										old_to_new_layer_id.entry(*old_layer_id).or_insert(*new_layer_id);
+									}
+								}
+
+								responses.extend(result);
 							}
-
-							let result = self
-								.handle_operation(Operation::InsertLayer {
-									layer: Box::new(updated_layer),
-									destination_path: updated_layer_path_parent,
-									insert_index: -1,
-									duplicating: true,
-								})
-								.ok()
-								.flatten()
-								.unwrap_or_default();
-
-							// Collect the new ID of the duplicated layer from the InsertLayer Operation
-							// Map the layer ID of the layer were duplicating to the new ID
-							if let DocumentResponse::CreatedLayer { path, .. } = result.get(1).unwrap_or_default() {
-								let new_layer_id = path.last().unwrap_or(&0);
-								old_to_new_layer_id.entry(old_layer_id).or_insert(*new_layer_id);
-							}
-
-							responses.extend(result);
 						}
 					}
 					self.mark_as_dirty(folder_path)?;
