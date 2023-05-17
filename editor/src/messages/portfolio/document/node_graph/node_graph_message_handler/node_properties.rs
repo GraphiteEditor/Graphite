@@ -310,8 +310,8 @@ fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Fill Type", FrontendGraphDataType::General, true);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::FillType(fill_type),
 		exposed: false,
@@ -326,8 +326,7 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 			WidgetHolder::unrelated_separator(),
 			RadioInput::new(entries)
 				.selected_index(match fill_type {
-					FillType::None => 0,
-					FillType::Solid => 0,
+					FillType::None | FillType::Solid => 0,
 					FillType::Gradient => 1,
 				})
 				.widget_holder(),
@@ -336,8 +335,8 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Gradient Type", FrontendGraphDataType::General, true);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::GradientType(gradient_type),
 		exposed: false,
@@ -1591,7 +1590,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
 
-	let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index, "Fill Type", true);
+	let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index);
 	widgets.push(fill_type_switch);
 
 	if fill_type.is_none() || solid {
@@ -1600,7 +1599,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	}
 
 	if fill_type.is_none() || gradient {
-		let gradient_type_switch = gradient_type_widget(document_node, node_id, gradient_type_index, "Gradient Type", true);
+		let gradient_type_switch = gradient_type_widget(document_node, node_id, gradient_type_index);
 		widgets.push(gradient_type_switch);
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
 	}
