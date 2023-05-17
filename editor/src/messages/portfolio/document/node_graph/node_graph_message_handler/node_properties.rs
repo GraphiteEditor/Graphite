@@ -310,17 +310,42 @@ fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Fill Type", FrontendGraphDataType::General, true);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::FillType(fill_type),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = vec![
+			RadioEntryData::new("Solid").on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index)),
+			RadioEntryData::new("Gradient").on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+		];
+
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			RadioInput::new(entries)
+				.selected_index(match fill_type {
+					FillType::None | FillType::Solid => 0,
+					FillType::Gradient => 1,
+				})
+				.widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Gradient Type", FrontendGraphDataType::General, true);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::GradientType(gradient_type),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let entries = [("Linear", GradientType::Linear), ("Radial", GradientType::Radial)]
-			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::GradientType(val), node_id, index)))
-			.collect();
+		let entries = vec![
+			RadioEntryData::new("Linear").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
+			RadioEntryData::new("Radial").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+		];
 
 		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder()]);
 	}
@@ -1541,6 +1566,7 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
+/// Fill Node Widgets LayoutGroup
 pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_type_index = 1;
 	let solid_color_index = 2;
@@ -1560,38 +1586,19 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
-	if fill_type.is_none() || solid || empty {
+
+	let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index);
+	widgets.push(fill_type_switch);
+
+	if fill_type.is_none() || solid {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
 	}
 
 	if fill_type.is_none() || gradient {
-		let gradient_type = gradient_type_widget(document_node, node_id, gradient_type_index, "Gradient Type", true);
-		widgets.push(gradient_type);
+		let gradient_type_switch = gradient_type_widget(document_node, node_id, gradient_type_index);
+		widgets.push(gradient_type_switch);
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
-	}
-
-	if gradient || solid || empty {
-		let new_fill_type = if gradient { FillType::Solid } else { FillType::Gradient };
-		let switch_button = TextButton::new(if gradient { "Use Solid Color" } else { "Use Gradient" })
-			.tooltip(if gradient {
-				"Change this fill from a gradient to a solid color, keeping the 0% stop color"
-			} else {
-				"Change this fill from a solid color to a gradient"
-			})
-			.on_update(update_value(move |_| TaggedValue::FillType(new_fill_type), node_id, fill_type_index));
-
-		widgets.push(LayoutGroup::Row {
-			widgets: {
-				let mut widgets = Vec::new();
-				widgets.push(TextLabel::new("").widget_holder());
-				add_blank_assist(&mut widgets);
-				widgets.push(WidgetHolder::unrelated_separator());
-				widgets.push(switch_button.widget_holder());
-				widgets
-			},
-		});
 	}
 
 	widgets
