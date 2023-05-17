@@ -317,21 +317,18 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let entries = [("Solid", FillType::Solid), ("Gradient", FillType::Gradient)]
-			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name)
-				.tooltip("Switch type of filling.\nChanging from gradient to solid keeps the 0% stop color")
-				.on_update(update_value(move |_| TaggedValue::FillType(val), node_id, index)))
-			.collect();
+		let entries = vec![
+			RadioEntryData::new("Solid").on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index)),
+			RadioEntryData::new("Gradient").on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+		];
 
-		add_blank_assist(&mut widgets);
 		widgets.extend_from_slice(&[
 			WidgetHolder::unrelated_separator(),
 			RadioInput::new(entries)
 				.selected_index(match fill_type {
-					FillType::None => 0 as u32,
-					FillType::Solid => 0 as u32,
-					FillType::Gradient => 1 as u32,
+					FillType::None => 0,
+					FillType::Solid => 0,
+					FillType::Gradient => 1,
 				})
 				.widget_holder(),
 		]);
@@ -346,12 +343,15 @@ fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let entries = [("Linear", GradientType::Linear), ("Radial", GradientType::Radial)]
-			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).tooltip("Switch type of gradient").on_update(update_value(move |_| TaggedValue::GradientType(val), node_id, index)))
-			.collect();
+		let entries = vec![
+			RadioEntryData::new("Linear").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
+			RadioEntryData::new("Radial").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+		];
 
-		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder()]);
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -1590,12 +1590,10 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
 
-	if solid || gradient || empty {
-		let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index, "Fill Type", false);
-		widgets.push(fill_type_switch);
-	}
+	let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index, "Fill Type", true);
+	widgets.push(fill_type_switch);
+
 	if fill_type.is_none() || solid {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
