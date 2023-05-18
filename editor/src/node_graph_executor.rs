@@ -12,8 +12,7 @@ use graph_craft::executor::Compiler;
 use graph_craft::imaginate_input::*;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::renderer::SvgSegment;
-use graphene_core::renderer::SvgSegmentList;
+use graphene_core::renderer::{SvgSegment, SvgSegmentList};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, EditorApi};
@@ -53,7 +52,7 @@ impl NodeGraphExecutor {
 		(scoped_network, monitor_nodes)
 	}
 
-	/// Execute the network by flattening it and creating a borrow stack.
+	/// Executes the network by flattening it and creating a borrow stack.
 	fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, editor_api: EditorApi<'a>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
@@ -422,7 +421,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// When a blob url for a thumbnail is loaded, update the state and the UI.
-	pub fn insert_thumbnail_bloburl(&mut self, blob_url: String, layer_id: LayerId, node_id: NodeId, responses: &mut VecDeque<Message>) {
+	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, layer_id: LayerId, node_id: NodeId, responses: &mut VecDeque<Message>) {
 		if let Some(layer) = self.thumbnails.get_mut(&layer_id) {
 			if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
 				*segment = SvgSegment::String(blob_url);

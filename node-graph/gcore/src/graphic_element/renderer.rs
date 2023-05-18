@@ -1,9 +1,10 @@
-use glam::{DAffine2, DVec2};
-
 use crate::raster::{Image, ImageFrame};
 use crate::{uuid::generate_uuid, vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
+use quad::Quad;
+
+use glam::{DAffine2, DVec2};
+
 mod quad;
-use quad::{combine_bounds, Quad};
 
 /// Mutable state used whilst rendering to an SVG
 pub struct SvgRender {
@@ -34,6 +35,12 @@ impl SvgRender {
 	}
 }
 
+impl Default for SvgRender {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 /// Static state used whilst rendering
 pub struct RenderParams {
 	pub view_mode: crate::vector::style::ViewMode,
@@ -61,14 +68,14 @@ impl GraphicElementRendered for GraphicGroup {
 		self.iter().for_each(|element| element.graphic_element_data.render_svg(render, render_params))
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.iter().filter_map(|element| element.graphic_element_data.bounding_box(transform)).reduce(combine_bounds)
+		self.iter().filter_map(|element| element.graphic_element_data.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 }
 
 impl GraphicElementRendered for VectorData {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let layer_bounds = self.bounding_box().unwrap_or_default();
-		let transfomed_bounds = self.bounding_box_with_transform(render.transform).unwrap_or_default();
+		let transformed_bounds = self.bounding_box_with_transform(render.transform).unwrap_or_default();
 
 		render.svg.push("<path d=\"".into());
 		let mut path = String::new();
@@ -78,7 +85,7 @@ impl GraphicElementRendered for VectorData {
 		render.svg.push(path.into());
 		render.svg.push("\"".into());
 
-		let style = self.style.render(render_params.view_mode, &mut render.svg_defs, render.transform, layer_bounds, transfomed_bounds);
+		let style = self.style.render(render_params.view_mode, &mut render.svg_defs, render.transform, layer_bounds, transformed_bounds);
 		render.svg.push(style.into());
 		render.svg.push("/>".into());
 	}
@@ -93,7 +100,7 @@ impl GraphicElementRendered for Artboard {
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let artboard_bounds = self.bounds.map(|[a, b]| (transform * Quad::from_box([a.as_dvec2(), b.as_dvec2()])).bounding_box());
-		[self.graphic_group.bounding_box(transform), artboard_bounds].into_iter().flatten().reduce(combine_bounds)
+		[self.graphic_group.bounding_box(transform), artboard_bounds].into_iter().flatten().reduce(Quad::combine_bounds)
 	}
 }
 
