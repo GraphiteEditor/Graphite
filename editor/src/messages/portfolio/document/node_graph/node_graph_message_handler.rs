@@ -31,7 +31,7 @@ pub enum FrontendGraphDataType {
 	Number,
 	#[serde(rename = "number")]
 	Boolean,
-	/// Refers to the mathmatical vector, with direction and magnitude.
+	/// Refers to the mathematical vector, with direction and magnitude.
 	#[serde(rename = "vec2")]
 	Vector,
 	#[serde(rename = "graphic")]

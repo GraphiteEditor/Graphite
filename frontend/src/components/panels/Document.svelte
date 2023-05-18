@@ -276,6 +276,7 @@
 		textInput.focus();
 		textInput.click();
 
+		// Sends the text input element used for interactively editing with the text tool in a custom event
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
 	}
 

@@ -35,6 +35,11 @@ impl Quad {
 	pub fn center(&self) -> DVec2 {
 		self.0.iter().sum::<DVec2>() / 4.
 	}
+
+	/// Take the outside bounds of two axis aligned rectangles, which are defined by two corner points.
+	pub fn combine_bounds(a: [DVec2; 2], b: [DVec2; 2]) -> [DVec2; 2] {
+		[a[0].min(b[0]), a[1].max(b[1])]
+	}
 }
 
 impl core::ops::Mul<Quad> for DAffine2 {
@@ -47,9 +52,4 @@ impl core::ops::Mul<Quad> for DAffine2 {
 		}
 		output
 	}
-}
-
-/// Take the outside bounds of two axis aligned rectangles, which are defined by two corner points.
-pub fn combine_bounds(a: [DVec2; 2], b: [DVec2; 2]) -> [DVec2; 2] {
-	[a[0].min(b[0]), a[1].max(b[1])]
 }

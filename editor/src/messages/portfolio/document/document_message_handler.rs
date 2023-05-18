@@ -186,7 +186,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
 			}
 			#[remain::unsorted]
-			NodeGraph(message) => self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor, document_id)),
+			NodeGraph(message) => {
+				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor, document_id));
+			}
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
 
