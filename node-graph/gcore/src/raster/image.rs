@@ -37,13 +37,24 @@ mod base64_serde {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
+#[derive(Clone, PartialEq, Default, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Image<P: Pixel> {
 	pub width: u32,
 	pub height: u32,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub data: Vec<P>,
+}
+
+impl<P: Pixel + Debug> Debug for Image<P> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		let length = self.data.len();
+		f.debug_struct("Image")
+			.field("width", &self.width)
+			.field("height", &self.height)
+			.field("data", if length < 100 { &self.data } else { &length })
+			.finish()
+	}
 }
 
 unsafe impl<P: StaticTypeSized + Pixel> StaticType for Image<P>
