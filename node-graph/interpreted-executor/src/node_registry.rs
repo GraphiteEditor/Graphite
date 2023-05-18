@@ -155,6 +155,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		register_node!(graphene_std::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
+		register_node!(graphene_std::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
 		#[cfg(feature = "gpu")]
 		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
 		vec![(
@@ -365,6 +366,26 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					any.into_type_erased()
 				},
 				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(VectorData)]),
+			),
+			(
+				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
+				|args| {
+					let input: DowncastBothNode<(), graphene_core::GraphicGroup> = DowncastBothNode::new(args[0]);
+					let node = graphene_std::memo::EndLetNode::new(input);
+					let any: DynAnyInRefNode<graphene_core::EditorApi, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(graphene_core::GraphicGroup)]),
+			),
+			(
+				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
+				|args| {
+					let input: DowncastBothNode<(), graphene_core::Artboard> = DowncastBothNode::new(args[0]);
+					let node = graphene_std::memo::EndLetNode::new(input);
+					let any: DynAnyInRefNode<graphene_core::EditorApi, _, _> = graphene_std::any::DynAnyInRefNode::new(node);
+					any.into_type_erased()
+				},
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(graphene_core::Artboard)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),

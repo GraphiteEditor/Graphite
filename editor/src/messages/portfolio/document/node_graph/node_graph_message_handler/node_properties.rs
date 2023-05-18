@@ -727,12 +727,12 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	} = &document_node.inputs[colors_index]
 	{
 		use SelectiveColorChoice::*;
-		let entries = [vec![Reds, Yellows, Greens, Cyans, Blues, Magentas], vec![Whites, Neutrals, Blacks]]
+		let entries = [[Reds, Yellows, Greens, Cyans, Blues, Magentas].as_slice(), [Whites, Neutrals, Blacks].as_slice()]
 			.into_iter()
 			.map(|section| {
 				section
 					.into_iter()
-					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(choice), node_id, colors_index)))
+					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
 					.collect()
 			})
 			.collect();
