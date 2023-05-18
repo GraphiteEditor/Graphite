@@ -658,22 +658,18 @@ impl Fsm for SelectToolFsmState {
 							let x_aligned = rounded_grid_x % 1.0 == 0.0;
 							let y_aligned = rounded_grid_y % 1.0 == 0.0;
 
-							// Direction of original transform
-							let moving_right = transform_vec.x > 0.0;
-							let moving_down = transform_vec.y > 0.0;
-
-							// If the x or y positions are off the grid, calculate the new transform that alligns with grid
+							// If the x or y positions are off the grid, based on direction of mouse movement calculate the new transform that positioned on the grid
 							if !x_aligned && transform_vec_round.y == 0.0 {
-								if moving_right {
+								if transform_vec.x > 0.0 {
 									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - adjustment.x);
-								} else {
+								} else if transform_vec.x < 0.0 {
 									new_transform_vec.x = new_transform_vec.x.abs() * adjustment.x * -1.0;
 								}
 							}
 							if !y_aligned && transform_vec_round.x == 0.0 {
-								if moving_down {
+								if transform_vec.y > 0.0 {
 									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - adjustment.y);
-								} else {
+								} else if transform_vec.y < 0.0 {
 									new_transform_vec.y = new_transform_vec.y.abs() * adjustment.y * -1.0;
 								}
 							}
