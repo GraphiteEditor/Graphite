@@ -378,7 +378,9 @@ impl<'a> Selected<'a> {
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
 
 			let pivot = DAffine2::from_translation(pivot_point);
-			let transformation = pivot * delta * pivot.inverse();
+			// let transformation = pivot * delta * pivot.inverse();
+			let transformation = delta;
+			// After comparing it looks like delta is the same value as transformation. Question is can we just use delta then again does it matter which one we use
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
@@ -396,73 +398,44 @@ impl<'a> Selected<'a> {
 
 					let to = self.document.generate_transform_across_scope(parent_folder_path, None).unwrap();
 					let mut new = to.inverse() * transformation * to * original_layer_transforms;
-					// debug!("delta: {:?}", delta.translation);
-					// debug!("new: {:?}", new.translation);
 
 					match transform_operator {
 						Some(TransformOperation) => {
 							if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
 								if grid {
-									let mut new_new = new.clone();
-
 									// Find the current position in doc space
 									let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
 									let doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
 
-									// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
-									let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
-									let mut grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
+									// Direction the mouse is moving
+									let direction = new.translation - doc_pos;
 
-									let scaling_factor = 100.0;
-									let rounded_grid_x = (grid_offset_x * scaling_factor).round() / scaling_factor;
-									let rounded_grid_y = (grid_offset_y * scaling_factor).round() / scaling_factor;
-									let x_aligned = rounded_grid_x % 1.0 == 0.0;
-									let y_aligned = rounded_grid_y % 1.0 == 0.0;
-									// This code above should check out
+									// Update the translation by rounding the document position based on the direction
+									if direction.x > 0.0 || direction.x < 0.0 || direction.y > 0.0 || direction.y < 0.0 {
+										if direction.x > 0.0 {
+											new.translation.x = new.translation.x.ceil();
+											new.translation.y = doc_pos.y;
+										}
+										if direction.x < 0.0 {
+											new.translation.x = new.translation.x.floor();
+											new.translation.y = doc_pos.y;
+										}
+										if direction.y > 0.0 {
+											new.translation.y = new.translation.y.ceil();
+											new.translation.x = doc_pos.x;
+										}
+										if direction.y < 0.0 {
+											new.translation.y = new.translation.y.floor();
+											new.translation.x = doc_pos.x;
+										}
 
-									// Notes: New is the output we need to edit. New.translation is a Vec<x,y> where x,y is nearly doc pos?
-									// We also have the doc_pos: the x,y of transform in pixels which is based on what we set new to be
-									// We have transformation which is the x,y delta from initial grab call
-									// One thing I noticed when simply rounding is that if the user moves any direction
-									// Need to find a way to detect which direction we move the shape, so if the user only moves up we round y up
-
-									// Direction of original transform
-									// Wrong delta is calculation on intial grab not each movement
-									// let moving_right = new_delta.translation.x > 0.0;
-									// let moving_down = new_delta.translation.y > 0.0;
-									// debug!("moving right: {:?}", &moving_right);
-									// debug!("moving down: {:?}", &moving_down);
-
-									// If the x or y positions are off the grid, calculate the new transform that alligns with grid
-									// if new_delta.translation.y == 0.0 {
-									// 	if moving_right {
-									// 		// debug!("1");
-									// 		new.translation.x = new.translation.x.ceil();
-									// 	} else {
-									// 		// debug!("2");
-									// 		new.translation.x = new.translation.x.floor();
-									// 	}
-									// }
-									// if !y_aligned && new_delta.translation.x == 0.0 {
-									// 	if moving_down {
-									// 		// debug!("3");
-									// 		new.translation.y = new.translation.x.ceil();
-									// 	} else {
-									// 		// debug!("4");
-									// 		new.translation.y = new.translation.y.ceil();
-									// 	}
-									// }
-
-									// debug!("new: {:?}", &new_new.translation);
-									new_new.translation = new_new.translation.round();
-									// debug!("new after: {:?}", &new_new.translation);
-
-									self.responses.add(GraphOperationMessage::TransformSet {
-										layer: layer_path.to_vec(),
-										transform: new_new,
-										transform_in: TransformIn::Local,
-										skip_rerender: true,
-									});
+										self.responses.add(GraphOperationMessage::TransformSet {
+											layer: layer_path.to_vec(),
+											transform: new,
+											transform_in: TransformIn::Local,
+											skip_rerender: true,
+										});
+									}
 								} else if !grid {
 									self.responses.add(GraphOperationMessage::TransformSet {
 										layer: layer_path.to_vec(),
