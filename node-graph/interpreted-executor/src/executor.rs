@@ -203,6 +203,7 @@ impl BorrowTree {
 				let node = unsafe { node.erase_lifetime() };
 				self.store_node(Arc::new(node.into()), id);
 			}
+			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
 				let construction_nodes = self.node_refs(&ids);

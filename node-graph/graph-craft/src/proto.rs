@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
 
-use crate::document::value;
 use crate::document::NodeId;
+use crate::document::{value, InlineRust};
 use dyn_any::DynAny;
 use graphene_core::*;
 #[cfg(feature = "serde")]
@@ -66,6 +66,10 @@ impl core::fmt::Display for ProtoNetwork {
 						write_node(f, network, id.0, indent + 1)?;
 					}
 				}
+				ConstructionArgs::Inline(inline) => {
+					f.write_str(&"\t".repeat(indent + 1))?;
+					f.write_fmt(format_args!("Inline construction argument: {inline:?}"))?
+				}
 			}
 			f.write_str(&"\t".repeat(indent))?;
 			f.write_str("}\n")?;
@@ -83,6 +87,7 @@ pub enum ConstructionArgs {
 	Value(value::TaggedValue),
 	// the bool indicates whether to treat the node as lambda node
 	Nodes(Vec<(NodeId, bool)>),
+	Inline(InlineRust),
 }
 
 impl PartialEq for ConstructionArgs {
@@ -105,6 +110,7 @@ impl Hash for ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.hash(state),
+			Self::Inline(inline) => inline.hash(state),
 		}
 	}
 }
@@ -114,6 +120,7 @@ impl ConstructionArgs {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
+			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
@@ -453,6 +460,7 @@ impl TypingContext {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, String>>()?,
+			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
 		// Get the node input type from the proto node declaration

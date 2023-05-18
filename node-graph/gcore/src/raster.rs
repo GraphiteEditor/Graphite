@@ -192,12 +192,52 @@ pub trait Sample {
 	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel>;
 }
 
+impl<'i, T: Sample> Sample for &'i T {
+	type Pixel = T::Pixel;
+
+	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
+		(**self).sample(pos, area)
+	}
+}
+
 // TODO: We might rename this to Bitmap at some point
 pub trait Raster {
 	type Pixel: Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel>;
+}
+
+impl<'i, T: Raster> Raster for &'i T {
+	type Pixel = T::Pixel;
+
+	fn width(&self) -> u32 {
+		(**self).width()
+	}
+
+	fn height(&self) -> u32 {
+		(**self).height()
+	}
+
+	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
+		(**self).get_pixel(x, y)
+	}
+}
+
+impl<'i, T: Raster> Raster for &'i mut T {
+	type Pixel = T::Pixel;
+
+	fn width(&self) -> u32 {
+		(**self).width()
+	}
+
+	fn height(&self) -> u32 {
+		(**self).height()
+	}
+
+	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
+		(**self).get_pixel(x, y)
+	}
 }
 
 pub trait RasterMut: Raster {
@@ -212,6 +252,12 @@ pub trait RasterMut: Raster {
 				self.set_pixel(x, y, map_fn(pixel));
 			}
 		}
+	}
+}
+
+impl<'i, T: RasterMut + Raster> RasterMut for &'i mut T {
+	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
+		(*self).get_pixel_mut(x, y)
 	}
 }
 

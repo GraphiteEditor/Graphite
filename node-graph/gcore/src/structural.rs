@@ -39,6 +39,7 @@ pub struct AsyncComposeNode<First, Second, I> {
 	phantom: PhantomData<I>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'i, 'f: 'i, 's: 'i, Input: 'static, First, Second> Node<'i, Input> for AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
@@ -54,6 +55,7 @@ where
 	}
 }
 
+#[cfg(feature = "alloc")]
 impl<'i, First, Second, Input: 'i> AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
@@ -77,6 +79,7 @@ pub trait Then<'i, Input: 'i>: Sized {
 
 impl<'i, First: Node<'i, Input>, Input: 'i> Then<'i, Input> for First {}
 
+#[cfg(feature = "alloc")]
 pub trait AndThen<'i, Input: 'i>: Sized {
 	fn and_then<Second>(self, second: Second) -> AsyncComposeNode<Self, Second, Input>
 	where
@@ -88,6 +91,7 @@ pub trait AndThen<'i, Input: 'i>: Sized {
 	}
 }
 
+#[cfg(feature = "alloc")]
 impl<'i, First: Node<'i, Input>, Input: 'i> AndThen<'i, Input> for First {}
 
 pub struct ConsNode<I: From<()>, Root>(pub Root, PhantomData<I>);
@@ -105,6 +109,38 @@ where
 impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 	pub fn new(root: Root) -> Self {
 		ConsNode(root, PhantomData)
+	}
+}
+
+pub struct ApplyNode<O, N> {
+	pub node: N,
+	_o: PhantomData<O>,
+}
+/*
+#[node_macro::node_fn(ApplyNode)]
+fn apply<In, N>(input: In, node: &'any_input N) -> ()
+where
+	// TODO: try to allows this to return output other than ()
+	N: for<'any_input> Node<'any_input, In, Output = ()>,
+{
+	node.eval(input)
+}
+*/
+impl<'input, In: 'input, N: 'input, S0: 'input, O: 'input> Node<'input, In> for ApplyNode<O, S0>
+where
+	N: Node<'input, In, Output = O>,
+	S0: Node<'input, (), Output = &'input N>,
+{
+	type Output = <N as Node<'input, In>>::Output;
+	#[inline]
+	fn eval(&'input self, input: In) -> Self::Output {
+		let node = self.node.eval(());
+		node.eval(input)
+	}
+}
+impl<'input, S0: 'input, O: 'static> ApplyNode<O, S0> {
+	pub const fn new(node: S0) -> Self {
+		Self { node, _o: PhantomData }
 	}
 }
 
@@ -133,5 +169,16 @@ mod test {
 		let compose = ComposeNode::new(&value, &id);
 
 		assert_eq!(compose.eval(()), &5);
+	}
+
+	#[test]
+	fn test_apply() {
+		let mut array = [1, 2, 3];
+		let slice = &mut array;
+		let set_node = crate::storage::SetOwnedNode::new(slice);
+
+		let apply = ApplyNode::new(ValueNode::new(set_node));
+
+		assert_eq!(apply.eval((1, 2)), ());
 	}
 }
