@@ -639,8 +639,8 @@ impl Fsm for SelectToolFsmState {
 							let doc_pos = document.document_legacy.root.transform.inverse().transform_point2(viewspace_pos);
 
 							// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
-							let mut grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
-							let mut grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
+							let grid_offset_x = doc_pos.x.abs() - doc_pos.x.abs().floor();
+							let grid_offset_y = doc_pos.y.abs() - doc_pos.y.abs().floor();
 							let mut adjustment = DVec2 { x: grid_offset_x, y: grid_offset_y };
 
 							// If the original position is negative, flip the grid offset to be used in math to calculate transform

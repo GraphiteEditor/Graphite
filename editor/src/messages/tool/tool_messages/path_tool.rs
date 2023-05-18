@@ -284,8 +284,9 @@ impl Fsm for PathToolFsmState {
 					let mut view_delta = tool_data.previous_mouse_position;
 					let doc_transform = document.document_legacy.root.transform;
 					let doc_space_pos = doc_transform.inverse().transform_point2(view_delta).round();
-					view_delta = doc_transform.transform_point2(doc_space_pos);
-
+					if document.grid_enabled {
+						view_delta = doc_transform.transform_point2(doc_space_pos);
+					}
 					shape_editor.move_selected_points(&document.document_legacy, snapped_position - view_delta, shift_pressed, responses);
 					tool_data.previous_mouse_position = snapped_position;
 					PathToolFsmState::Dragging
