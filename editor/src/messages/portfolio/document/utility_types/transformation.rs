@@ -400,7 +400,7 @@ impl<'a> Selected<'a> {
 					let mut new = to.inverse() * transformation * to * original_layer_transforms;
 
 					match transform_operator {
-						Some(TransformOperation) => {
+						Some(transform_operation) => {
 							if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
 								if grid {
 									// Find the current position in doc space
@@ -485,7 +485,7 @@ impl<'a> Selected<'a> {
 
 						let mut position: DVec2 = layer_spacepos;
 						match transform_operator {
-							Some(TransformOperation) => {
+							Some(transform_operation) => {
 								if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
 									if grid {
 										let viewspace_pos = viewspace.transform_point2(layer_spacepos);

@@ -147,7 +147,30 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&mut self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
+		let points: Vec<ManipulatorPointInfo> = self
+			.selected_shape_state
+			.iter()
+			.flat_map(|(shape_layer_path, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { shape_layer_path, point_id }))
+			.collect();
+
+		// //TODO: loop thru selected points and see if theres an INhandle and Outhandle, with same layer path and point group
+		let in_handle_info = points.iter().find(|point| point.point_id.manipulator_type == SelectedType::InHandle);
+		if let Some(in_handle) = in_handle_info {
+			let group_id = in_handle.point_id.group;
+			let out_handle_info = points
+				.iter()
+				.find(|point| point.point_id.manipulator_type == SelectedType::OutHandle && point.point_id.group == group_id);
+			if let Some(out_handle) = out_handle_info {
+				let manip_point_id = ManipulatorPointId::new(out_handle.point_id.group, SelectedType::Anchor);
+
+				let shape_layer_path_vec = out_handle.shape_layer_path.to_vec();
+
+				let Some(state) = self.selected_shape_state.get_mut(&shape_layer_path_vec) else { return };
+				state.select_point(manip_point_id);
+			}
+		}
+
 		for (layer_path, state) in &self.selected_shape_state {
 			let Ok(layer) = document.layer(layer_path) else { continue };
 			let Some(vector_data) = layer.as_vector_data() else { continue };
@@ -156,6 +179,7 @@ impl ShapeState {
 			let delta = transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
+				debug!("point hit");
 				if point.manipulator_type.is_handle() && state.is_selected(ManipulatorPointId::new(point.group, SelectedType::Anchor)) {
 					continue;
 				}
