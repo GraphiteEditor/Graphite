@@ -146,6 +146,10 @@
 	<svg viewBox="0 0 1 1" class="curve-input-samples"
 			on:mousemove={handleMouseMove}
 			on:mouseup={handleMouseUp} >
+		{#each {length: gridSize - 1} as _, i}
+			<path d={"M 0 " + ((i + 1) / gridSize) + " L 1 " + ((i + 1) / gridSize) } class="grid pointer-redirect" />
+			<path d={"M " + ((i + 1) / gridSize) + " 0 L " + ((i + 1) / gridSize) + " 1" } class="grid pointer-redirect" />
+		{/each}
 		<path fill="transparent" class="curve pointer-redirect" d={d} />
 		{#each [0, 1] as i}
 			<path d={(typeof selectedNodeIndex === "undefined") ? "" : ("M " + samples[selectedNodeIndex].pos[0]
@@ -154,12 +158,10 @@
 					+ " " + (1 - samples[selectedNodeIndex].params[i][1]))}
 				style={"visibility: " + ((typeof selectedNodeIndex === "undefined") ? "hidden;" : "visible;")}
 				class="marker-line pointer-redirect" />
-		{/each}
-		{#each [0, 1] as i}
 			<circle cx={(typeof selectedNodeIndex === "undefined") ? 0 : samples[selectedNodeIndex].params[i][0]}
 					cy={(typeof selectedNodeIndex === "undefined") ? 0 : (1 - samples[selectedNodeIndex].params[i][1])}
 					style={"visibility: " + ((typeof selectedNodeIndex === "undefined") ? "hidden;" : "visible;")}
-					r="0.025" class="sample marker pointer-redirect"
+					r="0.02" class="sample marker pointer-redirect"
 					on:mousedown={e => handleSampleMouseDown(e, -i - 1)} />
 		{/each}
 		{#each samples as sample, i}
@@ -173,56 +175,49 @@
 			}
 
 			.sample {
-				fill: var(--color-e-nearwhite);
+				fill: var(--color-1-nearblack);
+				stroke: var(--color-e-nearwhite);
+				stroke-width: 0.01;
 				cursor: grab;
 			}
 
 			.sample:hover {
+				stroke: var(--color-f-white);
 				fill: var(--color-f-white);
 			}
 
 			.marker {
-				fill: var(--color-9-palegray);
+				fill: var(--color-1-nearblack);
+				stroke: var(--color-c-brightgray);
 			}
 
 			.marker:hover {
+				stroke: var(--color-a-softgray);
 				fill: var(--color-a-softgray);
 			}
 
 			.marker-line {
-				stroke: grey;
+				stroke: var(--color-7-middlegray);
+				stroke-width: 0.005;
+				pointer-events: none;
+			}
+			.grid {
+				stroke: var(--color-5-dullgray);
 				stroke-width: 0.005;
 				pointer-events: none;
 			}
 		</style>
 	</svg>
-	<div class="curve-input-grid">
-		{#each {length: gridSize * gridSize} as _}<div></div>{/each}
-	</div>
 	<slot />
 </LayoutRow>
 
 <style lang="scss" global>
 	.curve-input {
 		background: var(--color-1-nearblack);
-		min-height: calc(var(--widget-height) * 5) !important;
 		display: flex;
 		position: relative;
-
-		.curve-input-grid {
-			flex-grow: 1;
-			position: absolute;
-			display: grid;
-			grid-template-rows: repeat(3, 1fr);
-			grid-template-columns: repeat(3, 1fr);
-			overflow: hidden;
-			width: 100%;
-			height: 100%;
-
-			div {
-				outline: solid 1px var(--color-5-dullgray);
-			}
-		}
+		min-width: calc(2 * var(--widget-height)) !important;
+		max-width: calc(8 * var(--widget-height)) !important;
 
 		.curve-input-samples {
 			z-index: 1;
