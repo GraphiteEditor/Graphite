@@ -18,6 +18,8 @@ pub struct FrontendImageData {
 	#[serde(skip)]
 	pub image_data: std::sync::Arc<Vec<u8>>,
 	pub transform: Option<[f64; 6]>,
+	#[serde(rename = "nodeId")]
+	pub node_id: Option<graph_craft::document::NodeId>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]

@@ -105,6 +105,8 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
+
+	readonly thumbnailSvg!: string | undefined;
 }
 
 export class FrontendNodeLink {
@@ -770,6 +772,8 @@ export type LayerTypeData = {
 
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
+
+	readonly nodeId!: bigint;
 
 	readonly mime!: string;
 

@@ -54,7 +54,7 @@ impl LayerData for LayerLayer {
 		match &self.cached_output_data {
 			CachedOutputData::VectorPath(vector_data) => {
 				let layer_bounds = vector_data.bounding_box().unwrap_or_default();
-				let transfomed_bounds = vector_data.bounding_box_with_transform(transform).unwrap_or_default();
+				let transformed_bounds = vector_data.bounding_box_with_transform(transform).unwrap_or_default();
 
 				let _ = write!(svg, "<path d=\"");
 				for subpath in &vector_data.subpaths {
@@ -62,7 +62,7 @@ impl LayerData for LayerLayer {
 				}
 				svg.push('"');
 
-				svg.push_str(&vector_data.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transfomed_bounds));
+				svg.push_str(&vector_data.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transformed_bounds));
 				let _ = write!(svg, "/>");
 			}
 			CachedOutputData::BlobURL(blob_url) => {

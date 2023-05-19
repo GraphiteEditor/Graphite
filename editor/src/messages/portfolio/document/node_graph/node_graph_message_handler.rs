@@ -3,6 +3,7 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
 use crate::messages::prelude::*;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document;
 use document_legacy::layers::layer_layer::LayerLayer;
@@ -84,6 +85,8 @@ pub struct FrontendNode {
 	pub position: (i32, i32),
 	pub disabled: bool,
 	pub previewed: bool,
+	#[serde(rename = "thumbnailSvg")]
+	pub thumbnail_svg: Option<String>,
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -254,8 +257,10 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+	fn send_graph(network: &NodeNetwork, executor: &NodeGraphExecutor, layer_path: &Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
 		responses.add(PropertiesPanelMessage::ResendActiveProperties);
+
+		let layer_id = layer_path.as_ref().and_then(|path| path.last().copied());
 
 		// List of links in format (link_start, link_end, link_end_input_index)
 		let links = network
@@ -288,37 +293,49 @@ impl NodeGraphMessageHandler {
 				warn!("Node '{}' does not exist in library", node.name);
 				continue;
 			};
+
+			let primary_input = node
+				.inputs
+				.first()
+				.filter(|input| input.is_exposed())
+				.and_then(|_| node_type.inputs.get(0))
+				.map(|input_type| input_type.data_type);
+			let exposed_inputs = node
+				.inputs
+				.iter()
+				.zip(node_type.inputs.iter())
+				.skip(1)
+				.filter(|(input, _)| input.is_exposed())
+				.map(|(_, input_type)| NodeGraphInput {
+					data_type: input_type.data_type,
+					name: input_type.name.to_string(),
+				})
+				.collect();
+
+			let outputs = node_type
+				.outputs
+				.iter()
+				.map(|output_type| NodeGraphOutput {
+					data_type: output_type.data_type,
+					name: output_type.name.to_string(),
+				})
+				.collect();
+
+			let thumbnail_svg = layer_id
+				.and_then(|layer_id| executor.thumbnails.get(&layer_id))
+				.and_then(|layer| layer.get(id))
+				.map(|svg| svg.to_string());
+
 			nodes.push(FrontendNode {
 				id: *id,
 				display_name: node.name.clone(),
-				primary_input: node
-					.inputs
-					.first()
-					.filter(|input| input.is_exposed())
-					.and_then(|_| node_type.inputs.get(0))
-					.map(|input_type| input_type.data_type),
-				exposed_inputs: node
-					.inputs
-					.iter()
-					.zip(node_type.inputs.iter())
-					.skip(1)
-					.filter(|(input, _)| input.is_exposed())
-					.map(|(_, input_type)| NodeGraphInput {
-						data_type: input_type.data_type,
-						name: input_type.name.to_string(),
-					})
-					.collect(),
-				outputs: node_type
-					.outputs
-					.iter()
-					.map(|output_type| NodeGraphOutput {
-						data_type: output_type.data_type,
-						name: output_type.name.to_string(),
-					})
-					.collect(),
+				primary_input,
+				exposed_inputs,
+				outputs,
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
+				thumbnail_svg,
 			})
 		}
 		responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
@@ -405,9 +422,9 @@ impl NodeGraphMessageHandler {
 	}
 }
 
-impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)> for NodeGraphMessageHandler {
+impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, _selected): (&mut Document, &mut dyn Iterator<Item = &[LayerId]>)) {
+	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, executor): (&mut Document, &NodeGraphExecutor)) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
@@ -536,7 +553,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					}
 				}
 				if let Some(network) = self.get_active_network(document) {
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 				}
 				self.collect_nested_addresses(document, responses);
 				self.update_selected(document, responses);
@@ -561,7 +578,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 					}
 
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 					self.update_selected(document, responses);
 					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 				}
@@ -572,7 +589,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					self.nested_path.pop();
 				}
 				if let Some(network) = self.get_active_network(document) {
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 				}
 				self.collect_nested_addresses(document, responses);
 				self.update_selected(document, responses);
@@ -623,7 +640,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				Self::send_graph(network, responses);
+				Self::send_graph(network, executor, &self.layer_path, responses);
 			}
 			NodeGraphMessage::OpenNodeGraph { layer_path } => {
 				self.layer_path = Some(layer_path);
@@ -631,7 +648,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 				if let Some(network) = self.get_active_network(document) {
 					self.selected_nodes.clear();
 
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 
 					let node_types = document_node_types::collect_node_types();
 					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
@@ -694,7 +711,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = self.get_active_network(document) {
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 					if should_rerender {
 						if let Some(layer_path) = self.layer_path.clone() {
 							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
@@ -821,7 +838,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 							.disabled
 							.extend(self.selected_nodes.iter().filter(|&id| !network.inputs.contains(id) && !original_outputs.contains(id)));
 					}
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id, true)) {
@@ -847,7 +864,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &mut dyn Iterator<Item = &
 					} else {
 						return;
 					}
-					Self::send_graph(network, responses);
+					Self::send_graph(network, executor, &self.layer_path, responses);
 				}
 				self.update_selection_action_buttons(document, responses);
 				if let Some(layer_path) = self.layer_path.clone() {

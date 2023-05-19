@@ -139,8 +139,8 @@ impl BorrowTree {
 				node.reset();
 			}
 			old_nodes.remove(&id);
-			self.source_map.retain(|_, nid| !old_nodes.contains(nid));
 		}
+		self.source_map.retain(|_, nid| !old_nodes.contains(nid));
 		Ok(old_nodes.into_iter().collect())
 	}
 
