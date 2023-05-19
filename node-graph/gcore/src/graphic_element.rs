@@ -8,6 +8,8 @@ use core::ops::{Deref, DerefMut};
 use glam::IVec2;
 use node_macro::node_fn;
 
+pub mod renderer;
+
 /// A list of [`GraphicElement`]s
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
