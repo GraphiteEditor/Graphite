@@ -372,14 +372,11 @@ impl<'a> Selected<'a> {
 
 	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool, transform_operator: Option<TransformOperation>, mouse_movement: Option<DVec2>) {
 		if !self.selected.is_empty() {
-			// debug!("delta: {:?}", delta.translation.y);
 			let doc_transform = self.document.root.transform;
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
 
 			let pivot = DAffine2::from_translation(pivot_point);
-			// let transformation = pivot * delta * pivot.inverse();
-			let transformation = delta;
-			// After comparing it looks like delta is the same value as transformation. Question is can we just use delta then again does it matter which one we use
+			let transformation = pivot * delta * pivot.inverse();
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_path in Document::shallowest_unique_layers(self.selected.iter()) {
@@ -405,31 +402,29 @@ impl<'a> Selected<'a> {
 									Some(mut direction) => {
 										if grid {
 											// Find the current position in doc space
-											let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
+											let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.5, y: 0.5 });
 											let mut doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
 
-											// Update the translation by rounding the document position based on the direction
+											// If there is movement of the mouse
 											if direction.x > 0.0 || direction.x < 0.0 || direction.y > 0.0 || direction.y < 0.0 {
-												// QA
+												// Update the translation by rounding the document position based on the direction
 												let mut x_changed = false;
 												let mut y_changed = false;
-
-												let threshold = 0.2;
-												if direction.x > threshold {
+												if direction.x > 0.0 {
 													x_changed = true;
 													new.translation.x = new.translation.x.ceil();
-												} else if direction.x < -threshold {
+												} else if direction.x < -0.0 {
 													x_changed = true;
 													new.translation.x = new.translation.x.floor();
 												}
-												if direction.y > threshold {
+												if direction.y > 0.0 {
 													y_changed = true;
 													new.translation.y = new.translation.y.ceil();
-												} else if direction.y < -threshold {
+												} else if direction.y < -0.0 {
 													y_changed = true;
 													new.translation.y = new.translation.y.floor();
 												}
-
+												// If the x or y was unchanged, use the original x or y position
 												if !x_changed {
 													new.translation.x = doc_pos.x;
 												}
@@ -457,10 +452,20 @@ impl<'a> Selected<'a> {
 								}
 							}
 							if let TransformOperation::Rotating(_) = transform_operator.unwrap() {
-								debug!("rotate");
+								self.responses.add(GraphOperationMessage::TransformSet {
+									layer: layer_path.to_vec(),
+									transform: new,
+									transform_in: TransformIn::Local,
+									skip_rerender: true,
+								});
 							}
 							if let TransformOperation::Scaling(_) = transform_operator.unwrap() {
-								debug!("scale");
+								self.responses.add(GraphOperationMessage::TransformSet {
+									layer: layer_path.to_vec(),
+									transform: new,
+									transform_in: TransformIn::Local,
+									skip_rerender: true,
+								});
 							}
 						}
 
