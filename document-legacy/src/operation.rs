@@ -50,9 +50,11 @@ pub enum Operation {
 		layer: Box<Layer>,
 		destination_path: Vec<LayerId>,
 		insert_index: isize,
+		duplicating: bool,
 	},
 	CreateFolder {
 		path: Vec<LayerId>,
+		insert_index: isize,
 	},
 	TransformLayer {
 		path: Vec<LayerId>,
