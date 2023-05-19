@@ -192,7 +192,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::Scaling(scaling) => scaling.constraint,
 						_ => Axis::Both,
 					};
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
+					self.transform_operation
+						.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled, None);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -204,7 +205,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							let axis_constraint = translation.constraint;
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
+							self.transform_operation
+								.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled, Some(change));
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = new_pivot - self.mouse_position;
@@ -214,7 +216,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both, document.grid_enabled);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both, document.grid_enabled, None);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -228,7 +230,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 							let axis_constraint = scale.constraint;
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled);
+							self.transform_operation
+								.apply_transform_operation(&mut selected, self.snap, axis_constraint, document.grid_enabled, None);
 						}
 					};
 				}

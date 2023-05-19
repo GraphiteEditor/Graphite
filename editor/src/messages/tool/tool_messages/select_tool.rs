@@ -713,7 +713,7 @@ impl Fsm for SelectToolFsmState {
 							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
 							let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 							let grid = document.grid_enabled;
-							selected.update_transforms(delta, grid, None);
+							selected.update_transforms(delta, grid, None, None);
 						}
 					}
 					ResizingBounds
@@ -747,7 +747,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 						let grid = document.grid_enabled;
-						selected.update_transforms(delta, grid, None);
+						selected.update_transforms(delta, grid, None, None);
 					}
 
 					RotatingBounds
