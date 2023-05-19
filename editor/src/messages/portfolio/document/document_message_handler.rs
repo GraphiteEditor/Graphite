@@ -124,11 +124,23 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						for response in document_responses {
 							match &response {
 								DocumentResponse::FolderChanged { path } => responses.add(FolderChanged { affected_folder_path: path.clone() }),
+								DocumentResponse::AddSelectedLayer { additional_layers } => responses.add(AddSelectedLayers {
+									additional_layers: additional_layers.clone(),
+								}),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_metadata.remove(path);
 								}
 								DocumentResponse::LayerChanged { path } => responses.add(LayerChanged { affected_layer_path: path.clone() }),
-								DocumentResponse::CreatedLayer { path } => {
+								DocumentResponse::MoveSelectedLayersTo {
+									folder_path,
+									insert_index,
+									reverse_index,
+								} => responses.add(MoveSelectedLayersTo {
+									folder_path: folder_path.clone(),
+									insert_index: insert_index.clone(),
+									reverse_index: reverse_index.clone(),
+								}),
+								DocumentResponse::CreatedLayer { path, is_selected } => {
 									if self.layer_metadata.contains_key(path) {
 										warn!("CreatedLayer overrides existing layer metadata.");
 									}
@@ -136,9 +148,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 									responses.add(LayerChanged { affected_layer_path: path.clone() });
 									self.layer_range_selection_reference = path.clone();
-									responses.add(AddSelectedLayers {
-										additional_layers: vec![path.clone()],
-									});
+
+									if *is_selected {
+										responses.add(AddSelectedLayers {
+											additional_layers: vec![path.clone()],
+										});
+									}
 								}
 								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
 								DocumentResponse::DeletedSelectedManipulatorPoints => {
@@ -272,7 +287,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let id = generate_uuid();
 				container_path.push(id);
 				responses.add(DocumentMessage::DeselectAllLayers);
-				responses.add(DocumentOperation::CreateFolder { path: container_path.clone() });
+				responses.add(DocumentOperation::CreateFolder {
+					path: container_path.clone(),
+					insert_index: -1,
+				});
 				responses.add(DocumentMessage::SetLayerExpansion {
 					layer_path: container_path,
 					set_expanded: true,
@@ -417,6 +435,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(DocumentOperation::ClearBlobURL { path: layer_path.into() });
 			}
 			GroupSelectedLayers => {
+				// TODO: Add code that changes the insert index of the new folder based on the selected layer
 				let mut new_folder_path = self.document_legacy.shallowest_common_folder(self.selected_layers()).unwrap_or(&[]).to_vec();
 
 				// Required for grouping parent folders with their own children
@@ -428,7 +447,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
-				responses.add(DocumentOperation::CreateFolder { path: new_folder_path.clone() });
+				responses.add(DocumentOperation::CreateFolder {
+					path: new_folder_path.clone(),
+					insert_index: -1,
+				});
 				responses.add(DocumentMessage::ToggleLayerExpansion { layer_path: new_folder_path.clone() });
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,

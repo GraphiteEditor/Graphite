@@ -395,6 +395,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							layer: Box::new(entry.layer.clone()),
 							destination_path,
 							insert_index,
+							duplicating: false,
 						});
 					}
 				};
@@ -431,6 +432,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								layer: Box::new(entry.layer.clone()),
 								destination_path,
 								insert_index: -1,
+								duplicating: false,
 							});
 						}
 
