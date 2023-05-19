@@ -1,5 +1,5 @@
 use super::{
-	curve::{CubicSplines, Curve, CurveSample, ValueMapperNode},
+	curve::{CubicBezierCurve, Curve, CurveSample, ValueMapperNode},
 	Channel, Color,
 };
 use crate::Node;
@@ -815,22 +815,27 @@ pub struct GenerateCurvesNode<OutputChannel, Curve> {
 
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
 fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
-	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2]; 2];
+	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2], curve.start_params];
 	let mut lut = vec![_Channel::zero(); WINDOW_SIZE];
-	let end = CurveSample { pos: [1.0; 2], params: [[1.0; 2]; 2] };
+	let end = CurveSample {
+		pos: [1.0; 2],
+		params: [curve.end_params, [0.0; 2]],
+	};
 	for sample in curve.samples.iter().chain(core::iter::once(&end)) {
-		let points = CubicSplines {
-			x: [pos[0], param[0], sample.params[0][0], sample.pos[0]],
-			y: [pos[1], param[1], sample.params[0][1], sample.pos[1]],
-		};
-		let solution = points.solve();
+		let p = CubicBezierCurve::new([pos[0], pos[1], param[0], param[1], sample.params[0][0], sample.params[0][1], sample.pos[0], sample.pos[1]]);
 
 		let [left, right] = [pos[0], sample.pos[0]].map(|c| c.clamp(0., 1.));
 		let lut_index_left: usize = (left * (lut.len() - 1) as f32).floor() as _;
 		let lut_index_right: usize = (right * (lut.len() - 1) as f32).ceil() as _;
 		for index in lut_index_left..=lut_index_right {
 			let sample_x = index as f32 / (lut.len() - 1) as f32;
-			let sample_y = points.interpolate(sample_x, &solution);
+			let sample_y = if sample_x <= pos[0] {
+				pos[1]
+			} else if sample_x >= sample.pos[0] {
+				sample.pos[1]
+			} else {
+				p.solve(sample_x)
+			};
 			lut[index] = _Channel::from_f32(sample_y);
 		}
 

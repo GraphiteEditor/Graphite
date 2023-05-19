@@ -425,6 +425,8 @@ export class CurveSample {
 
 export class Curve {
 	samples!: CurveSample[];
+	start_params!: [number, number];
+	end_params!: [number, number];
 }
 
 export class UpdateActiveDocument extends JsMessage {

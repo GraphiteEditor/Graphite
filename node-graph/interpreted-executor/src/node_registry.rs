@@ -325,21 +325,39 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(f64), value_fn!(f64), value_fn!(bool)]),
 		)],
-		vec![(
-			NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
-			|args| {
-				use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		vec![
+			(
+				NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				|args| {
+					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 
-				let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0]);
-				let curve = ClonedNode::new(curve.eval(()));
+					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0]);
+					let curve = ClonedNode::new(curve.eval(()));
 
-				let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
-				let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
-				let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
-				Box::pin(any)
-			},
-			NodeIOTypes::new(concrete!(ImageFrame<Luma>), concrete!(ImageFrame<Luma>), vec![value_fn!(graphene_core::raster::curve::Curve)]),
-		)],
+					let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
+					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
+					let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+					Box::pin(any)
+				},
+				NodeIOTypes::new(concrete!(ImageFrame<Luma>), concrete!(ImageFrame<Luma>), vec![value_fn!(graphene_core::raster::curve::Curve)]),
+			),
+			// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
+			(
+				NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				|args| {
+					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+
+					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0]);
+					let curve = ClonedNode::new(curve.eval(()));
+
+					let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
+					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+					Box::pin(any)
+				},
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(graphene_core::raster::curve::Curve)]),
+			),
+		],
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),

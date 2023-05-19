@@ -41,7 +41,11 @@
 	let gridSize: number = 4;
 
 	function updateCurve() {
-		dispatch("value", { samples: samples.slice(1, samples.length - 1) } );
+		dispatch("value", {
+			samples: samples.slice(1, samples.length - 1),
+			start_params: samples[0].params[1],
+			end_params: samples[samples.length - 1].params[0],
+		} );
 	}
 
 	function recalculateSvgPath() {
@@ -63,6 +67,8 @@
 
 	$: {
 		samples = [samples[0]].concat(value.samples).concat([samples[samples.length - 1]]);
+		samples[0].params[1] = value.start_params;
+		samples[samples.length - 1].params[0] = value.end_params;
 		d = recalculateSvgPath();
 	}
 

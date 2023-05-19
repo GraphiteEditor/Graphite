@@ -4,10 +4,29 @@ use crate::Node;
 
 use super::{Channel, LuminanceMut};
 
-#[derive(Debug, Default, Clone, PartialEq, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Curve {
 	pub samples: Vec<CurveSample>,
+	pub start_params: [f32; 2],
+	pub end_params: [f32; 2],
+}
+
+impl Default for Curve {
+	fn default() -> Self {
+		Self {
+			samples: vec![],
+			start_params: [0.2; 2],
+			end_params: [0.8; 2],
+		}
+	}
+}
+
+impl std::hash::Hash for Curve {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.samples.hash(state);
+		[self.start_params, self.end_params].iter().flatten().for_each(|f| f.to_bits().hash(state));
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
@@ -25,6 +44,59 @@ impl std::hash::Hash for CurveSample {
 	}
 }
 
+// TODO: Propably this is more or less a reimplementation of `CubicSplines`. This code doesn't fail
+//       at any asserts. Maybe it is also faster, but that should be tested, as well as the numerical
+//       stability. Also bezier_rs functions like `intersections` could be used, but they aren't
+//       really made for this case either.
+/// This struct stores a bezier curve with auxilary data to be used with the `solve` function.
+pub struct CubicBezierCurve {
+	qh: f32,
+	p: f32,
+	h: f32,
+	a: f32,
+	y: [f32; 4],
+}
+
+const TMP1: f32 = 2.598076211353316;
+const TMP2: f32 = 1.1547005383792515;
+const PI23: f32 = core::f32::consts::PI * 2. / 3.;
+
+impl CubicBezierCurve {
+	pub fn new([x0, y0, x1, y1, x2, y2, x3, y3]: [f32; 8]) -> Self {
+		let [x03, x13, x23] = [x0 * 3., x1 * 3., x2 * 3.];
+		let [a, b, c] = [x13 - x23 + x3 - x0, x03 - 2. * x13 + x23, x13 - x03];
+		let [a2, b2] = [a * a, b * b];
+		let p = (3. * a * c - b2) / (3. * a2);
+		let qh = (2. / 27. * b2 * b - 1. / 3. * a * b * c + a2 * x0) / (a2 * a);
+		Self {
+			p,
+			qh,
+			h: 1. / 3. * -b / a,
+			a,
+			y: [y0, y1, y2, y3],
+		}
+	}
+
+	/// Get the y-coordinate of the curve given a x-coordinate.
+	pub fn solve(&self, x: f32) -> f32 {
+		let q = self.qh - x / self.a;
+		let t = (if self.p.abs() < -f32::EPSILON {
+			0.
+		} else if self.p > 0. {
+			let psqrt = self.p.sqrt();
+			let asinh = (TMP1 * q / (self.p * psqrt)).asinh() / 3.;
+			asinh.sinh() * -TMP2 * psqrt
+		} else {
+			let psqrt = (-self.p).sqrt();
+			let acos = (TMP1 * q / (self.p * psqrt)).acos() / 3.;
+			(acos - PI23).cos() * TMP2 * psqrt
+		}) + self.h;
+		let t1 = 1. - t;
+		t1 * t1 * t1 * self.y[0] + 3. * t1 * t1 * t * self.y[1] + 3. * t1 * t * t * self.y[2] + t * t * t * self.y[3]
+	}
+}
+
+#[derive(Debug)]
 pub struct CubicSplines {
 	pub x: [f32; 4],
 	pub y: [f32; 4],
