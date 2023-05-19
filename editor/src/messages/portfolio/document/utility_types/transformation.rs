@@ -184,7 +184,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis, grid: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis, grid: bool, mouse_movement: Option<DVec2>) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -193,7 +193,7 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation, grid, Some(*self));
+			selected.update_transforms(transformation, grid, Some(*self), mouse_movement);
 			self.hints(snapping, axis_constraint, selected.responses);
 		}
 	}
@@ -205,8 +205,7 @@ impl TransformOperation {
 			TransformOperation::Rotating(_) => (),
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
-
-		self.apply_transform_operation(selected, snapping, axis, grid);
+		self.apply_transform_operation(selected, snapping, axis, grid, None);
 	}
 
 	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, grid: bool) {
@@ -222,8 +221,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scaling) => scaling.constraint,
 			_ => Axis::Both,
 		};
-
-		self.apply_transform_operation(selected, snapping, axis_constraint, grid);
+		self.apply_transform_operation(selected, snapping, axis_constraint, grid, None);
 	}
 
 	pub fn hints(&self, snapping: bool, axis_constraint: Axis, responses: &mut VecDeque<Message>) {
@@ -372,8 +370,9 @@ impl<'a> Selected<'a> {
 		(min + max) / 2.
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool, transform_operator: Option<TransformOperation>) {
+	pub fn update_transforms(&mut self, delta: DAffine2, grid: bool, transform_operator: Option<TransformOperation>, mouse_movement: Option<DVec2>) {
 		if !self.selected.is_empty() {
+			// debug!("delta: {:?}", delta.translation.y);
 			let doc_transform = self.document.root.transform;
 			let pivot_point = doc_transform.transform_point2(*self.pivot);
 
@@ -402,47 +401,59 @@ impl<'a> Selected<'a> {
 					match transform_operator {
 						Some(transform_operation) => {
 							if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
-								if grid {
-									// Find the current position in doc space
-									let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
-									let doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
+								match mouse_movement {
+									Some(mut direction) => {
+										if grid {
+											// Find the current position in doc space
+											let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
+											let mut doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
 
-									// Direction the mouse is moving
-									let direction = new.translation - doc_pos;
+											// Update the translation by rounding the document position based on the direction
+											if direction.x > 0.0 || direction.x < 0.0 || direction.y > 0.0 || direction.y < 0.0 {
+												// QA
+												let mut x_changed = false;
+												let mut y_changed = false;
 
-									// Update the translation by rounding the document position based on the direction
-									if direction.x > 0.0 || direction.x < 0.0 || direction.y > 0.0 || direction.y < 0.0 {
-										if direction.x > 0.0 {
-											new.translation.x = new.translation.x.ceil();
-											new.translation.y = doc_pos.y;
-										}
-										if direction.x < 0.0 {
-											new.translation.x = new.translation.x.floor();
-											new.translation.y = doc_pos.y;
-										}
-										if direction.y > 0.0 {
-											new.translation.y = new.translation.y.ceil();
-											new.translation.x = doc_pos.x;
-										}
-										if direction.y < 0.0 {
-											new.translation.y = new.translation.y.floor();
-											new.translation.x = doc_pos.x;
-										}
+												let threshold = 0.2;
+												if direction.x > threshold {
+													x_changed = true;
+													new.translation.x = new.translation.x.ceil();
+												} else if direction.x < -threshold {
+													x_changed = true;
+													new.translation.x = new.translation.x.floor();
+												}
+												if direction.y > threshold {
+													y_changed = true;
+													new.translation.y = new.translation.y.ceil();
+												} else if direction.y < -threshold {
+													y_changed = true;
+													new.translation.y = new.translation.y.floor();
+												}
 
-										self.responses.add(GraphOperationMessage::TransformSet {
-											layer: layer_path.to_vec(),
-											transform: new,
-											transform_in: TransformIn::Local,
-											skip_rerender: true,
-										});
+												if !x_changed {
+													new.translation.x = doc_pos.x;
+												}
+												if !y_changed {
+													new.translation.y = doc_pos.y;
+												}
+
+												self.responses.add(GraphOperationMessage::TransformSet {
+													layer: layer_path.to_vec(),
+													transform: new,
+													transform_in: TransformIn::Local,
+													skip_rerender: true,
+												});
+											}
+										} else if !grid {
+											self.responses.add(GraphOperationMessage::TransformSet {
+												layer: layer_path.to_vec(),
+												transform: new,
+												transform_in: TransformIn::Local,
+												skip_rerender: true,
+											});
+										}
 									}
-								} else if !grid {
-									self.responses.add(GraphOperationMessage::TransformSet {
-										layer: layer_path.to_vec(),
-										transform: new,
-										transform_in: TransformIn::Local,
-										skip_rerender: true,
-									});
+									None => {}
 								}
 							}
 							if let TransformOperation::Rotating(_) = transform_operator.unwrap() {
@@ -452,6 +463,7 @@ impl<'a> Selected<'a> {
 								debug!("scale");
 							}
 						}
+
 						None => {
 							self.responses.add(GraphOperationMessage::TransformSet {
 								layer: layer_path.to_vec(),
@@ -462,6 +474,7 @@ impl<'a> Selected<'a> {
 						}
 					}
 				}
+
 				if *self.tool_type == ToolType::Path {
 					let layerspace_rotation = viewspace.inverse() * transformation;
 					let initial_points = match self.original_transforms {
