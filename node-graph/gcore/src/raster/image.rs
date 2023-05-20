@@ -146,7 +146,7 @@ where
 			let r = SRGBGammaFloat::from_linear(color.r()).0;
 			let g = SRGBGammaFloat::from_linear(color.g()).0;
 			let b = SRGBGammaFloat::from_linear(color.b()).0;
-			let a = color.a();
+			let a = color.a().to_f32();
 			let rgb_scale = 256.0 / a;
 
 			result.push((r * rgb_scale) as u8);
