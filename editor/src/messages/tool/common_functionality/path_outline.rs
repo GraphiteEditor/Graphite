@@ -30,50 +30,57 @@ impl PathOutline {
 		// Get layer data
 		let document_layer = document.document_legacy.layer(&document_layer_path).ok()?;
 
-		// TODO Purge this area of BezPath and Kurbo
-		// Get the bezpath from the shape or text
+		// Get the subpath from the shape
 		let subpath = match &document_layer.data {
 			LayerDataType::Shape(shape) => Some(shape.shape.clone()),
-			LayerDataType::Layer(layer) => layer.as_vector_data().map(|vector_data| Subpath::from_bezier_crate(&vector_data.subpaths)),
+			LayerDataType::Layer(layer) => {
+				if let Some(vector_data) = layer.as_vector_data() {
+					// Vector graph output
+					Some(Subpath::from_bezier_rs(&vector_data.subpaths))
+				} else {
+					// Frame graph output
+					Some(Subpath::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)))
+				}
+			}
 			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
 		}?;
 
 		// Generate a new overlay layer if necessary
-		let overlay = match overlay_path {
-			Some(path) => path,
-			None => {
-				let overlay_path = vec![generate_uuid()];
-				let operation = Operation::AddShape {
+		let overlay = overlay_path.unwrap_or_else(|| {
+			let overlay_path = vec![generate_uuid()];
+
+			responses.add(DocumentMessage::Overlays(
+				(Operation::AddShape {
 					path: overlay_path.clone(),
 					subpath: Default::default(),
-					style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, PATH_OUTLINE_WEIGHT)), Fill::None),
+					style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), PATH_OUTLINE_WEIGHT)), Fill::None),
 					insert_index: -1,
 					transform: DAffine2::IDENTITY.to_cols_array(),
-				};
+				})
+				.into(),
+			));
 
-				responses.add(DocumentMessage::Overlays(operation.into()));
+			overlay_path
+		});
 
-				overlay_path
-			}
-		};
-
-		// Update the shape bezpath
-		let operation = Operation::SetShapePath { path: overlay.clone(), subpath };
-		responses.add(DocumentMessage::Overlays(operation.into()));
+		// Update the shape subpath
+		responses.add(DocumentMessage::Overlays((Operation::SetShapePath { path: overlay.clone(), subpath }).into()));
 
 		// Update the transform to match the document
-		let operation = Operation::SetLayerTransform {
-			path: overlay.clone(),
-			transform: document.document_legacy.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
-		};
-		responses.add(DocumentMessage::Overlays(operation.into()));
+		responses.add(DocumentMessage::Overlays(
+			(Operation::SetLayerTransform {
+				path: overlay.clone(),
+				transform: document.document_legacy.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
+			})
+			.into(),
+		));
 
 		Some(overlay)
 	}
 
-	/// Creates an outline of a layer either with a pre-existing overlay or by generating a new one
+	/// Creates an outline of a layer either with a pre-existing overlay or by generating a new one.
 	///
-	/// Creates an outline, discarding the overlay on failure
+	/// Creates an outline, discarding the overlay on failure.
 	fn create_outline(
 		document_layer_path: Vec<LayerId>,
 		overlay_path: Option<Vec<LayerId>>,

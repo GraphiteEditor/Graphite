@@ -74,7 +74,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "number";
+export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "vec2" | "graphic" | "artboard";
 
 export class NodeGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -105,6 +105,8 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
+
+	readonly thumbnailSvg!: string | undefined;
 }
 
 export class FrontendNodeLink {
@@ -498,12 +500,6 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerFileDownload extends JsMessage {
-	readonly document!: string;
-
-	readonly name!: string;
-}
-
 export class TriggerLoadAutoSaveDocuments extends JsMessage { }
 
 export class TriggerLoadPreferences extends JsMessage { }
@@ -514,7 +510,17 @@ export class TriggerImport extends JsMessage { }
 
 export class TriggerPaste extends JsMessage { }
 
-export class TriggerRasterDownload extends JsMessage {
+export class TriggerCopyToClipboardBlobUrl extends JsMessage {
+	readonly blobUrl!: string;
+}
+
+export class TriggerDownloadBlobUrl extends JsMessage {
+	readonly layerName!: string;
+	
+	readonly blobUrl!: string;
+}
+
+export class TriggerDownloadRaster extends JsMessage {
 	readonly svg!: string;
 
 	readonly name!: string;
@@ -523,6 +529,12 @@ export class TriggerRasterDownload extends JsMessage {
 
 	@TupleToVec2
 	readonly size!: XY;
+}
+
+export class TriggerDownloadTextFile extends JsMessage {
+	readonly document!: string;
+
+	readonly name!: string;
 }
 
 export class TriggerImaginateCheckServerStatus extends JsMessage {
@@ -761,6 +773,8 @@ export type LayerTypeData = {
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
 
+	readonly nodeId!: bigint;
+
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;
@@ -822,9 +836,10 @@ export class ColorInput extends WidgetProps {
 	)
 	value!: Color;
 
+	allowNone!: boolean;
+
 	// TODO: Implement
 	// allowTransparency!: boolean;
-	// allowNone!: boolean;
 	// disabled!: boolean;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
@@ -1384,12 +1399,14 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerCopyToClipboardBlobUrl,
+	TriggerDownloadBlobUrl,
+	TriggerDownloadRaster,
+	TriggerDownloadTextFile,
+	TriggerFontLoad,
 	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
-	TriggerRasterizeRegionBelowLayer,
-	TriggerFileDownload,
-	TriggerFontLoad,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
@@ -1397,7 +1414,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRasterDownload,
+	TriggerRasterizeRegionBelowLayer,
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,
@@ -1415,8 +1432,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
-	UpdateEyedropperSamplingState,
 	UpdateDocumentScrollbars,
+	UpdateEyedropperSamplingState,
 	UpdateImageData,
 	UpdateInputHints,
 	UpdateLayerTreeOptionsLayout,
@@ -1429,9 +1446,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
-	UpdateZoomWithScroll,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
+	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

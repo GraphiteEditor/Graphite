@@ -17,13 +17,22 @@ pub struct VectorData {
 	pub mirror_angle: Vec<ManipulatorGroupId>,
 }
 
+impl core::hash::Hash for VectorData {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.subpaths.hash(state);
+		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.style.hash(state);
+		self.mirror_angle.hash(state);
+	}
+}
+
 impl VectorData {
 	/// An empty subpath with no data, an identity transform, and a black fill.
 	pub const fn empty() -> Self {
 		Self {
 			subpaths: Vec::new(),
 			transform: DAffine2::IDENTITY,
-			style: PathStyle::new(Some(Stroke::new(Color::BLACK, 0.)), super::style::Fill::None),
+			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			mirror_angle: Vec::new(),
 		}
 	}
