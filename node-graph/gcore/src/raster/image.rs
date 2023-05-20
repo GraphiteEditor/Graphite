@@ -135,27 +135,27 @@ use super::*;
 impl<P: Alpha + RGB + AssociatedAlpha> Image<P>
 where
 	P::ColorChannel: Linear,
+	<P as Alpha>::AlphaChannel: Linear,
 {
 	/// Flattens each channel cast to a u8
 	pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 		let Image { width, height, data } = self;
 
-		let to_gamma = SRGBGammaFloat::from_linear;
-		let to_u8 = |x| (num_cast::<_, f32>(x).unwrap() * 255.) as u8;
+		let mut result = Vec::with_capacity(width as usize * height as usize * 4);
+		for color in data {
+			let r = SRGBGammaFloat::from_linear(color.r()).0;
+			let g = SRGBGammaFloat::from_linear(color.g()).0;
+			let b = SRGBGammaFloat::from_linear(color.b()).0;
+			let a = SRGBGammaFloat::from_linear(color.a()).0;
+			let rgb_scale = 256.0 / a;
 
-		let result_bytes = data
-			.into_iter()
-			.flat_map(|color| {
-				[
-					to_u8(to_gamma(color.r() / color.a().to_channel())),
-					to_u8(to_gamma(color.g() / color.a().to_channel())),
-					to_u8(to_gamma(color.b() / color.a().to_channel())),
-					(num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
-				]
-			})
-			.collect();
+			result.push((r * rgb_scale) as u8);
+			result.push((g * rgb_scale) as u8);
+			result.push((b * rgb_scale) as u8);
+			result.push((a * 256.0) as u8);
+		}
 
-		(result_bytes, width, height)
+		(result, width, height)
 	}
 }
 
