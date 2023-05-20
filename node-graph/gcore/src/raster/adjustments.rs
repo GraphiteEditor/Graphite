@@ -1,5 +1,5 @@
 use super::{
-	curve::{Curve, CurveSample, ValueMapperNode},
+	curve::{Curve, CurveManipulatorGroup, ValueMapperNode},
 	Channel, Color,
 };
 use crate::Node;
@@ -816,18 +816,18 @@ pub struct GenerateCurvesNode<OutputChannel, Curve> {
 
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
 fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
-	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2], curve.start_params];
+	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2], curve.first_handle];
 	let mut lut = vec![_Channel::zero(); WINDOW_SIZE];
-	let end = CurveSample {
-		pos: [1.0; 2],
-		params: [curve.end_params, [0.0; 2]],
+	let end = CurveManipulatorGroup {
+		anchor: [1.0; 2],
+		handles: [curve.last_handle, [0.0; 2]],
 	};
-	for sample in curve.samples.iter().chain(core::iter::once(&end)) {
-		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.params[0][0], sample.params[0][1], sample.pos[0], sample.pos[1]].map(f64::from);
+	for sample in curve.manipulator_groups.iter().chain(core::iter::once(&end)) {
+		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.handles[0][0], sample.handles[0][1], sample.anchor[0], sample.anchor[1]].map(f64::from);
 
 		let bezier = Bezier::from_cubic_coordinates(x0, y0, x1, y1, x2, y2, x3, y3);
 
-		let [left, right] = [pos[0], sample.pos[0]].map(|c| c.clamp(0., 1.));
+		let [left, right] = [pos[0], sample.anchor[0]].map(|c| c.clamp(0., 1.));
 		let lut_index_left: usize = (left * (lut.len() - 1) as f32).floor() as _;
 		let lut_index_right: usize = (right * (lut.len() - 1) as f32).ceil() as _;
 		for index in lut_index_left..=lut_index_right {
@@ -849,8 +849,8 @@ fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapper
 			lut[index] = _Channel::from_f64(y);
 		}
 
-		pos = sample.pos;
-		param = sample.params[1];
+		pos = sample.anchor;
+		param = sample.handles[1];
 	}
 	ValueMapperNode::new(lut)
 }

@@ -7,38 +7,38 @@ use super::{Channel, LuminanceMut};
 #[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Curve {
-	pub samples: Vec<CurveSample>,
-	pub start_params: [f32; 2],
-	pub end_params: [f32; 2],
+	pub manipulator_groups: Vec<CurveManipulatorGroup>,
+	pub first_handle: [f32; 2],
+	pub last_handle: [f32; 2],
 }
 
 impl Default for Curve {
 	fn default() -> Self {
 		Self {
-			samples: vec![],
-			start_params: [0.2; 2],
-			end_params: [0.8; 2],
+			manipulator_groups: vec![],
+			first_handle: [0.2; 2],
+			last_handle: [0.8; 2],
 		}
 	}
 }
 
 impl std::hash::Hash for Curve {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.samples.hash(state);
-		[self.start_params, self.end_params].iter().flatten().for_each(|f| f.to_bits().hash(state));
+		self.manipulator_groups.hash(state);
+		[self.first_handle, self.last_handle].iter().flatten().for_each(|f| f.to_bits().hash(state));
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct CurveSample {
-	pub pos: [f32; 2],
-	pub params: [[f32; 2]; 2],
+pub struct CurveManipulatorGroup {
+	pub anchor: [f32; 2],
+	pub handles: [[f32; 2]; 2],
 }
 
-impl std::hash::Hash for CurveSample {
+impl std::hash::Hash for CurveManipulatorGroup {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		for c in self.params.iter().chain([&self.pos]).flatten() {
+		for c in self.handles.iter().chain([&self.anchor]).flatten() {
 			c.to_bits().hash(state);
 		}
 	}

@@ -418,13 +418,13 @@ export class Color {
 	}
 }
 
-export class CurveSample {
-	pos!: [number, number];
-	params!: [[number, number], [number, number]];
+export class CurveManipulatorGroup {
+	anchor!: [number, number];
+	handles!: [[number, number], [number, number]];
 }
 
 export class Curve {
-	samples!: CurveSample[];
+	manipulator_groups!: CurveManipulatorGroup[];
 	start_params!: [number, number];
 	end_params!: [number, number];
 }
