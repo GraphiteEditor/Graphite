@@ -74,7 +74,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "number";
+export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "vec2" | "graphic" | "artboard";
 
 export class NodeGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -105,6 +105,8 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
+
+	readonly thumbnailSvg!: string | undefined;
 }
 
 export class FrontendNodeLink {
@@ -770,6 +772,8 @@ export type LayerTypeData = {
 
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
+
+	readonly nodeId!: bigint;
 
 	readonly mime!: string;
 

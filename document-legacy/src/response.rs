@@ -11,8 +11,12 @@ pub enum DocumentResponse {
 	FolderChanged {
 		path: Vec<LayerId>,
 	},
+	AddSelectedLayer {
+		additional_layers: Vec<Vec<LayerId>>,
+	},
 	CreatedLayer {
 		path: Vec<LayerId>,
+		is_selected: bool,
 	},
 	DeletedLayer {
 		path: Vec<LayerId>,
@@ -20,6 +24,11 @@ pub enum DocumentResponse {
 	/// Triggers an update of the layer in the layer panel.
 	LayerChanged {
 		path: Vec<LayerId>,
+	},
+	MoveSelectedLayersTo {
+		folder_path: Vec<LayerId>,
+		insert_index: isize,
+		reverse_index: bool,
 	},
 	DeletedSelectedManipulatorPoints,
 }
@@ -29,10 +38,12 @@ impl fmt::Display for DocumentResponse {
 		match self {
 			DocumentResponse::DocumentChanged { .. } => write!(f, "DocumentChanged"),
 			DocumentResponse::FolderChanged { .. } => write!(f, "FolderChanged"),
+			DocumentResponse::AddSelectedLayer { .. } => write!(f, "AddSelectedLayer"),
 			DocumentResponse::CreatedLayer { .. } => write!(f, "CreatedLayer"),
 			DocumentResponse::LayerChanged { .. } => write!(f, "LayerChanged"),
 			DocumentResponse::DeletedLayer { .. } => write!(f, "DeleteLayer"),
 			DocumentResponse::DeletedSelectedManipulatorPoints { .. } => write!(f, "DeletedSelectedManipulatorPoints"),
+			DocumentResponse::MoveSelectedLayersTo { .. } => write!(f, "MoveSelectedLayersTo"),
 		}
 	}
 }

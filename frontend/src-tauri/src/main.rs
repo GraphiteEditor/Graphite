@@ -102,6 +102,7 @@ fn handle_message(message: String) -> String {
 				images.insert(format!("{:?}_{}", &image.path, document_id), image);
 				stub_data.push(FrontendImageData {
 					path,
+					node_id: None,
 					mime,
 					image_data: Arc::new(Vec::new()),
 					transform,

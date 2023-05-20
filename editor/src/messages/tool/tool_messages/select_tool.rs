@@ -368,6 +368,7 @@ impl SelectToolData {
 				layer: Box::new(layer),
 				destination_path: layer_path.clone(),
 				insert_index: -1,
+				duplicating: false,
 			});
 			responses.add(DocumentMessage::UpdateLayerMetadata {
 				layer_path: layer_path.clone(),
@@ -1219,8 +1220,6 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 }
 
 fn recursive_search(document: &DocumentMessageHandler, layer_path: &Vec<u64>, incoming_layer_path_vector: &Vec<u64>) -> bool {
-	// TODO: fix below, then QA
-	// DOUBLE CLICK BROKEN
 	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
 	for path in layer_paths {
 		if path == *incoming_layer_path_vector {

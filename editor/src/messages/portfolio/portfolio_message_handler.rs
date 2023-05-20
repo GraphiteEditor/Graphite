@@ -395,6 +395,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							layer: Box::new(entry.layer.clone()),
 							destination_path,
 							insert_index,
+							duplicating: false,
 						});
 					}
 				};
@@ -431,6 +432,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								layer: Box::new(entry.layer.clone()),
 								destination_path,
 								insert_index: -1,
+								duplicating: false,
 							});
 						}
 
@@ -503,9 +505,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::SetImageBlobUrl {
 				document_id,
 				layer_path,
+				node_id,
 				blob_url,
 				resolution,
 			} => {
+				if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_id) {
+					self.executor.insert_thumbnail_blob_url(blob_url, layer_id, node_id, responses);
+					return;
+				}
+
 				let message = DocumentMessage::SetImageBlobUrl {
 					layer_path,
 					blob_url,
