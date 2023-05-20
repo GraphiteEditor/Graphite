@@ -224,7 +224,8 @@ impl ShapeState {
 			let transform = document.multiply_transforms(layer_path).unwrap_or(glam::DAffine2::IDENTITY);
 
 			for &point in state.selected_points.iter() {
-				if !point.manipulator_type.is_handle() {
+				let anchor = ManipulatorPointId::new(point.group, SelectedType::Anchor);
+				if !point.manipulator_type.is_handle() || state.is_selected(anchor) {
 					continue;
 				}
 
