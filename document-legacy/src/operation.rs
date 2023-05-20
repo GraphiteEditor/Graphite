@@ -1,12 +1,8 @@
-use crate::boolean_ops::BooleanOperation as BooleanOperationType;
 use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
-use graphene_core::vector::SelectedType;
-use graphene_std::vector::consts::ManipulatorType;
-use graphene_std::vector::manipulator_group::ManipulatorGroup;
 use graphene_std::vector::subpath::Subpath;
 
 use serde::{Deserialize, Serialize};
@@ -18,24 +14,6 @@ use std::hash::{Hash, Hasher};
 // TODO: Rename all instances of `path` to `layer_path`
 /// Operations that can be performed to mutate the document.
 pub enum Operation {
-	AddEllipse {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddRect {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddLine {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
 	AddFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,
@@ -58,74 +36,11 @@ pub enum Operation {
 		layer_path: Vec<LayerId>,
 		pivot: (f64, f64),
 	},
-	AddPolyline {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		points: Vec<(f64, f64)>,
-	},
-	AddSpline {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		points: Vec<(f64, f64)>,
-	},
-	AddNgon {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		sides: u32,
-	},
-	AddShape {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		// TODO This will become a compound path once we support them.
-		subpath: Subpath,
-	},
-	BooleanOperation {
-		operation: BooleanOperationType,
-		selected: Vec<Vec<LayerId>>,
-	},
 	DeleteLayer {
 		path: Vec<LayerId>,
 	},
-	DeleteSelectedManipulatorPoints {
-		layer_paths: Vec<Vec<LayerId>>,
-	},
-	DeselectManipulatorPoints {
-		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ManipulatorType)>,
-	},
-	DeselectAllManipulatorPoints {
-		layer_path: Vec<LayerId>,
-	},
-	SelectAllAnchors {
-		layer_path: Vec<LayerId>,
-	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
-	},
-	MoveSelectedManipulatorPoints {
-		layer_path: Vec<LayerId>,
-		delta: (f64, f64),
-		mirror_distance: bool,
-	},
-	MoveManipulatorPoint {
-		layer_path: Vec<LayerId>,
-		id: u64,
-		manipulator_type: SelectedType,
-		position: (f64, f64),
-	},
-	SetManipulatorPoints {
-		layer_path: Vec<LayerId>,
-		id: u64,
-		manipulator_type: ManipulatorType,
-		position: Option<(f64, f64)>,
 	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
@@ -135,9 +50,11 @@ pub enum Operation {
 		layer: Box<Layer>,
 		destination_path: Vec<LayerId>,
 		insert_index: isize,
+		duplicating: bool,
 	},
 	CreateFolder {
 		path: Vec<LayerId>,
+		insert_index: isize,
 	},
 	TransformLayer {
 		path: Vec<LayerId>,
@@ -151,11 +68,6 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
-	SelectManipulatorPoints {
-		layer_path: Vec<LayerId>,
-		point_ids: Vec<(u64, ManipulatorType)>,
-		add: bool,
-	},
 	SetShapePath {
 		path: Vec<LayerId>,
 		subpath: Subpath,
@@ -163,28 +75,6 @@ pub enum Operation {
 	SetVectorData {
 		path: Vec<LayerId>,
 		vector_data: graphene_core::vector::VectorData,
-	},
-	InsertManipulatorGroup {
-		layer_path: Vec<LayerId>,
-		manipulator_group: ManipulatorGroup,
-		after_id: u64,
-	},
-	PushManipulatorGroup {
-		layer_path: Vec<LayerId>,
-		manipulator_group: ManipulatorGroup,
-	},
-	PushFrontManipulatorGroup {
-		layer_path: Vec<LayerId>,
-		manipulator_group: ManipulatorGroup,
-	},
-	RemoveManipulatorGroup {
-		layer_path: Vec<LayerId>,
-		id: u64,
-	},
-	RemoveManipulatorPoint {
-		layer_path: Vec<LayerId>,
-		id: u64,
-		manipulator_type: ManipulatorType,
 	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
@@ -196,10 +86,6 @@ pub enum Operation {
 		transform: [f64; 6],
 		scope: [f64; 6],
 	},
-	TransformLayerScaleAroundPivot {
-		path: Vec<LayerId>,
-		scale_factor: (f64, f64),
-	},
 	SetLayerScaleAroundPivot {
 		path: Vec<LayerId>,
 		new_scale: (f64, f64),
@@ -207,9 +93,6 @@ pub enum Operation {
 	SetLayerTransform {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
-	},
-	ToggleLayerVisibility {
-		path: Vec<LayerId>,
 	},
 	SetLayerVisibility {
 		path: Vec<LayerId>,
@@ -231,10 +114,6 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		opacity: f64,
 	},
-	SetLayerStyle {
-		path: Vec<LayerId>,
-		style: style::PathStyle,
-	},
 	SetLayerFill {
 		path: Vec<LayerId>,
 		fill: style::Fill,
@@ -243,14 +122,43 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		stroke: Stroke,
 	},
-	SetManipulatorHandleMirroring {
-		layer_path: Vec<LayerId>,
-		id: u64,
-		mirror_angle: bool,
+
+	// The following are used only by the legacy overlays system
+	AddEllipse {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
 	},
-	SetSelectedHandleMirroring {
-		layer_path: Vec<LayerId>,
-		toggle_angle: bool,
+	AddRect {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
+	},
+	AddLine {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
+	},
+	AddPolyline {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
+		points: Vec<(f64, f64)>,
+	},
+	AddShape {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		style: style::PathStyle,
+		subpath: Subpath,
+	},
+	SetLayerStyle {
+		path: Vec<LayerId>,
+		style: style::PathStyle,
 	},
 }
 

@@ -96,6 +96,8 @@ impl Pixel for Color {
 
 impl Alpha for Color {
 	type AlphaChannel = f32;
+	const TRANSPARENT: Self = Self::TRANSPARENT;
+
 	fn alpha(&self) -> f32 {
 		self.alpha
 	}

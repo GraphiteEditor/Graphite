@@ -548,7 +548,11 @@
 								</div>
 							{/if}
 						</div>
-						<IconLabel icon={nodeIcon(node.displayName)} />
+						{#if node.thumbnailSvg}
+							{@html node.thumbnailSvg}
+						{:else}
+							<IconLabel icon={nodeIcon(node.displayName)} />
+						{/if}
 						<TextLabel>{node.displayName}</TextLabel>
 					</div>
 					{#if exposedInputsOutputs.length > 0}

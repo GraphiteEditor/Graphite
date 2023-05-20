@@ -281,9 +281,9 @@ impl core::hash::Hash for Stroke {
 }
 
 impl Stroke {
-	pub const fn new(color: Color, weight: f64) -> Self {
+	pub const fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
-			color: Some(color),
+			color,
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -439,7 +439,7 @@ impl PathStyle {
 	/// ```
 	/// # use graphene_core::vector::style::{Fill, Stroke, PathStyle};
 	/// # use graphene_core::raster::color::Color;
-	/// let stroke = Stroke::new(Color::GREEN, 42.);
+	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
 	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
 	///
 	/// assert_eq!(style.stroke(), Some(stroke));
@@ -477,7 +477,7 @@ impl PathStyle {
 	///
 	/// assert_eq!(style.stroke(), None);
 	///
-	/// let stroke = Stroke::new(Color::GREEN, 42.);
+	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
 	/// style.set_stroke(stroke.clone());
 	///
 	/// assert_eq!(style.stroke(), Some(stroke));
@@ -510,7 +510,7 @@ impl PathStyle {
 	/// ```
 	/// # use graphene_core::vector::style::{Fill, Stroke, PathStyle};
 	/// # use graphene_core::raster::color::Color;
-	/// let mut style = PathStyle::new(Some(Stroke::new(Color::GREEN, 42.)), Fill::None);
+	/// let mut style = PathStyle::new(Some(Stroke::new(Some(Color::GREEN), 42.)), Fill::None);
 	///
 	/// assert!(style.stroke().is_some());
 	///
@@ -528,7 +528,7 @@ impl PathStyle {
 			(_, fill) => fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
-			(ViewMode::Outline, _) => Stroke::new(LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT).render(),
+			(ViewMode::Outline, _) => Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render(),
 			(_, Some(stroke)) => stroke.render(),
 			(_, None) => String::new(),
 		};

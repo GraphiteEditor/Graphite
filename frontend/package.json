@@ -19,7 +19,7 @@
 		"build-wasm": "wasm-pack build ./wasm --dev --target=web",
 		"build-wasm-prod": "wasm-pack build ./wasm --release --target=web",
 		"tauri:build-wasm": "wasm-pack build ./wasm --release --target=web -- --features tauri",
-		"watch:wasm": "cargo watch --postpone --workdir  wasm --shell \"wasm-pack build . --dev --target=web -- --color always\"",
+		"watch:wasm": "cargo watch --postpone --watch-when-idle --workdir  wasm --shell \"wasm-pack build . --dev --target=web -- --color always\"",
 		"--------------------": "",
 		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
 		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"

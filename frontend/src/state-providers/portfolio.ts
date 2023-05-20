@@ -2,25 +2,28 @@
 
 import {writable} from "svelte/store";
 
-import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
+import { downloadFileText, downloadFileBlob, upload, downloadFileURL } from "@graphite/utility-functions/files";
 import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@graphite/utility-functions/imaginate";
-import { extractPixelData, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+import { extractPixelData, imageToPNG, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
-	TriggerFileDownload,
-	TriggerImport,
-	TriggerOpenDocument,
-	TriggerRasterDownload,
+	TriggerCopyToClipboardBlobUrl,
+	TriggerDownloadBlobUrl,
+	TriggerDownloadRaster,
+	TriggerDownloadTextFile,
+	TriggerImaginateCheckServerStatus,
 	TriggerImaginateGenerate,
 	TriggerImaginateTerminate,
-	TriggerImaginateCheckServerStatus,
+	TriggerImport,
+	TriggerOpenDocument,
 	TriggerRasterizeRegionBelowLayer,
-	UpdateActiveDocument,
-	UpdateOpenDocumentsList,
-	UpdateImageData,
 	TriggerRevokeBlobUrl,
+	UpdateActiveDocument,
+	UpdateImageData,
+	UpdateOpenDocumentsList,
 } from "@graphite/wasm-communication/messages";
+import { copyToClipboardFileURL } from "~src/io-managers/clipboard";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
@@ -55,10 +58,22 @@ export function createPortfolioState(editor: Editor) {
 		const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
 		editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerFileDownload, (triggerFileDownload) => {
+	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerRasterDownload, async (triggerRasterDownload) => {
+	editor.subscriptions.subscribeJsMessage(TriggerDownloadBlobUrl, async (triggerDownloadBlobUrl) => {
+		const data = await fetch(triggerDownloadBlobUrl.blobUrl);
+		const blob = await data.blob();
+
+		// TODO: Remove this if/when we end up returning PNG directly from the backend
+		const pngBlob = await imageToPNG(blob);
+
+		downloadFileBlob(triggerDownloadBlobUrl.layerName, pngBlob);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerCopyToClipboardBlobUrl, (triggerDownloadBlobUrl) => {
+		copyToClipboardFileURL(triggerDownloadBlobUrl.blobUrl);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerDownloadRaster, async (triggerRasterDownload) => {
 		const { svg, name, mime, size } = triggerRasterDownload;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
@@ -113,7 +128,7 @@ export function createPortfolioState(editor: Editor) {
 			image.src = blobURL;
 			await image.decode();
 
-			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
+			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, element.nodeId, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRasterizeRegionBelowLayer, async (triggerRasterizeRegionBelowLayer) => {

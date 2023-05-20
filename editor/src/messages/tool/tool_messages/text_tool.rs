@@ -4,9 +4,10 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::input_widgets::{FontInput, NumberInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput};
 use crate::messages::portfolio::document::node_graph::new_text_network;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
@@ -15,12 +16,12 @@ use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
-
-use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::text::{load_face, Font};
 use graphene_core::Color;
+
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -34,6 +35,7 @@ pub struct TextOptions {
 	font_size: u32,
 	font_name: String,
 	font_style: String,
+	fill: ToolColorOptions,
 }
 
 impl Default for TextOptions {
@@ -42,20 +44,22 @@ impl Default for TextOptions {
 			font_size: 24,
 			font_name: "Merriweather".into(),
 			font_style: "Normal (400)".into(),
+			fill: ToolColorOptions::new_primary(),
 		}
 	}
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum TextToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
-
 	#[remain::unsorted]
 	DocumentIsDirty,
+	#[remain::unsorted]
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	CommitText,
@@ -71,10 +75,13 @@ pub enum TextToolMessage {
 }
 
 #[remain::sorted]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
+	FillColor(Option<Color>),
+	FillColorType(ToolColorType),
 	Font { family: String, style: String },
 	FontSize(u32),
+	WorkingColors(Option<Color>, Option<Color>),
 }
 
 impl ToolMetadata for TextTool {
@@ -89,46 +96,60 @@ impl ToolMetadata for TextTool {
 	}
 }
 
+fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
+	let font = FontInput {
+		is_style_picker: false,
+		font_family: tool.options.font_name.clone(),
+		font_style: tool.options.font_style.clone(),
+		on_update: WidgetCallback::new(|font_input: &FontInput| {
+			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
+				family: font_input.font_family.clone(),
+				style: font_input.font_style.clone(),
+			})
+			.into()
+		}),
+		..Default::default()
+	}
+	.widget_holder();
+	let style = FontInput {
+		is_style_picker: true,
+		font_family: tool.options.font_name.clone(),
+		font_style: tool.options.font_style.clone(),
+		on_update: WidgetCallback::new(|font_input: &FontInput| {
+			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
+				family: font_input.font_family.clone(),
+				style: font_input.font_style.clone(),
+			})
+			.into()
+		}),
+		..Default::default()
+	}
+	.widget_holder();
+	let size = NumberInput::new(Some(tool.options.font_size as f64))
+		.unit(" px")
+		.label("Size")
+		.int()
+		.min(1.)
+		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
+		.widget_holder();
+	vec![font, WidgetHolder::related_separator(), style, WidgetHolder::related_separator(), size]
+}
+
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> Layout {
-		let font = FontInput {
-			is_style_picker: false,
-			font_family: self.options.font_name.clone(),
-			font_style: self.options.font_style.clone(),
-			on_update: WidgetCallback::new(|font_input: &FontInput| {
-				TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-					family: font_input.font_family.clone(),
-					style: font_input.font_style.clone(),
-				})
-				.into()
-			}),
-			..Default::default()
-		}
-		.widget_holder();
-		let style = FontInput {
-			is_style_picker: true,
-			font_family: self.options.font_name.clone(),
-			font_style: self.options.font_style.clone(),
-			on_update: WidgetCallback::new(|font_input: &FontInput| {
-				TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-					family: font_input.font_family.clone(),
-					style: font_input.font_style.clone(),
-				})
-				.into()
-			}),
-			..Default::default()
-		}
-		.widget_holder();
-		let size = NumberInput::new(Some(self.options.font_size as f64))
-			.unit(" px")
-			.label("Size")
-			.int()
-			.min(1.)
-			.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
-			.widget_holder();
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![font, WidgetHolder::related_separator(), style, WidgetHolder::related_separator(), size],
-		}]))
+		let mut widgets = create_text_widgets(self);
+
+		widgets.push(WidgetHolder::section_separator());
+
+		widgets.append(&mut self.options.fill.create_widgets(
+			"Fill",
+			true,
+			WidgetCallback::new(|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value)).into()),
+		));
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -143,7 +164,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 					self.register_properties(responses, LayoutTarget::ToolOptions);
 				}
 				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
+				TextOptionsUpdate::FillColor(color) => {
+					self.options.fill.custom_color = color;
+					self.options.fill.color_type = ToolColorType::Custom;
+				}
+				TextOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+				TextOptionsUpdate::WorkingColors(primary, secondary) => {
+					self.options.fill.primary_working_color = primary;
+					self.options.fill.secondary_working_color = secondary;
+				}
 			}
+
+			responses.add(LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target: LayoutTarget::ToolOptions,
+			});
+
 			return;
 		}
 
@@ -172,6 +208,8 @@ impl ToolTransition for TextTool {
 			document_dirty: Some(TextToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
+			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
+			..Default::default()
 		}
 	}
 }
@@ -187,7 +225,7 @@ pub struct EditingText {
 	text: String,
 	font: Font,
 	font_size: f64,
-	color: Color,
+	color: Option<Color>,
 	transform: DAffine2,
 }
 
@@ -210,7 +248,7 @@ impl TextToolData {
 				text: editing_text.text.clone(),
 				line_width: None,
 				font_size: editing_text.font_size,
-				color: editing_text.color,
+				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: render_data.font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
 			});
@@ -236,7 +274,7 @@ impl TextToolData {
 			text: text.clone(),
 			font: font.clone(),
 			font_size,
-			color,
+			color: Some(color),
 			transform,
 		});
 		self.new_text = text.clone();
@@ -290,7 +328,7 @@ impl TextToolData {
 			});
 			responses.add(GraphOperationMessage::FillSet {
 				layer: self.layer_path.clone(),
-				fill: Fill::solid(editing_text.color),
+				fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
 			});
 			responses.add(GraphOperationMessage::TransformSet {
 				layer: self.layer_path.clone(),
@@ -370,7 +408,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 		let operation = Operation::AddRect {
 			path,
 			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(COLOR_ACCENT, 1.0)), Fill::None),
+			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
 			insert_index: -1,
 		};
 		responses.add(DocumentMessage::Overlays(operation.into()));
@@ -379,7 +417,7 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 
 fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 	let get_bounds = |layer: &Layer, path: &[LayerId], document: &DocumentMessageHandler, render_data: &RenderData| {
-		let node_graph = layer.as_node_graph().ok()?;
+		let node_graph = layer.as_layer_network().ok()?;
 		let node_id = get_text_node_id(node_graph)?;
 		let document_node = node_graph.nodes.get(&node_id)?;
 		let (text, font, font_size) = TextToolData::extract_text_node_inputs(document_node)?;
@@ -409,7 +447,7 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 
 fn get_network<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler) -> Option<&'a NodeNetwork> {
 	let layer = document.document_legacy.layer(layer_path).ok()?;
-	layer.as_node_graph().ok()
+	layer.as_layer_network().ok()
 }
 
 fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {
@@ -469,7 +507,7 @@ impl Fsm for TextToolFsmState {
 						transform: DAffine2::from_translation(input.mouse.position),
 						font_size: tool_options.font_size as f64,
 						font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
-						color: global_tool_data.primary_color,
+						color: tool_options.fill.active_color(),
 					});
 					tool_data.new_text = String::new();
 					tool_data.layer_path = document.get_path_for_new_layer();
@@ -519,6 +557,13 @@ impl Fsm for TextToolFsmState {
 					tool_data.new_text = new_text;
 					tool_data.update_bounds_overlay(document, render_data, responses);
 					TextToolFsmState::Editing
+				}
+				(_, TextToolMessage::WorkingColorChanged) => {
+					responses.add(TextToolMessage::UpdateOptions(TextOptionsUpdate::WorkingColors(
+						Some(global_tool_data.primary_color),
+						Some(global_tool_data.secondary_color),
+					)));
+					self
 				}
 				_ => self,
 			}

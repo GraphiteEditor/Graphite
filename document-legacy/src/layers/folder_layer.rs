@@ -3,6 +3,8 @@ use super::style::RenderData;
 use crate::intersection::Quad;
 use crate::{DocumentError, LayerId};
 
+use graphene_core::uuid::generate_uuid;
+
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
@@ -145,6 +147,10 @@ impl FolderLayer {
 	pub fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
 		let pos = self.position_of_layer(id).ok()?;
 		Some(&mut self.layers[pos])
+	}
+
+	pub fn generate_new_folder_ids(&mut self) {
+		self.next_assignment_id = generate_uuid();
 	}
 
 	/// Returns `true` if the folder contains a layer with the given [LayerId].
