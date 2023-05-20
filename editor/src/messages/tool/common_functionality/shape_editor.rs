@@ -219,7 +219,7 @@ impl ShapeState {
 			let Ok(layer) = document.layer(layer_path) else { continue };
 			let Some(vector_data) = layer.as_vector_data() else { continue };
 
-			let opposing_handle_lengths = opposing_handle_lengths.as_ref().map(|lengths| lengths.get(layer_path));
+			let opposing_handle_lengths = opposing_handle_lengths.as_ref().map(|lengths| lengths.get(layer_path)).flatten();
 
 			let transform = document.multiply_transforms(layer_path).unwrap_or(glam::DAffine2::IDENTITY);
 
@@ -245,10 +245,10 @@ impl ShapeState {
 						modification: VectorDataModification::RemoveManipulatorPoint { point },
 					});
 
-					let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
 					// Remove opposing handle if it is not selected and is mirrored.
+					let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
 					if !state.is_selected(opposite_point) && vector_data.mirror_angle.contains(&point.group) {
-						if let Some(Some(lengths)) = opposing_handle_lengths {
+						if let Some(lengths) = opposing_handle_lengths {
 							if lengths.contains_key(&point.group) {
 								responses.add(GraphOperationMessage::Vector {
 									layer: layer_path.clone(),
@@ -292,9 +292,7 @@ impl ShapeState {
 								_ => return None,
 							};
 
-							let opposing_handle_position = if let Some(position) = single_selected_handle.opposite().get_position(manipulator_group) {
-								position
-							} else {
+							let Some(opposing_handle_position) = single_selected_handle.opposite().get_position(manipulator_group) else {
 								return Some((manipulator_group.id, None));
 							};
 
@@ -337,9 +335,7 @@ impl ShapeState {
 						_ => continue,
 					};
 
-					let opposing_handle_length = if let Some(length) = opposing_handle_length {
-						length
-					} else {
+					let Some(opposing_handle_length) = opposing_handle_length else {
 						responses.add(GraphOperationMessage::Vector {
 							layer: path.to_vec(),
 							modification: VectorDataModification::RemoveManipulatorPoint {

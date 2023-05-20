@@ -9,8 +9,6 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
-use document_legacy::LayerId;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
