@@ -1,8 +1,9 @@
 use super::{
-	curve::{CubicBezierCurve, Curve, CurveSample, ValueMapperNode},
+	curve::{Curve, CurveSample, ValueMapperNode},
 	Channel, Color,
 };
 use crate::Node;
+use bezier_rs::{Bezier, TValue};
 
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
@@ -822,21 +823,30 @@ fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapper
 		params: [curve.end_params, [0.0; 2]],
 	};
 	for sample in curve.samples.iter().chain(core::iter::once(&end)) {
-		let p = CubicBezierCurve::new([pos[0], pos[1], param[0], param[1], sample.params[0][0], sample.params[0][1], sample.pos[0], sample.pos[1]]);
+		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.params[0][0], sample.params[0][1], sample.pos[0], sample.pos[1]].map(f64::from);
+
+		let bezier = Bezier::from_cubic_coordinates(x0, y0, x1, y1, x2, y2, x3, y3);
 
 		let [left, right] = [pos[0], sample.pos[0]].map(|c| c.clamp(0., 1.));
 		let lut_index_left: usize = (left * (lut.len() - 1) as f32).floor() as _;
 		let lut_index_right: usize = (right * (lut.len() - 1) as f32).ceil() as _;
 		for index in lut_index_left..=lut_index_right {
-			let sample_x = index as f32 / (lut.len() - 1) as f32;
-			let sample_y = if sample_x <= pos[0] {
-				pos[1]
-			} else if sample_x >= sample.pos[0] {
-				sample.pos[1]
+			let x = index as f64 / (lut.len() - 1) as f64;
+			let y = if x <= x0 {
+				y0
+			} else if x >= x3 {
+				y3
 			} else {
-				p.solve(sample_x)
+				// Bezier::intersections is probably not the best solution for this.
+				// Maybe it's the best adding a function y_coordinate_from_x or so to bezier_rs::Bezier.
+				// This can be easily done with bezier_rs::utils::solve_cubic.
+				let ts = bezier.intersections(&Bezier::from_linear_coordinates(x, -1., x, 2.), None, None);
+				ts.first()
+					.map(|&t| bezier.evaluate(TValue::Parametric(t)).y)
+					// a very bad approximation if bezier_rs failes
+					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};
-			lut[index] = _Channel::from_f32(sample_y);
+			lut[index] = _Channel::from_f64(y);
 		}
 
 		pos = sample.pos;
