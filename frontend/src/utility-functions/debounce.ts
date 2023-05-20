@@ -7,23 +7,24 @@ export type DebouncerOptions = {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function debouncer<T>(callFn: (value: T) => unknown, { debounceTime = 60 }: Partial<DebouncerOptions> = {}) {
 	let currentValue: T | undefined;
+	let recentlyUpdated: boolean = false;
 
 	const emitValue = (): void => {
-		if (currentValue === undefined) {
-			throw new Error("Tried to emit undefined value from debouncer. This should never be possible");
-		}
-		const emittingValue = currentValue;
-		currentValue = undefined;
-		callFn(emittingValue);
+		recentlyUpdated = false;
+		if (currentValue === undefined)
+			return;
+		updateValue(currentValue);
 	};
 
 	const updateValue = (newValue: T): void => {
-		if (currentValue !== undefined) {
+		if (recentlyUpdated) {
 			currentValue = newValue;
 			return;
 		}
 
-		currentValue = newValue;
+		callFn(newValue);
+		recentlyUpdated = true;
+		currentValue = undefined;
 		setTimeout(emitValue, debounceTime);
 	};
 
