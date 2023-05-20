@@ -119,6 +119,67 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
 		},
 		DocumentNodeType {
+			name: "Layer",
+			category: "General",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0; 8],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					(
+						0,
+						DocumentNode {
+							inputs: vec![
+								NodeInput::Network(concrete!(graphene_core::vector::VectorData)),
+								NodeInput::Network(concrete!(String)),
+								NodeInput::Network(concrete!(BlendMode)),
+								NodeInput::Network(concrete!(f32)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
+							],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>"),
+							..Default::default()
+						},
+					),
+					// The monitor node is used to display a thumbnail in the UI.
+					(
+						1,
+						DocumentNode {
+							inputs: vec![NodeInput::node(0, 0)],
+							implementation: DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"),
+							..Default::default()
+						},
+					),
+				]
+				.into(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Name", TaggedValue::String(String::new()), false),
+				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
+				DocumentInputType::value("Visible", TaggedValue::Bool(true), false),
+				DocumentInputType::value("Locked", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Collapsed", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Stack", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+			],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
+			properties: node_properties::layer_properties,
+		},
+		DocumentNodeType {
+			name: "Artboard",
+			category: "General",
+			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Bounds", TaggedValue::Optional2IVec2(None), false),
+			],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
+			properties: node_properties::artboard_properties,
+		},
+		DocumentNodeType {
 			name: "Downres",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -500,7 +561,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
 				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: vec![
+				nodes: [
 					(
 						0,
 						DocumentNode {
@@ -520,8 +581,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						},
 					),
 				]
-				.into_iter()
-				.collect(),
+				.into(),
 				..Default::default()
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],

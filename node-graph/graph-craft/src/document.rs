@@ -243,6 +243,10 @@ impl DocumentNodeImplementation {
 			_ => None,
 		}
 	}
+
+	pub const fn proto(name: &'static str) -> Self {
+		Self::Unresolved(NodeIdentifier::new(name))
+	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type, Hash)]
@@ -505,6 +509,30 @@ impl NodeNetwork {
 			network: self,
 		}
 	}
+
+	pub fn is_acyclic(&self) -> bool {
+		let mut dependencies: HashMap<u64, Vec<u64>> = HashMap::new();
+		for (node_id, node) in &self.nodes {
+			dependencies.insert(
+				*node_id,
+				node.inputs
+					.iter()
+					.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None })
+					.collect(),
+			);
+		}
+		while !dependencies.is_empty() {
+			let Some((&disconnected, _)) = dependencies.iter().find(|(_, l)| l.is_empty()) else {
+				error!("Dependencies {dependencies:?}");
+				return false
+			};
+			dependencies.remove(&disconnected);
+			for connections in dependencies.values_mut() {
+				connections.retain(|&id| id != disconnected);
+			}
+		}
+		true
+	}
 }
 
 /// Functions for compiling the network
@@ -762,19 +790,16 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			match node.implementation {
-				DocumentNodeImplementation::Extract => {
-					assert_eq!(node.inputs.len(), 1);
-					let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
-						panic!("Extract node has no input");
-					};
-					assert_eq!(output_index, 0);
-					assert!(lambda);
-					let input_node = self.nodes.get_mut(&node_id).unwrap();
-					node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
-					node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
-				}
-				_ => (),
+			if let DocumentNodeImplementation::Extract = node.implementation {
+				assert_eq!(node.inputs.len(), 1);
+				let NodeInput::Node { node_id, output_index, lambda } = node.inputs.pop().unwrap() else {
+					panic!("Extract node has no input");
+				};
+				assert_eq!(output_index, 0);
+				assert!(lambda);
+				let input_node = self.nodes.get_mut(&node_id).unwrap();
+				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node.clone()), false)];
 			}
 		}
 		self.nodes.extend(extraction_nodes);
@@ -790,6 +815,28 @@ impl NodeNetwork {
 			output: output.node_id,
 			nodes: nodes.clone(),
 		})
+	}
+
+	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
+	pub fn recursive_nodes(&self) -> RecursiveNodeIter {
+		let nodes = self.nodes.iter().map(|(id, node)| (node, self, vec![*id])).collect();
+		RecursiveNodeIter { nodes }
+	}
+}
+
+/// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
+pub struct RecursiveNodeIter<'a> {
+	nodes: Vec<(&'a DocumentNode, &'a NodeNetwork, Vec<NodeId>)>,
+}
+
+impl<'a> Iterator for RecursiveNodeIter<'a> {
+	type Item = (&'a DocumentNode, &'a NodeNetwork, Vec<NodeId>);
+	fn next(&mut self) -> Option<Self::Item> {
+		let (node, network, path) = self.nodes.pop()?;
+		if let DocumentNodeImplementation::Network(network) = &node.implementation {
+			self.nodes.extend(network.nodes.iter().map(|(id, node)| (node, network, [path.as_slice(), &[*id]].concat())));
+		}
+		Some((node, network, path))
 	}
 }
 
