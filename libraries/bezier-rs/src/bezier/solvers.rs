@@ -729,6 +729,62 @@ mod tests {
 	}
 
 	#[test]
+	fn test_find_tvalues_for_x() {
+		struct Assertion {
+			bezier: Bezier,
+			x: f64,
+			ys: &'static [f64],
+		}
+
+		let assertions = [
+			Assertion {
+				bezier: Bezier::from_linear_coordinates(0., 0., 20., 10.),
+				x: 5.,
+				ys: &[2.5],
+			},
+			Assertion {
+				bezier: Bezier::from_quadratic_coordinates(0., 0., 10., 5., 20., 10.),
+				x: 5.,
+				ys: &[2.5],
+			},
+			Assertion {
+				bezier: Bezier::from_cubic_coordinates(0., 0., 10., 5., 10., 5., 20., 10.),
+				x: 5.,
+				ys: &[2.5],
+			},
+			Assertion {
+				bezier: Bezier::from_cubic_coordinates(90., 70., 25., 25., 175., 175., 110., 130.),
+				x: 100.,
+				ys: &[100.],
+			},
+			Assertion {
+				bezier: Bezier::from_cubic_coordinates(90., 70., 25., 25., 175., 175., 110., 130.),
+				x: 80.,
+				ys: &[63.62683, 74.53867],
+			},
+			Assertion {
+				bezier: Bezier::from_cubic_coordinates(110., 70., 25., 25., 175., 175., 90., 130.),
+				x: 100.,
+				ys: &[65.11345, 100., 134.88655],
+			},
+		];
+
+		for Assertion { bezier, x, ys } in assertions {
+			let mut got: Vec<f64> = bezier
+				.find_tvalues_for_x(x)
+				.map(|t| bezier.evaluate(TValue::Parametric(t)))
+				.inspect(|p| assert!((p.x - x).abs() < 1e-4, "wrong x-coordinate, got {} expected {x}", p.x))
+				.map(|p| p.y)
+				.collect();
+			assert_eq!(got.len(), ys.len());
+			got.sort_by(f64::total_cmp);
+			got.into_iter()
+				.zip(ys)
+				.for_each(|(got, &expected)| assert!((got - expected).abs() < 1e-4, "wrong y-coordinate, got {got} expected {expected}"));
+		}
+	}
+
+	#[test]
 	fn test_inflections() {
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 150., 150., 30., 150., 150.);
 		let inflections = bezier.inflections();
