@@ -106,8 +106,10 @@
 	function clampParameters() {
 		for (let i = 0; i < samples.length - 1; ++i) {
 			const [min, max] = [samples[i].pos[0], samples[i + 1].pos[0]];
-			samples[i].params[1][0] = clamp(samples[i].params[1][0], min, max);
-			samples[i + 1].params[0][0] = clamp(samples[i + 1].params[0][0], min, max);
+			for (let j = 0; j < 2; ++j) {
+				samples[i + j].params[1 - j][0] = clamp(samples[i + j].params[1 - j][0], min, max);
+				samples[i + j].params[1 - j][1] = clamp(samples[i + j].params[1 - j][1], 0, 1);
+			}
 		}
 	}
 
@@ -132,15 +134,41 @@
 		updateCurve();
 	}
 
+	function vectorLength(vec: [number, number]): number {
+		return Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1]);
+	}
+
+	function setHandlePos(sample: number, handle: number, pos: [number, number]) {
+		samples[sample].params[handle] = pos;
+
+		const center = samples[sample].pos;
+		const other = samples[sample].params[1 - handle];
+
+		const thisHandleVec = pos.map((c, i) => center[i] - c);
+		const thisHandleVecLen = vectorLength(thisHandleVec);
+		const thisHandleVecNorm = thisHandleVec.map(c => c / thisHandleVecLen);
+		const otherHandleVecLen = vectorLength(other.map((c, i) => center[i] - c));
+
+		samples[sample].params[1 - handle] = center.map((c, i) => c + thisHandleVecNorm[i] * otherHandleVecLen);
+	}
+
 	function handleMouseMove(e: MouseEvent) {
 		if (typeof draggedNodeIndex === "undefined" || draggedNodeIndex === 0 || draggedNodeIndex === samples.length - 1)
 			return;
 		const pos: [number, number] = getSvgPositionFromMouseEvent(e);
 		if (draggedNodeIndex > 0) {
 			pos[0] = clamp(pos[0], samples[draggedNodeIndex - 1].pos[0], samples[draggedNodeIndex + 1].pos[0])
+			samples[draggedNodeIndex].params = samples[draggedNodeIndex].params
+				.map(p => p.map((c, i) => c + pos[i] - samples[draggedNodeIndex].pos[i]));
 			samples[draggedNodeIndex].pos = pos;
-		} else
-			samples[selectedNodeIndex].params[-draggedNodeIndex - 1] = pos;
+		} else {
+			setHandlePos(selectedNodeIndex, -draggedNodeIndex - 1, pos);
+
+			if (samples[selectedNodeIndex].params[0][0] > samples[selectedNodeIndex].pos[0]) {
+				samples[selectedNodeIndex].params = [samples[selectedNodeIndex].params[1], samples[selectedNodeIndex].params[0]];
+				draggedNodeIndex = -3 - draggedNodeIndex;
+			}
+		}
 		clampParameters();
 		d = recalculateSvgPath();
 		updateCurve();
