@@ -147,3 +147,15 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 		vector_data.transform.transform_point2(bounding_box[1]),
 	)])
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct SetResampleCurveNode<Density> {
+	density: Density,
+}
+
+#[node_macro::node_fn(SetResampleCurveNode)]
+fn set_vector_data_resample_curve(vector_data: VectorData, density: u32) -> VectorData {
+	warn!("Density: {:?}", density);
+	// TODO: Implement sampling.
+	vector_data
+}

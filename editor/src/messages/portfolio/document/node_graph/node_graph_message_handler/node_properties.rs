@@ -1796,6 +1796,12 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	vec![LayoutGroup::Row { widgets: angle_offset }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: count }]
 }
 
+pub fn resample_curve_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let density = number_widget(document_node, node_id, 1, "Density", NumberInput::default().unit(" points").min(2.), true);
+
+	vec![LayoutGroup::Row { widgets: density }]
+}
+
 /// Fill Node Widgets LayoutGroup
 pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_type_index = 1;

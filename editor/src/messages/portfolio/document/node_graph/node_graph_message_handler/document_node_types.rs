@@ -2047,6 +2047,17 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Resample Curve",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::SetResampleCurveNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Density", TaggedValue::U32(2), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::resample_curve_properties,
+		},
+		DocumentNodeType {
 			name: "Image Segmentation",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode<_>"),
