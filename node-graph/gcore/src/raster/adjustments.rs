@@ -837,12 +837,9 @@ fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapper
 			} else if x >= x3 {
 				y3
 			} else {
-				// Bezier::intersections is probably not the best solution for this.
-				// Maybe it's the best adding a function y_coordinate_from_x or so to bezier_rs::Bezier.
-				// This can be easily done with bezier_rs::utils::solve_cubic.
-				let ts = bezier.intersections(&Bezier::from_linear_coordinates(x, -1., x, 2.), None, None);
-				ts.first()
-					.map(|&t| bezier.evaluate(TValue::Parametric(t)).y)
+				bezier.find_tvalues_for_x(x)
+					.next()
+					.map(|t| bezier.evaluate(TValue::Parametric(t.clamp(0., 1.))).y)
 					// a very bad approximation if bezier_rs failes
 					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};

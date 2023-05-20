@@ -164,6 +164,40 @@ impl Bezier {
 		min_corner.x <= bounding_box_min.x && min_corner.y <= bounding_box_min.y && bounding_box_max.x <= max_corner.x && bounding_box_max.y <= max_corner.y
 	}
 
+	/// Returns an `Iterator` containing all possible parametric `t`-values at the given `x`-coordinate.
+	pub fn find_tvalues_for_x(&self, x: f64) -> impl Iterator<Item = f64> {
+		// Compute the roots of the resulting bezier curve
+		match self.handles {
+			BezierHandles::Linear => {
+				// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
+				let a = self.end.x - self.start.x;
+				let b = self.start.x - x;
+				utils::solve_linear(a, b)
+			}
+			BezierHandles::Quadratic { handle } => {
+				let a = self.start.x - 2. * handle.x + self.end.x;
+				let b = 2. * (handle.x - self.start.x);
+				let c = self.start.x - x;
+
+				let discriminant = b * b - 4. * a * c;
+				let two_times_a = 2. * a;
+
+				utils::solve_quadratic(discriminant, two_times_a, b, c)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let start_x = self.start.x;
+				let a = -start_x + 3. * handle_start.x - 3. * handle_end.x + self.end.x;
+				let b = 3. * start_x - 6. * handle_start.x + 3. * handle_end.x;
+				let c = -3. * start_x + 3. * handle_start.x;
+				let d = start_x - x;
+
+				utils::solve_cubic(a, b, c, d)
+			}
+		}
+		.into_iter()
+		.filter(|&t| utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE))
+	}
+
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns list of `t`-values representing the inflection points of the curve.
 	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
@@ -281,54 +315,24 @@ impl Bezier {
 		if other.handles == BezierHandles::Linear {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
 			let line_directional_vector = other.end - other.start;
-			let angle = line_directional_vector.angle_between(DVec2::new(1., 0.));
+			let angle = line_directional_vector.angle_between(DVec2::new(0., 1.));
 			let rotation_matrix = DMat2::from_angle(angle);
 			let rotated_bezier = self.apply_transformation(|point| rotation_matrix.mul_vec2(point));
 			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
 
 			// Translate the bezier such that the line becomes aligned on top of the x-axis
-			let vertical_distance = rotated_line[0].y;
-			let translated_bezier = rotated_bezier.translate(DVec2::new(0., -vertical_distance));
+			let vertical_distance = rotated_line[0].x;
+			let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
 
 			// Compute the roots of the resulting bezier curve
-			let list_intersection_t = match translated_bezier.handles {
-				BezierHandles::Linear => {
-					// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
-					let a = translated_bezier.end.y - translated_bezier.start.y;
-					let b = translated_bezier.start.y;
-					utils::solve_linear(a, b)
-				}
-				BezierHandles::Quadratic { handle } => {
-					let a = translated_bezier.start.y - 2. * handle.y + translated_bezier.end.y;
-					let b = 2. * (handle.y - translated_bezier.start.y);
-					let c = translated_bezier.start.y;
-
-					let discriminant = b * b - 4. * a * c;
-					let two_times_a = 2. * a;
-
-					utils::solve_quadratic(discriminant, two_times_a, b, c)
-				}
-				BezierHandles::Cubic { handle_start, handle_end } => {
-					let start_y = translated_bezier.start.y;
-					let a = -start_y + 3. * handle_start.y - 3. * handle_end.y + translated_bezier.end.y;
-					let b = 3. * start_y - 6. * handle_start.y + 3. * handle_end.y;
-					let c = -3. * start_y + 3. * handle_start.y;
-					let d = start_y;
-
-					utils::solve_cubic(a, b, c, d)
-				}
-			};
+			let list_intersection_t = translated_bezier.find_tvalues_for_x(0.);
 
 			let min = other.start.min(other.end);
 			let max = other.start.max(other.end);
 
 			return list_intersection_t
-				.into_iter()
 				// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
-				.filter(|&t| {
-					utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE)
-						&& utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all()
-				})
+				.filter(|&t| utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all())
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
 				.collect::<Vec<f64>>();
