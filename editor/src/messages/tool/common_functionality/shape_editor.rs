@@ -179,7 +179,6 @@ impl ShapeState {
 			let delta = transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
-				debug!("point hit");
 				if point.manipulator_type.is_handle() && state.is_selected(ManipulatorPointId::new(point.group, SelectedType::Anchor)) {
 					continue;
 				}
