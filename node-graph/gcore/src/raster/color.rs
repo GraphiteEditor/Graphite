@@ -12,7 +12,7 @@ use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB, RGBMut};
+use super::{Alpha, AssociatedAlpha, Luminance, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -80,17 +80,16 @@ impl RGB for Color {
 	}
 }
 impl RGBMut for Color {
-    fn set_red(&mut self, red: Self::ColorChannel) {
-        self.red = red;
-    }
-    fn set_green(&mut self, green: Self::ColorChannel) {
-        self.green = green;
-    }
-    fn set_blue(&mut self, blue: Self::ColorChannel) {
-        self.blue = blue;
-    }
+	fn set_red(&mut self, red: Self::ColorChannel) {
+		self.red = red;
+	}
+	fn set_green(&mut self, green: Self::ColorChannel) {
+		self.green = green;
+	}
+	fn set_blue(&mut self, blue: Self::ColorChannel) {
+		self.blue = blue;
+	}
 }
-
 
 impl Pixel for Color {
 	#[cfg(not(target_arch = "spirv"))]

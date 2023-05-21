@@ -8,7 +8,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{BlendMode, Color, Luma, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, Luma, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
@@ -383,7 +383,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::insert_channel_properties,
 		},
-        DocumentNodeType {
+		DocumentNodeType {
 			name: "Combine Channels",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -437,7 +437,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				..Default::default()
 			}),
 			inputs: vec![
-                DocumentInputType::value("None", TaggedValue::None, false),
+				DocumentInputType::value("None", TaggedValue::None, false),
 				DocumentInputType::value("Alpha", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Red", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Green", TaggedValue::ImageFrame(ImageFrame::empty()), true),
