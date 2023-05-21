@@ -1,5 +1,5 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
-use super::{ManipulatorPointId, VectorData};
+use super::VectorData;
 use crate::{Color, Node};
 
 use bezier_rs::{Subpath, SubpathTValue};
@@ -157,19 +157,10 @@ fn set_vector_data_resample_curve(mut vector_data: VectorData, density: f64) -> 
 	vector_data.subpaths = vector_data
 		.subpaths
 		.iter()
-		// Rounded less accurate approach
 		//.map(|subpath| Subpath::new_cubic_spline(subpath.compute_lookup_table(Some((subpath.length(None) / density).round() as usize), Some(TValueType::Euclidean))))
 		.map(|subpath| {
-			let mut travel = 0.;
-			let length = subpath.length(None);
-			let mut path: Vec<DVec2> = Vec::new();
-
-			while travel < length {
-				path.push(subpath.evaluate(SubpathTValue::GlobalEuclidean(travel / length)));
-				travel += density;
-			}
-
-			Subpath::from_anchors(path, false)
+			let step = subpath.length(None) / density;
+			Subpath::from_anchors((0..=step as usize).map(|t| subpath.evaluate(SubpathTValue::GlobalEuclidean(t as f64 / step))).collect::<Vec<DVec2>>(), false)
 		})
 		.collect();
 	vector_data
