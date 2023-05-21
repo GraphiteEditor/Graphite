@@ -11,6 +11,7 @@ pub mod adjustments;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brightness_contrast;
 pub mod color;
+pub mod discrete_srgb;
 pub use adjustments::*;
 
 pub trait Linear {
