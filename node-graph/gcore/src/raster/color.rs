@@ -12,7 +12,7 @@ use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB};
+use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB, RGBMut};
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -37,15 +37,6 @@ impl RGB for Luma {
 	}
 	fn blue(&self) -> f32 {
 		self.0
-	}
-	fn with_red(&self, red: Self::ColorChannel) -> Self {
-		Self(red)
-	}
-	fn with_green(&self, green: Self::ColorChannel) -> Self {
-		Self(green)
-	}
-	fn with_blue(&self, blue: Self::ColorChannel) -> Self {
-		Self(blue)
 	}
 }
 
@@ -81,37 +72,25 @@ impl RGB for Color {
 	fn red(&self) -> f32 {
 		self.red
 	}
-	fn with_red(&self, red: f32) -> Self {
-		Self {
-			red,
-			green: self.green,
-			blue: self.blue,
-			alpha: self.alpha,
-		}
-	}
 	fn green(&self) -> f32 {
 		self.green
-	}
-	fn with_green(&self, green: f32) -> Self {
-		Self {
-			red: self.red,
-			green,
-			blue: self.blue,
-			alpha: self.alpha,
-		}
 	}
 	fn blue(&self) -> f32 {
 		self.blue
 	}
-	fn with_blue(&self, blue: f32) -> Self {
-		Self {
-			red: self.red,
-			green: self.green,
-			blue,
-			alpha: self.alpha,
-		}
-	}
 }
+impl RGBMut for Color {
+    fn set_red(&mut self, red: Self::ColorChannel) {
+        self.red = red;
+    }
+    fn set_green(&mut self, green: Self::ColorChannel) {
+        self.green = green;
+    }
+    fn set_blue(&mut self, blue: Self::ColorChannel) {
+        self.blue = blue;
+    }
+}
+
 
 impl Pixel for Color {
 	#[cfg(not(target_arch = "spirv"))]

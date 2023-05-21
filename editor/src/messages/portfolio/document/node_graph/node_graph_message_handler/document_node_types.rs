@@ -378,7 +378,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("ColorChannel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), true),
+				DocumentInputType::value("ColorChannel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::insert_channel_properties,

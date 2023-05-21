@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, RedGreenBlue, Sample, RGB};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, RedGreenBlue, Sample, RGBMut, Raster};
 use graphene_core::transform::Transform;
 
 use graphene_core::value::CopiedNode;
@@ -186,48 +186,31 @@ pub struct InsertChannelNode<P, S, Stencil, TargetChannel> {
 fn insert_channel_node<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
-	_P: Copy + Alpha + RGB,
-	// _S is the color of the stencil. It must have a luminance channel because that is used to
-	// mask the input image
-	_S: Luminance,
-	// The channel of the input image that is used to insert the stencil
+	_P: RGBMut,
+    _S: Pixel + Luminance,
 	// Input image
-	Input: Transform + RasterMut<Pixel = _P>,
-	// Stencil
-	Stencil: Transform + Sample<Pixel = _S>,
+	Input: RasterMut<Pixel = _P>,
+	Stencil: Raster<Pixel = _S>,
 >(
 	mut image: Input,
 	stencil: Stencil,
 	target_channel: RedGreenBlue,
 ) -> Input {
-	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
-	let mask_size = stencil.transform().decompose_scale();
-
-	if mask_size == DVec2::ZERO {
-		return image;
-	}
-
-	// Transforms a point from the background image to the forground image
-	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
-	let area = bg_to_fg.transform_vector2(DVec2::ONE);
-	let inverse_stencile_transform = stencil.transform().inverse();
+    if stencil.width() == 0 {
+        return image;
+    }
+    assert!(stencil.width() == image.width());
+    assert!(stencil.height() == image.height());
 
 	for y in 0..image.height() {
 		for x in 0..image.width() {
-			let image_point = DVec2::new(x as f64, y as f64);
-			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = inverse_stencile_transform.transform_point2(mask_point);
-			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
-				let channel_value = mask_pixel.l().to_channel();
-				*image_pixel = match target_channel {
-					RedGreenBlue::Red => image_pixel.with_red(channel_value),
-					RedGreenBlue::Green => image_pixel.with_green(channel_value),
-					RedGreenBlue::Blue => image_pixel.with_blue(channel_value),
-				}
-			}
+			let mask_pixel = stencil.get_pixel(x,y).unwrap();
+            match target_channel {
+                RedGreenBlue::Red => image_pixel.set_red(mask_pixel.l().to_channel()),
+                RedGreenBlue::Green => image_pixel.set_green(mask_pixel.l().to_channel()),
+                RedGreenBlue::Blue => image_pixel.set_blue(mask_pixel.l().to_channel()),
+            }
 		}
 	}
 
