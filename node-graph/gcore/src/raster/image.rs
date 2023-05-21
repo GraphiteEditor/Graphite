@@ -1,3 +1,4 @@
+use super::discrete_srgb::float_to_srgb_u8;
 use super::{Color, ImageSlice};
 use crate::Node;
 use alloc::vec::Vec;
@@ -140,19 +141,19 @@ where
 	/// Flattens each channel cast to a u8
 	pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 		let Image { width, height, data } = self;
+		assert!(data.len() == width as usize * height as usize);
 
-		let mut result = Vec::with_capacity(width as usize * height as usize * 4);
+		let mut result = Vec::with_capacity(data.len() * 4);
 		for color in data {
-			let r = SRGBGammaFloat::from_linear(color.r()).0;
-			let g = SRGBGammaFloat::from_linear(color.g()).0;
-			let b = SRGBGammaFloat::from_linear(color.b()).0;
 			let a = color.a().to_f32();
-			let rgb_scale = 256.0 / a;
-
-			result.push((r * rgb_scale) as u8);
-			result.push((g * rgb_scale) as u8);
-			result.push((b * rgb_scale) as u8);
-			result.push((a * 256.0) as u8);
+			let undo_premultiply = 1.0 / a;
+			let r = float_to_srgb_u8(color.r().to_f32() * undo_premultiply);
+			let g = float_to_srgb_u8(color.g().to_f32() * undo_premultiply);
+			let b = float_to_srgb_u8(color.b().to_f32() * undo_premultiply);
+			result.push(r);
+			result.push(g);
+			result.push(b);
+			result.push((a * 255.0 + 0.5) as u8);
 		}
 
 		(result, width, height)
