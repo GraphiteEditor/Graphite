@@ -1,9 +1,8 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::{ManipulatorPointId, VectorData};
-use crate::uuid::ManipulatorGroupId;
 use crate::{Color, Node};
 
-use bezier_rs::{AppendType, Bezier, Subpath, SubpathTValue};
+use bezier_rs::{Subpath, SubpathTValue};
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
@@ -170,15 +169,7 @@ fn set_vector_data_resample_curve(mut vector_data: VectorData, density: f64) -> 
 				travel += density;
 			}
 
-			let mut curve: Subpath<ManipulatorGroupId> = Subpath::new_line(path[0], path[1]);
-			let mut last = path[1];
-
-			for anchor in path.iter().skip(2) {
-				curve.append_bezier(&Bezier::from_linear_dvec2(last, *anchor), AppendType::SmoothJoin(0.001));
-				last = *anchor;
-			}
-
-			curve
+			Subpath::from_anchors(path, false)
 		})
 		.collect();
 	vector_data
