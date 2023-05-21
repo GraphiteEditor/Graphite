@@ -1,9 +1,9 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
-use super::VectorData;
+use super::{ManipulatorPointId, VectorData};
+use crate::uuid::ManipulatorGroupId;
 use crate::{Color, Node};
 
-use bezier_rs::Subpath;
-
+use bezier_rs::{Subpath, SubpathTValue};
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
@@ -154,8 +154,34 @@ pub struct SetResampleCurveNode<Density> {
 }
 
 #[node_macro::node_fn(SetResampleCurveNode)]
-fn set_vector_data_resample_curve(vector_data: VectorData, density: u32) -> VectorData {
-	warn!("Density: {:?}", density);
-	// TODO: Implement sampling.
+fn set_vector_data_resample_curve(mut vector_data: VectorData, density: f64) -> VectorData {
+	vector_data.subpaths = vector_data
+		.subpaths
+		.iter()
+		//.map(|subpath| Subpath::new_cubic_spline(subpath.compute_lookup_table(Some((subpath.length(None) / density).round() as usize), Some(TValueType::Euclidean))))
+		.map(|subpath| {
+			let mut travel = 0.;
+			let length = subpath.length(None);
+			let mut path: Vec<DVec2> = Vec::new();
+
+			while travel < length {
+				path.push(subpath.evaluate(SubpathTValue::GlobalEuclidean(travel / length)));
+				travel += density;
+			}
+
+			//Subpath::new_cubic_spline(path)
+
+			let mut curve: Subpath<ManipulatorGroupId> = Subpath::new_line(path[0], path[1]);
+			let mut last = path[1];
+
+			for anchor in path.iter().skip(2) {
+				curve.append_bezier(&Subpath::<ManipulatorGroupId>::new_line(last, *anchor).get_segment(0).unwrap(), bezier_rs::AppendType::SmoothJoin(0.001));
+				last = *anchor;
+			}
+
+			//lines
+			curve
+		})
+		.collect();
 	vector_data
 }
