@@ -8,7 +8,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
-use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{BlendMode, Color, Luma, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
@@ -383,11 +383,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::insert_channel_properties,
 		},
-		DocumentNodeType {
+        DocumentNodeType {
 			name: "Combine Channels",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![3, 0, 1, 2],
+				inputs: vec![4, 3, 0, 1, 2],
 				outputs: vec![NodeOutput::new(3, 0)],
 				nodes: [
 					DocumentNode {
@@ -422,6 +422,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::MaskImageNode<_, _, _>")),
 						..Default::default()
 					},
+					DocumentNode {
+						name: "EmptyInputCapture".to_string(),
+						inputs: vec![NodeInput::value(TaggedValue::None, false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
 				]
 				.into_iter()
 				.enumerate()
@@ -431,6 +437,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				..Default::default()
 			}),
 			inputs: vec![
+                DocumentInputType::value("None", TaggedValue::None, false),
 				DocumentInputType::value("Alpha", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Red", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Green", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -575,7 +582,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
-				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0)],
+				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -607,6 +614,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
 						..Default::default()
 					},
+					DocumentNode {
+						name: "EmptyOutput".to_string(),
+						inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
 				]
 				.into_iter()
 				.enumerate()
@@ -617,6 +630,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![
+				DocumentOutputType::new("Empty", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Red", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Green", FrontendGraphDataType::Raster),
