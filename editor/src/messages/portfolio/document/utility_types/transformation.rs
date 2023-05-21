@@ -402,7 +402,7 @@ impl<'a> Selected<'a> {
 									Some(mut direction) => {
 										if grid {
 											// Find the current position in doc space
-											let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.5, y: 0.5 });
+											let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
 											let mut doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
 
 											// If there is movement of the mouse
@@ -451,6 +451,7 @@ impl<'a> Selected<'a> {
 									None => {}
 								}
 							}
+
 							if let TransformOperation::Rotating(_) = transform_operator.unwrap() {
 								self.responses.add(GraphOperationMessage::TransformSet {
 									layer: layer_path.to_vec(),
@@ -459,6 +460,7 @@ impl<'a> Selected<'a> {
 									skip_rerender: true,
 								});
 							}
+
 							if let TransformOperation::Scaling(_) = transform_operator.unwrap() {
 								self.responses.add(GraphOperationMessage::TransformSet {
 									layer: layer_path.to_vec(),

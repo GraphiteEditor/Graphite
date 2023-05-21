@@ -14,6 +14,7 @@ use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
+use serde::__private::de;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -281,14 +282,63 @@ impl Fsm for PathToolFsmState {
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
-					let mut view_delta = tool_data.previous_mouse_position;
-					let doc_transform = document.document_legacy.root.transform;
-					let doc_space_pos = doc_transform.inverse().transform_point2(view_delta).round();
+					// Need: figure out which direction were moving mouse?
+					// Use this delta in combination with mouse movement and use the grid offset to limit delta
+					// Notes: we round in snapping, meaning we don't know which direction to round to
+					// debug!("delta: {:?}", &delta);
+
 					if document.grid_enabled {
-						view_delta = doc_transform.transform_point2(doc_space_pos);
+						let mut delta = input.mouse.position - tool_data.previous_mouse_position;
+						debug!("delta: {:?}", delta);
+						if delta.x > 0.0 || delta.x < 0.0 || delta.y > 0.0 || delta.y < 0.0 {
+							// debug!("snapped pos: {:?}", snapped_position);
+							// debug!("previous m pos: {:?}", tool_data.previous_mouse_position);
+							let mut snapping_delta = snapped_position - tool_data.previous_mouse_position;
+							debug!("snapping delta: {:?}", snapping_delta);
+							let mut final_delta = snapping_delta.clone();
+
+							let doc_transform = document.document_legacy.root.transform;
+							let mut doc_mouse_pos = doc_transform.inverse().transform_point2(input.mouse.position);
+							let mut doc_prev_mouse_pos = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
+
+							let scaling_factor = 100.0;
+							final_delta = (final_delta * scaling_factor).round() / scaling_factor;
+							// doc_prev_mouse_pos = (doc_prev_mouse_pos * scaling_factor).round() / scaling_factor;
+
+							let mut x_changed = false;
+							let mut y_changed = false;
+							if delta.x > 0.0 {
+								// debug!("right: {:?}", snapping_delta);
+								x_changed = true;
+							} else if delta.x < 0.0 {
+								// debug!("left: {:?}", snapping_delta);
+								x_changed = true;
+							}
+							if delta.y > 0.0 {
+								// debug!("down: {:?}", snapping_delta);
+								y_changed = true;
+							} else if delta.y < 0.0 {
+								// debug!("up: {:?}", snapping_delta);
+								y_changed = true;
+							}
+							if !x_changed {
+								final_delta.y = 0.0
+							}
+							if !y_changed {
+								final_delta.x = 0.0
+							}
+							debug!("final delta: {:?}", final_delta);
+
+							shape_editor.move_selected_points(&document.document_legacy, final_delta, shift_pressed, responses);
+							// RN delta only works when we set to mouse pos
+							tool_data.previous_mouse_position = input.mouse.position;
+						}
+					} else {
+						let mut delta = snapped_position - tool_data.previous_mouse_position;
+						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
+						tool_data.previous_mouse_position = snapped_position;
 					}
-					shape_editor.move_selected_points(&document.document_legacy, snapped_position - view_delta, shift_pressed, responses);
-					tool_data.previous_mouse_position = snapped_position;
+
 					PathToolFsmState::Dragging
 				}
 

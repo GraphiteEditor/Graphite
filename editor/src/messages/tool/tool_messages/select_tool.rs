@@ -635,7 +635,7 @@ impl Fsm for SelectToolFsmState {
 							// Get the layer's position in viewport and convert to document space
 							let viewspace = document.document_legacy.generate_transform_relative_to_viewport(path).ok().unwrap_or_default();
 							// Change values of viewspace_port to x: 0.5, y: 0.5 for the grid to be based on pivot
-							let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.5, y: 0.5 });
+							let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
 							let doc_pos = document.document_legacy.root.transform.inverse().transform_point2(viewspace_pos);
 
 							// Find the x and y offset on the grid, Given position 1.55px -> 0.55px
