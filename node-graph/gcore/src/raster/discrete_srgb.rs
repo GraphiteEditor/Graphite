@@ -54,13 +54,14 @@ const FLOAT_SRGB_LERP: [u32; 27] = [
 
 #[inline]
 pub fn float_to_srgb_u8(mut f: f32) -> u8 {
-	// Clamp f to [0, 1], with a negated to handle NaNs as 0.
+	// Clamp f to [0, 1], with a negated condition to handle NaNs as 0.
 	if !(f >= 0.0) {
 		f = 0.0;
 	} else if f > 1.0 {
 		f = 1.0;
 	}
 
+	// Shift away slightly from 0.0 to reduce exponent range.
 	const C: f32 = 0.009842521f32;
 	let u = (f + C).to_bits() - C.to_bits();
 	if u > (1.0 + C).to_bits() - C.to_bits() {
