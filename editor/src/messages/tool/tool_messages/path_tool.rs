@@ -288,51 +288,59 @@ impl Fsm for PathToolFsmState {
 					// debug!("delta: {:?}", &delta);
 
 					if document.grid_enabled {
-						let mut delta = input.mouse.position - tool_data.previous_mouse_position;
-						debug!("delta: {:?}", delta);
-						if delta.x > 0.0 || delta.x < 0.0 || delta.y > 0.0 || delta.y < 0.0 {
-							// debug!("snapped pos: {:?}", snapped_position);
-							// debug!("previous m pos: {:?}", tool_data.previous_mouse_position);
-							let mut snapping_delta = snapped_position - tool_data.previous_mouse_position;
-							debug!("snapping delta: {:?}", snapping_delta);
-							let mut final_delta = snapping_delta.clone();
+						// let mut delta = input.mouse.position - tool_data.previous_mouse_position;
+						// debug!("delta: {:?}", delta);
+						// if delta.x > 0.0 || delta.x < 0.0 || delta.y > 0.0 || delta.y < 0.0 {
+						// 	// debug!("snapped pos: {:?}", snapped_position);
+						debug!("previous m pos: {:?}", tool_data.previous_mouse_position);
+						// 	let mut snapping_delta = snapped_position - tool_data.previous_mouse_position;
+						// 	debug!("snapping delta: {:?}", snapping_delta);
+						// 	let mut final_delta = snapping_delta.clone();
 
-							let doc_transform = document.document_legacy.root.transform;
-							let mut doc_mouse_pos = doc_transform.inverse().transform_point2(input.mouse.position);
-							let mut doc_prev_mouse_pos = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
+						// 	let mut doc_mouse_pos = doc_transform.inverse().transform_point2(input.mouse.position);
+						// 	let mut doc_prev_mouse_pos = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
 
-							let scaling_factor = 100.0;
-							final_delta = (final_delta * scaling_factor).round() / scaling_factor;
-							// doc_prev_mouse_pos = (doc_prev_mouse_pos * scaling_factor).round() / scaling_factor;
+						// 	let scaling_factor = 100.0;
+						// 	final_delta = (final_delta * scaling_factor).round() / scaling_factor;
+						// 	// doc_prev_mouse_pos = (doc_prev_mouse_pos * scaling_factor).round() / scaling_factor;
 
-							let mut x_changed = false;
-							let mut y_changed = false;
-							if delta.x > 0.0 {
-								// debug!("right: {:?}", snapping_delta);
-								x_changed = true;
-							} else if delta.x < 0.0 {
-								// debug!("left: {:?}", snapping_delta);
-								x_changed = true;
-							}
-							if delta.y > 0.0 {
-								// debug!("down: {:?}", snapping_delta);
-								y_changed = true;
-							} else if delta.y < 0.0 {
-								// debug!("up: {:?}", snapping_delta);
-								y_changed = true;
-							}
-							if !x_changed {
-								final_delta.y = 0.0
-							}
-							if !y_changed {
-								final_delta.x = 0.0
-							}
-							debug!("final delta: {:?}", final_delta);
-
-							shape_editor.move_selected_points(&document.document_legacy, final_delta, shift_pressed, responses);
-							// RN delta only works when we set to mouse pos
-							tool_data.previous_mouse_position = input.mouse.position;
+						// 	let mut x_changed = false;
+						// 	let mut y_changed = false;
+						// 	if delta.x > 0.0 {
+						// 		// debug!("right: {:?}", snapping_delta);
+						// 		x_changed = true;
+						// 	} else if delta.x < 0.0 {
+						// 		// debug!("left: {:?}", snapping_delta);
+						// 		x_changed = true;
+						// 	}
+						// 	if delta.y > 0.0 {
+						// 		// debug!("down: {:?}", snapping_delta);
+						// 		y_changed = true;
+						// 	} else if delta.y < 0.0 {
+						// 		// debug!("up: {:?}", snapping_delta);
+						// 		y_changed = true;
+						// 	}
+						// 	if !x_changed {
+						// 		final_delta.y = 0.0
+						// 	}
+						// 	if !y_changed {
+						// 		final_delta.x = 0.0
+						// 	}
+						// 	debug!("final delta: {:?}", final_delta);
+						let doc_transform = document.document_legacy.root.transform;
+						let doc_space_pos = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
+						let viewport_rounded = doc_transform.transform_point2(doc_space_pos.round());
+						let viewport_unrounded = doc_transform.transform_point2(doc_space_pos);
+						let mut delta = snapped_position - viewport_rounded;
+						if viewport_rounded != viewport_unrounded {
+							delta = snapped_position - viewport_unrounded;
 						}
+						debug!("viewport_rounded {:?}", viewport_rounded);
+						debug!("viewport_unrounded: {:?}", viewport_unrounded);
+
+						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
+						// RN delta only works when we set to mouse pos
+						tool_data.previous_mouse_position = snapped_position;
 					} else {
 						let mut delta = snapped_position - tool_data.previous_mouse_position;
 						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
