@@ -57,6 +57,7 @@ pub enum PortfolioMessage {
 		is_default: bool,
 	},
 	ImaginateCheckServerStatus,
+	ImaginatePreferences,
 	ImaginateSetGeneratingStatus {
 		document_id: u64,
 		layer_path: Vec<LayerId>,

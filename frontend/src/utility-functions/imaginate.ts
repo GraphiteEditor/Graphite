@@ -34,6 +34,7 @@ export async function imaginateGenerate(
 	nodePath: BigUint64Array,
 	editor: Editor
 ): Promise<void> {
+	console.log("calling imaginateGenerate");
 	// Ignore a request to generate a new image while another is already being generated
 	if (generatingAbortRequest !== undefined) return;
 
@@ -91,6 +92,7 @@ export async function imaginateGenerate(
 }
 
 export async function imaginateTerminate(hostname: string, documentId: bigint, layerPath: BigUint64Array, nodePath: BigUint64Array, editor: Editor): Promise<void> {
+	console.log("calling imaginateTerminate");
 	terminated = true;
 	abortAndResetPolling();
 
@@ -109,12 +111,14 @@ export async function imaginateTerminate(hostname: string, documentId: bigint, l
 }
 
 export async function imaginateCheckConnection(hostname: string, editor: Editor): Promise<void> {
+	console.log("calling imaginateCheckConnection");
 	const serverReached = await checkConnection(hostname);
 	editor.instance.setImaginateServerStatus(serverReached);
 }
 
 // Converts the blob image into a list of pixels using an invisible canvas.
 export async function updateBackendImage(editor: Editor, blob: Blob, documentId: bigint, layerPath: BigUint64Array, nodePath: BigUint64Array): Promise<void> {
+	console.log("calling updateBackendImage");
 	const image = await createImageBitmap(blob);
 	const canvas = document.createElement("canvas");
 	canvas.width = image.width;
@@ -133,11 +137,13 @@ export async function updateBackendImage(editor: Editor, blob: Blob, documentId:
 // ABORTING AND RESETTING HELPERS
 
 function abortAndResetGenerating(): void {
+	console.log("calling abordAndResetGenerating");
 	generatingAbortRequest?.abort();
 	generatingAbortRequest = undefined;
 }
 
 function abortAndResetPolling(): void {
+	console.log("calling abordAndResetPolling");
 	pollingAbortController.abort();
 	pollingAbortController = new AbortController();
 	clearTimeout(timer);
@@ -156,6 +162,7 @@ function scheduleNextPollingUpdate(
 	nodePath: BigUint64Array,
 	resolution: XY
 ): void {
+	console.log("calling scheduleNextPollingUpdate");
 	// Pick a future time that keeps to the user-requested interval if possible, but on slower connections will go as fast as possible without overlapping itself
 	const nextPollTimeGoal = timeoutBegan + interval;
 	const timeFromNow = Math.max(0, nextPollTimeGoal - Date.now());
@@ -191,6 +198,7 @@ function scheduleNextPollingUpdate(
 // API COMMUNICATION FUNCTIONS
 
 async function pollImage(hostname: string): Promise<[Blob | undefined, number]> {
+	console.log("calling pollImage");
 	// Fetch the percent progress and in-progress image from the API
 	const result = await fetch(`${hostname}sdapi/v1/progress`, { signal: pollingAbortController.signal, method: "GET" });
 	const { current_image, progress } = await result.json();
@@ -229,6 +237,7 @@ async function generate(
 	result: Promise<RequestResult>;
 	xhr?: XMLHttpRequest;
 }> {
+	console.log("calling generate");
 	let body;
 	let endpoint;
 	if (image === undefined || parameters.denoisingStrength === undefined) {
@@ -341,10 +350,12 @@ async function generate(
 }
 
 async function terminate(hostname: string): Promise<void> {
+	console.log("calling terminate");
 	await fetch(`${hostname}sdapi/v1/interrupt`, { method: "POST" });
 }
 
 async function checkConnection(hostname: string): Promise<boolean> {
+	console.log("calling checkConnection");
 	statusAbortController.abort();
 	statusAbortController = new AbortController();
 

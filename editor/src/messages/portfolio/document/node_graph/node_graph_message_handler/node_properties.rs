@@ -3,11 +3,14 @@
 use super::document_node_types::NodePropertiesContext;
 use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
+use document_legacy::{Operation, layers::layer_info::LayerDataTypeDiscriminant};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -980,12 +983,17 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 	result
 }
 
-pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	/*
+pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
 	let layer_path = context.layer_path.to_vec();
 
-	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let resolve_input = |name: &str| {
+		super::IMAGINATE_NODE
+			.inputs
+			.iter()
+			.position(|input| input.name == name)
+			.unwrap_or_else(|| panic!("Input {name} not found"))
+	};
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -1001,9 +1009,7 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	let mask_fill_index = resolve_input("Mask Starting Fill");
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
-	let cached_index = resolve_input("Cached Data");
 
-	let cached_value = &document_node.inputs[cached_index];
 	let complete_value = &document_node.inputs[resolve_input("Percent Complete")];
 	let status_value = &document_node.inputs[resolve_input("Status")];
 
@@ -1052,9 +1058,6 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else {
 		panic!("Invalid status input")
 	};
-	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
-		panic!("Invalid cached image input, received {:?}, index: {}", cached_value, cached_index)
-	};
 	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
 	};
@@ -1073,14 +1076,14 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	let progress = {
 		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
 		let mut interpreted_status = imaginate_status;
-		if imaginate_status == ImaginateStatus::Idle && cached_data.is_some() && percent_complete > 0. && percent_complete < 100. {
+		if imaginate_status == ImaginateStatus::Idle && percent_complete > 0. && percent_complete < 100. {
 			interpreted_status = ImaginateStatus::Terminated;
 		}
 
 		let status = match interpreted_status {
-			ImaginateStatus::Idle => match cached_data {
-				Some(_) => "Done".into(),
-				None => "Ready".into(),
+			ImaginateStatus::Idle => match percent_complete {
+				100.0.. => "Done".into(),
+				_ => "Ready".into(),
 			},
 			ImaginateStatus::Beginning => "Beginning...".into(),
 			ImaginateStatus::Uploading(percent) => format!("Uploading Input Image: {percent:.0}%"),
@@ -1175,16 +1178,18 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 				WidgetHolder::related_separator(),
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
-					.disabled(cached_data.is_none())
+					.disabled(percent_complete < 100.0)
 					.on_update({
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
+							todo!("clear button")
+							/*
 							DocumentMessage::ImaginateClear {
 								node_id,
 								layer_path: layer_path.clone(),
 								cached_index,
 							}
-							.into()
+							.into()*/
 						}
 					})
 					.widget_holder(),
@@ -1232,12 +1237,15 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	};
 
 	// Create the input to the graph using an empty image
+	/*
 	let editor_api = std::borrow::Cow::Owned(EditorApi {
 		image_frame: None,
 		font_cache: Some(&context.persistent_data.font_cache),
 	});
 	// Compute the transform input to the image frame
 	let image_frame: ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, editor_api).unwrap_or_default();
+	*/
+	let image_frame: ImageFrame<Color> = ImageFrame::identity();
 	let transform = image_frame.transform;
 
 	let resolution = {
@@ -1538,8 +1546,6 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	layout.extend_from_slice(&[improve_faces, tiling]);
 
 	layout
-		*/
-	todo!()
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {

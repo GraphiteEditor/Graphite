@@ -1,6 +1,6 @@
 use super::DocumentNode;
 use crate::graphene_compiler::Any;
-pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
 use crate::proto::{Any as DAny, FutureAny};
 
 use graphene_core::raster::brush_cache::BrushCache;
@@ -37,6 +37,7 @@ pub enum TaggedValue {
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateStatus(ImaginateStatus),
+	ImaginatePreferences(ImaginatePreferences),
 	LayerPath(Option<Vec<u64>>),
 	VectorData(graphene_core::vector::VectorData),
 	Fill(graphene_core::vector::style::Fill),
@@ -92,6 +93,7 @@ impl Hash for TaggedValue {
 			Self::ImaginateSamplingMethod(m) => m.hash(state),
 			Self::ImaginateMaskStartingFill(f) => f.hash(state),
 			Self::ImaginateStatus(s) => s.hash(state),
+			Self::ImaginatePreferences(p) => p.hash(state),
 			Self::LayerPath(p) => p.hash(state),
 			Self::ImageFrame(i) => i.hash(state),
 			Self::VectorData(vector_data) => vector_data.hash(state),
@@ -156,6 +158,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
 			TaggedValue::ImaginateStatus(x) => Box::new(x),
+			TaggedValue::ImaginatePreferences(x) => Box::new(x),
 			TaggedValue::LayerPath(x) => Box::new(x),
 			TaggedValue::VectorData(x) => Box::new(x),
 			TaggedValue::Fill(x) => Box::new(x),
@@ -219,6 +222,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
 			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
 			TaggedValue::ImaginateStatus(_) => concrete!(ImaginateStatus),
+			TaggedValue::ImaginatePreferences(_) => concrete!(ImaginatePreferences),
 			TaggedValue::LayerPath(_) => concrete!(Option<Vec<u64>>),
 			TaggedValue::DAffine2(_) => concrete!(DAffine2),
 			TaggedValue::LuminanceCalculation(_) => concrete!(LuminanceCalculation),
@@ -272,6 +276,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<ImaginateSamplingMethod>() => Ok(TaggedValue::ImaginateSamplingMethod(*downcast(input).unwrap())),
 			x if x == TypeId::of::<ImaginateMaskStartingFill>() => Ok(TaggedValue::ImaginateMaskStartingFill(*downcast(input).unwrap())),
 			x if x == TypeId::of::<ImaginateStatus>() => Ok(TaggedValue::ImaginateStatus(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginatePreferences>() => Ok(TaggedValue::ImaginatePreferences(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Option<Vec<u64>>>() => Ok(TaggedValue::LayerPath(*downcast(input).unwrap())),
 			x if x == TypeId::of::<DAffine2>() => Ok(TaggedValue::DAffine2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<LuminanceCalculation>() => Ok(TaggedValue::LuminanceCalculation(*downcast(input).unwrap())),

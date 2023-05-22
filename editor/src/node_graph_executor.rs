@@ -10,6 +10,7 @@ use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
+use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::{Image, ImageFrame};
@@ -35,6 +36,7 @@ pub struct NodeRuntime {
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: Sender<GenerationResponse>,
 	wasm_io: Option<WasmApplicationIo>,
+	imaginate_preferences: ImaginatePreferences,
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
@@ -42,6 +44,7 @@ pub struct NodeRuntime {
 enum NodeRuntimeMessage {
 	GenerationRequest(GenerationRequest),
 	FontCacheUpdate(FontCache),
+	ImaginatePreferencesUpdate(ImaginatePreferences),
 }
 
 pub(crate) struct GenerationRequest {
@@ -69,6 +72,7 @@ impl NodeRuntime {
 			receiver,
 			sender,
 			font_cache: FontCache::default(),
+			imaginate_preferences: Default::default(),
 			thumbnails: Default::default(),
 			wasm_io: None,
 			canvas_cache: Default::default(),
@@ -80,13 +84,14 @@ impl NodeRuntime {
 		// This should be avoided in the future.
 		requests.reverse();
 		requests.dedup_by_key(|x| match x {
-			NodeRuntimeMessage::FontCacheUpdate(_) => None,
 			NodeRuntimeMessage::GenerationRequest(x) => Some(x.path.clone()),
+			_ => None,
 		});
 		requests.reverse();
 		for request in requests {
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
+				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.imaginate_preferences = preferences,
 				NodeRuntimeMessage::GenerationRequest(GenerationRequest {
 					generation_id,
 					graph,
@@ -94,7 +99,7 @@ impl NodeRuntime {
 					path,
 					..
 				}) => {
-					let (network, monitor_nodes) = Self::wrap_network(graph);
+					let (network, monitor_nodes) = Self::wrap_network(graph, &self.imaginate_preferences);
 
 					let result = self.execute_network(&path, network, image_frame).await;
 					let mut responses = VecDeque::new();
@@ -112,8 +117,8 @@ impl NodeRuntime {
 	}
 
 	/// Wraps a network in a scope and returns the new network and the paths to the monitor nodes.
-	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
-		let scoped_network = wrap_network_in_scope(network);
+	fn wrap_network(network: NodeNetwork, imaginate_preferences: &ImaginatePreferences) -> (NodeNetwork, Vec<Vec<NodeId>>) {
+		let scoped_network = wrap_network_in_scope(network, imaginate_preferences);
 
 		//scoped_network.generate_node_paths(&[]);
 		let monitor_nodes = scoped_network
@@ -139,7 +144,7 @@ impl NodeRuntime {
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile_single(scoped_network, true)?;
+		let proto_network = c.compile_single(scoped_network, &self.imaginate_preferences, true)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network).await {
@@ -294,6 +299,10 @@ impl NodeGraphExecutor {
 		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
+	pub fn update_imaginate_preferences(&self, imaginate_preferences: ImaginatePreferences) {
+		self.sender.send(NodeRuntimeMessage::ImaginatePreferencesUpdate(imaginate_preferences));
+	}
+
 	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {
 		self.last_output_type.get(path).cloned().flatten()
 	}
@@ -334,13 +343,12 @@ impl NodeGraphExecutor {
 		})
 	}
 
-	/// Evaluates a node graph, computing either the Imaginate node or the entire graph
+	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(
 		&mut self,
 		(document_id, documents): (u64, &mut HashMap<u64, DocumentMessageHandler>),
 		layer_path: Vec<LayerId>,
 		(input_image_data, (width, height)): (Vec<u8>, (u32, u32)),
-		_imaginate_node: Option<Vec<NodeId>>,
 		_persistent_data: (&PreferencesMessageHandler, &PersistentData),
 		_responses: &mut VecDeque<Message>,
 	) -> Result<(), String> {
@@ -365,11 +373,6 @@ impl NodeGraphExecutor {
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
 
-		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
-		/*if let Some(imaginate_node) = imaginate_node {
-			responses.add(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, editor_api, persistent_data)?);
-			return Ok(());
-		}*/
 		// Execute the node graph
 		let generation_id = self.queue_execution(network, Some(image_frame), layer_path.clone());
 

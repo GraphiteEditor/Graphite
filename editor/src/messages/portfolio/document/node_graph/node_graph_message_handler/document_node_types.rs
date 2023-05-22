@@ -6,7 +6,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::imaginate_input::ImaginateSamplingMethod;
+use graph_craft::imaginate_input::{ImaginatePreferences, ImaginateSamplingMethod};
 use graph_craft::NodeIdentifier;
 #[cfg(feature = "gpu")]
 use graphene_core::application_io::SurfaceHandle;
@@ -1673,12 +1673,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeType {
 	name: "Imaginate",
 	category: "Image Synthesis",
-	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>"),
+	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 	inputs: vec![
 		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+		DocumentInputType::value("Preferences", TaggedValue::ImaginatePreferences(Default::default()), false),
 		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
-		DocumentInputType::value("Samples", TaggedValue::F64(30.), false),
+		DocumentInputType::value("Samples", TaggedValue::U32(30), false),
 		DocumentInputType::value("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
 		DocumentInputType::value("Prompt Guidance", TaggedValue::F64(7.5), false),
 		DocumentInputType::value("Prompt", TaggedValue::String(String::new()), false),
@@ -1691,8 +1692,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::value("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Tiling", TaggedValue::Bool(false), false),
-		// Non-user status (is document input the right way to do this?)
-		DocumentInputType::value("Cached Data", TaggedValue::RcImage(None), false),
 		DocumentInputType::value("Percent Complete", TaggedValue::F64(0.), false),
 		DocumentInputType::value("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
 	],
@@ -1781,12 +1780,12 @@ impl DocumentNodeType {
 	}
 }
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork, imaginate_preferences: &ImaginatePreferences) -> NodeNetwork {
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 
 	network.generate_node_paths(&[]);
 	for id in node_ids {
-		network.flatten(id);
+		network.flatten(id, imaginate_preferences);
 	}
 
 	let mut network_inputs = Vec::new();

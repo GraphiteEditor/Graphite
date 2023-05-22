@@ -76,6 +76,7 @@ impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 		Self { node, _i: core::marker::PhantomData }
 	}
 }
+
 pub struct DynAnyInRefNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<(I, O)>,

@@ -1,4 +1,5 @@
 use crate::document::value::TaggedValue;
+use crate::imaginate_input::ImaginatePreferences;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_core::{NodeIdentifier, Type};
 
@@ -441,7 +442,7 @@ impl NodeNetwork {
 	}
 
 	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId, ignore_imaginate: bool) -> bool {
+	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
 		// If the node is the output then return true
 		if self.outputs.iter().any(|&NodeOutput { node_id, .. }| node_id == target_node_id) {
 			return true;
@@ -454,11 +455,6 @@ impl NodeNetwork {
 		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
 
 		while let Some(node) = stack.pop() {
-			// Skip the imaginate node inputs
-			if ignore_imaginate && node.name == "Imaginate" {
-				continue;
-			}
-
 			for input in &node.inputs {
 				if let &NodeInput::Node { node_id: ref_id, .. } = input {
 					// Skip if already viewed
@@ -653,12 +649,12 @@ impl NodeNetwork {
 		are_inputs_used
 	}
 
-	pub fn flatten(&mut self, node: NodeId) {
-		self.flatten_with_fns(node, merge_ids, generate_uuid)
+	pub fn flatten(&mut self, node: NodeId, imaginate_preferences: &ImaginatePreferences) {
+		self.flatten_with_fns(node, merge_ids, generate_uuid, imaginate_preferences)
 	}
 
 	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
-	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
+	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy, imaginate_preferences: &ImaginatePreferences) {
 		let (id, mut node) = self
 			.nodes
 			.remove_entry(&node)
@@ -680,7 +676,7 @@ impl NodeNetwork {
 
 			let mut dummy_input = NodeInput::ShortCircut(concrete!(()));
 			std::mem::swap(&mut dummy_input, input);
-			if let NodeInput::Value { tagged_value, exposed } = dummy_input {
+			if let NodeInput::Value { mut tagged_value, exposed } = dummy_input {
 				let value_node_id = gen_id();
 				let merged_node_id = map_ids(id, value_node_id);
 				let path = if let Some(mut new_path) = node.path.clone() {
@@ -689,6 +685,13 @@ impl NodeNetwork {
 				} else {
 					None
 				};
+
+				match &mut tagged_value {
+					TaggedValue::ImaginatePreferences(preferences @ ImaginatePreferences { .. }) => {
+						*preferences = imaginate_preferences.clone();
+					}
+					_ => (),
+				}
 
 				self.nodes.insert(
 					merged_node_id,
@@ -758,7 +761,7 @@ impl NodeNetwork {
 			}
 
 			for node_id in new_nodes {
-				self.flatten_with_fns(node_id, map_ids, gen_id);
+				self.flatten_with_fns(node_id, map_ids, gen_id, imaginate_preferences);
 			}
 		} else {
 			// If the node is not a network, it is a primitive node and can be inserted into the network as is.
@@ -1026,7 +1029,7 @@ mod test {
 			..Default::default()
 		};
 		network.generate_node_paths(&[]);
-		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
+		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id, &Default::default());
 		let flat_network = flat_network();
 		println!("{:#?}", flat_network);
 		println!("{:#?}", network);

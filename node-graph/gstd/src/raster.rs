@@ -1,5 +1,7 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::proto::DynFuture;
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
 use graphene_core::transform::Transform;
 
@@ -414,19 +416,59 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 	ImageFrame { image, transform }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ImaginateNode<P, E> {
-	cached: E,
-	_p: PhantomData<P>,
+macro_rules! generate_imaginate_node {
+	($($val:ident: $t:ident: $o:ty,)*) => {
+		#[derive(Debug, Clone)]
+		pub struct ImaginateNode<P, $($t,)*> {
+			$($val: $t,)*
+			_p: PhantomData<P>,
+		}
+
+		impl<'e, P, $($t,)*> ImaginateNode<P, $($t,)*>
+		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+		{
+			pub fn new($($val: $t,)*) -> Self {
+				Self { $($val,)* _p: PhantomData }
+			}
+		}
+
+		impl<'i, 'e: 'i, P: Pixel + 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, $($t,)*>
+		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+		{
+			type Output = DynFuture<'i, ImageFrame<P>>;
+
+			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
+				$(let $val = self.$val.eval(());)*
+				Box::pin(async move {
+					ImageFrame {
+						transform: frame.transform,
+						image: super::imaginate::imaginate(frame.image, $($val,)*).await,
+					}
+				})
+			}
+		}
+	}
 }
 
-#[node_macro::node_fn(ImaginateNode<_P>)]
-fn imaginate<_P: Pixel>(image_frame: ImageFrame<_P>, cached: Option<std::sync::Arc<graphene_core::raster::Image<_P>>>) -> ImageFrame<_P> {
-	let cached_image = cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image_frame.image);
-	ImageFrame {
-		image: cached_image,
-		transform: image_frame.transform,
-	}
+generate_imaginate_node! {
+	preferences: Preferences: ImaginatePreferences,
+	seed: Seed: f64,
+	res: Res: Option<DVec2>,
+	samples: Samples: u32,
+	sampling_method: SamplingMethod: ImaginateSamplingMethod,
+	prompt_guidance: PromptGuidance: f64,
+	prompt: Prompt: String,
+	negative_prompt: NegativePrompt: String,
+	adapt_input_image: AdaptInputImage: bool,
+	image_creativity: ImageCreativity: f64,
+	masking_layer: MaskingLayer: Option<Vec<u64>>,
+	inpaint: Inpaint: bool,
+	mask_blur: MaskBlur: f64,
+	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
+	improve_faces: ImproveFaces: bool,
+	tiling: Tiling: bool,
+	percent_complete: PercentComplete: f64,
+	status: Status: ImaginateStatus,
 }
 
 #[derive(Debug, Clone, Copy)]

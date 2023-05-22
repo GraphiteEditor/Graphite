@@ -25,6 +25,7 @@ pub struct EvalSyncNode {}
 fn eval_sync<F: Future + 'input>(future: F) -> F::Output {
 	let future = futures::future::maybe_done(future);
 	futures::pin_mut!(future);
+	info!("eval_sync: {}", std::any::type_name::<F::Output>());
 	match future.as_mut().take_output() {
 		Some(value) => value,
 		_ => panic!("Node construction future returned pending"),

@@ -2,17 +2,17 @@ use std::error::Error;
 
 use dyn_any::DynAny;
 
-use crate::document::NodeNetwork;
+use crate::document::{value::ImaginatePreferences, NodeNetwork};
 use crate::proto::{LocalFuture, ProtoNetwork};
 
 pub struct Compiler {}
 
 impl Compiler {
-	pub fn compile(&self, mut network: NodeNetwork, resolve_inputs: bool) -> impl Iterator<Item = ProtoNetwork> {
+	pub fn compile(&self, mut network: NodeNetwork, imaginate_preferences: &ImaginatePreferences, resolve_inputs: bool) -> impl Iterator<Item = ProtoNetwork> {
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		println!("flattening");
 		for id in node_ids {
-			network.flatten(id);
+			network.flatten(id, imaginate_preferences);
 		}
 		network.remove_redundant_id_nodes();
 		network.resolve_extract_nodes();
@@ -28,9 +28,9 @@ impl Compiler {
 			proto_network
 		})
 	}
-	pub fn compile_single(&self, network: NodeNetwork, resolve_inputs: bool) -> Result<ProtoNetwork, String> {
+	pub fn compile_single(&self, network: NodeNetwork, imaginate_preferences: &ImaginatePreferences, resolve_inputs: bool) -> Result<ProtoNetwork, String> {
 		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
-		let Some(proto_network) = self.compile(network, resolve_inputs).next() else {
+		let Some(proto_network) = self.compile(network, imaginate_preferences, resolve_inputs).next() else {
 			return Err("Failed to convert graph into proto graph".to_string());
 		};
 		Ok(proto_network)

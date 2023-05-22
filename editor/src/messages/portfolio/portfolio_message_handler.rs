@@ -224,6 +224,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				});
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
+			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
 			PortfolioMessage::ImaginateSetGeneratingStatus {
 				document_id,
 				layer_path,
@@ -461,7 +462,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					(document_id, &mut self.documents),
 					layer_path,
 					(input_image_data, size),
-					imaginate_node_path,
 					(preferences, &self.persistent_data),
 					responses,
 				);
