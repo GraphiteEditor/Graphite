@@ -165,3 +165,11 @@ fn set_vector_data_resample_curve(mut vector_data: VectorData, density: f64) -> 
 		.collect();
 	vector_data
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct SetSplineFromPointsNode {}
+
+#[node_macro::node_fn(SetSplineFromPointsNode)]
+fn set_vector_data_spline_from_points(mut vector_data: VectorData) -> VectorData {
+	vector_data
+}

@@ -632,6 +632,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
 		register_node!(graphene_core::vector::SetResampleCurveNode<_>, input: VectorData, params: [u32]),
 		register_node!(graphene_core::vector::SetResampleCurveNode<_>, input: VectorData, params: [f64]),
+		register_node!(graphene_core::vector::SetSplineFromPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
