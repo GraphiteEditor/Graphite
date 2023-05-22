@@ -319,7 +319,6 @@ impl SnapManager {
 	/// Handles snapping of a viewport position, returning another viewport position.
 	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
 		let mut snapped_position = position_viewport;
-		// debug!("snapped_position: {:?}", snapped_position);
 		if document_message_handler.snapping_enabled {
 			snapped_position = self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
 		}
@@ -328,7 +327,6 @@ impl SnapManager {
 			let doc_space_pos = doc_transform.inverse().transform_point2(snapped_position);
 			snapped_position = doc_transform.transform_point2(doc_space_pos.round());
 		}
-		// debug!("snapped_position: {:?}", snapped_position);
 		snapped_position
 	}
 

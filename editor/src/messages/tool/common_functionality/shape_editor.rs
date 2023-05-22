@@ -187,17 +187,6 @@ impl ShapeState {
 
 				let mut move_point = |point: ManipulatorPointId| {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
-					// let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok().unwrap_or_default();
-
-					// let viewspace_pos = viewspace.transform_point2(previous_position + delta);
-					// //todo convert from viewspace_pos to doc position
-					// let doc_pos = transform.inverse().transform_point2(viewspace_pos);
-
-					// //todo convert from viewport pos to document pos (rounding happens here)
-					// let doc_pos2 = transform.transform_point2(doc_pos.round());
-
-					// //round document pos then convert back to viewport
-					// let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
 
 					let position = previous_position + delta;
 					responses.add(GraphOperationMessage::Vector {
