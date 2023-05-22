@@ -15,8 +15,8 @@
 	export let value: Color;
 	// TODO: Implement
 	// export let allowTransparency = false;
-	// export let allowNone = false;
 	// export let disabled = false;
+	export let allowNone = false;
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
 
@@ -45,7 +45,7 @@
 			value = detail;
 			dispatch("value", detail);
 		}}
-		allowNone={true}
+		{allowNone}
 	/>
 </LayoutRow>
 
@@ -56,6 +56,7 @@
 		border: 1px solid var(--color-5-dullgray);
 		border-radius: 2px;
 		padding: 1px;
+		min-width: 80px;
 
 		> button {
 			position: relative;

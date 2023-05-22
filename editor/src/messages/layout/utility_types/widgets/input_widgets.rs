@@ -53,11 +53,9 @@ pub struct ColorInput {
 	// #[serde(rename = "allowTransparency")]
 	// #[derivative(Default(value = "false"))]
 	// pub allow_transparency: bool,
-
-	// TODO: Implement
-	// #[serde(rename = "allowNone")]
-	// #[derivative(Default(value = "false"))]
-	// pub allow_none: bool,
+	#[serde(rename = "allowNone")]
+	#[derivative(Default(value = "true"))]
+	pub allow_none: bool,
 
 	// pub disabled: bool,
 	pub tooltip: String,

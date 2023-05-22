@@ -7,11 +7,12 @@ use document_legacy::Operation;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::*;
+use graph_craft::{concrete, imaginate_input::*};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::EditorApi;
+use graphene_core::{Cow, Type, TypeDescriptor};
 
 use super::document_node_types::NodePropertiesContext;
 use super::{FrontendGraphDataType, IMAGINATE_NODE};
@@ -74,7 +75,6 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-#[cfg(feature = "gpu")]
 fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
 
@@ -202,7 +202,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			WidgetHolder::unrelated_separator(),
 			number_props
 				.value(Some(x))
-				.on_update(update_value(|x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
 				.widget_holder(),
 		])
 	} else if let NodeInput::Value {
@@ -214,7 +214,19 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			WidgetHolder::unrelated_separator(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(update_value(|x: &NumberInput| TaggedValue::U32(x.value.unwrap() as u32), node_id, index))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
+				.widget_holder(),
+		])
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::F32(x),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap()) as f32), node_id, index))
 				.widget_holder(),
 		])
 	}
@@ -298,17 +310,42 @@ fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Fill Type", FrontendGraphDataType::General, true);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::FillType(fill_type),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = vec![
+			RadioEntryData::new("Solid").on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index)),
+			RadioEntryData::new("Gradient").on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+		];
+
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			RadioInput::new(entries)
+				.selected_index(match fill_type {
+					FillType::None | FillType::Solid => 0,
+					FillType::Gradient => 1,
+				})
+				.widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Gradient Type", FrontendGraphDataType::General, true);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::GradientType(gradient_type),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let entries = [("Linear", GradientType::Linear), ("Radial", GradientType::Radial)]
-			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::GradientType(val), node_id, index)))
-			.collect();
+		let entries = vec![
+			RadioEntryData::new("Linear").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
+			RadioEntryData::new("Radial").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+		];
 
 		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder()]);
 	}
@@ -512,6 +549,37 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
+pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let output_type = context.executor.previous_output_type(context.layer_path);
+	let raster_output_type = concrete!(ImageFrame<Color>);
+	let disabled = match output_type {
+		Some(output_type) => output_type != raster_output_type,
+		None => true,
+	};
+
+	let layer_path_1 = context.layer_path.to_vec();
+	let layer_path_2 = context.layer_path.to_vec();
+
+	let label = TextLabel::new("The graph's output is drawn in the layer").widget_holder();
+	let download_button = TextButton::new("Download Render Output")
+		.tooltip("Download the rendered image output as a PNG file")
+		.disabled(disabled)
+		.on_update(move |_| DocumentMessage::DownloadLayerImageOutput { layer_path: layer_path_1.clone() }.into())
+		.widget_holder();
+	let copy_button = TextButton::new("Copy Render Output")
+		.tooltip("Copy the rendered image output to the clipboard")
+		.disabled(disabled)
+		.on_update(move |_| DocumentMessage::CopyToClipboardLayerImageOutput { layer_path: layer_path_2.clone() }.into())
+		.widget_holder();
+
+	vec![
+		LayoutGroup::Row { widgets: vec![label] },
+		LayoutGroup::Row {
+			widgets: vec![download_button, WidgetHolder::related_separator(), copy_button],
+		},
+	]
+}
+
 pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorInput::default(), true);
 
@@ -556,11 +624,11 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 }
 
 pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 5, "Color", ColorInput::default(), true);
+	let color = color_widget(document_node, node_id, 7, "Color", ColorInput::default().allow_none(false), true);
 
-	let size = number_widget(document_node, node_id, 2, "Diameter", NumberInput::default().min(1.).max(100.).unit(" px"), true);
-	let hardness = number_widget(document_node, node_id, 3, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let flow = number_widget(document_node, node_id, 4, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), true);
+	let size = number_widget(document_node, node_id, 4, "Diameter", NumberInput::default().min(1.).max(100.).unit(" px"), true);
+	let hardness = number_widget(document_node, node_id, 5, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let flow = number_widget(document_node, node_id, 6, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), true);
 
 	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: flow }]
 }
@@ -659,12 +727,12 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	} = &document_node.inputs[colors_index]
 	{
 		use SelectiveColorChoice::*;
-		let entries = [vec![Reds, Yellows, Greens, Cyans, Blues, Magentas], vec![Whites, Neutrals, Blacks]]
+		let entries = [[Reds, Yellows, Greens, Cyans, Blues, Magentas].as_slice(), [Whites, Neutrals, Blacks].as_slice()]
 			.into_iter()
 			.map(|section| {
 				section
 					.into_iter()
-					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(choice), node_id, colors_index)))
+					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
 					.collect()
 			})
 			.collect();
@@ -756,14 +824,8 @@ pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
 	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
-	let gamma_correction = number_widget(
-		document_node,
-		node_id,
-		3,
-		"Gamma Correction",
-		NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1),
-		true,
-	);
+	let gamma_input = NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1);
+	let gamma_correction = number_widget(document_node, node_id, 3, "Gamma Correction", gamma_input, true);
 
 	vec![
 		LayoutGroup::Row { widgets: exposure },
@@ -1193,7 +1255,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
-					.icon("Edit")
+					.icon("Edit12px")
 					.tooltip({
 						let message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64)";
 						let manual_message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64).\n\
@@ -1402,7 +1464,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		};
 
 		let blur_radius = {
-			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", NumberInput::default().unit(" px").min(0.).max(25.).int(), true);
+			let number_props = NumberInput::default().unit(" px").min(0.).max(25.).int();
+			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", number_props, true);
 			LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
 		};
 
@@ -1503,6 +1566,7 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
+/// Fill Node Widgets LayoutGroup
 pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_type_index = 1;
 	let solid_color_index = 2;
@@ -1522,39 +1586,42 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	let mut widgets = Vec::new();
 	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
 	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
-	let empty = fill_type == Some(graphene_core::vector::style::FillType::None);
-	if fill_type.is_none() || solid || empty {
+
+	let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index);
+	widgets.push(fill_type_switch);
+
+	if fill_type.is_none() || solid {
 		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
 		widgets.push(solid_color);
 	}
 
 	if fill_type.is_none() || gradient {
-		let gradient_type = gradient_type_widget(document_node, node_id, gradient_type_index, "Gradient Type", true);
-		widgets.push(gradient_type);
+		let gradient_type_switch = gradient_type_widget(document_node, node_id, gradient_type_index);
+		widgets.push(gradient_type_switch);
 		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
 	}
 
-	if gradient || solid || empty {
-		let new_fill_type = if gradient { FillType::Solid } else { FillType::Gradient };
-		let switch_button = TextButton::new(if gradient { "Use Solid Color" } else { "Use Gradient" })
-			.tooltip(if gradient {
-				"Change this fill from a gradient to a solid color, keeping the 0% stop color"
-			} else {
-				"Change this fill from a solid color to a gradient"
-			})
-			.on_update(update_value(move |_| TaggedValue::FillType(new_fill_type), node_id, fill_type_index));
-
-		widgets.push(LayoutGroup::Row {
-			widgets: {
-				let mut widgets = Vec::new();
-				widgets.push(TextLabel::new("").widget_holder());
-				add_blank_assist(&mut widgets);
-				widgets.push(WidgetHolder::unrelated_separator());
-				widgets.push(switch_button.widget_holder());
-				widgets
-			},
-		});
-	}
-
 	widgets
+}
+
+pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let name = text_widget(document_node, node_id, 1, "Name", true);
+	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let visible = bool_widget(document_node, node_id, 4, "Visible", true);
+	let locked = bool_widget(document_node, node_id, 5, "Locked", true);
+	let collapsed = bool_widget(document_node, node_id, 6, "Collapsed", true);
+
+	vec![
+		LayoutGroup::Row { widgets: name },
+		blend_mode,
+		LayoutGroup::Row { widgets: opacity },
+		LayoutGroup::Row { widgets: visible },
+		LayoutGroup::Row { widgets: locked },
+		LayoutGroup::Row { widgets: collapsed },
+	]
+}
+pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let label = text_widget(document_node, node_id, 1, "Label", true);
+	vec![LayoutGroup::Row { widgets: label }]
 }

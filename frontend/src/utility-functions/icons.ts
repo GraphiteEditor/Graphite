@@ -12,7 +12,7 @@ import Add from "@graphite-frontend/assets/icon-12px-solid/add.svg";
 import Checkmark from "@graphite-frontend/assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@graphite-frontend/assets/icon-12px-solid/close-x.svg";
 import DropdownArrow from "@graphite-frontend/assets/icon-12px-solid/dropdown-arrow.svg";
-import Edit from "@graphite-frontend/assets/icon-12px-solid/edit.svg";
+import Edit12px from "@graphite-frontend/assets/icon-12px-solid/edit-12px.svg";
 import Empty12px from "@graphite-frontend/assets/icon-12px-solid/empty-12px.svg";
 import FullscreenEnter from "@graphite-frontend/assets/icon-12px-solid/fullscreen-enter.svg";
 import FullscreenExit from "@graphite-frontend/assets/icon-12px-solid/fullscreen-exit.svg";
@@ -33,7 +33,6 @@ import KeyboardTab from "@graphite-frontend/assets/icon-12px-solid/keyboard-tab.
 import Link from "@graphite-frontend/assets/icon-12px-solid/link.svg";
 import Overlays from "@graphite-frontend/assets/icon-12px-solid/overlays.svg";
 import Remove from "@graphite-frontend/assets/icon-12px-solid/remove.svg";
-import ResetColors from "@graphite-frontend/assets/icon-12px-solid/reset-colors.svg";
 import Snapping from "@graphite-frontend/assets/icon-12px-solid/snapping.svg";
 import Swap from "@graphite-frontend/assets/icon-12px-solid/swap.svg";
 import VerticalEllipsis from "@graphite-frontend/assets/icon-12px-solid/vertical-ellipsis.svg";
@@ -42,13 +41,14 @@ import WindowButtonWinClose from "@graphite-frontend/assets/icon-12px-solid/wind
 import WindowButtonWinMaximize from "@graphite-frontend/assets/icon-12px-solid/window-button-win-maximize.svg";
 import WindowButtonWinMinimize from "@graphite-frontend/assets/icon-12px-solid/window-button-win-minimize.svg";
 import WindowButtonWinRestoreDown from "@graphite-frontend/assets/icon-12px-solid/window-button-win-restore-down.svg";
+import WorkingColors from "@graphite-frontend/assets/icon-12px-solid/working-colors.svg";
 
 const SOLID_12PX = {
 	Add: { svg: Add, size: 12 },
 	Checkmark: { svg: Checkmark, size: 12 },
 	CloseX: { svg: CloseX, size: 12 },
 	DropdownArrow: { svg: DropdownArrow, size: 12 },
-	Edit: { svg: Edit, size: 12 },
+	Edit12px: { svg: Edit12px, size: 12 },
 	Empty12px: { svg: Empty12px, size: 12 },
 	FullscreenEnter: { svg: FullscreenEnter, size: 12 },
 	FullscreenExit: { svg: FullscreenExit, size: 12 },
@@ -69,7 +69,6 @@ const SOLID_12PX = {
 	Link: { svg: Link, size: 12 },
 	Overlays: { svg: Overlays, size: 12 },
 	Remove: { svg: Remove, size: 12 },
-	ResetColors: { svg: ResetColors, size: 12 },
 	Snapping: { svg: Snapping, size: 12 },
 	Swap: { svg: Swap, size: 12 },
 	VerticalEllipsis: { svg: VerticalEllipsis, size: 12 },
@@ -78,6 +77,7 @@ const SOLID_12PX = {
 	WindowButtonWinMaximize: { svg: WindowButtonWinMaximize, size: 12 },
 	WindowButtonWinMinimize: { svg: WindowButtonWinMinimize, size: 12 },
 	WindowButtonWinRestoreDown: { svg: WindowButtonWinRestoreDown, size: 12 },
+	WorkingColors: { svg: WorkingColors, size: 12 },
 } as const;
 
 // 16px Solid
@@ -95,6 +95,8 @@ import BooleanUnion from "@graphite-frontend/assets/icon-16px-solid/boolean-unio
 import CheckboxChecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-checked.svg";
 import CheckboxUnchecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-unchecked.svg";
 import Copy from "@graphite-frontend/assets/icon-16px-solid/copy.svg";
+import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
+import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
 import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
 import EyeHidden from "@graphite-frontend/assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@graphite-frontend/assets/icon-16px-solid/eye-visible.svg";
@@ -133,6 +135,8 @@ import ViewModePixels from "@graphite-frontend/assets/icon-16px-solid/view-mode-
 import ViewportDesignMode from "@graphite-frontend/assets/icon-16px-solid/viewport-design-mode.svg";
 import ViewportGuideMode from "@graphite-frontend/assets/icon-16px-solid/viewport-guide-mode.svg";
 import ViewportSelectMode from "@graphite-frontend/assets/icon-16px-solid/viewport-select-mode.svg";
+import WorkingColorsPrimary from "@graphite-frontend/assets/icon-16px-solid/working-colors-primary.svg";
+import WorkingColorsSecondary from "@graphite-frontend/assets/icon-16px-solid/working-colors-secondary.svg";
 import ZoomIn from "@graphite-frontend/assets/icon-16px-solid/zoom-in.svg";
 import ZoomOut from "@graphite-frontend/assets/icon-16px-solid/zoom-out.svg";
 import ZoomReset from "@graphite-frontend/assets/icon-16px-solid/zoom-reset.svg";
@@ -152,6 +156,8 @@ const SOLID_16PX = {
 	CheckboxChecked: { svg: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { svg: CheckboxUnchecked, size: 16 },
 	Copy: { svg: Copy, size: 16 },
+	CustomColor: { svg: CustomColor, size: 16 },
+	Edit: { svg: Edit, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
 	EyeHidden: { svg: EyeHidden, size: 16 },
 	EyeVisible: { svg: EyeVisible, size: 16 },
@@ -190,6 +196,8 @@ const SOLID_16PX = {
 	ViewportDesignMode: { svg: ViewportDesignMode, size: 16 },
 	ViewportGuideMode: { svg: ViewportGuideMode, size: 16 },
 	ViewportSelectMode: { svg: ViewportSelectMode, size: 16 },
+	WorkingColorsPrimary: { svg: WorkingColorsPrimary, size: 16 },
+	WorkingColorsSecondary: { svg: WorkingColorsSecondary, size: 16 },
 	ZoomIn: { svg: ZoomIn, size: 16 },
 	ZoomOut: { svg: ZoomOut, size: 16 },
 	ZoomReset: { svg: ZoomReset, size: 16 },

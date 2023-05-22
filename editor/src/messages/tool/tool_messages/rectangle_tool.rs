@@ -1,29 +1,63 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
+use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, NumberInput, WidgetHolder};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use glam::DVec2;
-use graphene_core::vector::style::Fill;
+use graphene_core::vector::style::{Fill, Stroke};
+use graphene_core::Color;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct RectangleTool {
 	fsm_state: RectangleToolFsmState,
 	tool_data: RectangleToolData,
+	options: RectangleToolOptions,
+}
+
+pub struct RectangleToolOptions {
+	line_weight: f64,
+	fill: ToolColorOptions,
+	stroke: ToolColorOptions,
+}
+
+impl Default for RectangleToolOptions {
+	fn default() -> Self {
+		Self {
+			line_weight: 5.,
+			fill: ToolColorOptions::new_secondary(),
+			stroke: ToolColorOptions::new_primary(),
+		}
+	}
+}
+
+#[remain::sorted]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+pub enum RectangleOptionsUpdate {
+	FillColor(Option<Color>),
+	FillColorType(ToolColorType),
+	LineWeight(f64),
+	StrokeColor(Option<Color>),
+	StrokeColorType(ToolColorType),
+	WorkingColors(Option<Color>, Option<Color>),
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Rectangle)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum RectangleToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
+	#[remain::unsorted]
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	DragStart,
@@ -32,13 +66,76 @@ pub enum RectangleToolMessage {
 		center: Key,
 		lock_ratio: Key,
 	},
+	UpdateOptions(RectangleOptionsUpdate),
 }
 
-impl PropertyHolder for RectangleTool {}
+fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+	NumberInput::new(Some(line_weight))
+		.unit(" px")
+		.label("Weight")
+		.min(0.)
+		.on_update(|number_input: &NumberInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.widget_holder()
+}
+
+impl PropertyHolder for RectangleTool {
+	fn properties(&self) -> Layout {
+		let mut widgets = self.options.fill.create_widgets(
+			"Fill",
+			true,
+			WidgetCallback::new(|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value)).into()),
+		);
+
+		widgets.push(WidgetHolder::section_separator());
+
+		widgets.append(&mut self.options.stroke.create_widgets(
+			"Stroke",
+			true,
+			WidgetCallback::new(|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(None)).into()),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColorType(color_type.clone())).into()),
+			WidgetCallback::new(|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value)).into()),
+		));
+		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(create_weight_widget(self.options.line_weight));
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+}
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for RectangleTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+		if let ToolMessage::Rectangle(RectangleToolMessage::UpdateOptions(action)) = message {
+			match action {
+				RectangleOptionsUpdate::FillColor(color) => {
+					self.options.fill.custom_color = color;
+					self.options.fill.color_type = ToolColorType::Custom;
+				}
+				RectangleOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+				RectangleOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				RectangleOptionsUpdate::StrokeColor(color) => {
+					self.options.stroke.custom_color = color;
+					self.options.stroke.color_type = ToolColorType::Custom;
+				}
+				RectangleOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+				RectangleOptionsUpdate::WorkingColors(primary, secondary) => {
+					self.options.stroke.primary_working_color = primary;
+					self.options.stroke.secondary_working_color = secondary;
+					self.options.fill.primary_working_color = primary;
+					self.options.fill.secondary_working_color = secondary;
+				}
+			}
+
+			responses.add(LayoutMessage::SendLayout {
+				layout: self.properties(),
+				layout_target: LayoutTarget::ToolOptions,
+			});
+
+			return;
+		}
+
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -72,9 +169,9 @@ impl ToolMetadata for RectangleTool {
 impl ToolTransition for RectangleTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: None,
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
-			selection_changed: None,
+			working_color_changed: Some(RectangleToolMessage::WorkingColorChanged.into()),
+			..Default::default()
 		}
 	}
 }
@@ -93,7 +190,7 @@ struct RectangleToolData {
 
 impl Fsm for RectangleToolFsmState {
 	type ToolData = RectangleToolData;
-	type ToolOptions = ();
+	type ToolOptions = RectangleToolOptions;
 
 	fn transition(
 		self,
@@ -106,7 +203,7 @@ impl Fsm for RectangleToolFsmState {
 			render_data,
 			..
 		}: &mut ToolActionHandlerData,
-		_tool_options: &Self::ToolOptions,
+		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		use RectangleToolFsmState::*;
@@ -125,9 +222,16 @@ impl Fsm for RectangleToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 					shape_data.path = Some(layer_path.clone());
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+					let fill_color = tool_options.fill.active_color();
 					responses.add(GraphOperationMessage::FillSet {
+						layer: layer_path.clone(),
+						fill: if fill_color.is_some() { Fill::Solid(fill_color.unwrap()) } else { Fill::None },
+					});
+
+					responses.add(GraphOperationMessage::StrokeSet {
 						layer: layer_path,
-						fill: Fill::solid(global_tool_data.primary_color),
+						stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 					});
 
 					Drawing
@@ -151,6 +255,13 @@ impl Fsm for RectangleToolFsmState {
 					shape_data.cleanup(responses);
 
 					Ready
+				}
+				(_, WorkingColorChanged) => {
+					responses.add(RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::WorkingColors(
+						Some(global_tool_data.primary_color),
+						Some(global_tool_data.secondary_color),
+					)));
+					self
 				}
 				_ => self,
 			}

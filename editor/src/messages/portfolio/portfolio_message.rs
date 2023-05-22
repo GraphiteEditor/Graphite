@@ -128,6 +128,7 @@ pub enum PortfolioMessage {
 	SetImageBlobUrl {
 		document_id: u64,
 		layer_path: Vec<LayerId>,
+		node_id: Option<NodeId>,
 		blob_url: String,
 		resolution: (f64, f64),
 	},
