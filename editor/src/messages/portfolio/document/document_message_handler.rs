@@ -48,9 +48,11 @@ pub struct DocumentMessageHandler {
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
+	#[serde(default)]
 	pub snapping_enabled: bool,
 	#[serde(default)]
 	pub grid_enabled: bool,
+	#[serde(default)]
 	pub overlays_visible: bool,
 
 	#[serde(skip)]
