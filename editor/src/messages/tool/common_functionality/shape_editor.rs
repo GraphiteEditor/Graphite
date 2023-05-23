@@ -219,7 +219,7 @@ impl ShapeState {
 			let Ok(layer) = document.layer(layer_path) else { continue };
 			let Some(vector_data) = layer.as_vector_data() else { continue };
 
-			let opposing_handle_lengths = opposing_handle_lengths.as_ref().map(|lengths| lengths.get(layer_path)).flatten();
+			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(layer_path));
 
 			let transform = document.multiply_transforms(layer_path).unwrap_or(glam::DAffine2::IDENTITY);
 

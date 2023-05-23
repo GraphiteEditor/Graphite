@@ -1,21 +1,19 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::utility_types::ImaginateServerStatus;
+
 use crate::messages::prelude::*;
 
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use document_legacy::Operation;
 use glam::DVec2;
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::{concrete, imaginate_input::*};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
-use graphene_core::EditorApi;
+
 use graphene_core::{Cow, Type, TypeDescriptor};
 
 use super::document_node_types::NodePropertiesContext;
-use super::{FrontendGraphDataType, IMAGINATE_NODE};
+use super::FrontendGraphDataType;
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = WidgetHolder::text_widget(text);
@@ -731,7 +729,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			.into_iter()
 			.map(|section| {
 				section
-					.into_iter()
+					.iter()
 					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
 					.collect()
 			})
@@ -956,7 +954,8 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 	result
 }
 
-pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	/*
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
 	let layer_path = context.layer_path.to_vec();
 
@@ -1513,6 +1512,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	layout.extend_from_slice(&[improve_faces, tiling]);
 
 	layout
+		*/
+	todo!()
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {

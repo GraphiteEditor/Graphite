@@ -1,32 +1,36 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
 use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
-use crate::messages::portfolio::document::utility_types::misc::DocumentRenderMode;
+
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use document_legacy::{document::pick_safe_imaginate_resolution, layers::layer_info::LayerDataType};
+use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::{LayerId, Operation};
-use dyn_any::DynAny;
-use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
+
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::executor::Compiler;
 use graph_craft::imaginate_input::*;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{SvgSegment, SvgSegmentList};
+use graphene_core::text::FontCache;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::vector::VectorData;
+
 use graphene_core::{Color, EditorApi};
 use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Default)]
-pub struct NodeGraphExecutor {
+pub struct NodeRuntime {
 	pub(crate) executor: DynamicExecutor,
-	// TODO: This is a memory leak since layers are never removed
-	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
+	font_cache: FontCache,
+	receiver: Receiver<NodeRuntimeMessage>,
+	sender: Sender<GenerationResponse>,
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 }
 
@@ -35,7 +39,72 @@ fn get_imaginate_index(name: &str) -> usize {
 	IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"))
 }
 
-impl NodeGraphExecutor {
+enum NodeRuntimeMessage {
+	GenerationRequest(GenerationRequest),
+	FontCacheUpdate(FontCache),
+}
+
+pub(crate) struct GenerationRequest {
+	generation_id: u64,
+	graph: NodeNetwork,
+	path: Vec<LayerId>,
+	image_frame: Option<ImageFrame<Color>>,
+}
+pub(crate) struct GenerationResponse {
+	generation_id: u64,
+	result: Result<TaggedValue, String>,
+	updates: VecDeque<Message>,
+}
+
+thread_local! {
+	static NODE_RUNTIME: RefCell<Option<NodeRuntime>> =  RefCell::new(None);
+}
+
+impl NodeRuntime {
+	fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<GenerationResponse>) -> Self {
+		let executor = DynamicExecutor::default();
+		Self {
+			executor,
+			receiver,
+			sender,
+			font_cache: FontCache::default(),
+			thumbnails: Default::default(),
+		}
+	}
+	pub fn run(&mut self) {
+		let mut requests = self.receiver.try_iter().collect::<Vec<_>>();
+		requests.reverse();
+		requests.dedup_by_key(|x| match x {
+			NodeRuntimeMessage::FontCacheUpdate(_) => None,
+			NodeRuntimeMessage::GenerationRequest(x) => Some(x.path.clone()),
+		});
+
+		for request in requests {
+			match request {
+				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
+				NodeRuntimeMessage::GenerationRequest(GenerationRequest {
+					generation_id,
+					graph,
+					image_frame,
+					path,
+					..
+				}) => {
+					let (network, monitor_nodes) = Self::wrap_network(graph);
+
+					let result = self.execute_network(network, image_frame);
+					let mut responses = VecDeque::new();
+					self.update_thumbnails(&path, monitor_nodes, &mut responses);
+					let response = GenerationResponse {
+						generation_id,
+						result,
+						updates: responses,
+					};
+					self.sender.send(response);
+				}
+			}
+		}
+	}
+
 	/// Wraps a network in a scope and returns the new network and the paths to the monitor nodes.
 	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
 		let mut scoped_network = wrap_network_in_scope(network);
@@ -52,8 +121,12 @@ impl NodeGraphExecutor {
 		(scoped_network, monitor_nodes)
 	}
 
-	/// Executes the network by flattening it and creating a borrow stack.
-	fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, editor_api: EditorApi<'a>) -> Result<Box<dyn dyn_any::DynAny + 'a>, String> {
+	fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
+		let editor_api = EditorApi {
+			font_cache: Some(&self.font_cache),
+			image_frame,
+		};
+
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
@@ -68,11 +141,124 @@ impl NodeGraphExecutor {
 		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
-		match self.executor.input_type() {
+		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(EditorApi) => self.executor.execute(editor_api.into_dyn()).map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
+		};
+		match result {
+			Ok(result) => match TaggedValue::try_from_any(result) {
+				Some(x) => Ok(x),
+				None => Err("Invalid output type".to_string()),
+			},
+			Err(e) => Err(e),
 		}
+	}
+
+	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
+	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: Vec<Vec<u64>>, responses: &mut VecDeque<Message>) {
+		let mut thumbnails_changed: bool = false;
+		let mut image_data: Vec<_> = Vec::new();
+		for node_path in monitor_nodes {
+			let Some(value) = self.executor.introspect(&node_path).flatten() else {
+				warn!("No introspect");
+				continue;
+			};
+			let Some(graphic_group) = value.downcast_ref::<graphene_core::GraphicGroup>() else {
+				warn!("Not graphic");
+				continue;
+			};
+			use graphene_core::renderer::*;
+			let bounds = graphic_group.bounding_box(DAffine2::IDENTITY);
+			let render_params = RenderParams::new(ViewMode::Normal, bounds, true);
+			let mut render = SvgRender::new();
+			graphic_group.render_svg(&mut render, &render_params);
+			let [min, max] = bounds.unwrap_or_default();
+			render.format_svg(min, max);
+			info!("SVG {}", render.svg);
+
+			if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_path.get(node_path.len() - 2).copied()) {
+				let old_thumbnail = self.thumbnails.entry(layer_id).or_default().entry(node_id).or_default();
+				if *old_thumbnail != render.svg {
+					*old_thumbnail = render.svg;
+					thumbnails_changed = true;
+				}
+			}
+			let resize = Some(DVec2::splat(100.));
+			let create_image_data = |(node_id, image)| NodeGraphExecutor::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok();
+			image_data.extend(render.image_data.into_iter().filter_map(create_image_data))
+		}
+		if !image_data.is_empty() {
+			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
+		} else if thumbnails_changed {
+			responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+		}
+	}
+}
+
+pub fn run_node_graph() {
+	NODE_RUNTIME.with(|runtime| {
+		let mut runtime = runtime.borrow_mut();
+		if let Some(runtime) = runtime.as_mut() {
+			runtime.run();
+		}
+	});
+}
+
+#[derive(Debug)]
+pub struct NodeGraphExecutor {
+	pub(crate) executor: DynamicExecutor,
+	sender: Sender<NodeRuntimeMessage>,
+	receiver: Receiver<GenerationResponse>,
+	// TODO: This is a memory leak since layers are never removed
+	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
+	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
+	futures: HashMap<u64, ExecutionContext>,
+}
+
+#[derive(Debug, Clone)]
+struct ExecutionContext {
+	layer_path: Vec<LayerId>,
+	document_id: u64,
+}
+
+impl Default for NodeGraphExecutor {
+	fn default() -> Self {
+		let (request_sender, request_reciever) = std::sync::mpsc::channel();
+		let (response_sender, response_reciever) = std::sync::mpsc::channel();
+		NODE_RUNTIME.with(|runtime| {
+			let mut runtime = runtime.borrow_mut();
+			*runtime = Some(NodeRuntime::new(request_reciever, response_sender));
+		});
+
+		Self {
+			executor: Default::default(),
+			futures: Default::default(),
+			sender: request_sender,
+			receiver: response_reciever,
+			last_output_type: Default::default(),
+			thumbnails: Default::default(),
+		}
+	}
+}
+
+impl NodeGraphExecutor {
+	/// Execute the network by flattening it and creating a borrow stack.
+	fn queue_execution(&self, network: NodeNetwork, image_frame: Option<ImageFrame<Color>>, layer_path: Vec<LayerId>) -> u64 {
+		let generation_id = generate_uuid();
+		let request = GenerationRequest {
+			path: layer_path,
+			graph: network,
+			image_frame,
+			generation_id,
+		};
+		self.sender.send(NodeRuntimeMessage::GenerationRequest(request));
+
+		generation_id
+	}
+
+	pub fn update_font_cache(&self, font_cache: FontCache) {
+		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache));
 	}
 
 	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
@@ -84,7 +270,9 @@ impl NodeGraphExecutor {
 	}
 
 	/// Computes an input for a node in the graph
-	pub fn compute_input<T: dyn_any::StaticType>(&mut self, old_network: &NodeNetwork, node_path: &[NodeId], mut input_index: usize, editor_api: Cow<EditorApi<'_>>) -> Result<T, String> {
+	pub fn compute_input<T: dyn_any::StaticType>(&mut self, _old_network: &NodeNetwork, _node_path: &[NodeId], _input_index: usize, _editor_api: Cow<EditorApi<'_>>) -> Result<u64, String> {
+		todo!()
+		/*
 		let mut network = old_network.clone();
 		// Adjust the output of the graph so we find the relevant output
 		'outer: for end in (0..node_path.len()).rev() {
@@ -110,7 +298,7 @@ impl NodeGraphExecutor {
 						.0;
 				}
 				// If the input is just a value, return that value
-				NodeInput::Value { tagged_value, .. } => return dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v),
+				NodeInput::Value { tagged_value, .. } => return Some(dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v)),
 				// If the input is from a node, set the node to be the output (so that is what is evaluated)
 				NodeInput::Node { node_id, output_index, .. } => {
 					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
@@ -120,10 +308,8 @@ impl NodeGraphExecutor {
 			}
 		}
 
-		let (network, _) = Self::wrap_network(network);
-		let boxed = self.execute_network(network, editor_api.into_owned())?;
-
-		dyn_any::downcast::<T>(boxed).map(|v| *v)
+		self.queue_execution(network, editor_api.into_owned())?
+		*/
 	}
 
 	/// Encodes an image into a format using the image crate
@@ -146,7 +332,8 @@ impl NodeGraphExecutor {
 		Ok::<_, String>((image_data, size))
 	}
 
-	fn imaginate_parameters(&mut self, network: &NodeNetwork, node_path: &[LayerId], resolution: DVec2, editor_api: &EditorApi) -> Result<ImaginateGenerationParameters, String> {
+	fn imaginate_parameters(&mut self, _network: &NodeNetwork, _node_path: &[LayerId], _resolution: DVec2, _editor_api: &EditorApi) -> Result<ImaginateGenerationParameters, String> {
+		/*
 		let get = get_imaginate_index;
 		Ok(ImaginateGenerationParameters {
 			seed: self.compute_input::<f64>(network, node_path, get("Seed"), Cow::Borrowed(editor_api))? as u64,
@@ -163,9 +350,18 @@ impl NodeGraphExecutor {
 			restore_faces: self.compute_input(network, node_path, get("Improve Faces"), Cow::Borrowed(editor_api))?,
 			tiling: self.compute_input(network, node_path, get("Tiling"), Cow::Borrowed(editor_api))?,
 		})
+		*/
+		todo!()
 	}
 
-	fn imaginate_base_image(&mut self, network: &NodeNetwork, imaginate_node_path: &[LayerId], resolution: DVec2, editor_api: &EditorApi) -> Result<Option<(ImaginateBaseImage, DAffine2)>, String> {
+	fn imaginate_base_image(
+		&mut self,
+		_network: &NodeNetwork,
+		_imaginate_node_path: &[LayerId],
+		_resolution: DVec2,
+		_editor_api: &EditorApi,
+	) -> Result<Option<(ImaginateBaseImage, DAffine2)>, String> {
+		/*
 		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node_path, get_imaginate_index("Adapt Input Image"), Cow::Borrowed(editor_api))?;
 		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
 			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node_path, get_imaginate_index("Input Image"), Cow::Borrowed(editor_api))?)
@@ -188,17 +384,20 @@ impl NodeGraphExecutor {
 			None
 		};
 		Ok(base_image)
+		*/
+		todo!()
 	}
 
 	fn imaginate_mask_image(
 		&mut self,
-		network: &NodeNetwork,
-		node_path: &[LayerId],
-		editor_api: &EditorApi<'_>,
-		image_transform: Option<DAffine2>,
-		document: &mut DocumentMessageHandler,
-		persistent_data: &PersistentData,
+		_network: &NodeNetwork,
+		_node_path: &[LayerId],
+		_editor_api: &EditorApi<'_>,
+		_image_transform: Option<DAffine2>,
+		_document: &mut DocumentMessageHandler,
+		_persistent_data: &PersistentData,
 	) -> Result<Option<ImaginateMaskImage>, String> {
+		/*
 		if let Some(transform) = image_transform {
 			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &node_path, get_imaginate_index("Masking Layer"), Cow::Borrowed(&editor_api))?;
 
@@ -227,17 +426,20 @@ impl NodeGraphExecutor {
 		} else {
 			Ok(None)
 		}
+		*/
+		todo!()
 	}
 
 	fn generate_imaginate(
 		&mut self,
-		network: NodeNetwork,
-		imaginate_node_path: Vec<NodeId>,
-		(document, document_id): (&mut DocumentMessageHandler, u64),
-		layer_path: Vec<LayerId>,
-		mut editor_api: EditorApi<'_>,
-		(preferences, persistent_data): (&PreferencesMessageHandler, &PersistentData),
+		_network: NodeNetwork,
+		_imaginate_node_path: Vec<NodeId>,
+		(_document, _document_id): (&mut DocumentMessageHandler, u64),
+		_layer_path: Vec<LayerId>,
+		_editor_api: EditorApi<'_>,
+		(_preferences, _persistent_data): (&PreferencesMessageHandler, &PersistentData),
 	) -> Result<Message, String> {
+		/*
 		let image = editor_api.image_frame.take();
 
 		// Get the node graph layer
@@ -277,6 +479,8 @@ impl NodeGraphExecutor {
 			node_path: imaginate_node_path,
 		}
 		.into())
+			*/
+		todo!()
 	}
 
 	/// Generate a new [`FrontendImageData`] from the [`Image`].
@@ -296,14 +500,14 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing either the Imaginate node or the entire graph
-	pub fn evaluate_node_graph(
+	pub fn submit_node_graph_evaluation(
 		&mut self,
 		(document_id, documents): (u64, &mut HashMap<u64, DocumentMessageHandler>),
 		layer_path: Vec<LayerId>,
 		(input_image_data, (width, height)): (Vec<u8>, (u32, u32)),
-		imaginate_node: Option<Vec<NodeId>>,
-		persistent_data: (&PreferencesMessageHandler, &PersistentData),
-		responses: &mut VecDeque<Message>,
+		_imaginate_node: Option<Vec<NodeId>>,
+		_persistent_data: (&PreferencesMessageHandler, &PersistentData),
+		_responses: &mut VecDeque<Message>,
 	) -> Result<(), String> {
 		// Reformat the input image data into an RGBA f32 image
 		let image = graphene_core::raster::Image::from_image_data(&input_image_data, width, height);
@@ -315,10 +519,6 @@ impl NodeGraphExecutor {
 		// Construct the input image frame
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
-		let editor_api = EditorApi {
-			image_frame: Some(image_frame),
-			font_cache: Some(&persistent_data.1.font_cache),
-		};
 
 		let layer_layer = match &layer.data {
 			LayerDataType::Layer(layer) => Ok(layer),
@@ -327,97 +527,71 @@ impl NodeGraphExecutor {
 		let network = layer_layer.network.clone();
 
 		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
-		if let Some(imaginate_node) = imaginate_node {
+		/*if let Some(imaginate_node) = imaginate_node {
 			responses.add(self.generate_imaginate(network, imaginate_node, (document, document_id), layer_path, editor_api, persistent_data)?);
 			return Ok(());
-		}
+		}*/
 		// Execute the node graph
-		let (network, monitor_nodes) = Self::wrap_network(network);
-		let boxed_node_graph_output = self.execute_network(network, editor_api)?;
+		let generation_id = self.queue_execution(network, Some(image_frame), layer_path.clone());
 
-		// Check if the output is vector data
-		if core::any::TypeId::of::<VectorData>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
-			// Update the cached vector data on the layer
-			let vector_data: VectorData = dyn_any::downcast(boxed_node_graph_output).map(|v| *v)?;
-			let transform = vector_data.transform.to_cols_array();
-			self.last_output_type.insert(layer_path.clone(), Some(concrete!(VectorData)));
-			responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-			responses.add(Operation::SetVectorData { path: layer_path, vector_data });
-		} else if core::any::TypeId::of::<ImageFrame<Color>>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
-			// Attempt to downcast to an image frame
-			let ImageFrame { image, transform } = dyn_any::downcast(boxed_node_graph_output).map(|image_frame| *image_frame)?;
-			self.last_output_type.insert(layer_path.clone(), Some(concrete!(ImageFrame<Color>)));
-
-			// Don't update the frame's transform if the new transform is DAffine2::ZERO.
-			let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
-
-			// If no image was generated, clear the frame
-			if image.width == 0 || image.height == 0 {
-				responses.add(DocumentMessage::FrameClear);
-
-				// Update the transform based on the graph output
-				if let Some(transform) = transform {
-					responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				}
-			} else {
-				let image_data = vec![Self::to_frontend_image_data(image, transform, &layer_path, None, None)?];
-				responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
-			}
-		} else if core::any::TypeId::of::<graphene_core::Artboard>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
-			let artboard: graphene_core::Artboard = dyn_any::downcast(boxed_node_graph_output).map(|artboard| *artboard)?;
-			info!("{artboard:#?}");
-			self.update_thumbnails(&layer_path, monitor_nodes, responses);
-
-			return Err(format!("Artboard (see console)"));
-		} else if core::any::TypeId::of::<graphene_core::GraphicGroup>() == DynAny::type_id(boxed_node_graph_output.as_ref()) {
-			let graphic_group: graphene_core::GraphicGroup = dyn_any::downcast(boxed_node_graph_output).map(|graphic| *graphic)?;
-			info!("{graphic_group:#?}");
-			self.update_thumbnails(&layer_path, monitor_nodes, responses);
-
-			return Err(format!("Graphic group (see console)"));
-		}
+		self.futures.insert(generation_id, ExecutionContext { layer_path, document_id });
+		//self.process_node_graph_output(boxed_node_graph_output, layer_path, responses, document_id)?;
 
 		Ok(())
 	}
 
-	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
-	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: Vec<Vec<u64>>, responses: &mut VecDeque<Message>) {
-		let mut thumbnails_changed: bool = false;
-		let mut image_data: Vec<_> = Vec::new();
-		for node_path in monitor_nodes {
-			let Some(value) = self.executor.introspect(&node_path).flatten() else {
-				warn!("No introspect");
-				continue;
-			};
-			let Some(graphic_group) = value.downcast_ref::<graphene_core::GraphicGroup>() else {
-				warn!("Not graphic");
-				continue;
-			};
-			use graphene_core::renderer::*;
-			let bounds = graphic_group.bounding_box(DAffine2::IDENTITY);
-			let render_params = RenderParams::new(ViewMode::Normal, bounds, true);
-			let mut render = SvgRender::new();
-			graphic_group.render_svg(&mut render, &render_params);
-			let [min, max] = bounds.unwrap_or_default();
-			render.format_svg(min, max);
-			info!("SVG {}", render.svg);
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let results = self.receiver.try_iter().collect::<Vec<_>>();
+		for response in results {
+			let GenerationResponse { generation_id, result, updates } = response;
+			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
+			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
+			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
+			responses.extend(updates);
+		}
+		Ok(())
+	}
 
-			if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_path.get(node_path.len() - 2).copied()) {
-				let old_thumbnail = self.thumbnails.entry(layer_id).or_default().entry(node_id).or_default();
-				if *old_thumbnail != render.svg {
-					*old_thumbnail = render.svg;
-					thumbnails_changed = true;
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
+		match node_graph_output {
+			TaggedValue::VectorData(vector_data) => {
+				// Update the cached vector data on the layer
+				let transform = vector_data.transform.to_cols_array();
+				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
+				responses.add(Operation::SetVectorData { path: layer_path, vector_data });
+			}
+			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
+				// Don't update the frame's transform if the new transform is DAffine2::ZERO.
+				let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
+
+				// If no image was generated, clear the frame
+				if image.width == 0 || image.height == 0 {
+					responses.add(DocumentMessage::FrameClear);
+
+					// Update the transform based on the graph output
+					if let Some(transform) = transform {
+						responses.add(Operation::SetLayerTransform { path: layer_path, transform });
+					}
+				} else {
+					// Update the image data
+					let image_data = vec![Self::to_frontend_image_data(image, transform, &layer_path, None, None)?];
+					responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
 				}
 			}
-			let resize = Some(DVec2::splat(100.));
-			let create_image_data = |(node_id, image)| Self::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok();
-			image_data.extend(render.image_data.into_iter().filter_map(create_image_data))
-		}
-		if !image_data.is_empty() {
-			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
-		} else if thumbnails_changed {
-			responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-		}
+			TaggedValue::Artboard(artboard) => {
+				info!("{artboard:#?}");
+				return Err("Artboard (see console)".to_string());
+			}
+			TaggedValue::GraphicGroup(graphic_group) => {
+				info!("{graphic_group:#?}");
+				return Err("Graphic group (see console)".to_string());
+			}
+			_ => {
+				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));
+			}
+		};
+		Ok(())
 	}
 
 	/// When a blob url for a thumbnail is loaded, update the state and the UI.
@@ -426,7 +600,6 @@ impl NodeGraphExecutor {
 			if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
 				*segment = SvgSegment::String(blob_url);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-				return;
 			}
 		}
 	}
