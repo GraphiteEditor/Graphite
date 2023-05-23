@@ -504,25 +504,26 @@ impl<'a> Selected<'a> {
 						let layer_spacepos = layerspace_rotation.transform_point2(viewport_point);
 
 						let mut position: DVec2 = layer_spacepos;
-						match transform_operator {
-							Some(transform_operation) => {
-								if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
-									if grid {
-										let viewspace_pos = viewspace.transform_point2(layer_spacepos);
-										//todo convert from viewspace_pos to doc position
-										let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
+						// match transform_operator {
+						// 	Some(transform_operation) => {
+						// 		if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
+						// 			if grid {
+						// 				debug!("point: {:?}", point_id);
+						// 				let viewspace_pos = viewspace.transform_point2(layer_spacepos);
+						// 				//todo convert from viewspace_pos to doc position
+						// 				let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
 
-										//todo convert from viewport pos to document pos (rounding happens here)
-										let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
+						// 				//todo convert from viewport pos to document pos (rounding happens here)
+						// 				let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
 
-										//round document pos then convert back to viewport
-										let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
-										position = new_layerspace;
-									}
-								}
-							}
-							None => {}
-						}
+						// 				//round document pos then convert back to viewport
+						// 				let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
+						// 				position = new_layerspace;
+						// 			}
+						// 		}
+						// 	}
+						// 	None => {}
+						// }
 
 						let point = *point_id;
 

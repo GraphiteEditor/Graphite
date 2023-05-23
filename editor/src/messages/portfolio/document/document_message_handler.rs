@@ -85,7 +85,7 @@ impl Default for DocumentMessageHandler {
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			snapping_enabled: true,
-			grid_enabled: true,
+			grid_enabled: false,
 			overlays_visible: true,
 
 			document_undo_history: VecDeque::new(),
@@ -217,21 +217,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			ActivateGrid { grid } => {
-				// 				Grid button will call DocMessageHandler::ActivateGrid
-				// ActivateGrid will
-				// 	-set Docmessagehandler.snapping to be true
-				// 	-transform all layers points to rounded out integer
-
-				// In Select Tool:
-				// 	when dragging we will check if DocMessageHandler.snapping is enabled
-				// 		-if so then we will round all points
-
-				// responses.add(GraphOperationMessage::TransformChange {
-				// 			layer: path.to_vec(),
-				// 			transform: DAffine2::from_translation(translation),
-				// 			transform_in: TransformIn::Viewport,
-				// 			skip_rerender: false,
-				// 		});
 				self.grid_enabled = grid;
 			}
 			AddSelectedLayers { additional_layers } => {
@@ -1613,7 +1598,7 @@ impl DocumentMessageHandler {
 				direction: SeparatorDirection::Horizontal,
 			})),
 			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: true,
+				checked: false,
 				icon: "Grid".into(),
 				tooltip: "Grid".into(),
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::ActivateGrid { grid: optional_input.checked }.into()),

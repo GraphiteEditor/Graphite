@@ -300,11 +300,9 @@ impl SnapManager {
 	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
 	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, mouse_delta: DVec2) -> DVec2 {
 		let mut snapping_delta = DVec2::ZERO;
-		// where do i get layer path from?
 		if document_message_handler.snapping_enabled {
 			snapping_delta = self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
 		}
-		//
 		if document_message_handler.grid_enabled {
 			let doc_transform = document_message_handler.document_legacy.root.transform;
 			let layer_document_space = doc_transform.transform_point2(DVec2::ZERO);
