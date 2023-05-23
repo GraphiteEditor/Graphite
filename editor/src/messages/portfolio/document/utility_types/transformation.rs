@@ -6,11 +6,9 @@ use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
-use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
-use serde::__private::doc;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -396,14 +394,14 @@ impl<'a> Selected<'a> {
 					let mut new = to.inverse() * transformation * to * original_layer_transforms;
 
 					match transform_operator {
-						Some(transform_operation) => {
+						Some(_transform_operation) => {
 							if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
 								match mouse_movement {
-									Some(mut direction) => {
+									Some(direction) => {
 										if grid {
 											// Find the current position in doc space
 											let viewspace_pos = viewspace.transform_point2(DVec2 { x: 0.0, y: 0.0 });
-											let mut doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
+											let doc_pos = self.document.root.transform.inverse().transform_point2(viewspace_pos);
 
 											// If there is movement of the mouse
 											if direction.x > 0.0 || direction.x < 0.0 || direction.y > 0.0 || direction.y < 0.0 {
@@ -502,29 +500,7 @@ impl<'a> Selected<'a> {
 
 						//apply transformation and convert from viewport to layerspace position
 						let layer_spacepos = layerspace_rotation.transform_point2(viewport_point);
-
-						let mut position: DVec2 = layer_spacepos;
-						// match transform_operator {
-						// 	Some(transform_operation) => {
-						// 		if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
-						// 			if grid {
-						// 				debug!("point: {:?}", point_id);
-						// 				let viewspace_pos = viewspace.transform_point2(layer_spacepos);
-						// 				//todo convert from viewspace_pos to doc position
-						// 				let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
-
-						// 				//todo convert from viewport pos to document pos (rounding happens here)
-						// 				let doc_pos2 = doc_transform.transform_point2(doc_pos.round());
-
-						// 				//round document pos then convert back to viewport
-						// 				let new_layerspace = viewspace.inverse().transform_point2(doc_pos2);
-						// 				position = new_layerspace;
-						// 			}
-						// 		}
-						// 	}
-						// 	None => {}
-						// }
-
+						let position: DVec2 = layer_spacepos;
 						let point = *point_id;
 
 						self.responses.add(GraphOperationMessage::Vector {

@@ -12,7 +12,6 @@ use document_legacy::intersection::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
-use serde::__private::de;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -287,16 +286,16 @@ impl Fsm for PathToolFsmState {
 						let previous_mouse_pos_viewport_space = doc_transform.transform_point2(previous_mouse_pos_doc_space);
 						let previous_mouse_pos_viewport_space_rounded = doc_transform.transform_point2(previous_mouse_pos_doc_space.round());
 
-						if let Some(point_under) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
-							let mut delta = snapped_position - previous_mouse_pos_viewport_space;
+						if let Some(_point_under) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
+							let delta = snapped_position - previous_mouse_pos_viewport_space;
 							shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
 						} else {
-							let mut delta = snapped_position - previous_mouse_pos_viewport_space_rounded;
+							let delta = snapped_position - previous_mouse_pos_viewport_space_rounded;
 							shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
 						}
 						tool_data.previous_mouse_position = snapped_position;
 					} else {
-						let mut delta = snapped_position - tool_data.previous_mouse_position;
+						let delta = snapped_position - tool_data.previous_mouse_position;
 						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
 						tool_data.previous_mouse_position = snapped_position;
 					}
