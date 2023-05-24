@@ -146,14 +146,22 @@ where
 		let mut result = Vec::with_capacity(data.len() * 4);
 		for color in data {
 			let a = color.a().to_f32();
-			let undo_premultiply = 1.0 / a;
-			let r = float_to_srgb_u8(color.r().to_f32() * undo_premultiply);
-			let g = float_to_srgb_u8(color.g().to_f32() * undo_premultiply);
-			let b = float_to_srgb_u8(color.b().to_f32() * undo_premultiply);
-			result.push(r);
-			result.push(g);
-			result.push(b);
-			result.push((a * 255.0 + 0.5) as u8);
+			if a < 0.5 / 255.0 {
+				// This would map to fully transparent anyway, avoid expensive encoding.
+				result.push(0);
+				result.push(0);
+				result.push(0);
+				result.push(0);
+			} else {
+				let undo_premultiply = 1.0 / a;
+				let r = float_to_srgb_u8(color.r().to_f32() * undo_premultiply);
+				let g = float_to_srgb_u8(color.g().to_f32() * undo_premultiply);
+				let b = float_to_srgb_u8(color.b().to_f32() * undo_premultiply);
+				result.push(r);
+				result.push(g);
+				result.push(b);
+				result.push((a * 255.0 + 0.5) as u8);
+			}
 		}
 
 		(result, width, height)
