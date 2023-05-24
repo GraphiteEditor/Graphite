@@ -23,7 +23,7 @@ impl Default for BrushStyle {
 			diameter: 40.0,
 			hardness: 50.0,
 			flow: 100.0,
-			spacing: 10.0, // Percentage of diameter.
+			spacing: 50.0, // Percentage of diameter.
 		}
 	}
 }

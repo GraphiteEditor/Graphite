@@ -40,7 +40,7 @@ impl Default for BrushOptions {
 			diameter: 40.,
 			hardness: 50.,
 			flow: 100.,
-			spacing: 10.,
+			spacing: 50.,
 			color: ToolColorOptions::default(),
 		}
 	}
