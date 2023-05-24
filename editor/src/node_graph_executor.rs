@@ -102,7 +102,7 @@ impl NodeRuntime {
 						generation_id,
 						result,
 						updates: responses,
-						new_thumbnails: self.thumbnails.clone()
+						new_thumbnails: self.thumbnails.clone(),
 					};
 					self.sender.send(response);
 				}
@@ -548,7 +548,12 @@ impl NodeGraphExecutor {
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
-			let GenerationResponse { generation_id, result, updates, new_thumbnails } = response;
+			let GenerationResponse {
+				generation_id,
+				result,
+				updates,
+				new_thumbnails,
+			} = response;
 			self.thumbnails = new_thumbnails;
 			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
@@ -565,7 +570,10 @@ impl NodeGraphExecutor {
 				// Update the cached vector data on the layer
 				let transform = vector_data.transform.to_cols_array();
 				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetVectorData { path: layer_path.clone(), vector_data });
+				responses.add(Operation::SetVectorData {
+					path: layer_path.clone(),
+					vector_data,
+				});
 			}
 			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
 				// Don't update the frame's transform if the new transform is DAffine2::ZERO.
