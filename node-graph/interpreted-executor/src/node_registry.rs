@@ -246,16 +246,20 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let stamp = BrushStampGeneratorNode::new(CopiedNode::new(stroke.style.color), CopiedNode::new(stroke.style.hardness), CopiedNode::new(stroke.style.flow));
 					let stamp = stamp.eval(stroke.style.diameter);
 
-					for point in stroke.compute_blit_points() {
-						let translation = TranslateNode::new(CopiedNode::new(stamp));
-						blits.push(translation.eval(point));
-					}
+					let transform = DAffine2::from_scale_angle_translation(DVec2::splat(stroke.style.diameter), 0., -DVec2::splat(stroke.style.diameter / 2.0));
+					let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
+
+					let blend_params = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+					let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
+					let texture = blend_executor.eval((blank_texture, stamp));
+
+					let translations: Vec<_> = stroke.compute_blit_points().into_iter().collect();
+					let blit_node = BlitNode::new(ClonedNode::new(texture), ClonedNode::new(translations), ClonedNode::new(blend_params));
+					blits.push(blit_node);
 				}
 
-				let blend_params = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
-				let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
-				let blend_reduce = ReduceNode::new(background, ValueNode::new(blend_executor));
-				let node = ClonedNode::new(blits.into_iter()).then(blend_reduce);
+				let all_blits = ChainApplyNode::new(background);
+				let node = ClonedNode::new(blits.into_iter()).then(all_blits);
 
 				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 				Box::pin(any)

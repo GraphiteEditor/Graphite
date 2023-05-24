@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Color, Pixel, Sample};
+use graphene_core::raster::bbox::Bbox;
+use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Raster, RasterMut, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
@@ -19,6 +20,22 @@ where
 	Lambda: for<'a> Node<'a, (T, I::Item), Output = T>,
 {
 	iter.fold(initial, |a, x| lambda.eval((a, x)))
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChainApplyNode<Value> {
+	pub value: Value,
+}
+
+#[node_fn(ChainApplyNode)]
+fn chain_apply<I: Iterator, T>(iter: I, mut value: T) -> T
+where
+	I::Item: for<'a> Node<'a, T, Output = T>,
+{
+	for lambda in iter {
+		value = lambda.eval(value);
+	}
+	value
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -132,6 +149,57 @@ pub struct TranslateNode<Translatable> {
 fn translate_node<Data: TransformMut>(offset: DVec2, mut translatable: Data) -> Data {
 	translatable.translate(offset);
 	translatable
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BlitNode<P, Texture, Positions, BlendFn> {
+	texture: Texture,
+	positions: Positions,
+	blend_mode: BlendFn,
+	_p: PhantomData<P>,
+}
+
+#[node_fn(BlitNode<_P>)]
+fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<_P>, mut texture: ImageFrame<_P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<_P>
+where
+	BlendFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+{
+	let orig_transform = texture.transform;
+	for position in positions {
+		texture.transform = DAffine2::from_translation(position) * orig_transform;
+
+		let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
+
+		// Transforms a point from the background image to the foreground image
+		let bg_to_fg = target.transform() * DAffine2::from_scale(1. / target_size);
+
+		// Footprint of the foreground image (0,0) (1, 1) in the background image space
+		let bg_aabb = Bbox::unit().affine_transform(target.transform().inverse() * texture.transform).to_axis_aligned_bbox();
+
+		// Clamp the foreground image to the background image
+		let start = (bg_aabb.start * target_size).max(DVec2::ZERO).as_uvec2();
+		let end = (bg_aabb.end * target_size).min(target_size).as_uvec2();
+
+		for y in start.y..end.y {
+			for x in start.x..end.x {
+				let bg_point = DVec2::new(x as f64, y as f64);
+				let fg_point = bg_to_fg.transform_point2(bg_point);
+
+				let image_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
+				let pos = (DAffine2::from_scale(image_size) * texture.transform.inverse()).transform_point2(fg_point);
+				if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {
+					continue;
+				}
+				if let Some(src_pixel) = texture.image.get_pixel(pos.x as u32, pos.y as u32) {
+					if let Some(dst_pixel) = target.get_pixel_mut(x, y) {
+						*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
+					}
+				}
+			}
+		}
+	}
+
+	target
 }
 
 #[cfg(test)]
