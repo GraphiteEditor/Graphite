@@ -8,6 +8,8 @@ pub struct AxisAlignedBbox {
 }
 
 impl AxisAlignedBbox {
+	pub const ZERO: Self = Self { start: DVec2::ZERO, end: DVec2::ZERO };
+
 	pub fn size(&self) -> DVec2 {
 		self.end - self.start
 	}

@@ -1,6 +1,7 @@
 use glam::{DAffine2, DVec2};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::ops::{CloneNode, IdNode, TypeNode};
+use graphene_core::raster::bbox::AxisAlignedBbox;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
@@ -227,40 +228,40 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 				let bounds: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
 				let strokes: DowncastBothNode<(), Vec<BrushStroke>> = DowncastBothNode::new(args[2]);
-				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
-				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
-				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[5]);
-				let color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[6]);
+				let _diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
+				let _hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
+				let _flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[5]);
+				let _color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[6]);
 
-				let stamp = BrushStampGeneratorNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
-				let stamp = stamp.eval(diameter.eval(()));
+				let strokes = strokes.eval(());
+				let bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 
-				let strokes_eval = strokes.eval(());
-				let blit_points = strokes_eval.iter().map(|s| s.compute_blit_points());
-				let translated = TranslateNode::new(CopiedNode::new(stamp));
-				let mapped = MapNode::new(ValueNode::new(translated));
-				let positions = mapped.eval(blit_points.flatten()).collect::<Vec<_>>();
-
-				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
-				let background_bounds = background_bounds.eval(positions.clone().into_iter());
-				let background_bounds = MergeBoundingBoxNode::new().eval((background_bounds, image.eval(())));
-				let mut background_bounds = CopiedNode::new(background_bounds.unwrap().to_transform());
-
+				let mut background_bounds = CopiedNode::new(bbox.to_transform());
 				let bounds_transform = bounds.eval(()).transform;
 				if bounds_transform != DAffine2::ZERO {
 					background_bounds = CopiedNode::new(bounds_transform);
 				}
 
-				let background_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
-				let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+				let blank_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
+				let background = image.then(ExtendImageNode::new(blank_image));
 
-				let background = ExtendImageNode::new(background_image);
-				let background_image = image.then(background);
+				let mut blits = Vec::new();
+				for stroke in strokes {
+					let stamp = BrushStampGeneratorNode::new(CopiedNode::new(stroke.style.color), CopiedNode::new(stroke.style.hardness), CopiedNode::new(stroke.style.flow));
+					let stamp = stamp.eval(stroke.style.diameter);
 
-				let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
-				let final_image = ClonedNode::new(positions.into_iter()).then(final_image);
+					for point in stroke.compute_blit_points() {
+						let translation = TranslateNode::new(CopiedNode::new(stamp));
+						blits.push(translation.eval(point));
+					}
+				}
 
-				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
+				let blend_params = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+				let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
+				let blend_reduce = ReduceNode::new(background, ValueNode::new(blend_executor));
+				let node = ClonedNode::new(blits.into_iter()).then(blend_reduce);
+
+				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 				Box::pin(any)
 			},
 			NodeIOTypes::new(

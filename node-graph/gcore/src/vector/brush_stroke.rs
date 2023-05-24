@@ -2,6 +2,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
 use std::hash::{Hash, Hasher};
 
+use crate::raster::bbox::AxisAlignedBbox;
 use crate::Color;
 
 /// The style of a brush.
@@ -60,6 +61,18 @@ pub struct BrushStroke {
 }
 
 impl BrushStroke {
+	pub fn bounding_box(&self) -> AxisAlignedBbox {
+		let radius = self.style.diameter / 2.0;
+		self.trace
+			.iter()
+			.map(|sample| AxisAlignedBbox {
+				start: sample.position + DVec2::new(-radius, -radius),
+				end: sample.position + DVec2::new(radius, radius),
+			})
+			.reduce(|a, b| a.union(&b))
+			.unwrap_or(AxisAlignedBbox::ZERO)
+	}
+
 	pub fn compute_blit_points(&self) -> Vec<DVec2> {
 		// We always travel in a straight line towards the next user input,
 		// placing a blit point every time we travelled our spacing distance.
