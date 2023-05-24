@@ -74,15 +74,14 @@ impl NodeRuntime {
 	}
 	pub fn run(&mut self) {
 		let mut requests = self.receiver.try_iter().collect::<Vec<_>>();
-		// TODO: Reenable message deduplication
-		/*
+		// TODO: Currently we still render the document after we submit the node graph execution request.
+		// This should be avoided in the future.
 		requests.reverse();
 		requests.dedup_by_key(|x| match x {
 			NodeRuntimeMessage::FontCacheUpdate(_) => None,
 			NodeRuntimeMessage::GenerationRequest(x) => Some(x.path.clone()),
 		});
 		requests.reverse();
-		*/
 
 		for request in requests {
 			match request {
@@ -553,8 +552,8 @@ impl NodeGraphExecutor {
 			self.thumbnails = new_thumbnails;
 			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
-			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
 			responses.extend(updates);
+			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
 		}
 		Ok(())
 	}
