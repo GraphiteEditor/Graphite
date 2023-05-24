@@ -54,6 +54,7 @@ pub(crate) struct GenerationResponse {
 	generation_id: u64,
 	result: Result<TaggedValue, String>,
 	updates: VecDeque<Message>,
+	new_thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 }
 
 thread_local! {
@@ -73,11 +74,15 @@ impl NodeRuntime {
 	}
 	pub fn run(&mut self) {
 		let mut requests = self.receiver.try_iter().collect::<Vec<_>>();
+		// TODO: Reenable message deduplication
+		/*
 		requests.reverse();
 		requests.dedup_by_key(|x| match x {
 			NodeRuntimeMessage::FontCacheUpdate(_) => None,
 			NodeRuntimeMessage::GenerationRequest(x) => Some(x.path.clone()),
 		});
+		requests.reverse();
+		*/
 
 		for request in requests {
 			match request {
@@ -98,6 +103,7 @@ impl NodeRuntime {
 						generation_id,
 						result,
 						updates: responses,
+						new_thumbnails: self.thumbnails.clone()
 					};
 					self.sender.send(response);
 				}
@@ -543,11 +549,12 @@ impl NodeGraphExecutor {
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
-			let GenerationResponse { generation_id, result, updates } = response;
+			let GenerationResponse { generation_id, result, updates, new_thumbnails } = response;
+			self.thumbnails = new_thumbnails;
 			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
-			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
 			responses.extend(updates);
+			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
 		}
 		Ok(())
 	}
