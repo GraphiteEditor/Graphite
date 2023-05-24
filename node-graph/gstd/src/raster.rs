@@ -199,8 +199,11 @@ fn insert_channel_node<
 	if stencil.width() == 0 {
 		return image;
 	}
-	assert!(stencil.width() == image.width());
-	assert!(stencil.height() == image.height());
+
+	if stencil.width() != image.width() || stencil.height() != image.height() {
+		log::warn!("Stencil and image have different sizes. This is not supported.");
+		return image;
+	}
 
 	for y in 0..image.height() {
 		for x in 0..image.width() {
@@ -225,7 +228,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 }
 
 #[node_macro::node_fn(MaskImageNode<_P, _S>)]
-fn mask_image<
+fn mask_imge<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
 	_P: Copy + Alpha,

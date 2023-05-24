@@ -155,6 +155,47 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
 		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>, RedGreenBlue]),
 		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>, RedGreenBlue]),
+		vec![(
+			NodeIdentifier::new("graphene_std::raster::CombineChannelsNode"),
+			|args| {
+				use graphene_core::raster::*;
+				use graphene_core::value::*;
+
+				let channel_a: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+				let channel_r: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
+				let channel_g: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[2]);
+				let channel_b: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[3]);
+
+				let insert_r = InsertChannelNode::new(channel_r.clone(), CopiedNode::new(RedGreenBlue::Red));
+				let insert_g = InsertChannelNode::new(channel_g.clone(), CopiedNode::new(RedGreenBlue::Green));
+				let insert_b = InsertChannelNode::new(channel_b.clone(), CopiedNode::new(RedGreenBlue::Blue));
+				let complete_node = insert_r.then(insert_g).then(insert_b);
+				let complete_node = complete_node.then(MaskImageNode::new(channel_a.clone()));
+
+				// TODO: Move to FN Node for better performance
+				let (mut transform, mut bounds) = (DAffine2::ZERO, glam::UVec2::ZERO);
+				for imf in [channel_a, channel_r, channel_g, channel_b] {
+					let image = imf.eval(());
+					if image.image.width() > bounds.x {
+						bounds = glam::UVec2::new(image.image.width(), image.image.height());
+						transform = image.transform;
+					}
+				}
+				let empty_image = ImageFrame {
+					image: Image::new(bounds.x, bounds.y, Color::BLACK),
+					transform,
+				};
+				let final_image = ClonedNode::new(empty_image).then(complete_node);
+
+				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
+				Box::pin(any)
+			},
+			NodeIOTypes::new(
+				concrete!(()),
+				concrete!(ImageFrame<Color>),
+				vec![value_fn!(ImageFrame<Color>), value_fn!(ImageFrame<Color>), value_fn!(ImageFrame<Color>), value_fn!(ImageFrame<Color>)],
+			),
+		)],
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		register_node!(graphene_std::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
