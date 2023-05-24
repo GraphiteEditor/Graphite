@@ -14,9 +14,9 @@ use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
+use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
-use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -206,19 +206,18 @@ impl ToolTransition for BrushTool {
 
 #[derive(Clone, Debug, Default)]
 struct BrushToolData {
-	points: Vec<Vec<DVec2>>,
+	strokes: Vec<BrushStroke>,
 	path: Option<Vec<LayerId>>,
 }
 
 impl BrushToolData {
-	fn update_points(&self, responses: &mut VecDeque<Message>) {
+	fn update_strokes(&self, responses: &mut VecDeque<Message>) {
 		if let Some(layer_path) = self.path.clone() {
-			let points = self.points.iter().flatten().cloned().collect();
 			responses.add(NodeGraphMessage::SetQualifiedInputValue {
 				layer_path,
 				node_path: vec![0],
 				input_index: 3,
-				value: TaggedValue::VecDVec2(points),
+				value: TaggedValue::BrushStrokes(self.strokes.clone()),
 			});
 		}
 	}
@@ -264,64 +263,55 @@ impl Fsm for BrushToolFsmState {
 			match (self, event) {
 				(Ready, DragStart) => {
 					responses.add(DocumentMessage::StartTransaction);
-					let existing_points = load_existing_points(document);
-					let new_layer = existing_points.is_none();
-					if let Some((layer_path, points)) = existing_points {
+					let existing_strokes = load_existing_strokes(document);
+					let new_layer = existing_strokes.is_none();
+					if let Some((layer_path, strokes)) = existing_strokes {
 						tool_data.path = Some(layer_path);
-						//tool_data.set_image(image, responses);
-						if tool_data.points.is_empty() {
-							tool_data.points.push(points);
-						}
+						tool_data.strokes = strokes;
 					} else {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.path = Some(document.get_path_for_new_layer());
 					}
 
-					let pos = transform.inverse().transform_point2(input.mouse.position);
-
-					tool_data.points.push(vec![pos]);
+					// Start a new stroke with a single sample.
+					let position = transform.inverse().transform_point2(input.mouse.position);
+					tool_data.strokes.push(BrushStroke {
+						trace: vec![BrushInputSample { position }],
+						style: BrushStyle {
+							color: tool_options.color.active_color().unwrap_or_default(),
+							diameter: tool_options.diameter,
+							hardness: tool_options.hardness,
+							flow: tool_options.flow,
+						},
+					});
 
 					if new_layer {
 						add_brush_render(tool_options, tool_data, responses);
 					} else {
 						//tool_data.update_image(node_graph, responses);
-						tool_data.update_points(responses);
+						tool_data.update_strokes(responses);
 					}
 
 					Drawing
 				}
+
 				(Drawing, PointerMove) => {
-					let pos = transform.inverse().transform_point2(input.mouse.position);
-
-					if tool_data.points.last().and_then(|x| x.last()) != Some(&pos) {
-						// Linear interpolation for when the mouse has moved a lot between frames
-						if let Some(&last_point) = tool_data.points.last().and_then(|x| x.last()) {
-							let distance = (last_point - pos).length();
-							let extra_points = (distance / (tool_options.diameter / 2.)).floor() as usize;
-							tool_data
-								.points
-								.last_mut()
-								.unwrap()
-								.extend((0..extra_points).map(|i| last_point.lerp(pos, (i as f64 + 1.) / (extra_points as f64 + 1.))));
-						}
-
-						if let Some(x) = tool_data.points.last_mut() {
-							x.push(pos)
-						}
+					let position = transform.inverse().transform_point2(input.mouse.position);
+					if let Some(stroke) = tool_data.strokes.last_mut() {
+						stroke.trace.push(BrushInputSample { position })
 					}
-
-					tool_data.update_points(responses);
+					tool_data.update_strokes(responses);
 
 					Drawing
 				}
 				(Drawing, DragStop) | (Drawing, Abort) => {
-					if !tool_data.points.is_empty() {
+					if !tool_data.strokes.is_empty() {
 						responses.add(DocumentMessage::CommitTransaction);
 					} else {
 						responses.add(DocumentMessage::AbortTransaction);
 					}
 
-					tool_data.points.clear();
+					tool_data.strokes.clear();
 					tool_data.path = None;
 
 					Ready
@@ -363,7 +353,7 @@ fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, responses
 			NodeInput::value(TaggedValue::None, false),
 			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			NodeInput::value(TaggedValue::VecDVec2(data.points.last().cloned().unwrap_or_default()), false),
+			NodeInput::value(TaggedValue::BrushStrokes(data.strokes.clone()), false),
 			// Diameter
 			NodeInput::value(TaggedValue::F64(tool_options.diameter), false),
 			// Hardness
@@ -388,7 +378,7 @@ fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, responses
 	graph_modification_utils::new_custom_layer(network, layer_path, responses);
 }
 
-fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<DVec2>)> {
+fn load_existing_strokes(document: &DocumentMessageHandler) -> Option<(Vec<LayerId>, Vec<BrushStroke>)> {
 	if document.selected_layers().count() != 1 {
 		return None;
 	}
@@ -400,10 +390,10 @@ fn load_existing_points(document: &DocumentMessageHandler) -> Option<(Vec<LayerI
 	}
 	let points_input = brush_node.inputs.get(3)?;
 	let NodeInput::Value {
-		tagged_value: TaggedValue::VecDVec2(points),
+		tagged_value: TaggedValue::BrushStrokes(strokes),
 		..
 	} = points_input else {
 		return None };
 
-	Some((layer_path, points.clone()))
+	Some((layer_path, strokes.clone()))
 }

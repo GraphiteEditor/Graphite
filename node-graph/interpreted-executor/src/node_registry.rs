@@ -1,6 +1,7 @@
 use glam::{DAffine2, DVec2};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::ops::{CloneNode, IdNode, TypeNode};
+use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -215,7 +216,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		)],
 		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame<Color>>, params: [ImageFrame<Color>, &ValueNode<BlendImageTupleNode<ValueNode<BlendNode<ClonedNode<BlendMode>, ClonedNode<f64>>>>>]),
 		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame<Color>>, params: [AxisAlignedBbox, &MergeBoundingBoxNode]),
-		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<DVec2>, params: []),
+		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<BrushStroke>, params: []),
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::BrushNode"),
 			|args| {
@@ -225,7 +226,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 
 				let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 				let bounds: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
-				let trace: DowncastBothNode<(), Vec<DVec2>> = DowncastBothNode::new(args[2]);
+				let strokes: DowncastBothNode<(), Vec<BrushStroke>> = DowncastBothNode::new(args[2]);
 				let diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
 				let hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
 				let flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[5]);
@@ -234,12 +235,14 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let stamp = BrushStampGeneratorNode::new(color, CopiedNode::new(hardness.eval(())), CopiedNode::new(flow.eval(())));
 				let stamp = stamp.eval(diameter.eval(()));
 
-				let frames = TranslateNode::new(CopiedNode::new(stamp));
-				let frames = MapNode::new(ValueNode::new(frames));
-				let frames = frames.eval(trace.eval(()).into_iter()).collect::<Vec<_>>();
+				let strokes_eval = strokes.eval(());
+				let flat_positions = strokes_eval.iter().flat_map(|s| s.trace.iter().map(|sample| sample.position));
+				let translated = TranslateNode::new(CopiedNode::new(stamp));
+				let mapped = MapNode::new(ValueNode::new(translated));
+				let positions = mapped.eval(flat_positions).collect::<Vec<_>>();
 
 				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
-				let background_bounds = background_bounds.eval(frames.clone().into_iter());
+				let background_bounds = background_bounds.eval(positions.clone().into_iter());
 				let background_bounds = MergeBoundingBoxNode::new().eval((background_bounds, image.eval(())));
 				let mut background_bounds = CopiedNode::new(background_bounds.unwrap().to_transform());
 
@@ -255,7 +258,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let background_image = image.then(background);
 
 				let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
-				let final_image = ClonedNode::new(frames.into_iter()).then(final_image);
+				let final_image = ClonedNode::new(positions.into_iter()).then(final_image);
 
 				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
 				Box::pin(any)
@@ -266,7 +269,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				vec![
 					value_fn!(ImageFrame<Color>),
 					value_fn!(ImageFrame<Color>),
-					value_fn!(Vec<DVec2>),
+					value_fn!(Vec<BrushStroke>),
 					value_fn!(f64),
 					value_fn!(f64),
 					value_fn!(f64),
