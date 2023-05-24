@@ -553,8 +553,8 @@ impl NodeGraphExecutor {
 			self.thumbnails = new_thumbnails;
 			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
-			responses.extend(updates);
 			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
+			responses.extend(updates);
 		}
 		Ok(())
 	}
@@ -566,7 +566,7 @@ impl NodeGraphExecutor {
 				// Update the cached vector data on the layer
 				let transform = vector_data.transform.to_cols_array();
 				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetVectorData { path: layer_path, vector_data });
+				responses.add(Operation::SetVectorData { path: layer_path.clone(), vector_data });
 			}
 			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
 				// Don't update the frame's transform if the new transform is DAffine2::ZERO.
@@ -578,7 +578,7 @@ impl NodeGraphExecutor {
 
 					// Update the transform based on the graph output
 					if let Some(transform) = transform {
-						responses.add(Operation::SetLayerTransform { path: layer_path, transform });
+						responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 					}
 				} else {
 					// Update the image data
@@ -598,6 +598,8 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));
 			}
 		};
+		responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer_path });
+		responses.add(DocumentMessage::DirtyRenderDocument);
 		Ok(())
 	}
 
