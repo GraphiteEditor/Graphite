@@ -707,14 +707,8 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
-pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 7, "Color", ColorInput::default().allow_none(false), true);
-
-	let size = number_widget(document_node, node_id, 4, "Diameter", NumberInput::default().min(1.).max(100.).unit(" px"), true);
-	let hardness = number_widget(document_node, node_id, 5, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let flow = number_widget(document_node, node_id, 6, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), true);
-
-	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: flow }]
+pub fn brush_node_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![]
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

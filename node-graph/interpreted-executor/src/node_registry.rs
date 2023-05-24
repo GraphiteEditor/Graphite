@@ -228,10 +228,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 				let bounds: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
 				let strokes: DowncastBothNode<(), Vec<BrushStroke>> = DowncastBothNode::new(args[2]);
-				let _diameter: DowncastBothNode<(), f64> = DowncastBothNode::new(args[3]);
-				let _hardness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[4]);
-				let _flow: DowncastBothNode<(), f64> = DowncastBothNode::new(args[5]);
-				let _color: DowncastBothNode<(), Color> = DowncastBothNode::new(args[6]);
 
 				let strokes = strokes.eval(());
 				let bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
@@ -267,15 +263,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			NodeIOTypes::new(
 				concrete!(()),
 				concrete!(ImageFrame<Color>),
-				vec![
-					value_fn!(ImageFrame<Color>),
-					value_fn!(ImageFrame<Color>),
-					value_fn!(Vec<BrushStroke>),
-					value_fn!(f64),
-					value_fn!(f64),
-					value_fn!(f64),
-					value_fn!(Color),
-				],
+				vec![value_fn!(ImageFrame<Color>), value_fn!(ImageFrame<Color>), value_fn!(Vec<BrushStroke>)],
 			),
 		)],
 		vec![(
