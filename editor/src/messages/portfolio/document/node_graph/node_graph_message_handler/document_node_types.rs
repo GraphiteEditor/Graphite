@@ -389,10 +389,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
 			inputs: vec![
 				DocumentInputType::value("None", TaggedValue::None, false),
-				DocumentInputType::value("Alpha", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Red", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Green", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Blue", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Alpha", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType {
 				name: "Image",
@@ -536,7 +536,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
-				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0)],
+				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -585,10 +585,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![
 				DocumentOutputType::new("Empty", FrontendGraphDataType::Raster),
-				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Red", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Green", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Blue", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 			],
 			properties: node_properties::no_properties,
 		},

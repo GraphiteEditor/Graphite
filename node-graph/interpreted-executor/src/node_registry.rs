@@ -161,10 +161,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				use graphene_core::raster::*;
 				use graphene_core::value::*;
 
-				let channel_a: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
-				let channel_r: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
-				let channel_g: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[2]);
-				let channel_b: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[3]);
+				let channel_r: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+				let channel_g: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
+				let channel_b: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[2]);
+				let channel_a: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[3]);
 
 				let insert_r = InsertChannelNode::new(channel_r.clone(), CopiedNode::new(RedGreenBlue::Red));
 				let insert_g = InsertChannelNode::new(channel_g.clone(), CopiedNode::new(RedGreenBlue::Green));
