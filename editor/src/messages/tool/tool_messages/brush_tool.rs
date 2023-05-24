@@ -317,6 +317,7 @@ impl Fsm for BrushToolFsmState {
 
 					Drawing
 				}
+
 				(Drawing, DragStop) | (Drawing, Abort) => {
 					if !tool_data.strokes.is_empty() {
 						responses.add(DocumentMessage::CommitTransaction);
@@ -329,6 +330,7 @@ impl Fsm for BrushToolFsmState {
 
 					Ready
 				}
+
 				(_, WorkingColorChanged) => {
 					responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::WorkingColors(
 						Some(global_tool_data.primary_color),

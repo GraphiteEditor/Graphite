@@ -236,10 +236,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				let stamp = stamp.eval(diameter.eval(()));
 
 				let strokes_eval = strokes.eval(());
-				let flat_positions = strokes_eval.iter().flat_map(|s| s.trace.iter().map(|sample| sample.position));
+				let blit_points = strokes_eval.iter().map(|s| s.compute_blit_points());
 				let translated = TranslateNode::new(CopiedNode::new(stamp));
 				let mapped = MapNode::new(ValueNode::new(translated));
-				let positions = mapped.eval(flat_positions).collect::<Vec<_>>();
+				let positions = mapped.eval(blit_points.flatten()).collect::<Vec<_>>();
 
 				let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
 				let background_bounds = background_bounds.eval(positions.clone().into_iter());

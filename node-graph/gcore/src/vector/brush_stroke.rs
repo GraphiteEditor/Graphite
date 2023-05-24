@@ -58,3 +58,39 @@ pub struct BrushStroke {
 	pub style: BrushStyle,
 	pub trace: Vec<BrushInputSample>,
 }
+
+impl BrushStroke {
+	pub fn compute_blit_points(&self) -> Vec<DVec2> {
+		// We always travel in a straight line towards the next user input,
+		// placing a blit point every time we travelled our spacing distance.
+		let spacing_dist = self.style.spacing / 100.0 * self.style.diameter;
+
+		let Some(first_sample) = self.trace.first() else { return Vec::new(); };
+
+		let mut cur_pos = first_sample.position;
+		let mut result = vec![cur_pos];
+		let mut dist_until_next_blit = spacing_dist;
+		for sample in &self.trace[1..] {
+			// Travel to the next sample.
+			let delta = sample.position - cur_pos;
+			let mut dist_left = delta.length();
+			let unit_step = delta / dist_left;
+
+			while dist_left >= dist_until_next_blit {
+				// Take a step to the next blitpoint.
+				cur_pos += dist_until_next_blit * unit_step;
+				dist_left -= dist_until_next_blit;
+
+				// Blit.
+				result.push(cur_pos);
+				dist_until_next_blit = spacing_dist;
+			}
+
+			// Take the partial step to land at the sample.
+			dist_until_next_blit -= dist_left;
+			cur_pos = sample.position;
+		}
+
+		result
+	}
+}
