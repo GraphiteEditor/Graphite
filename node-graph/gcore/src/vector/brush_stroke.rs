@@ -12,6 +12,7 @@ pub struct BrushStyle {
 	pub diameter: f64,
 	pub hardness: f64,
 	pub flow: f64,
+	pub spacing: f64, // Spacing as a fraction of the diameter.
 }
 
 impl Default for BrushStyle {
@@ -21,6 +22,7 @@ impl Default for BrushStyle {
 			diameter: 40.0,
 			hardness: 50.0,
 			flow: 100.0,
+			spacing: 10.0, // Percentage of diameter.
 		}
 	}
 }

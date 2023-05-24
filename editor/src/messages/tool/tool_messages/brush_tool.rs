@@ -30,6 +30,7 @@ pub struct BrushOptions {
 	diameter: f64,
 	hardness: f64,
 	flow: f64,
+	spacing: f64,
 	color: ToolColorOptions,
 }
 
@@ -39,6 +40,7 @@ impl Default for BrushOptions {
 			diameter: 40.,
 			hardness: 50.,
 			flow: 100.,
+			spacing: 10.,
 			color: ToolColorOptions::default(),
 		}
 	}
@@ -70,6 +72,7 @@ pub enum BrushToolMessageOptionsUpdate {
 	Diameter(f64),
 	Flow(f64),
 	Hardness(f64),
+	Spacing(f64),
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
@@ -117,6 +120,14 @@ impl PropertyHolder for BrushTool {
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(self.options.spacing))
+				.label("Spacing")
+				.min(1.)
+				.max(300.)
+				.unit("%")
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap())).into())
+				.widget_holder(),
 		];
 
 		widgets.push(WidgetHolder::section_separator());
@@ -152,6 +163,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
+				BrushToolMessageOptionsUpdate::Spacing(spacing) => self.options.spacing = spacing,
 				BrushToolMessageOptionsUpdate::Color(color) => {
 					self.options.color.custom_color = color;
 					self.options.color.color_type = ToolColorType::Custom;
@@ -282,6 +294,7 @@ impl Fsm for BrushToolFsmState {
 							diameter: tool_options.diameter,
 							hardness: tool_options.hardness,
 							flow: tool_options.flow,
+							spacing: tool_options.spacing,
 						},
 					});
 
