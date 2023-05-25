@@ -143,25 +143,47 @@ where
 		let Image { width, height, data } = self;
 		assert!(data.len() == width as usize * height as usize);
 
-		let mut result = Vec::with_capacity(data.len() * 4);
+		// Cache the last sRGB value we computed, speeds up fills.
+		let mut last_r = 0.0;
+		let mut last_r_srgb = 0u8;
+		let mut last_g = 0.0;
+		let mut last_g_srgb = 0u8;
+		let mut last_b = 0.0;
+		let mut last_b_srgb = 0u8;
+
+		let mut result = vec![0; data.len() * 4];
+		let mut i = 0;
 		for color in data {
 			let a = color.a().to_f32();
-			if a < 0.5 / 255.0 {
-				// This would map to fully transparent anyway, avoid expensive encoding.
-				result.push(0);
-				result.push(0);
-				result.push(0);
-				result.push(0);
-			} else {
+			// Smaller alpha values than this would map to fully transparent
+			// anyway, avoid expensive encoding.
+			if a >= 0.5 / 255.0 {
 				let undo_premultiply = 1.0 / a;
-				let r = float_to_srgb_u8(color.r().to_f32() * undo_premultiply);
-				let g = float_to_srgb_u8(color.g().to_f32() * undo_premultiply);
-				let b = float_to_srgb_u8(color.b().to_f32() * undo_premultiply);
-				result.push(r);
-				result.push(g);
-				result.push(b);
-				result.push((a * 255.0 + 0.5) as u8);
+				let r = color.r().to_f32() * undo_premultiply;
+				let g = color.g().to_f32() * undo_premultiply;
+				let b = color.b().to_f32() * undo_premultiply;
+
+				// Compute new sRGB value if necessary.
+				if r != last_r {
+					last_r = r;
+					last_r_srgb = float_to_srgb_u8(r);
+				}
+				if g != last_g {
+					last_g = g;
+					last_g_srgb = float_to_srgb_u8(g);
+				}
+				if b != last_b {
+					last_b = b;
+					last_b_srgb = float_to_srgb_u8(b);
+				}
+
+				result[i] = last_r_srgb;
+				result[i + 1] = last_g_srgb;
+				result[i + 2] = last_b_srgb;
+				result[i + 3] = (a * 255.0 + 0.5) as u8;
 			}
+
+			i += 4;
 		}
 
 		(result, width, height)
