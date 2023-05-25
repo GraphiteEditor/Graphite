@@ -521,7 +521,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("From", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::channel_extraction_properties,
+			properties: node_properties::extract_channel_properties,
 		},
 		DocumentNodeType {
 			name: "Extract Alpha",

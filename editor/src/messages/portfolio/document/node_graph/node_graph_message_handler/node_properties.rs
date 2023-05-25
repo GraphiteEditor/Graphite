@@ -604,19 +604,19 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	vec![mask]
 }
 
-pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 2, "Into", false);
-
-	vec![color_channel]
-}
-
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
 	vec![luminance_calc]
 }
 
-pub fn channel_extraction_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
+
+	vec![color_channel]
+}
+
+pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_channel = color_channel(document_node, node_id, 1, "From", true);
 
 	vec![color_channel]
