@@ -4,10 +4,6 @@ use crate::Node;
 
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
-#[cfg(not(target_arch = "spirv"))]
-use num_traits::{cast::cast as num_cast, Num, NumCast};
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::{cast::cast as num_cast, float::Float, FromPrimitive, Num, NumCast, ToPrimitive};
 
 pub use self::color::{Color, Luma};
 
@@ -15,43 +11,56 @@ pub mod adjustments;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brightness_contrast;
 pub mod color;
+pub mod discrete_srgb;
 pub use adjustments::*;
 
-pub trait Channel: Copy + Debug + Num + NumCast {
-	fn to_linear<Out: Linear>(self) -> Out;
-	fn from_linear<In: Linear>(linear: In) -> Self;
-	fn to_f32(self) -> f32 {
-		num_cast(self).expect("Failed to convert channel to f32")
-	}
-	fn from_f32(value: f32) -> Self {
-		num_cast(value).expect("Failed to convert f32 to channel")
-	}
-	fn to_f64(self) -> f64 {
-		num_cast(self).expect("Failed to convert channel to f64")
-	}
-	fn from_f64(value: f64) -> Self {
-		num_cast(value).expect("Failed to convert f64 to channel")
-	}
-	fn to_channel<Out: Channel>(self) -> Out {
-		num_cast(self).expect("Failed to convert channel to channel")
-	}
+pub trait Linear {
+	fn from_f32(x: f32) -> Self;
+	fn to_f32(self) -> f32;
+	fn from_f64(x: f64) -> Self;
+	fn to_f64(self) -> f64;
 }
 
-pub trait Linear: NumCast + Num {}
-impl Linear for f32 {}
-impl Linear for f64 {}
+#[rustfmt::skip]
+impl Linear for f32 {
+	#[inline(always)] fn from_f32(x: f32) -> Self { x }
+	#[inline(always)] fn to_f32(self) -> f32 { self }
+	#[inline(always)] fn from_f64(x: f64) -> Self { x as f32 }
+	#[inline(always)] fn to_f64(self) -> f64 { self as f64 }
+}
+
+#[rustfmt::skip]
+impl Linear for f64 {
+	#[inline(always)] fn from_f32(x: f32) -> Self { x as f64 }
+	#[inline(always)] fn to_f32(self) -> f32 { self as f32 }
+	#[inline(always)] fn from_f64(x: f64) -> Self { x }
+	#[inline(always)] fn to_f64(self) -> f64 { self }
+}
+
+pub trait Channel: Copy + Debug {
+	fn to_linear<Out: Linear>(self) -> Out;
+	fn from_linear<In: Linear>(linear: In) -> Self;
+}
+
+pub trait LinearChannel: Channel {
+	fn cast_linear_channel<Out: LinearChannel>(self) -> Out {
+		Out::from_linear(self.to_linear::<f64>())
+	}
+}
 
 impl<T: Linear + Debug + Copy> Channel for T {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
-		num_cast(self).expect("Failed to convert channel to linear")
+		Out::from_f64(self.to_f64())
 	}
 
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
-		num_cast(linear).expect("Failed to convert linear to channel")
+		Self::from_f64(linear.to_f64())
 	}
 }
+
+impl<T: Linear + Debug + Copy> LinearChannel for T {}
 
 use num_derive::*;
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
@@ -60,16 +69,18 @@ struct SRGBGammaFloat(f32);
 impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn to_linear<Out: Linear>(self) -> Out {
-		let channel = num_cast::<_, f32>(self).expect("Failed to convert srgb to linear");
-		let out = if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) };
-		num_cast(out).expect("Failed to convert srgb to linear")
+		let x = self.0;
+		Out::from_f32(if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) })
 	}
 
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
-		let linear = num_cast::<_, f32>(linear).expect("Failed to convert linear to srgb");
-		let out = if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1. / 2.4) - 0.055 };
-		num_cast(out).expect("Failed to convert linear to srgb")
+		let x = linear.to_f32();
+		if x <= 0.0031308 {
+			Self(x * 12.92)
+		} else {
+			Self(1.055 * x.powf(1. / 2.4) - 0.055)
+		}
 	}
 }
 pub trait RGBPrimaries {
@@ -115,6 +126,7 @@ pub trait Pixel: Clone + Pod + Zeroable {
 }
 pub trait RGB: Pixel {
 	type ColorChannel: Channel;
+
 	fn red(&self) -> Self::ColorChannel;
 	fn r(&self) -> Self::ColorChannel {
 		self.red()
@@ -138,7 +150,7 @@ pub trait UnassociatedAlpha: RGB + Alpha {
 }
 
 pub trait Alpha {
-	type AlphaChannel: Channel;
+	type AlphaChannel: LinearChannel;
 	const TRANSPARENT: Self;
 	fn alpha(&self) -> Self::AlphaChannel;
 	fn a(&self) -> Self::AlphaChannel {
@@ -161,7 +173,7 @@ pub trait ExtraChannels<const NUM: usize> {
 }
 
 pub trait Luminance {
-	type LuminanceChannel: Channel;
+	type LuminanceChannel: LinearChannel;
 	fn luminance(&self) -> Self::LuminanceChannel;
 	fn l(&self) -> Self::LuminanceChannel {
 		self.luminance()

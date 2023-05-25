@@ -112,7 +112,7 @@ fn main() {
 		//let mut mul = mul::MulNode::new();
 		let mut stack: borrow_stack::FixedSizeStack<Box<dyn Node<'_, Output = &dyn DynAny>>> =
 			borrow_stack::FixedSizeStack::new(42);
-		unsafe { stack.push(Box::new(AnyValueNode::new(1f32))) };
+		unsafe { stack.push(Box::new(AnyValueNode::new(1_f32))) };
 		//let node = unsafe { stack.get(0) };
 		//let boxed = Box::new(StorageNode::new(node));
 		//unsafe { stack.push(boxed) };
@@ -123,7 +123,7 @@ fn main() {
 				.push(Box::new(AnyRefNode::new(stack.get(0).as_ref()))
 					as Box<dyn Node<(), Output = &dyn DynAny>>)
 		};*/
-		let f = (3.2f32, 3.1f32);
+		let f = (3.2_f32, 3.1_f32);
 		let a = ValueNode::new(1.);
 		let id = std::any::TypeId::of::<&f32>();
 		let any_a = AnyRefNode::new(&a);
