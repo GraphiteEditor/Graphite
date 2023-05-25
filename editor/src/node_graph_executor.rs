@@ -82,7 +82,6 @@ impl NodeRuntime {
 			NodeRuntimeMessage::GenerationRequest(x) => Some(x.path.clone()),
 		});
 		requests.reverse();
-
 		for request in requests {
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
@@ -337,157 +336,6 @@ impl NodeGraphExecutor {
 		Ok::<_, String>((image_data, size))
 	}
 
-	fn imaginate_parameters(&mut self, _network: &NodeNetwork, _node_path: &[LayerId], _resolution: DVec2, _editor_api: &EditorApi) -> Result<ImaginateGenerationParameters, String> {
-		/*
-		let get = get_imaginate_index;
-		Ok(ImaginateGenerationParameters {
-			seed: self.compute_input::<f64>(network, node_path, get("Seed"), Cow::Borrowed(editor_api))? as u64,
-			resolution: resolution.as_uvec2().into(),
-			samples: self.compute_input::<f64>(network, node_path, get("Samples"), Cow::Borrowed(editor_api))? as u32,
-			sampling_method: self
-				.compute_input::<ImaginateSamplingMethod>(network, node_path, get("Sampling Method"), Cow::Borrowed(editor_api))?
-				.api_value()
-				.to_string(),
-			text_guidance: self.compute_input(network, node_path, get("Prompt Guidance"), Cow::Borrowed(editor_api))?,
-			text_prompt: self.compute_input(network, node_path, get("Prompt"), Cow::Borrowed(editor_api))?,
-			negative_prompt: self.compute_input(network, node_path, get("Negative Prompt"), Cow::Borrowed(editor_api))?,
-			image_creativity: Some(self.compute_input::<f64>(network, node_path, get("Image Creativity"), Cow::Borrowed(editor_api))? / 100.),
-			restore_faces: self.compute_input(network, node_path, get("Improve Faces"), Cow::Borrowed(editor_api))?,
-			tiling: self.compute_input(network, node_path, get("Tiling"), Cow::Borrowed(editor_api))?,
-		})
-		*/
-		todo!()
-	}
-
-	fn imaginate_base_image(
-		&mut self,
-		_network: &NodeNetwork,
-		_imaginate_node_path: &[LayerId],
-		_resolution: DVec2,
-		_editor_api: &EditorApi,
-	) -> Result<Option<(ImaginateBaseImage, DAffine2)>, String> {
-		/*
-		let use_base_image = self.compute_input::<bool>(&network, &imaginate_node_path, get_imaginate_index("Adapt Input Image"), Cow::Borrowed(editor_api))?;
-		let input_image_frame: Option<ImageFrame<Color>> = if use_base_image {
-			Some(self.compute_input::<ImageFrame<Color>>(&network, &imaginate_node_path, get_imaginate_index("Input Image"), Cow::Borrowed(editor_api))?)
-		} else {
-			None
-		};
-
-		let base_image = if let Some(ImageFrame { image, transform }) = input_image_frame {
-			// Only use if has size
-			if image.width > 0 && image.height > 0 {
-				let (image_data, size) = Self::encode_img(image, Some(resolution), image::ImageOutputFormat::Png)?;
-				let size = DVec2::new(size.0 as f64, size.1 as f64);
-				let mime = "image/png".to_string();
-				Some((ImaginateBaseImage { image_data, size, mime }, transform))
-			} else {
-				info!("Base image is input but has no size.");
-				None
-			}
-		} else {
-			None
-		};
-		Ok(base_image)
-		*/
-		todo!()
-	}
-
-	fn imaginate_mask_image(
-		&mut self,
-		_network: &NodeNetwork,
-		_node_path: &[LayerId],
-		_editor_api: &EditorApi<'_>,
-		_image_transform: Option<DAffine2>,
-		_document: &mut DocumentMessageHandler,
-		_persistent_data: &PersistentData,
-	) -> Result<Option<ImaginateMaskImage>, String> {
-		/*
-		if let Some(transform) = image_transform {
-			let mask_path: Option<Vec<LayerId>> = self.compute_input(&network, &node_path, get_imaginate_index("Masking Layer"), Cow::Borrowed(&editor_api))?;
-
-			// Calculate the size of the frame
-			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
-			// Render the masking layer within the frame
-			let old_transforms = document.remove_document_transform();
-			let mask_is_some = mask_path.is_some();
-			let mask_image = mask_path.filter(|mask_layer_path| document.document_legacy.layer(mask_layer_path).is_ok()).map(|mask_layer_path| {
-				let render_mode = DocumentRenderMode::LayerCutout(&mask_layer_path, graphene_core::raster::color::Color::WHITE);
-				let svg = document.render_document(size, transform.inverse(), persistent_data, render_mode);
-
-				ImaginateMaskImage { svg, size }
-			});
-
-			if mask_is_some && mask_image.is_none() {
-				return Err(
-					"Imagination masking layer is missing.\nIt may have been deleted or moved. Please drag a new layer reference\ninto the 'Masking Layer' parameter input, then generate again."
-						.to_string(),
-				);
-			}
-
-			document.restore_document_transform(old_transforms);
-			Ok(mask_image)
-		} else {
-			Ok(None)
-		}
-		*/
-		todo!()
-	}
-
-	fn generate_imaginate(
-		&mut self,
-		_network: NodeNetwork,
-		_imaginate_node_path: Vec<NodeId>,
-		(_document, _document_id): (&mut DocumentMessageHandler, u64),
-		_layer_path: Vec<LayerId>,
-		_editor_api: EditorApi<'_>,
-		(_preferences, _persistent_data): (&PreferencesMessageHandler, &PersistentData),
-	) -> Result<Message, String> {
-		/*
-		let image = editor_api.image_frame.take();
-
-		// Get the node graph layer
-		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
-		let transform = layer.transform;
-
-		let resolution: Option<glam::DVec2> = self.compute_input(&network, &imaginate_node_path, get_imaginate_index("Resolution"), Cow::Borrowed(&editor_api))?;
-		let resolution = resolution.unwrap_or_else(|| {
-			let (x, y) = pick_safe_imaginate_resolution((transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length()));
-			DVec2::new(x as f64, y as f64)
-		});
-
-		let parameters = self.imaginate_parameters(&network, &imaginate_node_path, resolution, &editor_api)?;
-
-		editor_api.image_frame = image;
-		let base = self.imaginate_base_image(&network, &imaginate_node_path, resolution, &editor_api)?;
-		let image_transform = base.as_ref().map(|base| base.1);
-		let base_image = base.map(|base| base.0);
-
-		let mask_image = self.imaginate_mask_image(&network, &imaginate_node_path, &editor_api, image_transform, document, persistent_data)?;
-
-		Ok(FrontendMessage::TriggerImaginateGenerate {
-			parameters: Box::new(parameters),
-			base_image: base_image.map(Box::new),
-			mask_image: mask_image.map(Box::new),
-			mask_paint_mode: if self.compute_input::<bool>(&network, &imaginate_node_path, get_imaginate_index("Inpaint"), Cow::Borrowed(&editor_api))? {
-				ImaginateMaskPaintMode::Inpaint
-			} else {
-				ImaginateMaskPaintMode::Outpaint
-			},
-			mask_blur_px: self.compute_input::<f64>(&network, &imaginate_node_path, get_imaginate_index("Mask Blur"), Cow::Borrowed(&editor_api))? as u32,
-			imaginate_mask_starting_fill: self.compute_input(&network, &imaginate_node_path, get_imaginate_index("Mask Starting Fill"), Cow::Borrowed(&editor_api))?,
-			hostname: preferences.imaginate_server_hostname.clone(),
-			refresh_frequency: preferences.imaginate_refresh_frequency,
-			document_id,
-			layer_path,
-			node_path: imaginate_node_path,
-		}
-		.into())
-			*/
-		todo!()
-	}
-
 	/// Generate a new [`FrontendImageData`] from the [`Image`].
 	fn to_frontend_image_data(image: Image<Color>, transform: Option<[f64; 6]>, layer_path: &[LayerId], node_id: Option<u64>, resize: Option<DVec2>) -> Result<FrontendImageData, String> {
 		let (image_data, _size) = Self::encode_img(image, resize, image::ImageOutputFormat::Bmp)?;
@@ -540,7 +388,6 @@ impl NodeGraphExecutor {
 		let generation_id = self.queue_execution(network, Some(image_frame), layer_path.clone());
 
 		self.futures.insert(generation_id, ExecutionContext { layer_path, document_id });
-		//self.process_node_graph_output(boxed_node_graph_output, layer_path, responses, document_id)?;
 
 		Ok(())
 	}
@@ -558,7 +405,16 @@ impl NodeGraphExecutor {
 			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 			responses.extend(updates);
-			self.process_node_graph_output(node_graph_output, execution_context.layer_path, responses, execution_context.document_id)?;
+			self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
+			responses.add(DocumentMessage::LayerChanged {
+				affected_layer_path: execution_context.layer_path,
+			});
+			responses.add(DocumentMessage::RenderDocument);
+			responses.add(ArtboardMessage::RenderArtboards);
+			responses.add(DocumentMessage::DocumentStructureChanged);
+			responses.add(BroadcastEvent::DocumentIsDirty);
+			responses.add(DocumentMessage::DirtyRenderDocument);
+			responses.add(DocumentMessage::Overlays(OverlaysMessage::Rerender));
 		}
 		Ok(())
 	}
@@ -570,10 +426,7 @@ impl NodeGraphExecutor {
 				// Update the cached vector data on the layer
 				let transform = vector_data.transform.to_cols_array();
 				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetVectorData {
-					path: layer_path.clone(),
-					vector_data,
-				});
+				responses.add(Operation::SetVectorData { path: layer_path, vector_data });
 			}
 			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
 				// Don't update the frame's transform if the new transform is DAffine2::ZERO.
@@ -585,7 +438,7 @@ impl NodeGraphExecutor {
 
 					// Update the transform based on the graph output
 					if let Some(transform) = transform {
-						responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
+						responses.add(Operation::SetLayerTransform { path: layer_path, transform });
 					}
 				} else {
 					// Update the image data
@@ -605,8 +458,6 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));
 			}
 		};
-		responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer_path });
-		responses.add(DocumentMessage::DirtyRenderDocument);
 		Ok(())
 	}
 
