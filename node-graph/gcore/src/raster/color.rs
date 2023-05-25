@@ -12,7 +12,7 @@ use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{Alpha, AssociatedAlpha, Luminance, Pixel, Rec709Primaries, RGB, SRGB};
+use super::{Alpha, AssociatedAlpha, Luminance, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -84,6 +84,17 @@ impl RGB for Color {
 	#[inline(always)]
 	fn blue(&self) -> f32 {
 		self.blue
+	}
+}
+impl RGBMut for Color {
+	fn set_red(&mut self, red: Self::ColorChannel) {
+		self.red = red;
+	}
+	fn set_green(&mut self, green: Self::ColorChannel) {
+		self.green = green;
+	}
+	fn set_blue(&mut self, blue: Self::ColorChannel) {
+		self.blue = blue;
 	}
 }
 
@@ -389,6 +400,42 @@ impl Color {
 	pub fn with_saturation(&self, saturation: f32) -> Color {
 		let [hue, _, lightness, alpha] = self.to_hsla();
 		Color::from_hsla(hue, saturation, lightness, alpha)
+	}
+
+	pub fn with_alpha(&self, alpha: f32) -> Color {
+		Color {
+			red: self.red,
+			green: self.green,
+			blue: self.blue,
+			alpha,
+		}
+	}
+
+	pub fn with_red(&self, red: f32) -> Color {
+		Color {
+			red,
+			green: self.green,
+			blue: self.blue,
+			alpha: self.alpha,
+		}
+	}
+
+	pub fn with_green(&self, green: f32) -> Color {
+		Color {
+			red: self.red,
+			green,
+			blue: self.blue,
+			alpha: self.alpha,
+		}
+	}
+
+	pub fn with_blue(&self, blue: f32) -> Color {
+		Color {
+			red: self.red,
+			green: self.green,
+			blue,
+			alpha: self.alpha,
+		}
 	}
 
 	#[inline(always)]

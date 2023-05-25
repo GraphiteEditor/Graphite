@@ -46,7 +46,7 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 26] {
+	pub fn list() -> [BlendMode; 29] {
 		[
 			BlendMode::Normal,
 			BlendMode::Multiply,
@@ -74,6 +74,9 @@ impl BlendMode {
 			BlendMode::Saturation,
 			BlendMode::Color,
 			BlendMode::Luminosity,
+			BlendMode::InsertRed,
+			BlendMode::InsertGreen,
+			BlendMode::InsertBlue,
 		]
 	}
 }
@@ -121,6 +124,11 @@ pub enum BlendMode {
 	Saturation,
 	Color,
 	Luminosity,
+
+	// Other Stuff
+	InsertRed,
+	InsertGreen,
+	InsertBlue,
 }
 
 impl core::fmt::Display for BlendMode {
@@ -157,6 +165,10 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Saturation => write!(f, "Saturation"),
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
+
+			BlendMode::InsertRed => write!(f, "Insert Red"),
+			BlendMode::InsertGreen => write!(f, "Insert Green"),
+			BlendMode::InsertBlue => write!(f, "Insert Blue"),
 		}
 	}
 }
@@ -176,6 +188,30 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 	color.map_rgb(|_| luminance)
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractChannelNode<TargetChannel> {
+	channel: TargetChannel,
+}
+
+#[node_macro::node_fn(ExtractChannelNode)]
+fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
+	let extracted_value = match channel {
+		RedGreenBlue::Red => color.r(),
+		RedGreenBlue::Green => color.g(),
+		RedGreenBlue::Blue => color.b(),
+	};
+	return color.map_rgb(|_| extracted_value);
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractAlphaNode;
+
+#[node_macro::node_fn(ExtractAlphaNode)]
+fn extract_alpha_node(color: Color) -> Color {
+	let alpha = color.a();
+	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -397,6 +433,10 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
+
+		BlendMode::InsertRed => foreground.with_red(background.r()),
+		BlendMode::InsertGreen => foreground.with_green(background.g()),
+		BlendMode::InsertBlue => foreground.with_blue(background.b()),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))

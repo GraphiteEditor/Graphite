@@ -372,6 +372,35 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::mask_properties,
 		},
 		DocumentNodeType {
+			name: "Insert Channel",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_std::raster::InsertChannelNode<_, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Insertion", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Replace", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::insert_channel_properties,
+		},
+		DocumentNodeType {
+			name: "Combine Channels",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
+			inputs: vec![
+				DocumentInputType::value("None", TaggedValue::None, false),
+				DocumentInputType::value("Red", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Green", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Blue", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Alpha", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Image",
+				data_type: FrontendGraphDataType::Raster,
+			}],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
 			name: "Blend",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
@@ -482,6 +511,86 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::luminance_properties,
+		},
+		DocumentNodeType {
+			name: "Extract Channel",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("From", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::extract_channel_properties,
+		},
+		DocumentNodeType {
+			name: "Extract Alpha",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ExtractAlphaNode<>"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
+			name: "Split Channels",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Identity".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "RedNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "GreenNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Green), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "BlueNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Blue), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "AlphaNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "EmptyOutput".to_string(),
+						inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+
+				..Default::default()
+			}),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![
+				DocumentOutputType::new("Empty", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Red", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Green", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Blue", FrontendGraphDataType::Raster),
+				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
+			],
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Gaussian Blur",
