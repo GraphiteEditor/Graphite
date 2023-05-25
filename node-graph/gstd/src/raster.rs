@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, LinearChannel, Luminance, Pixel, RasterMut, Sample};
 use graphene_core::transform::Transform;
 
 use graphene_core::value::CopiedNode;
@@ -217,7 +217,7 @@ fn mask_image<
 
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
 			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
-				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().to_channel());
+				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 			}
 		}
 	}

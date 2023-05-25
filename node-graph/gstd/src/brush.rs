@@ -81,7 +81,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 		};
 
 		use graphene_core::raster::Channel;
-		Some(self.color.multiplied_alpha(P::AlphaChannel::from_f32(result)))
+		Some(self.color.multiplied_alpha(P::AlphaChannel::from_linear(result)))
 	}
 }
 
