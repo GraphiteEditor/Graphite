@@ -247,6 +247,59 @@ impl<'a> TaggedValue {
 			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 		}
 	}
+
+	pub fn try_from_any(input: Box<dyn DynAny<'a> + 'a>) -> Option<Self> {
+		use dyn_any::downcast;
+		use std::any::TypeId;
+
+		match DynAny::type_id(input.as_ref()) {
+			x if x == TypeId::of::<()>() => Some(TaggedValue::None),
+			x if x == TypeId::of::<String>() => Some(TaggedValue::String(*downcast(input).unwrap())),
+			x if x == TypeId::of::<u32>() => Some(TaggedValue::U32(*downcast(input).unwrap())),
+			x if x == TypeId::of::<f32>() => Some(TaggedValue::F32(*downcast(input).unwrap())),
+			x if x == TypeId::of::<f64>() => Some(TaggedValue::F64(*downcast(input).unwrap())),
+			x if x == TypeId::of::<bool>() => Some(TaggedValue::Bool(*downcast(input).unwrap())),
+			x if x == TypeId::of::<DVec2>() => Some(TaggedValue::DVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<DVec2>>() => Some(TaggedValue::OptionalDVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::Image<Color>>() => Some(TaggedValue::Image(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<Arc<graphene_core::raster::Image<Color>>>>() => Some(TaggedValue::RcImage(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::ImageFrame<Color>>() => Some(TaggedValue::ImageFrame(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::Color>() => Some(TaggedValue::Color(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => Some(TaggedValue::Subpaths(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => Some(TaggedValue::RcSubpath(*downcast(input).unwrap())),
+			x if x == TypeId::of::<BlendMode>() => Some(TaggedValue::BlendMode(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateSamplingMethod>() => Some(TaggedValue::ImaginateSamplingMethod(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateMaskStartingFill>() => Some(TaggedValue::ImaginateMaskStartingFill(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateStatus>() => Some(TaggedValue::ImaginateStatus(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<Vec<u64>>>() => Some(TaggedValue::LayerPath(*downcast(input).unwrap())),
+			x if x == TypeId::of::<DAffine2>() => Some(TaggedValue::DAffine2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<LuminanceCalculation>() => Some(TaggedValue::LuminanceCalculation(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::VectorData>() => Some(TaggedValue::VectorData(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::Fill>() => Some(TaggedValue::Fill(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::Stroke>() => Some(TaggedValue::Stroke(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<f32>>() => Some(TaggedValue::VecF32(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::RedGreenBlue>() => Some(TaggedValue::RedGreenBlue(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::RelativeAbsolute>() => Some(TaggedValue::RelativeAbsolute(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::SelectiveColorChoice>() => Some(TaggedValue::SelectiveColorChoice(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::LineCap>() => Some(TaggedValue::LineCap(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::LineJoin>() => Some(TaggedValue::LineJoin(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::FillType>() => Some(TaggedValue::FillType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::GradientType>() => Some(TaggedValue::GradientType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<(f64, Option<graphene_core::Color>)>>() => Some(TaggedValue::GradientPositions(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::quantization::QuantizationChannels>() => Some(TaggedValue::Quantization(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<graphene_core::Color>>() => Some(TaggedValue::OptionalColor(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Some(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::text::Font>() => Some(TaggedValue::Font(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<DVec2>>() => Some(TaggedValue::VecDVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Some(TaggedValue::Segments(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::EditorApi>() => Some(TaggedValue::EditorApi(*downcast(input).unwrap())),
+			x if x == TypeId::of::<crate::document::DocumentNode>() => Some(TaggedValue::DocumentNode(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Some(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::Artboard>() => Some(TaggedValue::Artboard(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<[glam::IVec2; 2]>>() => Some(TaggedValue::Optional2IVec2(*downcast(input).unwrap())),
+			_ => None,
+		}
+	}
 }
 
 pub struct UpcastNode {

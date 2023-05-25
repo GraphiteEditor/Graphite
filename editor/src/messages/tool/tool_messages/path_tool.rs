@@ -4,13 +4,11 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
-use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
-use document_legacy::LayerId;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
@@ -117,7 +115,7 @@ struct PathToolData {
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
-	opposing_handle_lengths: Option<HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, f64>>>,
+	opposing_handle_lengths: Option<OpposingHandleLengths>,
 }
 
 impl PathToolData {
@@ -292,6 +290,8 @@ impl Fsm for PathToolFsmState {
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
 						.map(|(_, nearest_point)| nearest_point);
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+					shape_editor.delete_selected_handles_with_zero_length(&document.document_legacy, &tool_data.opposing_handle_lengths, responses);
 
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));

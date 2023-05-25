@@ -23,6 +23,10 @@ impl Editor {
 
 		responses
 	}
+
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
+		self.dispatcher.poll_node_graph_evaluation(responses);
+	}
 }
 
 impl Default for Editor {

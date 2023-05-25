@@ -419,7 +419,7 @@ impl NodeGraphMessageHandler {
 	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
-			.filter(|&(&id, _)| !network.outputs_contain(id) && !network.inputs.contains(&id))
+			.filter(|&(&id, _)| !network.outputs_contain(id))
 			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
 			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
 	}
@@ -580,6 +580,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 
 					Self::send_graph(network, executor, &self.layer_path, responses);
 					self.update_selected(document, responses);
+					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
@@ -668,6 +669,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 						return;
 					}
 				};
+
+				if data.is_empty() {
+					return;
+				}
 
 				// Shift nodes until it is not in the same position as another node
 				let mut shift = IVec2::ZERO;

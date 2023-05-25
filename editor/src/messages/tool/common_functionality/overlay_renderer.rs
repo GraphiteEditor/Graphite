@@ -107,6 +107,7 @@ impl OverlayRenderer {
 				// Eventually will get replaced with am immediate mode renderer for overlays
 			}
 		}
+		responses.add(OverlaysMessage::Rerender);
 	}
 
 	pub fn clear_subpath_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
