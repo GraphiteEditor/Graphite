@@ -1,4 +1,5 @@
 use glam::{DAffine2, DVec2};
+use graph_craft::document::DocumentNode;
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::ops::IdNode;
 use graphene_core::vector::VectorData;
@@ -171,37 +172,39 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		vec![(
 			NodeIdentifier::new("graphene_std::raster::CombineChannelsNode"),
 			|args| {
-				use graphene_core::raster::*;
-				use graphene_core::value::*;
+				Box::pin(async move {
+					use graphene_core::raster::*;
+					use graphene_core::value::*;
 
-				let channel_r: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
-				let channel_g: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
-				let channel_b: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[2]);
-				let channel_a: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[3]);
+					let channel_r: ImageFrame<Color> = DowncastBothNode::new(args[0]).eval(()).await;
+					let channel_g: ImageFrame<Color> = DowncastBothNode::new(args[1]).eval(()).await;
+					let channel_b: ImageFrame<Color> = DowncastBothNode::new(args[2]).eval(()).await;
+					let channel_a: ImageFrame<Color> = DowncastBothNode::new(args[3]).eval(()).await;
 
-				let insert_r = InsertChannelNode::new(channel_r.clone(), CopiedNode::new(RedGreenBlue::Red));
-				let insert_g = InsertChannelNode::new(channel_g.clone(), CopiedNode::new(RedGreenBlue::Green));
-				let insert_b = InsertChannelNode::new(channel_b.clone(), CopiedNode::new(RedGreenBlue::Blue));
-				let complete_node = insert_r.then(insert_g).then(insert_b);
-				let complete_node = complete_node.then(MaskImageNode::new(channel_a.clone()));
+					let insert_r = InsertChannelNode::new(ClonedNode::new(channel_r.clone()), CopiedNode::new(RedGreenBlue::Red));
+					let insert_g = InsertChannelNode::new(ClonedNode::new(channel_g.clone()), CopiedNode::new(RedGreenBlue::Green));
+					let insert_b = InsertChannelNode::new(ClonedNode::new(channel_b.clone()), CopiedNode::new(RedGreenBlue::Blue));
+					let complete_node = insert_r.then(insert_g).then(insert_b);
+					let complete_node = complete_node.then(MaskImageNode::new(ClonedNode::new(channel_a.clone())));
 
-				// TODO: Move to FN Node for better performance
-				let (mut transform, mut bounds) = (DAffine2::ZERO, glam::UVec2::ZERO);
-				for imf in [channel_a, channel_r, channel_g, channel_b] {
-					let image = imf.eval(());
-					if image.image.width() > bounds.x {
-						bounds = glam::UVec2::new(image.image.width(), image.image.height());
-						transform = image.transform;
+					// TODO: Move to FN Node for better performance
+					let (mut transform, mut bounds) = (DAffine2::ZERO, glam::UVec2::ZERO);
+					for image in [channel_a, channel_r, channel_g, channel_b] {
+						if image.image.width() > bounds.x {
+							bounds = glam::UVec2::new(image.image.width(), image.image.height());
+							transform = image.transform;
+						}
 					}
-				}
-				let empty_image = ImageFrame {
-					image: Image::new(bounds.x, bounds.y, Color::BLACK),
-					transform,
-				};
-				let final_image = ClonedNode::new(empty_image).then(complete_node);
+					let empty_image = ImageFrame {
+						image: Image::new(bounds.x, bounds.y, Color::BLACK),
+						transform,
+					};
+					let final_image = ClonedNode::new(empty_image).then(complete_node);
+					let final_image = FutureWrapperNode::new(final_image);
 
-				let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
-				Box::pin(any)
+					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
+					Box::pin(any) as TypeErasedPinned
+				})
 			},
 			NodeIOTypes::new(
 				concrete!(()),
@@ -213,7 +216,19 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
 		#[cfg(feature = "gpu")]
-		register_node!(graphene_std::executor::MapGpuSingleImageNode<_>, input: Image<Color>, params: [String]),
+		vec![(
+			NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode<_>"),
+			|args| {
+				Box::pin(async move {
+					let document_node: DowncastBothNode<(), DocumentNode> = DowncastBothNode::new(args[0]);
+					let document_node = ClonedNode::new(document_node.eval(()).await);
+					let node = graphene_std::executor::MapGpuNode::new(document_node);
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					Box::pin(any) as TypeErasedPinned
+				})
+			},
+			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(DocumentNode)]),
+		)],
 		vec![(
 			NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 			|args| {
@@ -228,8 +243,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				vec![Type::Fn(Box::new(generic!(T)), Box::new(generic!(V))), Type::Fn(Box::new(generic!(V)), Box::new(generic!(U)))],
 			),
 		)],
-		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame<Color>>, params: [ImageFrame<Color>, &ValueNode<BlendImageTupleNode<ValueNode<BlendNode<ClonedNode<BlendMode>, ClonedNode<f64>>>>>]),
-		//register_node!(graphene_std::brush::ReduceNode<_, _>, input: core::slice::Iter<ImageFrame<Color>>, params: [AxisAlignedBbox, &MergeBoundingBoxNode]),
 		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<DVec2>, params: []),
 		vec![(
 			NodeIdentifier::new("graphene_std::brush::BrushNode"),
