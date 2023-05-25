@@ -269,8 +269,18 @@ impl Fsm for BrushToolFsmState {
 		use BrushToolFsmState::*;
 		use BrushToolMessage::*;
 
-		let transform = document.document_legacy.root.transform;
+		let viewport_to_docspace = document.document_legacy.root.transform.inverse();
+		// let mut docspace_to_layerspace = DAffine2::default();
+		// if let Some(layer_path) = &tool_data.path {
+		// 	if let Some(transform) = get_layer_transform(document, layer_path) {
+		// 		docspace_to_layerspace = transform.inverse();
+		// 	} else {
+		// 		log::error!("could not get layer transform");
+		// 	}
+		// }
 
+		let document_position = viewport_to_docspace.transform_point2(input.mouse.position);
+		// let layer_position = docspace_to_layerspace.transform_point2(document_position);
 		if let ToolMessage::Brush(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
@@ -286,9 +296,8 @@ impl Fsm for BrushToolFsmState {
 					}
 
 					// Start a new stroke with a single sample.
-					let position = transform.inverse().transform_point2(input.mouse.position);
 					tool_data.strokes.push(BrushStroke {
-						trace: vec![BrushInputSample { position }],
+						trace: vec![BrushInputSample { position: document_position }],
 						style: BrushStyle {
 							color: tool_options.color.active_color().unwrap_or_default(),
 							diameter: tool_options.diameter,
@@ -309,9 +318,8 @@ impl Fsm for BrushToolFsmState {
 				}
 
 				(Drawing, PointerMove) => {
-					let position = transform.inverse().transform_point2(input.mouse.position);
 					if let Some(stroke) = tool_data.strokes.last_mut() {
-						stroke.trace.push(BrushInputSample { position })
+						stroke.trace.push(BrushInputSample { position: document_position })
 					}
 					tool_data.update_strokes(responses);
 
@@ -412,3 +420,10 @@ fn load_existing_strokes(document: &DocumentMessageHandler) -> Option<(Vec<Layer
 
 	Some((layer_path, strokes.clone()))
 }
+
+/*
+fn get_layer_transform(document: &DocumentMessageHandler, layer_path: &[LayerId]) -> Option<DAffine2> {
+	let layer = document.document_legacy.layer(layer_path).ok()?;
+	Some(layer.transform)
+}
+*/

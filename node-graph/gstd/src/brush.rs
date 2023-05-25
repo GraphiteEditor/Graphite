@@ -160,41 +160,39 @@ pub struct BlitNode<P, Texture, Positions, BlendFn> {
 }
 
 #[node_fn(BlitNode<_P>)]
-fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<_P>, mut texture: ImageFrame<_P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<_P>
+fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<_P>, texture: ImageFrame<_P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<_P>
 where
 	BlendFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
-	let orig_transform = texture.transform;
 	for position in positions {
-		texture.transform = DAffine2::from_translation(position) * orig_transform;
-
 		let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
+		let texture_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
+		let document_to_target = target.transform.inverse();
+		let start = document_to_target.transform_point2(position) * target_size - texture_size / 2.0;
+		let stop = start + texture_size;
 
-		// Transforms a point from the background image to the foreground image
-		let bg_to_fg = target.transform() * DAffine2::from_scale(1. / target_size);
+		// Half-open integer ranges [start, stop).
+		let clamp_start = start.clamp(DVec2::ZERO, target_size).as_uvec2();
+		let clamp_stop = stop.clamp(DVec2::ZERO, target_size).as_uvec2();
 
-		// Footprint of the foreground image (0,0) (1, 1) in the background image space
-		let bg_aabb = Bbox::unit().affine_transform(target.transform().inverse() * texture.transform).to_axis_aligned_bbox();
+		let tex_offset = (clamp_start.as_dvec2() - start).as_uvec2().min(texture_size.as_uvec2());
+		let tex_num = (clamp_stop - clamp_start).min(texture_size.as_uvec2() - tex_offset);
 
-		// Clamp the foreground image to the background image
-		let start = (bg_aabb.start * target_size).max(DVec2::ZERO).as_uvec2();
-		let end = (bg_aabb.end * target_size).min(target_size).as_uvec2();
+		// Tight blitting loop. Eagerly assert bounds to hopefully eliminate
+		// bounds check inside loop.
+		let tex_idx = |x: u32, y: u32| -> usize { (y as usize * texture.image.width as usize) + (x as usize) };
+		let target_idx = |x: u32, y: u32| -> usize { (y as usize * target.image.width as usize) + (x as usize) };
 
-		for y in start.y..end.y {
-			for x in start.x..end.x {
-				let bg_point = DVec2::new(x as f64, y as f64);
-				let fg_point = bg_to_fg.transform_point2(bg_point);
+		let max_y = (tex_offset.y + tex_num.y).saturating_sub(1);
+		let max_x = (tex_offset.x + tex_num.x).saturating_sub(1);
+		assert!(tex_idx(max_x, max_y) < texture.image.data.len());
+		assert!(target_idx(max_x, max_y) < target.image.data.len());
 
-				let image_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
-				let pos = (DAffine2::from_scale(image_size) * texture.transform.inverse()).transform_point2(fg_point);
-				if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {
-					continue;
-				}
-				if let Some(src_pixel) = texture.image.get_pixel(pos.x as u32, pos.y as u32) {
-					if let Some(dst_pixel) = target.get_pixel_mut(x, y) {
-						*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
-					}
-				}
+		for y in tex_offset.y..tex_offset.y + tex_num.y {
+			for x in tex_offset.x..tex_offset.x + tex_num.x {
+				let src_pixel = texture.image.data[tex_idx(x, y)];
+				let dst_pixel = &mut target.image.data[target_idx(x + clamp_start.x, y + clamp_start.y)];
+				*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 			}
 		}
 	}
