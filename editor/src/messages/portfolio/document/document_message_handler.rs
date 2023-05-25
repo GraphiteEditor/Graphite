@@ -137,8 +137,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									reverse_index,
 								} => responses.add(MoveSelectedLayersTo {
 									folder_path: folder_path.clone(),
-									insert_index: insert_index.clone(),
-									reverse_index: reverse_index.clone(),
+									insert_index: *insert_index,
+									reverse_index: *reverse_index,
 								}),
 								DocumentResponse::CreatedLayer { path, is_selected } => {
 									if self.layer_metadata.contains_key(path) {

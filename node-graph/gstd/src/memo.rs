@@ -64,7 +64,7 @@ impl<'i, T: 'static + Clone> Node<'i, T> for MonitorNode<T> {
 
 	fn serialize(&self) -> Option<Arc<dyn core::any::Any>> {
 		let output = self.output.lock().unwrap();
-		(*output).as_ref().and_then(|output| Some(output.clone() as Arc<dyn core::any::Any>))
+		(*output).as_ref().map(|output| output.clone() as Arc<dyn core::any::Any>)
 	}
 }
 
