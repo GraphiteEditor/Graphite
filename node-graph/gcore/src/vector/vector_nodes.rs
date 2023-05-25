@@ -157,10 +157,16 @@ fn set_vector_data_resample_curve(mut vector_data: VectorData, density: f64) -> 
 	vector_data.subpaths = vector_data
 		.subpaths
 		.iter()
-		//.map(|subpath| Subpath::new_cubic_spline(subpath.compute_lookup_table(Some((subpath.length(None) / density).round() as usize), Some(TValueType::Euclidean))))
 		.map(|subpath| {
-			let step = subpath.length(None) / density;
-			Subpath::from_anchors((0..=step as usize).map(|t| subpath.evaluate(SubpathTValue::GlobalEuclidean(t as f64 / step))).collect::<Vec<DVec2>>(), false)
+			let length = subpath.length(None);
+			let rounded_count = (length / density).round();
+			let difference = length - rounded_count * density;
+			let adjusted_density = density + difference / rounded_count;
+
+			Subpath::from_anchors(
+				(0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean((c as f64 * adjusted_density / length).clamp(0.0, 0.99999)))),
+				false,
+			)
 		})
 		.collect();
 	vector_data
