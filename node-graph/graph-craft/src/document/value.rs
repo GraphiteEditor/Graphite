@@ -285,7 +285,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<Option<graphene_core::Color>>() => Some(TaggedValue::OptionalColor(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Some(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::text::Font>() => Some(TaggedValue::Font(*downcast(input).unwrap())),
-			x if x == TypeId::of::<Vec<DVec2>>() => Some(TaggedValue::VecDVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Some(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Some(TaggedValue::Segments(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::EditorApi>() => Some(TaggedValue::EditorApi(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Some(TaggedValue::DocumentNode(*downcast(input).unwrap())),
