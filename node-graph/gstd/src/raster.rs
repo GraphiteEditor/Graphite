@@ -1,6 +1,6 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, LinearChannel, Luminance, Pixel, RasterMut, Sample};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
 use graphene_core::transform::Transform;
 
 use graphene_core::value::CopiedNode;
@@ -175,6 +175,54 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
+	insertion: Insertion,
+	target_channel: TargetChannel,
+	_p: PhantomData<P>,
+	_s: PhantomData<S>,
+}
+
+#[node_macro::node_fn(InsertChannelNode<_P, _S>)]
+fn insert_channel_node<
+	// _P is the color of the input image.
+	_P: RGBMut,
+	_S: Pixel + Luminance,
+	// Input image
+	Input: RasterMut<Pixel = _P>,
+	Insertion: Raster<Pixel = _S>,
+>(
+	mut image: Input,
+	insertion: Insertion,
+	target_channel: RedGreenBlue,
+) -> Input
+where
+	_P::ColorChannel: Linear,
+{
+	if insertion.width() == 0 {
+		return image;
+	}
+
+	if insertion.width() != image.width() || insertion.height() != image.height() {
+		log::warn!("Stencil and image have different sizes. This is not supported.");
+		return image;
+	}
+
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+			let insertion_pixel = insertion.get_pixel(x, y).unwrap();
+			match target_channel {
+				RedGreenBlue::Red => image_pixel.set_red(insertion_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Green => image_pixel.set_green(insertion_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Blue => image_pixel.set_blue(insertion_pixel.l().cast_linear_channel()),
+			}
+		}
+	}
+
+	image
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct MaskImageNode<P, S, Stencil> {
 	stencil: Stencil,
 	_p: PhantomData<P>,
@@ -182,7 +230,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 }
 
 #[node_macro::node_fn(MaskImageNode<_P, _S>)]
-fn mask_image<
+fn mask_imge<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
 	_P: Copy + Alpha,
@@ -206,13 +254,14 @@ fn mask_image<
 
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
+	let stencil_transform_inverse = stencil.transform().inverse();
 
-	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
+	let area = bg_to_fg.transform_vector2(DVec2::ONE);
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_point = DVec2::new(x as f64, y as f64);
 			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
+			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
 			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();

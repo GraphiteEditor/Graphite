@@ -140,6 +140,11 @@ pub trait RGB: Pixel {
 		self.blue()
 	}
 }
+pub trait RGBMut: RGB {
+	fn set_red(&mut self, red: Self::ColorChannel);
+	fn set_green(&mut self, green: Self::ColorChannel);
+	fn set_blue(&mut self, blue: Self::ColorChannel);
+}
 
 pub trait AssociatedAlpha: RGB + Alpha {
 	fn to_unassociated<Out: UnassociatedAlpha>(&self) -> Out;
