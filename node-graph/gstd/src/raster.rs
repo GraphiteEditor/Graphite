@@ -175,8 +175,8 @@ fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InsertChannelNode<P, S, Replacement, TargetChannel> {
-	replacement: Replacement,
+pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
+	insertion: Insertion,
 	target_channel: TargetChannel,
 	_p: PhantomData<P>,
 	_s: PhantomData<S>,
@@ -189,20 +189,20 @@ fn insert_channel_node<
 	_S: Pixel + Luminance,
 	// Input image
 	Input: RasterMut<Pixel = _P>,
-	Replacement: Raster<Pixel = _S>,
+	Insertion: Raster<Pixel = _S>,
 >(
 	mut image: Input,
-	replacement: Replacement,
+	insertion: Insertion,
 	target_channel: RedGreenBlue,
 ) -> Input
 where
 	_P::ColorChannel: Linear,
 {
-	if replacement.width() == 0 {
+	if insertion.width() == 0 {
 		return image;
 	}
 
-	if replacement.width() != image.width() || replacement.height() != image.height() {
+	if insertion.width() != image.width() || insertion.height() != image.height() {
 		log::warn!("Stencil and image have different sizes. This is not supported.");
 		return image;
 	}
@@ -210,11 +210,11 @@ where
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			let replacement_pixel = replacement.get_pixel(x, y).unwrap();
+			let insertion_pixel = insertion.get_pixel(x, y).unwrap();
 			match target_channel {
-				RedGreenBlue::Red => image_pixel.set_red(replacement_pixel.l().cast_linear_channel()),
-				RedGreenBlue::Green => image_pixel.set_green(replacement_pixel.l().cast_linear_channel()),
-				RedGreenBlue::Blue => image_pixel.set_blue(replacement_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Red => image_pixel.set_red(insertion_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Green => image_pixel.set_green(insertion_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Blue => image_pixel.set_blue(insertion_pixel.l().cast_linear_channel()),
 			}
 		}
 	}
