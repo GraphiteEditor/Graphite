@@ -605,7 +605,7 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 2, "Target Channel", false);
+	let color_channel = color_channel(document_node, node_id, 2, "Replace", false);
 
 	vec![color_channel]
 }
@@ -617,7 +617,7 @@ pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn channel_extraction_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 1, "Target Channel", true);
+	let color_channel = color_channel(document_node, node_id, 1, "From", true);
 
 	vec![color_channel]
 }

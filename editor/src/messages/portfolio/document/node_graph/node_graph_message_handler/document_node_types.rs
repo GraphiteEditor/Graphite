@@ -377,8 +377,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_std::raster::InsertChannelNode<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("ColorChannel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+				DocumentInputType::value("Replacment", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Replace", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::insert_channel_properties,
@@ -518,7 +518,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+				DocumentInputType::value("From", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::channel_extraction_properties,
