@@ -605,7 +605,7 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 2, "Replace", false);
+	let color_channel = color_channel(document_node, node_id, 2, "Into", false);
 
 	vec![color_channel]
 }
