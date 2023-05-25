@@ -13,13 +13,16 @@
 	},
 	"scripts": {
 		"start": "npm run build-wasm && concurrently -k \"parcel serve index.html --port 8080\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
+		"start-profiling": "npm run build-wasm-profiling && concurrently -k \"parcel serve index.html --port 8080\" \"npm run watch:wasm-profiling\" || (npm run print-building-help && exit 1)",
 		"build": "npm run build-wasm-prod && npm run build-licenses && parcel build index.html || (npm run print-building-help && exit 1)",
 		"build-licenses": "webpack build",
 		"tauri:dev": "echo 'Make sure you build the wasm binary for tauri using `npm run tauri:build-wasm`' && parcel serve index.html --port 8080",
 		"build-wasm": "wasm-pack build ./wasm --dev --target=web",
+		"build-wasm-profiling": "wasm-pack build ./wasm --profiling --target=web",
 		"build-wasm-prod": "wasm-pack build ./wasm --release --target=web",
 		"tauri:build-wasm": "wasm-pack build ./wasm --release --target=web -- --features tauri",
 		"watch:wasm": "cargo watch --postpone --watch-when-idle --workdir  wasm --shell \"wasm-pack build . --dev --target=web -- --color always\"",
+		"watch:wasm-profiling": "cargo watch --postpone --watch-when-idle --workdir  wasm --shell \"wasm-pack build . --profiling --target=web -- --color always\"",
 		"--------------------": "",
 		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
 		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
