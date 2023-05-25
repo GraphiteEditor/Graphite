@@ -232,6 +232,26 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 //TODO Use generalized Version of this as soon as it's available
+fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::RedGreenBlue(mode),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index)));
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
+}
+
+//TODO Use generalized Version of this as soon as it's available
 fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -251,7 +271,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
 }
 
-// TODO: Generalize this for all dropdowns ( also see blend_mode )
+// TODO: Generalize this for all dropdowns ( also see blend_mode and channel_extration )
 fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -588,6 +608,18 @@ pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
 	vec![luminance_calc]
+}
+
+pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
+
+	vec![color_channel]
+}
+
+pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_channel = color_channel(document_node, node_id, 1, "From", true);
+
+	vec![color_channel]
 }
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
