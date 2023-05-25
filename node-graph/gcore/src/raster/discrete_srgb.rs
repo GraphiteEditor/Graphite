@@ -143,7 +143,7 @@ mod tests {
 		} else if f <= 0.0031308f32 {
 			12.92_f32 * f
 		} else if f < 1_f32 {
-			1.055f32 * f.powf(1.0f_32 / 2.4_f32) - 0.055f32
+			1.055f32 * f.powf(1.0_f32 / 2.4_f32) - 0.055f32
 		} else {
 			1_f32
 		}
@@ -163,7 +163,7 @@ mod tests {
 	}
 
 	fn srgb_u8_to_float_ref(c: u8) -> f32 {
-		srgb_to_float_ref(c as f32 * (1_f32 / 255.0f_32))
+		srgb_to_float_ref(c as f32 * (1_f32 / 255.0_f32))
 	}
 
 	#[test]
