@@ -5,8 +5,6 @@ use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
 use std::marker::PhantomData;
 
-use crate::http::EvalSyncNode;
-
 pub struct DynAnyNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<I>,

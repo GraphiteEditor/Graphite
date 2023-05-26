@@ -186,7 +186,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Downres".to_string(),
@@ -200,12 +200,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
 						..Default::default()
 					},
-					DocumentNode {
+					// We currently just clone by default
+					/*DocumentNode {
 						name: "Clone".to_string(),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
 						..Default::default()
-					},
+					},*/
 				]
 				.into_iter()
 				.enumerate()
