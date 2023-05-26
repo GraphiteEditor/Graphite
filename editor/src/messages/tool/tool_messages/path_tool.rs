@@ -78,6 +78,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
+				LineExtension,
 				DragStart,
 				Delete,
 				NudgeSelectedPoints,
@@ -176,7 +177,6 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, PathToolMessage::LineExtension) => {
-					debug!("LOL: {:?}", self);
 					tool_data.line_extension = !tool_data.line_extension;
 					self
 				}
@@ -262,7 +262,6 @@ impl Fsm for PathToolFsmState {
 						shift_mirror_distance,
 					},
 				) => {
-					debug!("LE: {:?}", tool_data.line_extension);
 					// Determine when alt state changes
 					let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
 
@@ -306,6 +305,33 @@ impl Fsm for PathToolFsmState {
 						let delta = snapped_position - tool_data.previous_mouse_position;
 						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
 						tool_data.previous_mouse_position = snapped_position;
+					}
+
+					// Plan:
+					if tool_data.line_extension {
+						if let Some(point_under) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
+							let anchor_id = point_under.0;
+							let manipulator_point_id = point_under.1;
+
+							if manipulator_point_id.manipulator_type == SelectedType::Anchor {
+								// Based on the anchor were dragging obtain the subpath
+								// Given the subpath, determine if the selected anchor has (no handles, or if it has handles only if its handles are near the anchor)
+								let anchor_id_layer = document.document_legacy.layer(&anchor_id).unwrap();
+								let subpaths = anchor_id_layer.as_vector_data().unwrap().subpaths.first().unwrap();
+								let anchor_subpath = subpaths.manipulator_from_id(manipulator_point_id.group).unwrap();
+								if (anchor_subpath.in_handle == None && anchor_subpath.out_handle == None)
+									|| (anchor_subpath.in_handle == None && anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
+									|| (anchor_subpath.out_handle == None && anchor_subpath.in_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0))
+									|| (anchor_subpath.in_handle != None
+										&& anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0)
+										&& anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
+								{
+									debug!("line segment");
+									// Use the subpath and the above and below subpath, use the position to obtain the angle
+									// Change delta to be restricted to the angle the line segment is drawn
+								}
+							}
+						}
 					}
 
 					PathToolFsmState::Dragging
