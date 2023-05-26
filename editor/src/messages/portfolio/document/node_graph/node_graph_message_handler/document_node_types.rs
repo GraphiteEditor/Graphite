@@ -11,7 +11,7 @@ use graph_craft::NodeIdentifier;
 #[cfg(feature = "gpu")]
 use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
@@ -545,6 +545,20 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Pixel Noise",
+			category: "General",
+			identifier: NodeImplementation::proto("graphene_std::raster::PixelNoiseNode<_, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Width", TaggedValue::U32(100), false),
+				DocumentInputType::value("Height", TaggedValue::U32(100), false),
+				DocumentInputType::value("Seed", TaggedValue::U32(0), false),
+				DocumentInputType::value("Noise Type", TaggedValue::NoiseType(NoiseType::WhiteNoise), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::pixel_noise_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
