@@ -3,7 +3,7 @@ mod executor;
 
 pub use context::Context;
 pub use executor::GpuExecutor;
-use gpu_executor::{Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
+use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::Type;
 
 use anyhow::{bail, Result};
@@ -83,7 +83,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		};
 		Ok(buffer)
 	}
-	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: u32) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: ComputePassDimensions) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
@@ -113,11 +113,12 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 		{
+			let dimensions = instances.get();
 			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
 			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
-			cpass.dispatch_workgroups(instances, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
+			cpass.dispatch_workgroups(dimensions.0, dimensions.1, dimensions.2); // Number of cells to run, the (x,y,z) size of item being processed
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
