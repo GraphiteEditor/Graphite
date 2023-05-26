@@ -46,7 +46,9 @@ pub struct GraphicElement {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
 	pub graphic_group: GraphicGroup,
-	pub bounds: Option<[IVec2; 2]>,
+	pub location: IVec2,
+	pub dimensions: IVec2,
+	pub background: Color,
 }
 
 pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
@@ -82,13 +84,20 @@ fn construct_layer<Data: Into<GraphicElementData>>(
 	stack
 }
 
-pub struct ConstructArtboardNode<Bounds> {
-	bounds: Bounds,
+pub struct ConstructArtboardNode<Location, Dimensions, Background> {
+	location: Location,
+	dimensions: Dimensions,
+	background: Background,
 }
 
 #[node_fn(ConstructArtboardNode)]
-fn construct_artboard(graphic_group: GraphicGroup, bounds: Option<[IVec2; 2]>) -> Artboard {
-	Artboard { graphic_group, bounds }
+fn construct_artboard(graphic_group: GraphicGroup, location: IVec2, dimensions: IVec2, background: Color) -> Artboard {
+	Artboard {
+		graphic_group,
+		location,
+		dimensions,
+		background,
+	}
 }
 
 impl From<ImageFrame<Color>> for GraphicElementData {

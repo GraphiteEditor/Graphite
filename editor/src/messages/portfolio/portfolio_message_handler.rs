@@ -514,7 +514,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					self.executor.insert_thumbnail_blob_url(blob_url, layer_id, node_id, responses);
 					return;
 				}
-
 				let message = DocumentMessage::SetImageBlobUrl {
 					layer_path,
 					blob_url,

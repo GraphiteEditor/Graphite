@@ -6,6 +6,7 @@ use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
+use crate::messages::portfolio::document::node_graph::NodePropertiesContext;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -301,7 +302,7 @@ pub fn register_artwork_layer_properties(
 		LayerDataType::Layer(layer) => {
 			let mut properties_sections = Vec::new();
 
-			let mut context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
+			let mut context = NodePropertiesContext {
 				persistent_data,
 				document,
 				responses,
@@ -310,7 +311,7 @@ pub fn register_artwork_layer_properties(
 				executor,
 				network: &layer.network,
 			};
-			node_graph_message_handler.collate_properties(layer, &mut context, &mut properties_sections);
+			node_graph_message_handler.collate_properties(&mut context, &mut properties_sections);
 
 			properties_sections
 		}
@@ -325,6 +326,31 @@ pub fn register_artwork_layer_properties(
 	});
 	responses.add(LayoutMessage::SendLayout {
 		layout: Layout::WidgetLayout(WidgetLayout::new(properties_body)),
+		layout_target: LayoutTarget::PropertiesSections,
+	});
+}
+
+pub fn register_document_graph_properties(mut context: NodePropertiesContext, node_graph_message_handler: &NodeGraphMessageHandler) {
+	let mut properties_sections = Vec::new();
+	node_graph_message_handler.collate_properties(&mut context, &mut properties_sections);
+	let options_bar = vec![LayoutGroup::Row {
+		widgets: vec![
+			IconLabel::new("File").widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			TextLabel::new("Document graph").widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			TextInput::new("No layer selected").disabled(true).widget_holder(),
+			WidgetHolder::related_separator(),
+			PopoverButton::new("Options Bar", "Coming soon").widget_holder(),
+		],
+	}];
+
+	context.responses.add(LayoutMessage::SendLayout {
+		layout: Layout::WidgetLayout(WidgetLayout::new(options_bar)),
+		layout_target: LayoutTarget::PropertiesOptions,
+	});
+	context.responses.add(LayoutMessage::SendLayout {
+		layout: Layout::WidgetLayout(WidgetLayout::new(properties_sections)),
 		layout_target: LayoutTarget::PropertiesSections,
 	});
 }
