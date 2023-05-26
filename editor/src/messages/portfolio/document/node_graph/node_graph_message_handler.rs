@@ -540,7 +540,13 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let input = node_type.inputs[input_index].default.clone();
+				let Some((input_index, existing_input)) = node.inputs.iter().enumerate().filter(|(_, input)| input.is_exposed()).nth(input_index) else {
+					return;
+				};
+				let mut input = node_type.inputs[input_index].default.clone();
+				if let NodeInput::Value { exposed, .. } = &mut input {
+					*exposed = existing_input.is_exposed();
+				}
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
 				let should_rerender = network.connected_to_output(node_id, true);
