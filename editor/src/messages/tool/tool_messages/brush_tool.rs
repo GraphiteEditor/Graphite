@@ -288,6 +288,7 @@ impl Fsm for BrushToolFsmState {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layer_path = document.get_path_for_new_layer();
 					}
+					let layer_position = tool_data.transform.inverse().transform_point2(document_position);
 
 					// Start a new stroke with a single sample.
 					tool_data.strokes.push(BrushStroke {
