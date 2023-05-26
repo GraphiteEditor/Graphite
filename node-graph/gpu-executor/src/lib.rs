@@ -168,7 +168,7 @@ pub struct UniformNode<Executor> {
 }
 
 #[node_macro::node_fn(UniformNode)]
-fn uniform_node<T: ToUniformBuffer, E: GpuExecutor>(data: T, executor: &'any_input E) -> ShaderInput<E::BufferHandle> {
+fn uniform_node<T: ToUniformBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E::BufferHandle> {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
@@ -177,7 +177,7 @@ pub struct StorageNode<Executor> {
 }
 
 #[node_macro::node_fn(StorageNode)]
-fn storage_node<T: ToStorageBuffer, E: GpuExecutor>(data: T, executor: &'any_input E) -> ShaderInput<E::BufferHandle> {
+fn storage_node<T: ToStorageBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E::BufferHandle> {
 	executor
 		.create_storage_buffer(
 			data,
@@ -205,7 +205,7 @@ pub struct CreateOutputBufferNode<Executor, Ty> {
 }
 
 #[node_macro::node_fn(CreateOutputBufferNode)]
-fn create_output_buffer_node<E: GpuExecutor>(size: usize, executor: &'any_input E, ty: Type) -> ShaderInput<E::BufferHandle> {
+fn create_output_buffer_node<E: GpuExecutor>(size: usize, executor: &'input E, ty: Type) -> ShaderInput<E::BufferHandle> {
 	executor.create_output_buffer(size, ty, true).unwrap()
 }
 
@@ -216,7 +216,7 @@ pub struct CreateComputePassNode<Executor, Output, Instances> {
 }
 
 #[node_macro::node_fn(CreateComputePassNode)]
-fn create_compute_pass_node<E: GpuExecutor>(layout: PipelineLayout<E>, executor: &'any_input E, output: ShaderInput<E::BufferHandle>, instances: u32) -> E::CommandBuffer {
+fn create_compute_pass_node<E: GpuExecutor>(layout: PipelineLayout<E>, executor: &'input E, output: ShaderInput<E::BufferHandle>, instances: u32) -> E::CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output), instances).unwrap()
 }
 
@@ -242,7 +242,7 @@ pub struct ExecuteComputePipelineNode<Executor> {
 }
 
 #[node_macro::node_fn(ExecuteComputePipelineNode)]
-fn execute_compute_pipeline_node<E: GpuExecutor>(encoder: E::CommandBuffer, executor: &'any_input mut E) {
+fn execute_compute_pipeline_node<E: GpuExecutor>(encoder: E::CommandBuffer, executor: &'input mut E) {
 	executor.execute_compute_pipeline(encoder).unwrap();
 }
 
@@ -251,6 +251,6 @@ fn execute_compute_pipeline_node<E: GpuExecutor>(encoder: E::CommandBuffer, exec
 // 	executor: Executor,
 // }
 // #[node_macro::node_fn(ReadOutputBufferNode)]
-// fn read_output_buffer_node<E: GpuExecutor>(buffer: E::BufferHandle, executor: &'any_input mut E) -> Vec<u8> {
+// fn read_output_buffer_node<E: GpuExecutor>(buffer: E::BufferHandle, executor: &'input mut E) -> Vec<u8> {
 // 	executor.read_output_buffer(buffer).await.unwrap()
 // }

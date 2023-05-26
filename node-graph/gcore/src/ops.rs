@@ -181,7 +181,7 @@ pub struct MapResultNode<I, E, Mn> {
 }
 
 #[node_macro::node_fn(MapResultNode<_I,  _E>)]
-fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<<N as Node<'input, _I>>::Output, _E>
+fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
 where
 	N: for<'a> Node<'a, _I>,
 {
@@ -195,7 +195,7 @@ pub struct FlatMapResultNode<I, O, E, Mn> {
 }
 
 #[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<_O, _E>
+fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
 where
 	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
 {
