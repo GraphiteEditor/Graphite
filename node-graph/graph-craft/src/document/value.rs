@@ -296,7 +296,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Some(TaggedValue::DocumentNode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Some(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::Artboard>() => Some(TaggedValue::Artboard(*downcast(input).unwrap())),
-			x if x == TypeId::of::<Option<[glam::IVec2; 2]>>() => Some(TaggedValue::Optional2IVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<glam::IVec2>() => Some(TaggedValue::IVec2(*downcast(input).unwrap())),
 			_ => None,
 		}
 	}
