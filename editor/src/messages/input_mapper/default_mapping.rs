@@ -204,6 +204,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowDown); modifiers=[ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowLeft], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
+		entry!(KeyDown(KeyK); action_dispatch=PathToolMessage::LineExtension),
 		//
 		// PenToolMessage
 		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
@@ -259,7 +260,7 @@ pub fn default_mapping() -> Mapping {
 		// DocumentMessage
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
-		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
+		entry!(KeyDown(KeyP); action_dispatch=DocumentMessage::DebugPrintDocument),
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyZ); modifiers=[Accel], action_dispatch=DocumentMessage::Undo),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::DeselectAllLayers),

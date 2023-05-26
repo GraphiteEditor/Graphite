@@ -41,6 +41,7 @@ pub enum PathToolMessage {
 		shift_mirror_distance: Key,
 	},
 	InsertPoint,
+	LineExtension,
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
@@ -116,6 +117,7 @@ struct PathToolData {
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
+	line_extension: bool,
 }
 
 impl PathToolData {
@@ -171,6 +173,11 @@ impl Fsm for PathToolFsmState {
 						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
 					}
 
+					self
+				}
+				(_, PathToolMessage::LineExtension) => {
+					debug!("LOL: {:?}", self);
+					tool_data.line_extension = !tool_data.line_extension;
 					self
 				}
 				// Mouse down
@@ -255,6 +262,7 @@ impl Fsm for PathToolFsmState {
 						shift_mirror_distance,
 					},
 				) => {
+					debug!("LE: {:?}", tool_data.line_extension);
 					// Determine when alt state changes
 					let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
 
