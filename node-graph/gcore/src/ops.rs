@@ -22,12 +22,30 @@ pub struct AddParameterNode<Second> {
 	second: Second,
 }
 
-#[node_macro::node_fn(AddParameterNode)]
+#[node_macro::node_new(AddParameterNode)]
 fn add_parameter<U, T>(first: U, second: T) -> <U as Add<T>>::Output
 where
 	U: Add<T>,
 {
 	first + second
+}
+
+#[automatically_derived]
+impl<'input, U: 'input, T: 'input, S0: 'input> Node<'input, U> for AddParameterNode<S0>
+where
+	U: Add<T>,
+	S0: Node<'input, (), Output = T>,
+{
+	type Output = <U as Add<T>>::Output;
+	#[inline]
+	fn eval(&'input self, first: U) -> Self::Output {
+		let second = self.second.eval(());
+		{
+			{
+				first + second
+			}
+		}
+	}
 }
 
 pub struct MulParameterNode<Second> {

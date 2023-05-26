@@ -121,6 +121,13 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = 
 		(**self).eval(input)
 	}
 }
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
 
 #[cfg(feature = "alloc")]
 pub use crate::raster::image::{EditorApi, ExtractImageFrame};

@@ -196,37 +196,6 @@ impl<'n, I, O> DowncastBothNode<'n, I, O> {
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
 #[derive(Clone, Copy)]
-pub struct DowncastBothSyncNode<'a, I, O> {
-	node: TypeErasedPinnedRef<'a>,
-	_i: PhantomData<I>,
-	_o: PhantomData<O>,
-}
-impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothSyncNode<'n, I, O> {
-	type Output = O;
-	#[inline]
-	fn eval(&'input self, input: I) -> Self::Output {
-		{
-			let input = Box::new(input);
-			let future = self.node.eval(input);
-
-			let value = EvalSyncNode::new().eval(future);
-			let out = dyn_any::downcast(value).unwrap_or_else(|e| panic!("DowncastBothNode Input {e}"));
-			*out
-		}
-	}
-}
-impl<'n, I, O> DowncastBothSyncNode<'n, I, O> {
-	pub const fn new(node: TypeErasedPinnedRef<'n>) -> Self {
-		Self {
-			node,
-			_i: core::marker::PhantomData,
-			_o: core::marker::PhantomData,
-		}
-	}
-}
-/// Boxes the input and downcasts the output.
-/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
-#[derive(Clone, Copy)]
 pub struct DowncastBothRefNode<'a, I, O> {
 	node: TypeErasedPinnedRef<'a>,
 	_i: PhantomData<(I, O)>,

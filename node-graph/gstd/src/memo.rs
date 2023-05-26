@@ -1,3 +1,5 @@
+use futures::Future;
+use graph_craft::proto::DynFuture;
 use graphene_core::Node;
 
 use std::hash::{Hash, Hasher};
@@ -15,25 +17,30 @@ pub struct CacheNode<T, CachedNode> {
 	cache: boxcar::Vec<(u64, T, AtomicBool)>,
 	node: CachedNode,
 }
-impl<'i, T: 'i, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for CacheNode<T, CachedNode>
+impl<'i, T: 'i + Clone, I: 'i + Hash, CachedNode: 'i> Node<'i, I> for CacheNode<T, CachedNode>
 where
-	CachedNode: for<'any_input> Node<'any_input, I, Output = T>,
+	CachedNode: for<'any_input> Node<'any_input, I>,
+	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + 'a,
 {
-	type Output = &'i T;
+	// TODO: This should return a reference to the cached cached_value
+	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty acurate xD
+	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
 	fn eval(&'i self, input: I) -> Self::Output {
-		let mut hasher = Xxh3::new();
-		input.hash(&mut hasher);
-		let hash = hasher.finish();
+		Box::pin(async move {
+			let mut hasher = Xxh3::new();
+			input.hash(&mut hasher);
+			let hash = hasher.finish();
 
-		if let Some((_, cached_value, keep)) = self.cache.iter().find(|(h, _, _)| *h == hash) {
-			keep.store(true, std::sync::atomic::Ordering::Relaxed);
-			cached_value
-		} else {
-			trace!("Cache miss");
-			let output = self.node.eval(input);
-			let index = self.cache.push((hash, output, AtomicBool::new(true)));
-			&self.cache[index].1
-		}
+			if let Some((_, cached_value, keep)) = self.cache.iter().find(|(h, _, _)| *h == hash) {
+				keep.store(true, std::sync::atomic::Ordering::Relaxed);
+				cached_value.clone()
+			} else {
+				trace!("Cache miss");
+				let output = self.node.eval(input).await;
+				let index = self.cache.push((hash, output, AtomicBool::new(true)));
+				self.cache[index].1.clone()
+			}
+		})
 	}
 
 	fn reset(mut self: Pin<&mut Self>) {
@@ -151,11 +158,12 @@ pub struct RefNode<T, Let> {
 	let_node: Let,
 	_t: PhantomData<T>,
 }
+
 impl<'i, T: 'i, Let> Node<'i, ()> for RefNode<T, Let>
 where
-	Let: for<'a> Node<'a, Option<T>, Output = &'a T>,
+	Let: for<'a> Node<'a, Option<T>>,
 {
-	type Output = &'i T;
+	type Output = <Let as Node<'i, Option<T>>>::Output;
 	fn eval(&'i self, _: ()) -> Self::Output {
 		self.let_node.eval(None)
 	}
