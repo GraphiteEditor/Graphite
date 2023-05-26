@@ -643,7 +643,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("None", TaggedValue::None, false),
 				DocumentInputType::value("Background", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Bounds", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Trace", TaggedValue::BrushStrokes(Vec::new()), true),
+				DocumentInputType::value("Trace", TaggedValue::BrushStrokes(Vec::new()), false),
 			],
 			outputs: vec![DocumentOutputType {
 				name: "Image",
