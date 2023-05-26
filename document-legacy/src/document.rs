@@ -26,6 +26,8 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
+	#[serde(default)]
+	pub document_network: graph_craft::document::NodeNetwork,
 }
 
 impl PartialEq for Document {
@@ -39,6 +41,19 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
+			document_network: {
+				use graph_craft::document::{value::TaggedValue, NodeInput, NodeNetwork};
+				let mut network = NodeNetwork::default();
+				let node = graph_craft::document::DocumentNode {
+					name: "Output".into(),
+					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)],
+					implementation: graph_craft::document::DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+					metadata: graph_craft::document::DocumentNodeMetadata::position((8, 4)),
+					..Default::default()
+				};
+				network.push_node(node, false);
+				network
+			},
 		}
 	}
 }

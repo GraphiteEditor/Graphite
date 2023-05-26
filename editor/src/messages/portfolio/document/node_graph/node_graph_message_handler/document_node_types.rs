@@ -171,10 +171,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Artboard",
 			category: "General",
-			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Bounds", TaggedValue::Optional2IVec2(None), false),
+				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
+				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
+				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,

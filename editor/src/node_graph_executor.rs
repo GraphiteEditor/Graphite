@@ -367,17 +367,21 @@ impl NodeGraphExecutor {
 
 		// Get the node graph layer
 		let document = documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
-		let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+		let network = if layer_path.is_empty() {
+			document.document_legacy.document_network.clone()
+		} else {
+			let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
+
+			let layer_layer = match &layer.data {
+				LayerDataType::Layer(layer) => Ok(layer),
+				_ => Err("Invalid layer type".to_string()),
+			}?;
+			layer_layer.network.clone()
+		};
 
 		// Construct the input image frame
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
-
-		let layer_layer = match &layer.data {
-			LayerDataType::Layer(layer) => Ok(layer),
-			_ => Err("Invalid layer type".to_string()),
-		}?;
-		let network = layer_layer.network.clone();
 
 		// Special execution path for generating Imaginate (as generation requires IO from outside node graph)
 		/*if let Some(imaginate_node) = imaginate_node {

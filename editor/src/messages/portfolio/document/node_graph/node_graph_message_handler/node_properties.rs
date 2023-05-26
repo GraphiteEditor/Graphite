@@ -2,7 +2,9 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 
 use crate::messages::prelude::*;
 
-use glam::DVec2;
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::Operation;
+use glam::{DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
@@ -125,6 +127,58 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 		])
 	}
 	widgets
+}
+
+fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, false);
+
+	assist(&mut widgets);
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::DVec2(vec2),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			NumberInput::new(Some(vec2.x))
+				.label(x)
+				.unit(" px")
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(vec2.y))
+				.label(y)
+				.unit(" px")
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
+				.widget_holder(),
+		]);
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::IVec2(vec2),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, vec2.y));
+		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(vec2.x, input.value.unwrap() as i32));
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			NumberInput::new(Some(vec2.x as f64))
+				.int()
+				.label(x)
+				.unit(" px")
+				.on_update(update_value(update_x, node_id, index))
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(vec2.y as f64))
+				.int()
+				.label(y)
+				.unit(" px")
+				.on_update(update_value(update_y, node_id, index))
+				.widget_holder(),
+		]);
+	}
+
+	LayoutGroup::Row { widgets }
 }
 
 fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
@@ -874,11 +928,7 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &
 }
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let translation = {
-		let index = 1;
-
-		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, false);
-
+	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
 		let pivot_index = 5;
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(pivot),
@@ -892,32 +942,10 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					.widget_holder(),
 			);
 		} else {
-			add_blank_assist(&mut widgets);
+			add_blank_assist(widgets);
 		}
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(vec2),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				NumberInput::new(Some(vec2.x))
-					.label("X")
-					.unit(" px")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
-					.widget_holder(),
-				WidgetHolder::related_separator(),
-				NumberInput::new(Some(vec2.y))
-					.label("Y")
-					.unit(" px")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
-					.widget_holder(),
-			]);
-		}
-
-		LayoutGroup::Row { widgets }
 	};
+	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", translation_assist);
 
 	let rotation = {
 		let index = 2;
@@ -944,32 +972,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets }
 	};
 
-	let scale = {
-		let index = 3;
-
-		let mut widgets = start_widgets(document_node, node_id, index, "Scale", FrontendGraphDataType::Vector, true);
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(vec2),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				NumberInput::new(Some(vec2.x))
-					.label("X")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
-					.widget_holder(),
-				WidgetHolder::related_separator(),
-				NumberInput::new(Some(vec2.y))
-					.label("Y")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
-					.widget_holder(),
-			]);
-		}
-
-		LayoutGroup::Row { widgets }
-	};
+	let scale = vec2_widget(document_node, node_id, 3, "Scale", "X", "Y", add_blank_assist);
 	vec![translation, rotation, scale]
 }
 
@@ -1655,6 +1658,8 @@ pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	]
 }
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let label = text_widget(document_node, node_id, 1, "Label", true);
-	vec![LayoutGroup::Row { widgets: label }]
+	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", add_blank_assist);
+	let background = color_widget(document_node, node_id, 3, "Background", ColorInput::default().allow_none(false), true);
+	vec![location, dimensions, background]
 }

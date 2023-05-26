@@ -171,8 +171,8 @@ impl JsEditorHandle {
 				}
 				#[cfg(feature = "tauri")]
 				{
-					let identifier = format!("http://localhost:3001/image/{:?}_{}", image.path, document_id);
-					fetchImage(image.path, image.node_id, image.mime, document_id, identifier);
+					let identifier = format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id);
+					fetchImage(image.path.clone(), image.node_id, image.mime, document_id, identifier);
 				}
 			}
 			return;

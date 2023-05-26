@@ -99,8 +99,8 @@ impl GraphicElementRendered for Artboard {
 		self.graphic_group.render_svg(render, render_params)
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let artboard_bounds = self.bounds.map(|[a, b]| (transform * Quad::from_box([a.as_dvec2(), b.as_dvec2()])).bounding_box());
-		[self.graphic_group.bounding_box(transform), artboard_bounds].into_iter().flatten().reduce(Quad::combine_bounds)
+		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+		[self.graphic_group.bounding_box(transform), Some(artboard_bounds)].into_iter().flatten().reduce(Quad::combine_bounds)
 	}
 }
 
