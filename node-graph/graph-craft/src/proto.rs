@@ -23,7 +23,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output =
 pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> DynFuture<'static, TypeErasedPinned<'static>>;
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
 pub struct ProtoNetwork {
 	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
@@ -90,12 +90,23 @@ pub enum ConstructionArgs {
 	Inline(InlineRust),
 }
 
+impl Eq for ConstructionArgs {}
+
 impl PartialEq for ConstructionArgs {
 	fn eq(&self, other: &Self) -> bool {
 		match (&self, &other) {
 			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
 			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+			_ => {
+				use std::hash::Hasher;
+				use xxhash_rust::xxh3::Xxh3;
+				let hash = |input: &Self| {
+					let mut hasher = Xxh3::new();
+					input.hash(&mut hasher);
+					hasher.finish()
+				};
+				hash(self) == hash(other)
+			}
 		}
 	}
 }
@@ -126,7 +137,7 @@ impl ConstructionArgs {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -137,7 +148,7 @@ pub struct ProtoNode {
 /// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
 /// For documentation on the meaning of the variants, see the documentation of the `NodeInput` enum
 /// in the `document` module
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProtoNodeInput {
 	None,
