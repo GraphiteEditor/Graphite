@@ -12,7 +12,7 @@ export type Editor = Readonly<ReturnType<typeof createEditor>>;
 let wasmImport: WebAssembly.Memory | undefined;
 
 export async function updateImage(path: BigUint64Array, nodeId: bigint, mime: string, imageData: Uint8Array, transform: Float64Array, documentId: bigint): Promise<void> {
-	const blob = new Blob([new Uint8Array(imageData)], { type: mime });
+	const blob = new Blob([imageData], { type: mime });
 
 	const blobURL = URL.createObjectURL(blob);
 
