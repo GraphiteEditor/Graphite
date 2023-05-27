@@ -270,8 +270,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let background_bounds = background_bounds.eval(frames.clone().into_iter());
 					let background_bounds = MergeBoundingBoxNode::new().eval((background_bounds, image.eval(()).await));
 					let mut background_bounds = CopiedNode::new(background_bounds.unwrap().to_transform());
-					let http_node = graphene_std::http::GetNode::new();
-					log::info!("http node: {:?}", http_node.eval("http://localhost:8080".to_string()).await);
 
 					let bounds_transform = bounds.eval(()).await.transform;
 					if bounds_transform != DAffine2::ZERO {

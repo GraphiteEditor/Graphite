@@ -59,8 +59,8 @@ fn window() -> web_sys::Window {
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	window().request_idle_callback(f.as_ref().unchecked_ref()).unwrap();
-	//window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
+	//window().request_idle_callback(f.as_ref().unchecked_ref()).unwrap();
+	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
 }
 
 // Sends a message to the dispatcher in the Editor Backend
