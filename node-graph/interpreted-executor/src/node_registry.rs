@@ -571,7 +571,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&Image<Color>), vec![value_fn!(Image<Color>)]),
+				NodeIOTypes::new(concrete!(()), concrete!(Image<Color>), vec![value_fn!(Image<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
@@ -583,7 +583,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
+				NodeIOTypes::new(concrete!(()), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
@@ -595,7 +595,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(&ImageFrame<Color>), vec![fn_type!(ImageFrame<Color>, ImageFrame<Color>)]),
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(ImageFrame<Color>, ImageFrame<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
@@ -607,7 +607,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&QuantizationChannels), vec![value_fn!(QuantizationChannels)]),
+				NodeIOTypes::new(concrete!(()), concrete!(QuantizationChannels), vec![value_fn!(QuantizationChannels)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::CacheNode"),
@@ -619,7 +619,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&Vec<DVec2>), vec![value_fn!(Vec<DVec2>)]),
+				NodeIOTypes::new(concrete!(()), concrete!(Vec<DVec2>), vec![value_fn!(Vec<DVec2>)]),
 			),
 		],
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
