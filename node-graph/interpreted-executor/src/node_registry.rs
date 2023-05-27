@@ -1,5 +1,6 @@
 use glam::{DAffine2, DVec2};
 
+use graph_craft::document::DocumentNode;
 use graphene_core::ops::IdNode;
 use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
