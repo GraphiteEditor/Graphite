@@ -68,7 +68,7 @@ pub fn float_to_srgb_u8(mut f: f32) -> u8 {
 		// We clamped f to [0, 1], and the integer representations
 		// of the positive finite non-NaN floats are monotonic.
 		// This makes the later LUT lookup panicless.
-		unsafe { std::hint::unreachable_unchecked() }
+		unsafe { core::hint::unreachable_unchecked() }
 	}
 
 	// Compute a piecewise linear interpolation that is always
