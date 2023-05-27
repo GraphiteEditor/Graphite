@@ -1,6 +1,5 @@
 use glam::{DAffine2, DVec2};
 
-
 use graphene_core::ops::IdNode;
 use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
@@ -478,7 +477,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&graphene_core::EditorApi), vec![fn_type!(Option<graphene_core::EditorApi>, &graphene_core::EditorApi)]),
+				NodeIOTypes::new(
+					concrete!(()),
+					concrete!(&graphene_core::EditorApi),
+					vec![fn_type!(Option<graphene_core::EditorApi>, &graphene_core::EditorApi)],
+				),
 			),
 			/*
 			(
