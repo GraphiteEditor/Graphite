@@ -59,6 +59,8 @@ node-macro = { path = "../node-macro" }
 boxcar = "0.1.0"
 xxhash-rust = { workspace = true }
 serde_json = "1.0.96"
+reqwest = { version = "0.11.17", features = ["rustls", "rustls-tls"] }
+futures = "0.3.28"
 
 [dependencies.serde]
 version = "1.0"

@@ -11,7 +11,7 @@ struct SetNode<S, I, Storage, Index> {
 }
 
 #[node_macro::node_fn(SetNode<_S, _I>)]
-fn set_node<T, _S, _I>(value: T, storage: &'any_input mut _S, index: _I)
+fn set_node<T, _S, _I>(value: T, storage: &'input mut _S, index: _I)
 where
 	_S: IndexMut<_I>,
 	_S::Output: DerefMut<Target = T> + Sized,
@@ -25,7 +25,7 @@ struct GetNode<S, Storage> {
 }
 
 #[node_macro::node_fn(GetNode<_S>)]
-fn get_node<_S, I>(index: I, storage: &'any_input _S) -> &'input _S::Output
+fn get_node<_S, I>(index: I, storage: &'input _S) -> &'input _S::Output
 where
 	_S: Index<I>,
 	_S::Output: Sized,

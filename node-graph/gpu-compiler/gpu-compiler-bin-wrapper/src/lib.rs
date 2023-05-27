@@ -10,6 +10,7 @@ pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manife
 		io: request.shader_io.clone(),
 	})?;
 
+	#[cfg(not(feature = "profiling"))]
 	let features = "";
 	#[cfg(feature = "profiling")]
 	let features = "profiling";

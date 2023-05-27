@@ -1659,6 +1659,7 @@ dependencies = [
  "compilation-client",
  "dyn-any",
  "dyn-clone",
+ "futures",
  "glam",
  "gpu-compiler-bin-wrapper",
  "gpu-executor",
@@ -1671,6 +1672,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "reqwest",
  "serde",
  "serde_json",
  "syn 1.0.109",
@@ -2140,6 +2142,7 @@ dependencies = [
  "borrow_stack",
  "dyn-any",
  "dyn-clone",
+ "futures",
  "glam",
  "graph-craft",
  "graphene-core",
@@ -2148,6 +2151,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "serde",
+ "tokio",
 ]
 
 [[package]]

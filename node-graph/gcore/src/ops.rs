@@ -22,12 +22,30 @@ pub struct AddParameterNode<Second> {
 	second: Second,
 }
 
-#[node_macro::node_fn(AddParameterNode)]
+#[node_macro::node_new(AddParameterNode)]
 fn add_parameter<U, T>(first: U, second: T) -> <U as Add<T>>::Output
 where
 	U: Add<T>,
 {
 	first + second
+}
+
+#[automatically_derived]
+impl<'input, U: 'input, T: 'input, S0: 'input> Node<'input, U> for AddParameterNode<S0>
+where
+	U: Add<T>,
+	S0: Node<'input, (), Output = T>,
+{
+	type Output = <U as Add<T>>::Output;
+	#[inline]
+	fn eval(&'input self, first: U) -> Self::Output {
+		let second = self.second.eval(());
+		{
+			{
+				first + second
+			}
+		}
+	}
 }
 
 pub struct MulParameterNode<Second> {
@@ -181,7 +199,7 @@ pub struct MapResultNode<I, E, Mn> {
 }
 
 #[node_macro::node_fn(MapResultNode<_I,  _E>)]
-fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<<N as Node<'input, _I>>::Output, _E>
+fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
 where
 	N: for<'a> Node<'a, _I>,
 {
@@ -195,7 +213,7 @@ pub struct FlatMapResultNode<I, O, E, Mn> {
 }
 
 #[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<_O, _E>
+fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
 where
 	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
 {

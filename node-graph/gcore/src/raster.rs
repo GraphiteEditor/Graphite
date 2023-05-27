@@ -221,7 +221,7 @@ pub struct MapNode<MapFn> {
 }
 
 #[node_macro::node_fn(MapNode)]
-fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'any_input MapFnNode) -> MapFnIterator<'input, _Iter, MapFnNode>
+fn map_node<_Iter: Iterator, MapFnNode>(input: _Iter, map_fn: &'input MapFnNode) -> MapFnIterator<'input, _Iter, MapFnNode>
 where
 	MapFnNode: for<'any_input> Node<'any_input, _Iter::Item>,
 {
@@ -425,7 +425,7 @@ pub struct MapSndNode<First, Second, MapFn> {
 }
 
 #[node_macro::node_fn(MapSndNode< _First, _Second>)]
-fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'any_input MapFn) -> (_First, <MapFn as Node<'input, _Second>>::Output)
+fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'input MapFn) -> (_First, <MapFn as Node<'input, _Second>>::Output)
 where
 	MapFn: for<'any_input> Node<'any_input, _Second>,
 {
@@ -449,7 +449,7 @@ pub struct ForEachNode<MapNode> {
 }
 
 #[node_macro::node_fn(ForEachNode)]
-fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'any_input MapNode) -> ()
+fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'input MapNode) -> ()
 where
 	MapNode: for<'any_input> Node<'any_input, _Iter::Item, Output = ()> + 'input,
 {

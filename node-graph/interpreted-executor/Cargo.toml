@@ -24,3 +24,7 @@ log = "0.4"
 serde = { version = "1", features = ["derive"], optional = true }
 glam = { version = "0.22" }
 once_cell = "1.17.0"
+futures = "0.3.28"
+
+[dev-dependencies]
+tokio = { version = "1.12", features = ["rt", "macros"] }

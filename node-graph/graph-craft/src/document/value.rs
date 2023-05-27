@@ -1,6 +1,7 @@
 use super::DocumentNode;
 use crate::executor::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+use crate::proto::{Any as DAny, FutureAny};
 
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
@@ -305,11 +306,11 @@ impl<'a> TaggedValue {
 pub struct UpcastNode {
 	value: TaggedValue,
 }
-impl<'input> Node<'input, Box<dyn DynAny<'input> + 'input>> for UpcastNode {
-	type Output = Box<dyn DynAny<'input> + 'input>;
+impl<'input> Node<'input, DAny<'input>> for UpcastNode {
+	type Output = FutureAny<'input>;
 
-	fn eval(&'input self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
-		self.value.clone().to_any()
+	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
+		Box::pin(async move { self.value.clone().to_any() })
 	}
 }
 impl UpcastNode {

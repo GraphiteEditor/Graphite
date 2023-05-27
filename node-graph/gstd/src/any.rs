@@ -1,5 +1,6 @@
 use dyn_any::StaticType;
 pub use graph_craft::proto::{Any, TypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
+use graph_craft::proto::{DynFuture, FutureAny};
 use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
 use std::marker::PhantomData;
@@ -12,18 +13,20 @@ pub struct DynAnyNode<I, O, Node> {
 
 impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input, S0: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, S0>
 where
-	N: for<'any_input> Node<'any_input, _I, Output = _O>,
+	N: for<'any_input> Node<'any_input, _I, Output = DynFuture<'any_input, _O>>,
 	S0: for<'any_input> Node<'any_input, (), Output = &'any_input N>,
 {
-	type Output = Any<'input>;
+	type Output = FutureAny<'input>;
 	#[inline]
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		let node = self.node.eval(());
-		{
-			let node_name = core::any::type_name::<N>();
-			let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name));
-			Box::new(node.eval(*input))
-		}
+		let node_name = core::any::type_name::<N>();
+		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name));
+		let output = async move {
+			let result = node.eval(*input).await;
+			Box::new(result) as Any<'input>
+		};
+		Box::pin(output)
 	}
 
 	fn reset(self: std::pin::Pin<&mut Self>) {
@@ -56,11 +59,13 @@ impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'
 where
 	N: for<'any_input> Node<'any_input, _I, Output = &'any_input _O>,
 {
-	type Output = Any<'input>;
+	type Output = FutureAny<'input>;
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		let node_name = core::any::type_name::<N>();
 		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyRefNode Input, {e} in:\n{node_name}"));
-		Box::new(self.node.eval(*input))
+		let result = self.node.eval(*input);
+		let output = async move { Box::new(result) as Any<'input> };
+		Box::pin(output)
 	}
 	fn reset(self: std::pin::Pin<&mut Self>) {
 		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
@@ -79,14 +84,15 @@ pub struct DynAnyInRefNode<I, O, Node> {
 }
 impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyInRefNode<_I, _O, N>
 where
-	N: for<'any_input> Node<'any_input, &'any_input _I, Output = _O>,
+	N: for<'any_input> Node<'any_input, &'any_input _I, Output = DynFuture<'any_input, _O>>,
 {
-	type Output = Any<'input>;
+	type Output = FutureAny<'input>;
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
 			let input: Box<&_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyInRefNode Input, {e} in:\n{node_name}"));
-			Box::new(self.node.eval(*input))
+			let result = self.node.eval(*input);
+			Box::pin(async move { Box::new(result.await) as Any<'_> })
 		}
 	}
 }
@@ -96,13 +102,37 @@ impl<_I, _O, S0> DynAnyInRefNode<_I, _O, S0> {
 	}
 }
 
+pub struct FutureWrapperNode<Node> {
+	node: Node,
+}
+
+impl<'i, T: 'i, N: Node<'i, T>> Node<'i, T> for FutureWrapperNode<N>
+where
+	N: Node<'i, T>,
+{
+	type Output = DynFuture<'i, N::Output>;
+	fn eval(&'i self, input: T) -> Self::Output {
+		Box::pin(async move { self.node.eval(input) })
+	}
+	fn reset(self: std::pin::Pin<&mut Self>) {
+		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
+		Node::reset(wrapped_node);
+	}
+}
+
+impl<'i, N> FutureWrapperNode<N> {
+	pub const fn new(node: N) -> Self {
+		Self { node }
+	}
+}
+
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedPinned<'n>;
 }
 
 impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
-	N: for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + Send + Sync + 'n,
+	N: for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n,
 {
 	fn into_type_erased(self) -> TypeErasedPinned<'n> {
 		Box::pin(self)
@@ -139,13 +169,17 @@ pub struct DowncastBothNode<'a, I, O> {
 	_o: PhantomData<O>,
 }
 impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
-	type Output = O;
+	type Output = DynFuture<'input, O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
+			let node_name = self.node.node_name();
 			let input = Box::new(input);
-			let out = dyn_any::downcast(self.node.eval(input)).unwrap_or_else(|e| panic!("DowncastBothNode Input {e}"));
-			*out
+			let future = self.node.eval(input);
+			Box::pin(async move {
+				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{node_name}"));
+				*out
+			})
 		}
 	}
 }
@@ -166,13 +200,15 @@ pub struct DowncastBothRefNode<'a, I, O> {
 	_i: PhantomData<(I, O)>,
 }
 impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<'n, I, O> {
-	type Output = &'input O;
+	type Output = DynFuture<'input, &'input O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
 			let input = Box::new(input);
-			let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input)).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
-			*out
+			Box::pin(async move {
+				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
+				*out
+			})
 		}
 	}
 }
@@ -188,10 +224,12 @@ pub struct ComposeTypeErased<'a> {
 }
 
 impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
-	type Output = Any<'i>;
+	type Output = DynFuture<'i, Any<'i>>;
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
-		let arg = self.first.eval(input);
-		self.second.eval(arg)
+		Box::pin(async move {
+			let arg = self.first.eval(input).await;
+			self.second.eval(arg).await
+		})
 	}
 }
 
@@ -205,6 +243,21 @@ pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(),
 	DowncastBothNode::new(n)
 }
 
+pub struct PanicNode<I, O>(PhantomData<I>, PhantomData<O>);
+
+impl<'i, I: 'i, O: 'i> Node<'i, I> for PanicNode<I, O> {
+	type Output = O;
+	fn eval(&'i self, _: I) -> Self::Output {
+		unimplemented!("This node should never be evaluated")
+	}
+}
+
+impl<I, O> PanicNode<I, O> {
+	pub const fn new() -> Self {
+		Self(PhantomData, PhantomData)
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -215,8 +268,8 @@ mod test {
 	pub fn dyn_input_invalid_eval_panic() {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
-		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
-		let type_erased = dyn_any.into_type_erased();
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
+		let type_erased = Box::pin(dyn_any) as TypeErasedPinned;
 		let _ref_type_erased = type_erased.as_ref();
 		//let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
 		type_erased.eval(Box::new(&("32", 32u32)));
@@ -226,10 +279,10 @@ mod test {
 	pub fn dyn_input_invalid_eval_panic_() {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
-		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(AddNode::new()));
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
 		let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
 		type_erased.eval(Box::new((4u32, 2u32)));
-		let id_node = IdNode::new();
+		let id_node = FutureWrapperNode::new(IdNode::new());
 		let type_erased_id = Box::pin(id_node) as TypeErasedPinned;
 		let type_erased = ComposeTypeErased::new(type_erased.as_ref(), type_erased_id.as_ref());
 		type_erased.eval(Box::new((4u32, 2u32)));
