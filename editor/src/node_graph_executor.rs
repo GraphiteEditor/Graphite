@@ -23,6 +23,7 @@ use interpreted_executor::executor::DynamicExecutor;
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
@@ -58,7 +59,7 @@ pub(crate) struct GenerationResponse {
 }
 
 thread_local! {
-	static NODE_RUNTIME: RefCell<Option<NodeRuntime>> =  RefCell::new(None);
+	pub(crate) static NODE_RUNTIME: Rc<RefCell<Option<NodeRuntime>>> = Rc::new(RefCell::new(None));
 }
 
 impl NodeRuntime {
@@ -72,7 +73,7 @@ impl NodeRuntime {
 			thumbnails: Default::default(),
 		}
 	}
-	pub fn run(&mut self) {
+	pub async fn run(&mut self) {
 		let mut requests = self.receiver.try_iter().collect::<Vec<_>>();
 		// TODO: Currently we still render the document after we submit the node graph execution request.
 		// This should be avoided in the future.
@@ -94,7 +95,7 @@ impl NodeRuntime {
 				}) => {
 					let (network, monitor_nodes) = Self::wrap_network(graph);
 
-					let result = self.execute_network(network, image_frame);
+					let result = self.execute_network(network, image_frame).await;
 					let mut responses = VecDeque::new();
 					self.update_thumbnails(&path, monitor_nodes, &mut responses);
 					let response = GenerationResponse {
@@ -125,7 +126,7 @@ impl NodeRuntime {
 		(scoped_network, monitor_nodes)
 	}
 
-	fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
+	async fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
 		let editor_api = EditorApi {
 			font_cache: Some(&self.font_cache),
 			image_frame,
@@ -137,7 +138,7 @@ impl NodeRuntime {
 		let proto_network = c.compile_single(scoped_network, true)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		if let Err(e) = self.executor.update(proto_network) {
+		if let Err(e) = self.executor.update(proto_network).await {
 			error!("Failed to update executor:\n{}", e);
 			return Err(e);
 		}
@@ -146,8 +147,8 @@ impl NodeRuntime {
 		use graph_craft::executor::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(EditorApi) => self.executor.execute(editor_api.into_dyn()).map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(EditorApi) => self.executor.execute(editor_api.into_dyn()).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).await.map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
 		};
 		match result {
@@ -200,13 +201,21 @@ impl NodeRuntime {
 	}
 }
 
-pub fn run_node_graph() {
-	NODE_RUNTIME.with(|runtime| {
-		let mut runtime = runtime.borrow_mut();
-		if let Some(runtime) = runtime.as_mut() {
-			runtime.run();
+pub async fn run_node_graph() {
+	let result = NODE_RUNTIME.try_with(|runtime| {
+		let runtime = runtime.clone();
+		async move {
+			let mut runtime = runtime.try_borrow_mut();
+			if let Ok(ref mut runtime) = runtime {
+				if let Some(ref mut runtime) = runtime.as_mut() {
+					runtime.run().await;
+				}
+			}
 		}
 	});
+	if let Ok(result) = result {
+		result.await;
+	}
 }
 
 #[derive(Debug)]
@@ -231,8 +240,7 @@ impl Default for NodeGraphExecutor {
 		let (request_sender, request_reciever) = std::sync::mpsc::channel();
 		let (response_sender, response_reciever) = std::sync::mpsc::channel();
 		NODE_RUNTIME.with(|runtime| {
-			let mut runtime = runtime.borrow_mut();
-			*runtime = Some(NodeRuntime::new(request_reciever, response_sender));
+			runtime.borrow_mut().replace(NodeRuntime::new(request_reciever, response_sender));
 		});
 
 		Self {

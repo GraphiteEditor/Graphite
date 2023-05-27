@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
 
@@ -11,12 +12,15 @@ use graphene_core::*;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
+pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync)>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync>>;
+pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n)>;
+pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'static>;
+pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> DynFuture<'static, TypeErasedPinned<'static>>;
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone)]

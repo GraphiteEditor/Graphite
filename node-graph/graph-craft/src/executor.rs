@@ -3,7 +3,7 @@ use std::error::Error;
 use dyn_any::DynAny;
 
 use crate::document::NodeNetwork;
-use crate::proto::ProtoNetwork;
+use crate::proto::{LocalFuture, ProtoNetwork};
 
 pub struct Compiler {}
 
@@ -37,5 +37,5 @@ impl Compiler {
 pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
 pub trait Executor {
-	fn execute<'a, 's: 'a>(&'s self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>>;
+	fn execute<'a>(&'a self, input: Any<'a>) -> LocalFuture<Result<Any<'a>, Box<dyn Error>>>;
 }

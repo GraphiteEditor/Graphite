@@ -14,7 +14,7 @@ pub struct ReduceNode<Initial, Lambda> {
 }
 
 #[node_fn(ReduceNode)]
-fn reduce<I: Iterator, Lambda, T>(iter: I, initial: T, lambda: &'any_input Lambda) -> T
+fn reduce<I: Iterator, Lambda, T>(iter: I, initial: T, lambda: &'input Lambda) -> T
 where
 	Lambda: for<'a> Node<'a, (T, I::Item), Output = T>,
 {

@@ -158,6 +158,7 @@ mod test {
 		assert_eq!(node.eval(()), 0);
 	}
 	#[test]
+	#[allow(clippy::unit_cmp)]
 	fn test_unit_node() {
 		let node = ForgetNode::new();
 		assert_eq!(node.eval(()), ());
