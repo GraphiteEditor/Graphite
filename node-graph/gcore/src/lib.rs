@@ -107,6 +107,15 @@ impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N
 		(**self).eval(input)
 	}
 }
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for Box<N> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+
 impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 

@@ -10,8 +10,13 @@ license = "MIT OR Apache-2.0"
 
 [features]
 memoization = ["once_cell"]
-default = ["memoization"]
-gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client", "gpu-executor"]
+default = ["memoization", "wgpu"]
+gpu = [
+	"graphene-core/gpu",
+	"gpu-compiler-bin-wrapper",
+	"compilation-client",
+	"gpu-executor",
+]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]

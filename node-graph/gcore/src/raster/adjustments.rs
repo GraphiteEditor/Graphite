@@ -363,6 +363,19 @@ fn invert_image(color: Color) -> Color {
 	color.to_linear_srgb()
 }
 
+// TODO replace with trait based implementation
+impl<'i> Node<'i, &'i Color> for InvertRGBNode {
+	type Output = Color;
+
+	fn eval(&'i self, color: &'i Color) -> Self::Output {
+		let color = color.to_gamma_srgb();
+
+		let color = color.map_rgb(|c| color.a() - c);
+
+		color.to_linear_srgb()
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 	min_luminance: MinLuminance,
