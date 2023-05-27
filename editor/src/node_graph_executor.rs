@@ -10,7 +10,6 @@ use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::executor::Compiler;
-use graph_craft::imaginate_input::*;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{SvgSegment, SvgSegmentList};

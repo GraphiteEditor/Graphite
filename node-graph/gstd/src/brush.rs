@@ -1,8 +1,7 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Raster, RasterMut, Sample};
+use graphene_core::raster::{Alpha, Color, ImageFrame, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;

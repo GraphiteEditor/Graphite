@@ -1,21 +1,17 @@
+use super::document_node_types::NodePropertiesContext;
+use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-
 use crate::messages::prelude::*;
 
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use document_legacy::Operation;
-use glam::{DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
-
 use graphene_core::{Cow, Type, TypeDescriptor};
 
-use super::document_node_types::NodePropertiesContext;
-use super::FrontendGraphDataType;
+use glam::{DVec2, IVec2};
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = WidgetHolder::text_widget(text);
@@ -129,7 +125,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
+fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, false);
 
 	assist(&mut widgets);
@@ -143,13 +139,13 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			WidgetHolder::unrelated_separator(),
 			NumberInput::new(Some(vec2.x))
 				.label(x)
-				.unit(" px")
+				.unit(unit)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
 				.widget_holder(),
 			WidgetHolder::related_separator(),
 			NumberInput::new(Some(vec2.y))
 				.label(y)
-				.unit(" px")
+				.unit(unit)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
 				.widget_holder(),
 		]);
@@ -165,14 +161,14 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			NumberInput::new(Some(vec2.x as f64))
 				.int()
 				.label(x)
-				.unit(" px")
+				.unit(unit)
 				.on_update(update_value(update_x, node_id, index))
 				.widget_holder(),
 			WidgetHolder::related_separator(),
 			NumberInput::new(Some(vec2.y as f64))
 				.int()
 				.label(y)
-				.unit(" px")
+				.unit(unit)
 				.on_update(update_value(update_y, node_id, index))
 				.widget_holder(),
 		]);
@@ -707,10 +703,6 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
-pub fn brush_node_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![]
-}
-
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
 	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
@@ -939,7 +931,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			add_blank_assist(widgets);
 		}
 	};
-	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", translation_assist);
+	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", translation_assist);
 
 	let rotation = {
 		let index = 2;
@@ -966,7 +958,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets }
 	};
 
-	let scale = vec2_widget(document_node, node_id, 3, "Scale", "X", "Y", add_blank_assist);
+	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
 	vec![translation, rotation, scale]
 }
 
@@ -1652,8 +1644,8 @@ pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	]
 }
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", add_blank_assist);
+	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);
 	let background = color_widget(document_node, node_id, 3, "Background", ColorInput::default().allow_none(false), true);
 	vec![location, dimensions, background]
 }

@@ -649,7 +649,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: node_properties::brush_node_properties,
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Extract Vector Points",

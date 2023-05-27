@@ -14,8 +14,8 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
-use graphene_core::raster::{Image, ImageFrame};
+use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
+use graphene_core::raster::ImageFrame;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
@@ -236,7 +236,7 @@ impl BrushToolData {
 		self.layer_path = document.selected_layers().next()?.to_vec();
 		let layer = document.document_legacy.layer(&self.layer_path).ok().and_then(|layer| layer.as_layer().ok())?;
 		let network = &layer.network;
-		for (node, node_id) in network.primary_flow() {
+		for (node, _node_id) in network.primary_flow() {
 			if node.name == "Brush" {
 				let points_input = node.inputs.get(3)?;
 				let NodeInput::Value { tagged_value: TaggedValue::BrushStrokes(strokes), .. } = points_input else {
@@ -278,6 +278,7 @@ impl Fsm for BrushToolFsmState {
 	) -> Self {
 		let document_position = (document.document_legacy.root.transform).inverse().transform_point2(input.mouse.position);
 		let layer_position = tool_data.transform.inverse().transform_point2(document_position);
+
 		if let ToolMessage::Brush(event) = event {
 			match (self, event) {
 				(BrushToolFsmState::Ready, BrushToolMessage::DragStart) => {
@@ -289,13 +290,18 @@ impl Fsm for BrushToolFsmState {
 						tool_data.layer_path = document.get_path_for_new_layer();
 					}
 					let layer_position = tool_data.transform.inverse().transform_point2(document_position);
+					// TODO: Also scale it based on the input image ('Background' parameter).
+					// TODO: Resizing the input image results in a different brush size from the chosen diameter.
+					let layer_scale = ((tool_data.transform.matrix2 * glam::DVec2::X).length())
+						.max((tool_data.transform.matrix2 * glam::DVec2::Y).length())
+						.max(0.0001); // Safety against division by zero
 
-					// Start a new stroke with a single sample.
+					// Start a new stroke with a single sample
 					tool_data.strokes.push(BrushStroke {
 						trace: vec![BrushInputSample { position: layer_position }],
 						style: BrushStyle {
 							color: tool_options.color.active_color().unwrap_or_default(),
-							diameter: tool_options.diameter,
+							diameter: tool_options.diameter / layer_scale,
 							hardness: tool_options.hardness,
 							flow: tool_options.flow,
 							spacing: tool_options.spacing,
@@ -347,7 +353,7 @@ impl Fsm for BrushToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			BrushToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Add Trace")])]),
+			BrushToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Stroke")])]),
 			BrushToolFsmState::Drawing => HintData(vec![]),
 		};
 
