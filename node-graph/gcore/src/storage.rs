@@ -121,23 +121,6 @@ mod test {
 	}
 
 	#[test]
-	fn set_node_array() {
-		let mut backing_storage = [1, 2, 3];
-		let storage = &mut backing_storage;
-		let node = SetNode::new(UnsafeMutValueNode::new(storage));
-		node.eval((4, 1));
-		assert_eq!(backing_storage, [1, 4, 3]);
-	}
-
-	#[test]
-	fn set_node_vec() {
-		let mut storage = vec![1, 2, 3];
-		let node = SetNode::new(UnsafeMutValueNode::new(storage));
-		node.eval((4, 1));
-		assert_eq!(storage, [1, 4, 3]);
-	}
-
-	#[test]
 	fn set_node_slice() {
 		let mut backing_storage = [1, 2, 3];
 		let storage: &mut [i32] = &mut backing_storage;

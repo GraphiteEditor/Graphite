@@ -842,7 +842,11 @@ impl NodeNetwork {
 		let id_nodes = self
 			.nodes
 			.iter()
-			.filter(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::Unresolved(ident) if ident == &NodeIdentifier::new("graphene_core::ops::IdNode")))
+			.filter(|(_, node)| {
+				matches!(&node.implementation, DocumentNodeImplementation::Unresolved(ident) if ident == &NodeIdentifier::new("graphene_core::ops::IdNode"))
+					&& node.inputs.len() == 1
+					&& matches!(node.inputs[0], NodeInput::Node { .. })
+			})
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>();
 		for id in id_nodes {
@@ -1024,7 +1028,7 @@ mod test {
 			..Default::default()
 		};
 		extraction_network.resolve_extract_nodes();
-		assert_eq!(extraction_network.nodes.len(), 2);
+		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&1).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
 		assert!(matches!(&inputs[0], &NodeInput::Value{ tagged_value: TaggedValue::DocumentNode(ref network), ..} if network == &id_node));
