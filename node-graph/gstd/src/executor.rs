@@ -164,7 +164,7 @@ async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Col
 		output_buffer: output_buffer.clone(),
 	};
 	log::debug!("created pipeline");
-	let compute_pass = executor.create_compute_pass(&pipeline, Some(readback_buffer.clone()), len.min(65535) as u32).unwrap();
+	let compute_pass = executor.create_compute_pass(&pipeline, Some(readback_buffer.clone()), len as u32).unwrap();
 	executor.execute_compute_pipeline(compute_pass).unwrap();
 	log::debug!("executed pipeline");
 	log::debug!("reading buffer");
