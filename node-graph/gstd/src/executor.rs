@@ -326,7 +326,6 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 				ShaderInput::StorageBuffer((), concrete!(Color)),                  // background image
 				ShaderInput::StorageBuffer((), concrete!(Color)),                  // foreground image
 				ShaderInput::UniformBuffer((), concrete!(u32)),                    // width of the foreground image
-				ShaderInput::StorageBuffer((), concrete!(u32)),                    // width/height of the foreground image, width of the background image
 				ShaderInput::UniformBuffer((), concrete_with_name!(Mat2, "Mat2")), // bg_to_fg.matrix2
 				ShaderInput::UniformBuffer((), concrete_with_name!(Vec2, "Vec2")), // bg_to_fg.translation
 				ShaderInput::OutputBuffer((), concrete!(Color)),
