@@ -18,6 +18,8 @@ impl Context {
 
 		let limits = adapter.limits();
 
+		log::trace!("Adapter limits: {:?}", limits);
+
 		// `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
 		//  `features` being the available features.
 		let (device, queue) = adapter
