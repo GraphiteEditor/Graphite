@@ -1,5 +1,6 @@
 use glam::{DAffine2, DVec2};
 
+use graph_craft::document::DocumentNode;
 use graphene_core::ops::IdNode;
 use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
@@ -219,7 +220,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			|args| {
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), DocumentNode> = DowncastBothNode::new(args[0]);
-					let document_node = ClonedNode::new(document_node.eval(()).await);
+					//let document_node = ClonedNode::new(document_node.eval(()));
 					let node = graphene_std::executor::MapGpuNode::new(document_node);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					Box::pin(any) as TypeErasedPinned

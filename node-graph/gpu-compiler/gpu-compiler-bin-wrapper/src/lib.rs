@@ -6,7 +6,7 @@ use std::io::Write;
 
 pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manifest_path: &str) -> anyhow::Result<Vec<u8>> {
 	let serialized_graph = serde_json::to_string(&gpu_executor::CompileRequest {
-		network: request.network.clone(),
+		networks: request.networks.clone(),
 		io: request.shader_io.clone(),
 	})?;
 
@@ -43,23 +43,23 @@ pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manife
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct CompileRequest {
-	network: graph_craft::proto::ProtoNetwork,
+	networks: Vec<graph_craft::proto::ProtoNetwork>,
 	input_types: Vec<Type>,
-	output_type: Type,
+	output_types: Vec<Type>,
 	shader_io: ShaderIO,
 }
 
 impl CompileRequest {
-	pub fn new(network: ProtoNetwork, input_types: Vec<Type>, output_type: Type, io: ShaderIO) -> Self {
+	pub fn new(networks: Vec<ProtoNetwork>, input_types: Vec<Type>, output_types: Vec<Type>, io: ShaderIO) -> Self {
 		// TODO: add type checking
 		// for (input, buffer) in input_types.iter().zip(io.inputs.iter()) {
 		// 	assert_eq!(input, &buffer.ty());
 		// }
 		// assert_eq!(output_type, io.output.ty());
 		Self {
-			network,
+			networks,
 			input_types,
-			output_type,
+			output_types,
 			shader_io: io,
 		}
 	}

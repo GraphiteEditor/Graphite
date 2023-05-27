@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 tauri = ["ron"]
 gpu = ["editor/gpu"]
-default = []
+default = ["gpu"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -38,7 +38,7 @@ bezier-rs = { path = "../../libraries/bezier-rs" }
 
 [dependencies.web-sys]
 version = "0.3.4"
-features = ['Window']
+features = ["Window"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

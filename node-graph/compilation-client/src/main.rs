@@ -36,7 +36,7 @@ fn main() {
 		output: ShaderInput::OutputBuffer((), concrete!(&mut [u32])),
 	};
 
-	let compile_request = CompileRequest::new(proto_network, vec![concrete!(u32)], concrete!(u32), io);
+	let compile_request = CompileRequest::new(vec![proto_network], vec![concrete!(u32)], vec![concrete!(u32)], io);
 	let response = client
 		.post("http://localhost:3000/compile/spirv")
 		.timeout(Duration::from_secs(30))
