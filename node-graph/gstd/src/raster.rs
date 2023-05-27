@@ -3,6 +3,7 @@ use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
 use graphene_core::transform::Transform;
 
+use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::value::CopiedNode;
 use graphene_core::{Color, Node};
 
@@ -93,85 +94,6 @@ where
 
 	image.map_pixels(|c| map_fn.eval(c));
 	image
-}
-
-#[derive(Debug, Clone, DynAny)]
-pub struct AxisAlignedBbox {
-	start: DVec2,
-	end: DVec2,
-}
-
-impl AxisAlignedBbox {
-	pub fn size(&self) -> DVec2 {
-		self.end - self.start
-	}
-
-	pub fn to_transform(&self) -> DAffine2 {
-		DAffine2::from_translation(self.start) * DAffine2::from_scale(self.size())
-	}
-
-	pub fn contains(&self, point: DVec2) -> bool {
-		point.x >= self.start.x && point.x <= self.end.x && point.y >= self.start.y && point.y <= self.end.y
-	}
-
-	pub fn intersects(&self, other: &AxisAlignedBbox) -> bool {
-		other.start.x <= self.end.x && other.end.x >= self.start.x && other.start.y <= self.end.y && other.end.y >= self.start.y
-	}
-
-	pub fn union(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
-		AxisAlignedBbox {
-			start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
-			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
-		}
-	}
-	pub fn union_non_empty(&self, other: &AxisAlignedBbox) -> Option<AxisAlignedBbox> {
-		match (self.size() == DVec2::ZERO, other.size() == DVec2::ZERO) {
-			(true, true) => None,
-			(true, _) => Some(other.clone()),
-			(_, true) => Some(self.clone()),
-			_ => Some(AxisAlignedBbox {
-				start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
-				end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
-			}),
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-struct Bbox {
-	top_left: DVec2,
-	top_right: DVec2,
-	bottom_left: DVec2,
-	bottom_right: DVec2,
-}
-
-impl Bbox {
-	fn axis_aligned_bbox(&self) -> AxisAlignedBbox {
-		let start_x = self.top_left.x.min(self.top_right.x).min(self.bottom_left.x).min(self.bottom_right.x);
-		let start_y = self.top_left.y.min(self.top_right.y).min(self.bottom_left.y).min(self.bottom_right.y);
-		let end_x = self.top_left.x.max(self.top_right.x).max(self.bottom_left.x).max(self.bottom_right.x);
-		let end_y = self.top_left.y.max(self.top_right.y).max(self.bottom_left.y).max(self.bottom_right.y);
-
-		AxisAlignedBbox {
-			start: DVec2::new(start_x, start_y),
-			end: DVec2::new(end_x, end_y),
-		}
-	}
-}
-
-fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
-	let top_left = DVec2::new(0., 1.);
-	let top_right = DVec2::new(1., 1.);
-	let bottom_left = DVec2::new(0., 0.);
-	let bottom_right = DVec2::new(1., 0.);
-	let transform = |p| transform.transform_point2(p);
-
-	Bbox {
-		top_left: transform(top_left),
-		top_right: transform(top_right),
-		bottom_left: transform(bottom_left),
-		bottom_right: transform(bottom_right),
-	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,8 +247,8 @@ fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> +
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
-	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
-	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
 
 	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {return ImageFrame::empty()};
 
@@ -363,7 +285,7 @@ where
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0,0) (1, 1) in the background image space
-	let bg_aabb = compute_transformed_bounding_box(background.transform().inverse() * foreground.transform()).axis_aligned_bbox();
+	let bg_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
 	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
@@ -393,8 +315,8 @@ pub struct ExtendImageNode<Background> {
 
 #[node_macro::node_fn(ExtendImageNode)]
 fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color>) -> ImageFrame<Color> {
-	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
-	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
 
 	if foreground_aabb.contains(background_aabb.start) && foreground_aabb.contains(background_aabb.end) {
 		return foreground;
@@ -412,7 +334,7 @@ pub struct MergeBoundingBoxNode<Data> {
 fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _Data)) -> Option<AxisAlignedBbox> {
 	let (initial_aabb, data) = input;
 
-	let snd_aabb = compute_transformed_bounding_box(data.transform()).axis_aligned_bbox();
+	let snd_aabb = Bbox::unit().affine_transform(data.transform()).to_axis_aligned_bbox();
 
 	if let Some(fst_aabb) = initial_aabb {
 		fst_aabb.union_non_empty(&snd_aabb)
