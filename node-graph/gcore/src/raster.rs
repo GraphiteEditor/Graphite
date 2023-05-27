@@ -15,6 +15,9 @@ pub mod color;
 pub mod discrete_srgb;
 pub use adjustments::*;
 
+#[cfg(target_arch = "spirv")]
+use num_traits::Float;
+
 pub trait Linear {
 	fn from_f32(x: f32) -> Self;
 	fn to_f32(self) -> f32;

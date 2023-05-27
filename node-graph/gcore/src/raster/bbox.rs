@@ -1,7 +1,8 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 
-#[derive(Debug, Clone, DynAny)]
+#[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
+#[derive(Clone, DynAny)]
 pub struct AxisAlignedBbox {
 	pub start: DVec2,
 	pub end: DVec2,
@@ -45,7 +46,8 @@ impl AxisAlignedBbox {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
+#[derive(Clone)]
 pub struct Bbox {
 	pub top_left: DVec2,
 	pub top_right: DVec2,
