@@ -1,9 +1,9 @@
+use crate::raster::bbox::AxisAlignedBbox;
+use crate::Color;
+
 use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
 use std::hash::{Hash, Hasher};
-
-use crate::raster::bbox::AxisAlignedBbox;
-use crate::Color;
 
 /// The style of a brush.
 #[derive(Clone, Debug, PartialEq, DynAny)]
@@ -20,10 +20,10 @@ impl Default for BrushStyle {
 	fn default() -> Self {
 		Self {
 			color: Color::BLACK,
-			diameter: 40.0,
-			hardness: 50.0,
-			flow: 100.0,
-			spacing: 50.0, // Percentage of diameter.
+			diameter: 40.,
+			hardness: 50.,
+			flow: 100.,
+			spacing: 50., // Percentage of diameter.
 		}
 	}
 }
@@ -62,7 +62,7 @@ pub struct BrushStroke {
 
 impl BrushStroke {
 	pub fn bounding_box(&self) -> AxisAlignedBbox {
-		let radius = self.style.diameter / 2.0;
+		let radius = self.style.diameter / 2.;
 		self.trace
 			.iter()
 			.map(|sample| AxisAlignedBbox {
@@ -76,7 +76,7 @@ impl BrushStroke {
 	pub fn compute_blit_points(&self) -> Vec<DVec2> {
 		// We always travel in a straight line towards the next user input,
 		// placing a blit point every time we travelled our spacing distance.
-		let spacing_dist = self.style.spacing / 100.0 * self.style.diameter;
+		let spacing_dist = self.style.spacing / 100. * self.style.diameter;
 
 		let Some(first_sample) = self.trace.first() else { return Vec::new(); };
 
@@ -90,7 +90,7 @@ impl BrushStroke {
 			let unit_step = delta / dist_left;
 
 			while dist_left >= dist_until_next_blit {
-				// Take a step to the next blitpoint.
+				// Take a step to the next blit point.
 				cur_pos += dist_until_next_blit * unit_step;
 				dist_left -= dist_until_next_blit;
 

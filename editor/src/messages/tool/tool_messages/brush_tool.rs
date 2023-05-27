@@ -127,7 +127,7 @@ impl PropertyHolder for BrushTool {
 			NumberInput::new(Some(self.options.spacing))
 				.label("Spacing")
 				.min(1.)
-				.max(300.)
+				.max(100.)
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap())).into())
 				.widget_holder(),
@@ -292,9 +292,9 @@ impl Fsm for BrushToolFsmState {
 					let layer_position = tool_data.transform.inverse().transform_point2(document_position);
 					// TODO: Also scale it based on the input image ('Background' parameter).
 					// TODO: Resizing the input image results in a different brush size from the chosen diameter.
-					let layer_scale = ((tool_data.transform.matrix2 * glam::DVec2::X).length())
-						.max((tool_data.transform.matrix2 * glam::DVec2::Y).length())
-						.max(0.0001); // Safety against division by zero
+					let layer_scale = 0.0001_f64 // Safety against division by zero
+						.max((tool_data.transform.matrix2 * glam::DVec2::X).length())
+						.max((tool_data.transform.matrix2 * glam::DVec2::Y).length());
 
 					// Start a new stroke with a single sample
 					tool_data.strokes.push(BrushStroke {

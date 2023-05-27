@@ -144,11 +144,11 @@ where
 		assert!(data.len() == width as usize * height as usize);
 
 		// Cache the last sRGB value we computed, speeds up fills.
-		let mut last_r = 0.0;
+		let mut last_r = 0.;
 		let mut last_r_srgb = 0u8;
-		let mut last_g = 0.0;
+		let mut last_g = 0.;
 		let mut last_g_srgb = 0u8;
-		let mut last_b = 0.0;
+		let mut last_b = 0.;
 		let mut last_b_srgb = 0u8;
 
 		let mut result = vec![0; data.len() * 4];
@@ -157,8 +157,8 @@ where
 			let a = color.a().to_f32();
 			// Smaller alpha values than this would map to fully transparent
 			// anyway, avoid expensive encoding.
-			if a >= 0.5 / 255.0 {
-				let undo_premultiply = 1.0 / a;
+			if a >= 0.5 / 255. {
+				let undo_premultiply = 1. / a;
 				let r = color.r().to_f32() * undo_premultiply;
 				let g = color.g().to_f32() * undo_premultiply;
 				let b = color.b().to_f32() * undo_premultiply;
@@ -180,7 +180,7 @@ where
 				result[i] = last_r_srgb;
 				result[i + 1] = last_g_srgb;
 				result[i + 2] = last_b_srgb;
-				result[i + 3] = (a * 255.0 + 0.5) as u8;
+				result[i + 3] = (a * 255. + 0.5) as u8;
 			}
 
 			i += 4;

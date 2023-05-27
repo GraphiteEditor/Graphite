@@ -255,7 +255,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					responses.add(Operation::SetLayerStroke { path: layer, stroke });
 				}
 			}
-
 			GraphOperationMessage::TransformChange {
 				layer,
 				transform,
@@ -309,13 +308,11 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let pivot = pivot.into();
 				responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
-
 			GraphOperationMessage::Vector { layer, modification } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
 				}
 			}
-
 			GraphOperationMessage::Brush { layer, strokes } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.brush_modify(strokes);

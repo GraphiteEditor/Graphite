@@ -116,7 +116,7 @@ pub struct EraseNode<Flow> {
 #[node_fn(EraseNode)]
 fn erase(input: (Color, Color), flow: f64) -> Color {
 	let (input, brush) = input;
-	let alpha = input.a() * (1.0 - flow as f32 * brush.a());
+	let alpha = input.a() * (1. - flow as f32 * brush.a());
 	Color::from_unassociated_alpha(input.r(), input.g(), input.b(), alpha)
 }
 
@@ -167,30 +167,29 @@ where
 		let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
 		let texture_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
 		let document_to_target = target.transform.inverse();
-		let start = document_to_target.transform_point2(position) * target_size - texture_size / 2.0;
+		let start = document_to_target.transform_point2(position) * target_size - texture_size / 2.;
 		let stop = start + texture_size;
 
 		// Half-open integer ranges [start, stop).
 		let clamp_start = start.clamp(DVec2::ZERO, target_size).as_uvec2();
 		let clamp_stop = stop.clamp(DVec2::ZERO, target_size).as_uvec2();
 
-		let tex_offset = (clamp_start.as_dvec2() - start).as_uvec2().min(texture_size.as_uvec2());
-		let tex_num = (clamp_stop - clamp_start).min(texture_size.as_uvec2() - tex_offset);
+		let blit_area_offset = (clamp_start.as_dvec2() - start).as_uvec2().min(texture_size.as_uvec2());
+		let blit_area_dimensions = (clamp_stop - clamp_start).min(texture_size.as_uvec2() - blit_area_offset);
 
-		// Tight blitting loop. Eagerly assert bounds to hopefully eliminate
-		// bounds check inside loop.
-		let tex_idx = |x: u32, y: u32| -> usize { (y as usize * texture.image.width as usize) + (x as usize) };
-		let target_idx = |x: u32, y: u32| -> usize { (y as usize * target.image.width as usize) + (x as usize) };
+		// Tight blitting loop. Eagerly assert bounds to hopefully eliminate bounds check inside loop.
+		let texture_index = |x: u32, y: u32| -> usize { (y as usize * texture.image.width as usize) + (x as usize) };
+		let target_index = |x: u32, y: u32| -> usize { (y as usize * target.image.width as usize) + (x as usize) };
 
-		let max_y = (tex_offset.y + tex_num.y).saturating_sub(1);
-		let max_x = (tex_offset.x + tex_num.x).saturating_sub(1);
-		assert!(tex_idx(max_x, max_y) < texture.image.data.len());
-		assert!(target_idx(max_x, max_y) < target.image.data.len());
+		let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
+		let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
+		assert!(texture_index(max_x, max_y) < texture.image.data.len());
+		assert!(target_index(max_x, max_y) < target.image.data.len());
 
-		for y in tex_offset.y..tex_offset.y + tex_num.y {
-			for x in tex_offset.x..tex_offset.x + tex_num.x {
-				let src_pixel = texture.image.data[tex_idx(x, y)];
-				let dst_pixel = &mut target.image.data[target_idx(x + clamp_start.x, y + clamp_start.y)];
+		for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
+			for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
+				let src_pixel = texture.image.data[texture_index(x, y)];
+				let dst_pixel = &mut target.image.data[target_index(x + clamp_start.x, y + clamp_start.y)];
 				*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 			}
 		}
@@ -217,10 +216,10 @@ mod test {
 	fn test_translate_node() {
 		let image = Image::new(10, 10, Color::TRANSPARENT);
 		let mut image = ImageFrame { image, transform: DAffine2::IDENTITY };
-		image.translate(DVec2::new(1.0, 2.0));
+		image.translate(DVec2::new(1., 2.));
 		let translate_node = TranslateNode::new(ClonedNode::new(image));
-		let image = translate_node.eval(DVec2::new(1.0, 2.0));
-		assert_eq!(image.transform(), DAffine2::from_translation(DVec2::new(2.0, 4.0)));
+		let image = translate_node.eval(DVec2::new(1., 2.));
+		assert_eq!(image.transform(), DAffine2::from_translation(DVec2::new(2., 4.)));
 	}
 
 	#[test]
@@ -242,9 +241,9 @@ mod test {
 
 	#[test]
 	fn test_brush() {
-		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.0), ClonedNode::new(1.0));
+		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.), ClonedNode::new(1.));
 		let image = brush_texture_node.eval(20.);
-		let trace = vec![DVec2::new(0.0, 0.0), DVec2::new(10.0, 0.0)];
+		let trace = vec![DVec2::new(0., 0.), DVec2::new(10., 0.)];
 		let trace = ClonedNode::new(trace.into_iter());
 		let translate_node = TranslateNode::new(ClonedNode::new(image));
 		let frames = MapNode::new(ValueNode::new(translate_node));
@@ -254,7 +253,7 @@ mod test {
 		let background_bounds = background_bounds.eval(frames.clone().into_iter());
 		let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
 		let background_image = background_bounds.then(EmptyImageNode::new(ClonedNode::new(Color::TRANSPARENT)));
-		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.0));
+		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.));
 		let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
 		let final_image = final_image.eval(frames.into_iter());
 		assert_eq!(final_image.image.height, 20);
