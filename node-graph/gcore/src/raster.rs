@@ -8,6 +8,7 @@ use glam::DVec2;
 pub use self::color::{Color, Luma};
 
 pub mod adjustments;
+pub mod bbox;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brightness_contrast;
 pub mod color;

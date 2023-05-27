@@ -54,7 +54,7 @@ pub enum TaggedValue {
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
-	VecDVec2(Vec<DVec2>),
+	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
@@ -115,12 +115,7 @@ impl Hash for TaggedValue {
 			Self::OptionalColor(color) => color.hash(state),
 			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
 			Self::Font(font) => font.hash(state),
-			Self::VecDVec2(vec_dvec2) => {
-				vec_dvec2.len().hash(state);
-				for dvec2 in vec_dvec2 {
-					dvec2.to_array().iter().for_each(|x| x.to_bits().hash(state));
-				}
-			}
+			Self::BrushStrokes(brush_strokes) => brush_strokes.hash(state),
 			Self::Segments(segments) => {
 				for segment in segments {
 					segment.hash(state)
@@ -176,7 +171,7 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(x) => Box::new(x),
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::Font(x) => Box::new(x),
-			TaggedValue::VecDVec2(x) => Box::new(x),
+			TaggedValue::BrushStrokes(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
 			TaggedValue::EditorApi(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
@@ -239,7 +234,7 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
-			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
+			TaggedValue::BrushStrokes(_) => concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
@@ -291,7 +286,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<Option<graphene_core::Color>>() => Some(TaggedValue::OptionalColor(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Some(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::text::Font>() => Some(TaggedValue::Font(*downcast(input).unwrap())),
-			x if x == TypeId::of::<Vec<DVec2>>() => Some(TaggedValue::VecDVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Some(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Some(TaggedValue::Segments(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::EditorApi>() => Some(TaggedValue::EditorApi(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Some(TaggedValue::DocumentNode(*downcast(input).unwrap())),
