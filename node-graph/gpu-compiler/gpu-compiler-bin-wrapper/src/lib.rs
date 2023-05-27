@@ -41,7 +41,7 @@ pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manife
 	Ok(std::fs::read(compile_dir.unwrap().to_owned() + "/shader.spv")?)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash, Eq)]
 pub struct CompileRequest {
 	networks: Vec<graph_craft::proto::ProtoNetwork>,
 	input_types: Vec<Type>,
