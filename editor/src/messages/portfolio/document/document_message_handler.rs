@@ -1505,7 +1505,7 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
+	fn update_insert_index(&self, layers: &[&[LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
 		let folder = self.document_legacy.folder(path)?;
 		let insert_index = if reverse_index { folder.layer_ids.len() as isize - insert_index } else { insert_index };
 		let layer_ids_above = if insert_index < 0 { &folder.layer_ids } else { &folder.layer_ids[..(insert_index as usize)] };

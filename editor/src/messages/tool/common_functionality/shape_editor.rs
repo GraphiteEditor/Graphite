@@ -145,7 +145,7 @@ impl ShapeState {
 	}
 
 	/// Provide the currently selected points by reference.
-	pub fn selected_points<'a>(&'a self) -> impl Iterator<Item = &'a ManipulatorPointId> {
+	pub fn selected_points(&self) -> impl Iterator<Item = &'_ ManipulatorPointId> {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 

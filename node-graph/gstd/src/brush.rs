@@ -14,7 +14,7 @@ pub struct ReduceNode<Initial, Lambda> {
 }
 
 #[node_fn(ReduceNode)]
-fn reduce<I: Iterator, Lambda, T>(iter: I, initial: T, lambda: &'any_input Lambda) -> T
+fn reduce<I: Iterator, Lambda, T>(iter: I, initial: T, lambda: &'input Lambda) -> T
 where
 	Lambda: for<'a> Node<'a, (T, I::Item), Output = T>,
 {
@@ -27,7 +27,7 @@ pub struct ChainApplyNode<Value> {
 }
 
 #[node_fn(ChainApplyNode)]
-fn chain_apply<I: Iterator, T>(iter: I, mut value: T) -> T
+async fn chain_apply<I: Iterator, T>(iter: I, mut value: T) -> T
 where
 	I::Item: for<'a> Node<'a, T, Output = T>,
 {

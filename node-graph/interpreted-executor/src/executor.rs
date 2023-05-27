@@ -6,7 +6,7 @@ use dyn_any::StaticType;
 use graph_craft::document::value::UpcastNode;
 use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
-use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, TypingContext};
+use graph_craft::proto::{ConstructionArgs, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
 use graph_craft::Type;
 use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
@@ -33,11 +33,11 @@ impl Default for DynamicExecutor {
 }
 
 impl DynamicExecutor {
-	pub fn new(proto_network: ProtoNetwork) -> Result<Self, String> {
+	pub async fn new(proto_network: ProtoNetwork) -> Result<Self, String> {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
-		let tree = BorrowTree::new(proto_network, &typing_context)?;
+		let tree = BorrowTree::new(proto_network, &typing_context).await?;
 
 		Ok(Self {
 			tree,
@@ -47,11 +47,11 @@ impl DynamicExecutor {
 		})
 	}
 
-	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
 		trace!("setting output to {}", self.output);
-		let mut orphans = self.tree.update(proto_network, &self.typing_context)?;
+		let mut orphans = self.tree.update(proto_network, &self.typing_context).await?;
 		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
 		for node_id in orphans {
 			if self.orphaned_nodes.contains(&node_id) {
@@ -75,8 +75,8 @@ impl DynamicExecutor {
 }
 
 impl Executor for DynamicExecutor {
-	fn execute<'a, 's: 'a>(&'s self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>> {
-		self.tree.eval_any(self.output, input).ok_or_else(|| "Failed to execute".into())
+	fn execute<'a>(&'a self, input: Any<'a>) -> LocalFuture<Result<Any<'a>, Box<dyn Error>>> {
+		Box::pin(async move { self.tree.eval_any(self.output, input).await.ok_or_else(|| "Failed to execute".into()) })
 	}
 }
 
@@ -118,20 +118,20 @@ pub struct BorrowTree {
 }
 
 impl BorrowTree {
-	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Self, String> {
+	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Self, String> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
-			nodes.push_node(id, node, typing_context)?
+			nodes.push_node(id, node, typing_context).await?
 		}
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
-	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, String> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, String> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
-				self.push_node(id, node, typing_context)?;
+				self.push_node(id, node, typing_context).await?;
 			} else {
 				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
 				let mut node_container_writer = node_container.write().unwrap();
@@ -168,25 +168,25 @@ impl BorrowTree {
 		self.nodes.get(&id).cloned()
 	}
 
-	pub fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
+	pub async fn eval<'i, I: StaticType + 'i + Send + Sync, O: StaticType + Send + Sync + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
 		let reader = node.read().unwrap();
 		let output = reader.node.eval(Box::new(input));
-		dyn_any::downcast::<O>(output).ok().map(|o| *o)
+		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
-	pub fn eval_any<'i>(&'i self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
+	pub async fn eval_any<'i>(&'i self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
 		let node = self.nodes.get(&id)?;
 		// TODO: Comments by @TrueDoctor before this was merged:
 		// TODO: Oof I dislike the evaluation being an unsafe operation but I guess its fine because it only is a lifetime extension
 		// TODO: We should ideally let miri run on a test that evaluates the nodegraph multiple times to check if this contains any subtle UB but this looks fine for now
-		Some(unsafe { (*((&*node.read().unwrap()) as *const NodeContainer)).node.eval(input) })
+		Some(unsafe { (*((&*node.read().unwrap()) as *const NodeContainer)).node.eval(input).await })
 	}
 
 	pub fn free_node(&mut self, id: NodeId) {
 		self.nodes.remove(&id);
 	}
 
-	pub fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
+	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
 		let ProtoNode {
 			construction_args,
 			identifier,
@@ -203,11 +203,12 @@ impl BorrowTree {
 				let node = unsafe { node.erase_lifetime() };
 				self.store_node(Arc::new(node.into()), id);
 			}
+			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
 				let construction_nodes = self.node_refs(&ids);
 				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {:?}", identifier))?;
-				let node = constructor(construction_nodes);
+				let node = constructor(construction_nodes).await;
 				let node = NodeContainer {
 					node,
 					_dependencies: self.node_deps(&ids),
@@ -226,12 +227,12 @@ mod test {
 
 	use super::*;
 
-	#[test]
-	fn push_node() {
+	#[tokio::test]
+	async fn push_node() {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
-		tree.push_node(0, val_1_protonode, &TypingContext::default()).unwrap();
+		tree.push_node(0, val_1_protonode, &TypingContext::default()).await.unwrap();
 		let _node = tree.get(0).unwrap();
-		assert_eq!(tree.eval(0, ()), Some(2u32));
+		assert_eq!(tree.eval(0, ()).await, Some(2u32));
 	}
 }

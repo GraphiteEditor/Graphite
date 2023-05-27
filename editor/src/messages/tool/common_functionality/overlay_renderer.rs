@@ -24,7 +24,7 @@ struct ManipulatorGroupOverlays {
 	pub out_line: Option<Vec<LayerId>>,
 }
 impl ManipulatorGroupOverlays {
-	pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Option<Vec<LayerId>>> {
+	pub fn iter(&self) -> impl Iterator<Item = &'_ Option<Vec<LayerId>>> {
 		[&self.anchor, &self.in_handle, &self.in_line, &self.out_handle, &self.out_line].into_iter()
 	}
 }

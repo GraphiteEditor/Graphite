@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use gpu_compiler_bin_wrapper::CompileRequest;
+use tower_http::cors::CorsLayer;
 
 use axum::{
 	extract::{Json, State},
@@ -24,6 +25,7 @@ async fn main() {
 		.route("/", get(|| async { "Hello from compilation server!" }))
 		.route("/compile", get(|| async { "Supported targets: spirv" }))
 		.route("/compile/spirv", post(post_compile_spirv))
+		.layer(CorsLayer::permissive())
 		.with_state(shared_state);
 
 	// run it with hyper on localhost:3000

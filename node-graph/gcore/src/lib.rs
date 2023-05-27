@@ -60,6 +60,10 @@ where
 	Self::Output: 'i + StaticTypeSized,
 	Input: 'i + StaticTypeSized,
 {
+	fn node_name(&self) -> &'static str {
+		core::any::type_name::<Self>()
+	}
+
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
 	}
@@ -103,6 +107,15 @@ impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N
 		(**self).eval(input)
 	}
 }
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for Box<N> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+
 impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
@@ -115,6 +128,13 @@ use core::pin::Pin;
 use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
 impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
 	type Output = O;
 
 	fn eval(&'i self, input: I) -> Self::Output {

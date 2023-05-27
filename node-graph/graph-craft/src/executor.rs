@@ -3,26 +3,30 @@ use std::error::Error;
 use dyn_any::DynAny;
 
 use crate::document::NodeNetwork;
-use crate::proto::ProtoNetwork;
+use crate::proto::{LocalFuture, ProtoNetwork};
 
 pub struct Compiler {}
 
 impl Compiler {
 	pub fn compile(&self, mut network: NodeNetwork, resolve_inputs: bool) -> impl Iterator<Item = ProtoNetwork> {
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
-		network.resolve_extract_nodes();
 		println!("flattening");
 		for id in node_ids {
 			network.flatten(id);
 		}
+		network.remove_redundant_id_nodes();
+		network.resolve_extract_nodes();
+		network.remove_dead_nodes();
 		let proto_networks = network.into_proto_networks();
 		proto_networks.map(move |mut proto_network| {
 			if resolve_inputs {
 				println!("resolving inputs");
+				log::debug!("resolving inputs");
 				proto_network.resolve_inputs();
 			}
 			proto_network.reorder_ids();
 			proto_network.generate_stable_node_ids();
+			log::debug!("proto network: {:?}", proto_network);
 			proto_network
 		})
 	}
@@ -37,5 +41,5 @@ impl Compiler {
 pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
 pub trait Executor {
-	fn execute<'a, 's: 'a>(&'s self, input: Any<'a>) -> Result<Any<'a>, Box<dyn Error>>;
+	fn execute<'a>(&'a self, input: Any<'a>) -> LocalFuture<Result<Any<'a>, Box<dyn Error>>>;
 }
