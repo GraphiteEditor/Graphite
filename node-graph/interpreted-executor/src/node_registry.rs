@@ -1,6 +1,6 @@
 use glam::{DAffine2, DVec2};
-use graph_craft::document::DocumentNode;
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+
+
 use graphene_core::ops::IdNode;
 use graphene_core::vector::VectorData;
 use once_cell::sync::Lazy;
@@ -14,7 +14,7 @@ use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::brush::*;
 use graphene_std::raster::*;
 
-use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DowncastBothRefNode, DynAnyInRefNode, DynAnyNode, DynAnyRefNode, FutureWrapperNode, IntoTypeErasedNode, TypeErasedPinnedRef};
+use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyInRefNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode, TypeErasedPinnedRef};
 
 use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 
@@ -429,7 +429,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned<'_>
 					})
 				},
-				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(ImageFrame<Color>)]),
+				NodeIOTypes::new(generic!(T), concrete!(ImageFrame<Color>), vec![value_fn!(ImageFrame<Color>)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
@@ -441,7 +441,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(VectorData)]),
+				NodeIOTypes::new(generic!(T), concrete!(VectorData), vec![value_fn!(VectorData)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
@@ -453,7 +453,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(graphene_core::GraphicGroup)]),
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::GraphicGroup), vec![value_fn!(graphene_core::GraphicGroup)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::EndLetNode<_>"),
@@ -465,20 +465,20 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(generic!(T), concrete!(graphene_core::EditorApi), vec![value_fn!(graphene_core::Artboard)]),
+				NodeIOTypes::new(generic!(T), concrete!(graphene_core::Artboard), vec![value_fn!(graphene_core::Artboard)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::memo::RefNode<_, _>"),
 				|args| {
 					Box::pin(async move {
-						let map_fn: DowncastBothNode<Option<graphene_core::EditorApi>, graphene_core::EditorApi> = DowncastBothNode::new(args[0]);
+						let map_fn: DowncastBothNode<Option<graphene_core::EditorApi>, &graphene_core::EditorApi> = DowncastBothNode::new(args[0]);
 						//let map_fn = map_fn.then(EvalSyncNode::new());
 						let node = graphene_std::memo::RefNode::new(map_fn);
 						let any = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 						Box::pin(any) as TypeErasedPinned
 					})
 				},
-				NodeIOTypes::new(concrete!(()), concrete!(&graphene_core::EditorApi), vec![]),
+				NodeIOTypes::new(concrete!(()), concrete!(&graphene_core::EditorApi), vec![fn_type!(Option<graphene_core::EditorApi>, &graphene_core::EditorApi)]),
 			),
 			/*
 			(
@@ -643,9 +643,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
 			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
 		),
-		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: graphene_core::EditorApi, params: [String, graphene_core::text::Font, f64]),
+		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: &graphene_core::EditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
-		register_node!(graphene_core::ExtractImageFrame, input: graphene_core::EditorApi, params: []),
+		register_node!(graphene_core::ExtractImageFrame, input: &graphene_core::EditorApi, params: []),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::vector::VectorData, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: ImageFrame<Color>, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::GraphicGroup, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),

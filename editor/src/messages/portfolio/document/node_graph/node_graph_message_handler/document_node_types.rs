@@ -96,7 +96,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 	vec![
 		DocumentNodeType {
 			name: "Identity",
-			category: "General",
+			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType {
 				name: "In",
@@ -108,7 +108,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Monitor",
-			category: "General",
+			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType {
 				name: "In",
@@ -264,10 +264,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Begin Scope",
-			category: "Structural",
+			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 2],
-				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(3, 0)],
+				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
@@ -285,12 +285,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "RefNode".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::lambda(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::RefNode<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "CloneNode".to_string(),
-						inputs: vec![NodeInput::node(2, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
 						..Default::default()
 					},
 				]
@@ -320,7 +314,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "End Scope",
-			category: "Structural",
+			category: "Ignore",
 			identifier: NodeImplementation::proto("graphene_std::memo::EndLetNode<_>"),
 			inputs: vec![
 				DocumentInputType {
@@ -597,7 +591,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Gaussian Blur",
-			category: "Image Filters",
+			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 1, 1],
 				outputs: vec![NodeOutput::new(1, 0)],

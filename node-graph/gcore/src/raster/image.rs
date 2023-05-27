@@ -332,10 +332,10 @@ impl<'a> AsRef<EditorApi<'a>> for EditorApi<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExtractImageFrame;
 
-impl<'a: 'input, 'input> Node<'input, EditorApi<'a>> for ExtractImageFrame {
+impl<'a: 'input, 'input> Node<'input, &'a EditorApi<'a>> for ExtractImageFrame {
 	type Output = ImageFrame<Color>;
-	fn eval(&'input self, mut editor_api: EditorApi<'a>) -> Self::Output {
-		editor_api.image_frame.take().unwrap_or(ImageFrame::identity())
+	fn eval(&'input self, editor_api: &'a EditorApi<'a>) -> Self::Output {
+		editor_api.image_frame.clone().unwrap_or(ImageFrame::identity())
 	}
 }
 

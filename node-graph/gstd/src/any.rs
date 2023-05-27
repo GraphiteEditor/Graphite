@@ -173,10 +173,11 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
+			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			let future = self.node.eval(input);
 			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e}"));
+				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{node_name}"));
 				*out
 			})
 		}

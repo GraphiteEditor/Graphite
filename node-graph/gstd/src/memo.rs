@@ -1,5 +1,5 @@
 use futures::Future;
-use graph_craft::proto::DynFuture;
+
 use graphene_core::Node;
 
 use std::hash::{Hash, Hasher};

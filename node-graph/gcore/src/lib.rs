@@ -60,6 +60,10 @@ where
 	Self::Output: 'i + StaticTypeSized,
 	Input: 'i + StaticTypeSized,
 {
+	fn node_name(&self) -> &'static str {
+		core::any::type_name::<Self>()
+	}
+
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
 	}
