@@ -71,7 +71,7 @@ pub fn construct_argument(input: &ShaderInput<()>, position: u32, binding_offset
 	let line = match input {
 		ShaderInput::Constant(constant) => format!("#[spirv({})] i{}: {}", constant_attribute(constant), position, constant.ty()),
 		ShaderInput::UniformBuffer(_, ty) => {
-			format!("#[spirv(uniform, descriptor_set = 0, binding = {})] i{}: &[{}]", position + binding_offset, position, ty,)
+			format!("#[spirv(uniform, descriptor_set = 0, binding = {})] i{}: &{}", position + binding_offset, position, ty,)
 		}
 		ShaderInput::StorageBuffer(_, ty) | ShaderInput::ReadBackBuffer(_, ty) => {
 			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &[{}]", position + binding_offset, position, ty,)

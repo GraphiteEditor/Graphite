@@ -13,6 +13,22 @@ use std::sync::Arc;
 
 type ReadBackFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>;
 
+pub enum ComputePassDimensions {
+	X(u32),
+	XY(u32, u32),
+	XYZ(u32, u32, u32),
+}
+
+impl ComputePassDimensions {
+	pub fn get(&self) -> (u32, u32, u32) {
+		match self {
+			ComputePassDimensions::X(x) => (*x, 1, 1),
+			ComputePassDimensions::XY(x, y) => (*x, *y, 1),
+			ComputePassDimensions::XYZ(x, y, z) => (*x, *y, *z),
+		}
+	}
+}
+
 pub trait GpuExecutor {
 	type ShaderHandle;
 	type BufferHandle;
@@ -22,7 +38,7 @@ pub trait GpuExecutor {
 	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>>;
 	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self::BufferHandle>>;
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self::BufferHandle>>;
-	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: u32) -> Result<Self::CommandBuffer>;
+	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
 	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self::BufferHandle>>) -> ReadBackFuture;
 }
@@ -129,8 +145,13 @@ pub struct StorageBufferOptions {
 }
 
 pub trait ToUniformBuffer: StaticType {
-	type UniformBufferHandle;
 	fn to_bytes(&self) -> Cow<[u8]>;
+}
+
+impl<T: StaticType + Pod + Zeroable> ToUniformBuffer for T {
+	fn to_bytes(&self) -> Cow<[u8]> {
+		Cow::Owned(bytemuck::bytes_of(self).into())
+	}
 }
 
 pub trait ToStorageBuffer: StaticType {
@@ -233,7 +254,12 @@ pub struct CreateComputePassNode<Executor, Output, Instances> {
 }
 
 #[node_macro::node_fn(CreateComputePassNode)]
-fn create_compute_pass_node<E: GpuExecutor + 'input>(layout: PipelineLayout<E>, executor: &'input E, output: ShaderInput<E::BufferHandle>, instances: u32) -> E::CommandBuffer {
+fn create_compute_pass_node<'any_input, E: 'any_input + GpuExecutor>(
+	layout: PipelineLayout<E>,
+	executor: &'any_input E,
+	output: ShaderInput<E::BufferHandle>,
+	instances: ComputePassDimensions,
+) -> E::CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 

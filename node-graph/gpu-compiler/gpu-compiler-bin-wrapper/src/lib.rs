@@ -17,7 +17,7 @@ pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manife
 
 	println!("calling cargo run!");
 	let non_cargo_env_vars = std::env::vars().filter(|(k, _)| k.starts_with("PATH")).collect::<Vec<_>>();
-	let mut cargo_command = std::process::Command::new("/usr/bin/cargo")
+	let mut cargo_command = std::process::Command::new("cargo")
 		.arg("run")
 		.arg("--release")
 		.arg("--manifest-path")
