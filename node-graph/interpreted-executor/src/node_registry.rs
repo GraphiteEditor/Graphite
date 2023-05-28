@@ -223,6 +223,26 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![value_fn!(DocumentNode)]),
 		)],
+		#[cfg(feature = "gpu")]
+		vec![(
+			NodeIdentifier::new("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
+			|args| {
+				Box::pin(async move {
+					let background: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
+					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
+					let opacity: DowncastBothNode<(), f32> = DowncastBothNode::new(args[2]);
+					let node = graphene_std::executor::BlendGpuImageNode::new(background, blend_mode, opacity);
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+
+					Box::pin(any) as TypeErasedPinned
+				})
+			},
+			NodeIOTypes::new(
+				concrete!(ImageFrame<Color>),
+				concrete!(ImageFrame<Color>),
+				vec![value_fn!(ImageFrame<Color>), value_fn!(BlendMode), value_fn!(f32)],
+			),
+		)],
 		vec![(
 			NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 			|args| {
@@ -326,7 +346,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				Box::pin(async move {
 					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0]);
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1]);
-					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2]);
+					let opacity: DowncastBothNode<(), f32> = DowncastBothNode::new(args[2]);
 					let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(blend_mode.eval(()).await), CopiedNode::new(opacity.eval(()).await));
 					let node = graphene_std::raster::BlendImageNode::new(image, FutureWrapperNode::new(ValueNode::new(blend_node)));
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
@@ -336,7 +356,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			NodeIOTypes::new(
 				concrete!(ImageFrame<Color>),
 				concrete!(ImageFrame<Color>),
-				vec![value_fn!(ImageFrame<Color>), value_fn!(BlendMode), value_fn!(f64)],
+				vec![value_fn!(ImageFrame<Color>), value_fn!(BlendMode), value_fn!(f32)],
 			),
 		)],
 		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),

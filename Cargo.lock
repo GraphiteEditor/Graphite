@@ -651,6 +651,7 @@ dependencies = [
  "gpu-compiler-bin-wrapper",
  "gpu-executor",
  "graph-craft",
+ "graphene-core",
  "reqwest",
  "serde_json",
  "tempfile",

@@ -34,6 +34,19 @@ macro_rules! concrete {
 		})
 	};
 }
+
+#[macro_export]
+macro_rules! concrete_with_name {
+	($type:ty, $name:expr) => {
+		Type::Concrete(TypeDescriptor {
+			id: Some(core::any::TypeId::of::<$type>()),
+			name: Cow::Borrowed($name),
+			size: core::mem::size_of::<$type>(),
+			align: core::mem::align_of::<$type>(),
+		})
+	};
+}
+
 #[macro_export]
 macro_rules! generic {
 	($type:ty) => {{

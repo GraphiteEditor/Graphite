@@ -8,7 +8,8 @@ extern crate spirv_std;
 //pub mod gpu {
 //use super::*;
 	use spirv_std::spirv;
-	use spirv_std::glam::UVec3;
+	use spirv_std::glam;
+	use spirv_std::glam::{UVec3, Vec2, Mat2, BVec2};
 
 	#[allow(unused)]
 	#[spirv(compute(threads({{compute_threads}})))]
@@ -19,6 +20,8 @@ extern crate spirv_std;
 		{% endfor %}
 	) {
 		use graphene_core::Node;
+		use graphene_core::raster::adjustments::{BlendMode, BlendNode};
+		use graphene_core::Color;
 
 		/*
 		{% for input in input_nodes %}
@@ -34,7 +37,7 @@ extern crate spirv_std;
 
 		{% for output in output_nodes %}
 		let v = {{output}}.eval(());
-		o{{loop.index0}}[_global_index.x as usize] = v;
+		o{{loop.index0}}[(_global_index.y * i0 + _global_index.x) as usize] = v;
 		{% endfor %}
 		// TODO: Write output to buffer
 	}

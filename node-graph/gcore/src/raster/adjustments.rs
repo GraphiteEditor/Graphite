@@ -84,6 +84,7 @@ impl BlendMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[repr(i32)] // TODO: Enable Int8 capability for SPRIV so that we don't need this?
 pub enum BlendMode {
 	#[default]
 	// Basic group
@@ -170,6 +171,46 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::InsertGreen => write!(f, "Insert Green"),
 			BlendMode::InsertBlue => write!(f, "Insert Blue"),
 		}
+	}
+}
+
+pub fn to_primtive_string(blend_mode: &BlendMode) -> &'static str {
+	match blend_mode {
+		BlendMode::Normal => "Normal",
+
+		BlendMode::Multiply => "Multiply",
+		BlendMode::Darken => "Darken",
+		BlendMode::ColorBurn => "ColorBurn",
+		BlendMode::LinearBurn => "LinearBurn",
+		BlendMode::DarkerColor => "DarkerColor",
+
+		BlendMode::Screen => "Screen",
+		BlendMode::Lighten => "Lighten",
+		BlendMode::ColorDodge => "ColorDodge",
+		BlendMode::LinearDodge => "LinearDodge",
+		BlendMode::LighterColor => "LighterColor",
+
+		BlendMode::Overlay => "Overlay",
+		BlendMode::SoftLight => "SoftLight",
+		BlendMode::HardLight => "HardLight",
+		BlendMode::VividLight => "VividLight",
+		BlendMode::LinearLight => "LinearLight",
+		BlendMode::PinLight => "PinLight",
+		BlendMode::HardMix => "HardMix",
+
+		BlendMode::Difference => "Difference",
+		BlendMode::Exclusion => "Exclusion",
+		BlendMode::Subtract => "Subtract",
+		BlendMode::Divide => "Divide",
+
+		BlendMode::Hue => "Hue",
+		BlendMode::Saturation => "Saturation",
+		BlendMode::Color => "Color",
+		BlendMode::Luminosity => "Luminosity",
+
+		BlendMode::InsertRed => "InsertRed",
+		BlendMode::InsertGreen => "InsertGreen",
+		BlendMode::InsertBlue => "InsertBlue",
 	}
 }
 
@@ -410,7 +451,7 @@ pub struct BlendNode<BlendMode, Opacity> {
 }
 
 #[node_macro::node_fn(BlendNode)]
-fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f32) -> Color {
 	let opacity = opacity / 100.;
 
 	let (foreground, background) = input;
@@ -452,7 +493,7 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::InsertBlue => foreground.with_blue(background.b()),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
+	background.alpha_blend(target_color.to_associated_alpha(opacity))
 }
 
 #[derive(Debug, Clone, Copy)]
