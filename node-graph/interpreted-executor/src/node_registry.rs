@@ -308,7 +308,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						let transform = DAffine2::from_scale_angle_translation(DVec2::splat(stroke.style.diameter), 0., -DVec2::splat(stroke.style.diameter / 2.0));
 						let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
 
-						let blend_params = graphene_core::raster::BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+						let blend_params = graphene_core::raster::BlendNode::new(CopiedNode::new(stroke.style.blend_mode), CopiedNode::new(100.));
 						let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 						let texture = blend_executor.eval((blank_texture, stamp));
 

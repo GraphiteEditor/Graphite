@@ -15,7 +15,7 @@ use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
@@ -305,6 +305,7 @@ impl Fsm for BrushToolFsmState {
 							hardness: tool_options.hardness,
 							flow: tool_options.flow,
 							spacing: tool_options.spacing,
+							blend_mode: BlendMode::Normal,
 						},
 					});
 

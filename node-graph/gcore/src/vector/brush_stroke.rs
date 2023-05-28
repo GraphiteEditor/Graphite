@@ -1,4 +1,5 @@
 use crate::raster::bbox::AxisAlignedBbox;
+use crate::raster::BlendMode;
 use crate::Color;
 
 use dyn_any::{DynAny, StaticType};
@@ -14,6 +15,7 @@ pub struct BrushStyle {
 	pub hardness: f64,
 	pub flow: f64,
 	pub spacing: f64, // Spacing as a fraction of the diameter.
+	pub blend_mode: BlendMode,
 }
 
 impl Default for BrushStyle {
@@ -24,6 +26,7 @@ impl Default for BrushStyle {
 			hardness: 50.,
 			flow: 100.,
 			spacing: 50., // Percentage of diameter.
+			blend_mode: BlendMode::Normal,
 		}
 	}
 }
