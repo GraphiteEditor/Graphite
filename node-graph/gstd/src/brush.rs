@@ -163,11 +163,19 @@ fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFram
 where
 	BlendFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
+	if positions.len() == 0 {
+		return target;
+	}
+
+	let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
+	let texture_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
+	let document_to_target = target.transform.inverse();
+
+	// Prevent numerical instability by choosing an integer starting point.
+	let start_pos = document_to_target.transform_point2(positions[0]) * target_size - texture_size / 2.;
+	let start_offset = start_pos.round() - positions[0];
 	for position in positions {
-		let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
-		let texture_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
-		let document_to_target = target.transform.inverse();
-		let start = document_to_target.transform_point2(position) * target_size - texture_size / 2.;
+		let start = start_offset + position;
 		let stop = start + texture_size;
 
 		// Half-open integer ranges [start, stop).
