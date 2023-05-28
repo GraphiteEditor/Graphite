@@ -478,7 +478,7 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
 		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
 
-		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_exclusion),
+		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_difference),
 		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
 		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
 		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
