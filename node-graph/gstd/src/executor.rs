@@ -1,10 +1,10 @@
-use graphene_core::raster::bbox::{Bbox, AxisAlignedBbox};
 use glam::{DAffine2, DMat2, DVec2, Mat2, UVec3, Vec2};
 use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
 use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
+use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::NewExecutor;
