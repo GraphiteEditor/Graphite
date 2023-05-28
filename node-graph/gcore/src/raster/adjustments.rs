@@ -46,7 +46,7 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 29] {
+	pub fn list() -> [BlendMode; 31] {
 		[
 			BlendMode::Normal,
 			BlendMode::Multiply,
@@ -77,6 +77,8 @@ impl BlendMode {
 			BlendMode::InsertRed,
 			BlendMode::InsertGreen,
 			BlendMode::InsertBlue,
+			BlendMode::Erase,
+			BlendMode::Restore,
 		]
 	}
 }
@@ -130,6 +132,8 @@ pub enum BlendMode {
 	InsertRed,
 	InsertGreen,
 	InsertBlue,
+	Erase,
+	Restore,
 }
 
 impl core::fmt::Display for BlendMode {
@@ -170,6 +174,9 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::InsertRed => write!(f, "Insert Red"),
 			BlendMode::InsertGreen => write!(f, "Insert Green"),
 			BlendMode::InsertBlue => write!(f, "Insert Blue"),
+
+			BlendMode::Erase => write!(f, "Erase"),
+			BlendMode::Restore => write!(f, "Restore"),
 		}
 	}
 }
@@ -211,6 +218,9 @@ pub fn to_primtive_string(blend_mode: &BlendMode) -> &'static str {
 		BlendMode::InsertRed => "InsertRed",
 		BlendMode::InsertGreen => "InsertGreen",
 		BlendMode::InsertBlue => "InsertBlue",
+
+		BlendMode::Erase => "Erase",
+		BlendMode::Restore => "Restore",
 	}
 }
 
@@ -491,6 +501,9 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::InsertRed => foreground.with_red(background.r()),
 		BlendMode::InsertGreen => foreground.with_green(background.g()),
 		BlendMode::InsertBlue => foreground.with_blue(background.b()),
+
+		BlendMode::Erase => return background.alpha_sub(foreground),
+		BlendMode::Restore => return background.alpha_add(background),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity))
