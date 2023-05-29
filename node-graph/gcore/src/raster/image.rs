@@ -237,6 +237,16 @@ fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
+
+	// The transform that maps image space to layer space.
+	//
+	// Image space is unitless [0, 1] for both axes, with x axis positive
+	// going right and y axis positive going down, with the origin lying at
+	// the topleft of the image and (1, 1) lying at the bottom right of the image.
+	//
+	// Layer space has pixels as its units for both axes, with the x axis
+	// positive going right and y axis positive going down, with the origin
+	// being an unspecified quantity.
 	pub transform: DAffine2,
 }
 
