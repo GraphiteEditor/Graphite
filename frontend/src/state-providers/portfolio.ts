@@ -3,7 +3,6 @@
 import {writable} from "svelte/store";
 
 import { downloadFileText, downloadFileBlob, upload, downloadFileURL } from "@graphite/utility-functions/files";
-import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@graphite/utility-functions/imaginate";
 import { extractPixelData, imageToPNG, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
@@ -87,8 +86,6 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateCheckServerStatus, async (triggerImaginateCheckServerStatus) => {
 		const { hostname } = triggerImaginateCheckServerStatus;
-
-		imaginateCheckConnection(hostname, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
 		const { documentId, layerPath, nodePath, hostname, refreshFrequency, baseImage, maskImage, maskPaintMode, maskBlurPx, maskFillContent, parameters } = triggerImaginateGenerate;
@@ -99,7 +96,6 @@ export function createPortfolioState(editor: Editor) {
 			const buffer = new Uint8Array(baseImage.imageData.values()).buffer;
 
 			image = new Blob([buffer], { type: baseImage.mime });
-			updateBackendImage(editor, image, documentId, layerPath, nodePath);
 		}
 
 		// Handle layer mask
@@ -108,13 +104,9 @@ export function createPortfolioState(editor: Editor) {
 			// Rasterize the SVG to an image file
 			mask = await rasterizeSVG(maskImage.svg, maskImage.size[0], maskImage.size[1], "image/png");
 		}
-
-		imaginateGenerate(parameters, image, mask, maskPaintMode, maskBlurPx, maskFillContent, hostname, refreshFrequency, documentId, layerPath, nodePath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
 		const { documentId, layerPath, nodePath, hostname } = triggerImaginateTerminate;
-
-		imaginateTerminate(hostname, documentId, layerPath, nodePath, editor);
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {
