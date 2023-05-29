@@ -264,6 +264,99 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::input_properties,
 		},
 		DocumentNodeType {
+			name: "Create Canvas",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::Network(concrete!(EditorApi)),
+			}],
+			outputs: vec![DocumentOutputType {
+				name: "Canvas",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::input_properties,
+		},
+		DocumentNodeType {
+			name: "Draw Canvas",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 2],
+				outputs: vec![NodeOutput::new(3, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Convert Image Frame".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Draw Canvas".to_string(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::node(2, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::DrawImageFrameNode<_>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(EditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Canvas",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::input_properties,
+		},
+		DocumentNodeType {
 			name: "Begin Scope",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -272,7 +365,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
+						inputs: vec![NodeInput::ShortCircut(concrete!(EditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						..Default::default()
 					},
@@ -299,7 +392,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::EditorApi(EditorApi::empty()), true),
+				default: NodeInput::Network(concrete!(EditorApi)),
 			}],
 			outputs: vec![
 				DocumentOutputType {
@@ -1243,24 +1336,43 @@ impl DocumentNodeType {
 	}
 }
 
-pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
-	// if the network has no inputs, it doesn't need to be wrapped in a scope
-	if network.inputs.is_empty() {
-		return network;
+pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
+	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
+
+	log::debug!("Flattening network");
+	log::debug!("Network before flattening: {:#?}", network);
+	for id in node_ids {
+		network.flatten(id);
 	}
 
-	assert_eq!(network.inputs.len(), 1, "Networks wrapped in scope must have exactly one input");
-	let input = network.nodes[&network.inputs[0]].inputs.iter().find(|&i| matches!(i, NodeInput::Network(_))).cloned();
+	log::debug!("Wrapping network in scope");
+	log::debug!("Network before wrapping: {:#?}", network);
 
-	// if the network has no network inputs, it doesn't need to be wrapped in a scope either
-	let Some(input_type) = input else {
+	let mut network_inputs = Vec::new();
+	let mut input_type = None;
+	for (id, node) in network.nodes.iter() {
+		for (index, input) in node.inputs.iter().enumerate() {
+			if let NodeInput::Network(_) = input {
+				if input_type.is_none() {
+					input_type = Some(input.clone());
+				}
+				log::debug!("Found network input {} on node {}", index, id);
+				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type");
+				network_inputs.push(*id);
+			}
+		}
+	}
+	let len = network_inputs.len();
+	network.inputs = network_inputs;
+
+	// if the network has no inputs, it doesn't need to be wrapped in a scope
+	if len == 0 {
 		return network;
-	};
-
+	}
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
-		inputs: vec![NodeInput::node(0, 1)],
+		inputs: core::iter::repeat(NodeInput::node(0, 1)).take(len).collect(),
 		..Default::default()
 	};
 
@@ -1268,7 +1380,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork) -> NodeNetwork {
 	let nodes = vec![
 		resolve_document_node_type("Begin Scope")
 			.expect("Begin Scope node type not found")
-			.to_document_node(vec![input_type], DocumentNodeMetadata::default()),
+			.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default()),
 		inner_network,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")

@@ -325,44 +325,43 @@ impl<P: Hash + Pixel> Hash for ImageFrame<P> {
 	}
 }
 
-use crate::text::FontCache;
-#[derive(Clone, Debug, Hash, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct EditorApi<'a> {
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub image_frame: Option<ImageFrame<Color>>,
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub font_cache: Option<&'a FontCache>,
-}
+/* This does not work because of missing specialization
+ * so we have to manually implement this for now
+impl<S: Into<P> + Pixel, P: Pixel> From<Image<S>> for Image<P> {
+	fn from(image: Image<S>) -> Self {
+		let data = image.data.into_iter().map(|x| x.into()).collect();
+		Self {
+			data,
+			width: image.width,
+			height: image.height,
+		}
+	}
+}*/
 
-unsafe impl StaticType for EditorApi<'_> {
-	type Static = EditorApi<'static>;
-}
-
-impl EditorApi<'_> {
-	pub fn empty() -> Self {
-		Self { image_frame: None, font_cache: None }
+impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
+	fn from(image: ImageFrame<Color>) -> Self {
+		let data = image.image.data.into_iter().map(|x| x.into()).collect();
+		Self {
+			image: Image {
+				data,
+				width: image.image.width,
+				height: image.image.height,
+			},
+			transform: image.transform,
+		}
 	}
 }
 
-impl<'a> AsRef<EditorApi<'a>> for EditorApi<'a> {
-	fn as_ref(&self) -> &EditorApi<'a> {
-		self
-	}
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractImageFrame;
-
-impl<'a: 'input, 'input> Node<'input, &'a EditorApi<'a>> for ExtractImageFrame {
-	type Output = ImageFrame<Color>;
-	fn eval(&'input self, editor_api: &'a EditorApi<'a>) -> Self::Output {
-		editor_api.image_frame.clone().unwrap_or(ImageFrame::identity())
-	}
-}
-
-impl ExtractImageFrame {
-	pub fn new() -> Self {
-		Self
+impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
+	fn from(image: ImageFrame<SRGBA8>) -> Self {
+		let data = image.image.data.into_iter().map(|x| x.into()).collect();
+		Self {
+			image: Image {
+				data,
+				width: image.image.width,
+				height: image.image.height,
+			},
+			transform: image.transform,
+		}
 	}
 }

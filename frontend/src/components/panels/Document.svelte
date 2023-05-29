@@ -57,7 +57,7 @@
 	let rulerInterval = 100;
 
 	// Rendered SVG viewport data
-	let artworkSvg = "";
+	let artworkSvg = new Document();
 	let artboardSvg = "";
 	let overlaysSvg = "";
 
@@ -122,7 +122,20 @@
 
 	// Update rendered SVGs
 	export async function updateDocumentArtwork(svg: string) {
-		artworkSvg = svg;
+		// Parse the SVG string into an SVG document
+		const parser = new DOMParser();
+		const svgDoc = parser.parseFromString(svg, "image/svg+xml");
+
+		// Find the placeholders in the SVG document
+		const placeholders = svgDoc.querySelectorAll("[data-canvas-placeholder]");
+
+		// Replace the placeholders with the actual canvas elements
+		placeholders.forEach((placeholder) => {
+			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
+			const canvas = (window as any)["imageCanvases"][canvasName]; // Get the canvas element from the global variable
+			placeholder.replaceWith(canvas);
+		});
+		artworkSvg = svgDoc;
 		rasterizedCanvas = undefined;
 	}
 

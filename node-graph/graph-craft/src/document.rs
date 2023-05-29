@@ -717,6 +717,10 @@ impl NodeNetwork {
 		}
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
+			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()) {
+				break;
+			}
+
 			let mut dummy_input = NodeInput::ShortCircut(concrete!(()));
 			std::mem::swap(&mut dummy_input, input);
 			if let NodeInput::Value { tagged_value, exposed } = dummy_input {

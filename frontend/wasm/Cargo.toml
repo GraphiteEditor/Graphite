@@ -38,7 +38,12 @@ bezier-rs = { path = "../../libraries/bezier-rs" }
 
 [dependencies.web-sys]
 version = "0.3.4"
-features = ["Window"]
+features = [
+	"Window",
+	"CanvasRenderingContext2d",
+	"Document",
+	"HtmlCanvasElement",
+]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"

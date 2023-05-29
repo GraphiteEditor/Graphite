@@ -871,6 +871,12 @@ impl Document {
 				}
 				Some(Vec::new())
 			}
+			Operation::SetSurface { path, surface_id } => {
+				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
+					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
+				}
+				Some(Vec::new())
+			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				let scope = DAffine2::from_cols_array(&scope);
