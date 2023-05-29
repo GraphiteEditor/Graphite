@@ -204,25 +204,16 @@ pub struct ImaginateGenerationParameters {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
 pub struct ImaginatePreferences {
 	pub host_name: String,
-	pub refresh_frequency: f64,
 }
 
 impl Default for ImaginatePreferences {
 	fn default() -> Self {
 		Self {
 			host_name: "http://localhost:7860/".into(),
-			refresh_frequency: 1.,
 		}
-	}
-}
-
-impl Hash for ImaginatePreferences {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.host_name.hash(state);
-		self.refresh_frequency.to_bits().hash(state);
 	}
 }
 

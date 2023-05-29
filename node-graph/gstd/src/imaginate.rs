@@ -10,12 +10,6 @@ const PROGRESS_EVERY_N_STEPS: u32 = 5;
 const SDAPI_TEXT_TO_IMAGE: &str = "sdapi/v1/txt2img";
 const SDAPI_PROGRESS: &str = "sdapi/v1/progress?skip_current_image=true";
 
-async fn wait_for_refresh_counter(secs: f64) {
-	let timeout = (secs * 1000.).round() as _;
-	let promise = js_sys::Promise::new(&mut |resolve, _| drop(web_sys::window().map(|w| w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, timeout))));
-	let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-}
-
 #[derive(Default, Debug, Clone, Copy)]
 pub enum Progress {
 	#[default]
@@ -217,34 +211,28 @@ async fn imaginate_maybe_fail<P: Pixel>(
 
 	let progress_url = join_url(SDAPI_PROGRESS)?;
 
-	let mut time_future;
-	let mut abort_handle;
-
 	futures::pin_mut!(response_future);
 
 	let response = loop {
-		time_future = wait_for_refresh_counter(preferences.refresh_frequency);
 		let progress_request = client.get(progress_url.clone()).header("Accept", "*/*").build().map_err(Error::RequestBuild)?;
 		let progress_response_future = client.execute(progress_request).and_then(|response| response.json());
-		let (progress_response_future, new_abort_handle) = futures::future::abortable(progress_response_future);
-		abort_handle = new_abort_handle;
+		let (progress_response_future, abort_handle) = futures::future::abortable(progress_response_future);
 
-		futures::pin_mut!(time_future, progress_response_future);
+		futures::pin_mut!(progress_response_future);
 
 		response_future = match futures::future::select(response_future, progress_response_future).await {
-			Either::Left((response, _)) => break response,
+			Either::Left((response, _)) => {
+				abort_handle.abort();
+				break response;
+			}
 			Either::Right((progress, response_future)) => {
 				if let Ok(Ok(ProgressResponse { progress })) = progress {
 					set_progress(Progress::Generating(progress));
 				}
-				match futures::future::select(response_future, time_future).await {
-					Either::Left((response, _)) => break response,
-					Either::Right(((), response_future)) => response_future,
-				}
+				response_future
 			}
 		};
 	};
-	abort_handle.abort();
 	let response = response.and_then(reqwest::Response::error_for_status).map_err(Error::Request)?;
 
 	set_progress(Progress::Uploading);

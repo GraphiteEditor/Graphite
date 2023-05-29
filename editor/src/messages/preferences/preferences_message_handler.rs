@@ -15,17 +15,16 @@ impl PreferencesMessageHandler {
 	pub fn get_imaginate_preferences(&self) -> ImaginatePreferences {
 		ImaginatePreferences {
 			host_name: self.imaginate_server_hostname.clone(),
-			refresh_frequency: self.imaginate_refresh_frequency,
 		}
 	}
 }
 
 impl Default for PreferencesMessageHandler {
 	fn default() -> Self {
-		let ImaginatePreferences { host_name, refresh_frequency } = Default::default();
+		let ImaginatePreferences { host_name } = Default::default();
 		Self {
 			imaginate_server_hostname: host_name,
-			imaginate_refresh_frequency: refresh_frequency,
+			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 		}
 	}
