@@ -16,6 +16,10 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: 
 	new_custom_layer(network, layer_path, responses);
 }
 
+/// Creates a new custom vector network by resolving node names.
+///
+/// * `node_names`: The names of the nodes to be resolved and inserted between the path_generator and output nodes.
+/// * `subpaths`: The subpath that contains the vector data.
 pub fn new_custom_vector_layer(node_names: Vec<String>, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	let network = node_graph::new_custom_vector_network(node_names, subpaths);
 	new_custom_layer(network, layer_path, responses);
