@@ -954,6 +954,14 @@ impl Color {
 			..*self
 		}
 	}
+
+	#[inline(always)]
+	pub fn alpha_mul(&self, other: Color) -> Self {
+		Self {
+			alpha: (self.alpha * other.alpha).clamp(0., 1.),
+			..*self
+		}
+	}
 }
 
 #[test]

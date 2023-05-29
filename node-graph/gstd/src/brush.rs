@@ -2,10 +2,15 @@ use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
 use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
+use graphene_core::raster::{BlendMode, BlendNode};
 use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::value::{CopiedNode, ValueNode};
+use graphene_core::vector::brush_stroke::BrushStyle;
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
+
+use crate::raster::{BlendImageTupleNode, EmptyImageNode};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReduceNode<Initial, Lambda> {
@@ -201,6 +206,16 @@ where
 	}
 
 	target
+}
+
+pub fn create_brush_texture(brush_style: BrushStyle) -> Image<Color> {
+	let stamp = BrushStampGeneratorNode::new(CopiedNode::new(brush_style.color), CopiedNode::new(brush_style.hardness), CopiedNode::new(brush_style.flow));
+	let stamp = stamp.eval(brush_style.diameter);
+	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.0));
+	let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
+	let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
+	blend_executor.eval((blank_texture, stamp)).image
 }
 
 #[cfg(test)]
