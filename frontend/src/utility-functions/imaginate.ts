@@ -20,6 +20,7 @@ let statusAbortController = new AbortController();
 
 // PUBLICLY CALLABLE FUNCTIONS
 
+/*
 export async function imaginateGenerate(
 	parameters: ImaginateGenerationParameters,
 	image: Blob | undefined,
@@ -376,3 +377,4 @@ async function checkConnection(hostname: string): Promise<boolean> {
 
 	return false;
 }
+*/
