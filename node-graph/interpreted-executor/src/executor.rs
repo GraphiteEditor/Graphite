@@ -49,8 +49,8 @@ impl DynamicExecutor {
 
 	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
 		self.output = proto_network.output;
+		debug!("setting output to {} {:?}", self.output, proto_network.nodes.last());
 		self.typing_context.update(&proto_network)?;
-		trace!("setting output to {}", self.output);
 		let mut orphans = self.tree.update(proto_network, &self.typing_context).await?;
 		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
 		for node_id in orphans {

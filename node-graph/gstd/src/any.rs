@@ -227,6 +227,7 @@ impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
 	type Output = DynFuture<'i, Any<'i>>;
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
 		Box::pin(async move {
+			log::debug!("ComposeTypeErased");
 			let arg = self.first.eval(input).await;
 			self.second.eval(arg).await
 		})

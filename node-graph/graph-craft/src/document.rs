@@ -564,9 +564,8 @@ impl NodeNetwork {
 		self.previous_outputs
 			.iter_mut()
 			.for_each(|nodes| nodes.iter_mut().for_each(|output| output.node_id = f(output.node_id)));
-		let mut empty = HashMap::new();
-		std::mem::swap(&mut self.nodes, &mut empty);
-		self.nodes = empty
+		let nodes = std::mem::take(&mut self.nodes);
+		self.nodes = nodes
 			.into_iter()
 			.map(|(id, mut node)| {
 				node.inputs.iter_mut().for_each(|input| input.map_ids(f));
@@ -602,64 +601,20 @@ impl NodeNetwork {
 		}
 	}
 
-	/// When a node has multiple outputs, we actually just duplicate the node and evaluate each output separately
-	pub fn duplicate_outputs(&mut self, mut gen_id: &mut impl FnMut() -> NodeId) {
-		let mut duplicating_nodes = HashMap::new();
-		// Find the nodes where the inputs require duplicating
-		for node in &mut self.nodes.values_mut() {
-			// Recursively duplicate children
-			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				network.duplicate_outputs(gen_id);
-			}
-
-			for input in &mut node.inputs {
-				let &mut NodeInput::Node { node_id, output_index, .. } = input else {
-					continue;
-				};
-				// Use the initial node when getting the first output
-				if output_index == 0 {
-					continue;
-				}
-				// Get the existing duplicated node id (or create a new one)
-				let duplicated_node_id = *duplicating_nodes.entry((node_id, output_index)).or_insert_with(&mut gen_id);
-				// Use the first output from the duplicated node
-				*input = NodeInput::node(duplicated_node_id, 0);
-			}
-		}
-		// Find the network outputs that require duplicating
-		for network_output in &mut self.outputs {
-			// Use the initial node when getting the first output
-			if network_output.node_output_index == 0 {
-				continue;
-			}
-			// Get the existing duplicated node id (or create a new one)
-			let duplicated_node_id = *duplicating_nodes.entry((network_output.node_id, network_output.node_output_index)).or_insert_with(&mut gen_id);
-			// Use the first output from the duplicated node
-			*network_output = NodeOutput::new(duplicated_node_id, 0);
-		}
-		// Duplicate the nodes
-		for ((original_node_id, output_index), new_node_id) in duplicating_nodes {
-			let Some(original_node) = self.nodes.get(&original_node_id) else {
-				continue;
-			};
-			let mut new_node = original_node.clone();
-			// Update the required outputs from a nested network to be just the relevant output
-			if let DocumentNodeImplementation::Network(network) = &mut new_node.implementation {
-				if network.outputs.is_empty() {
-					continue;
-				}
-				network.outputs = vec![network.outputs[output_index]];
-			}
-			self.nodes.insert(new_node_id, new_node);
-		}
-
-		// Ensure all nodes only have one output
+	fn replace_node_inputs(&mut self, old_input: NodeInput, new_input: NodeInput) {
 		for node in self.nodes.values_mut() {
-			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				if network.outputs.is_empty() {
-					continue;
+			node.inputs.iter_mut().for_each(|input| {
+				if *input == old_input {
+					*input = new_input.clone();
 				}
-				network.outputs = vec![network.outputs[0]];
+			});
+		}
+	}
+
+	fn replace_network_outputs(&mut self, old_output: NodeOutput, new_output: NodeOutput) {
+		for output in self.outputs.iter_mut() {
+			if *output == old_output {
+				*output = new_output.clone();
 			}
 		}
 	}
@@ -753,54 +708,51 @@ impl NodeNetwork {
 			}
 		}
 
-		match node.implementation {
-			DocumentNodeImplementation::Network(mut inner_network) => {
-				// Connect all network inputs to either the parent network nodes, or newly created value nodes.
-				inner_network.map_ids(|inner_id| map_ids(id, inner_id));
-				let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
-				// Copy nodes from the inner network into the parent network
-				self.nodes.extend(inner_network.nodes);
-				self.disabled.extend(inner_network.disabled);
+		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
+			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
+			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
+			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
+			// Copy nodes from the inner network into the parent network
+			self.nodes.extend(inner_network.nodes);
+			self.disabled.extend(inner_network.disabled);
 
-				let mut network_offsets = HashMap::new();
-				for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
-					let offset = network_offsets.entry(network_input).or_insert(0);
-					match document_input {
-						NodeInput::Node { node_id, output_index, lambda } => {
-							let network_input = self.nodes.get_mut(network_input).unwrap();
-							network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
-						}
-						NodeInput::Network(_) => {
-							*network_offsets.get_mut(network_input).unwrap() += 1;
-							if let Some(index) = self.inputs.iter().position(|i| *i == id) {
-								self.inputs[index] = *network_input;
-							}
-						}
-						NodeInput::ShortCircut(_) => (),
-						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-						NodeInput::Inline(_) => (),
+			let mut network_offsets = HashMap::new();
+			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
+				let offset = network_offsets.entry(network_input).or_insert(0);
+				match document_input {
+					NodeInput::Node { node_id, output_index, lambda } => {
+						let network_input = self.nodes.get_mut(network_input).unwrap();
+						network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 					}
-				}
-				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
-				node.inputs = inner_network
-					.outputs
-					.iter()
-					.map(|&NodeOutput { node_id, node_output_index }| NodeInput::Node {
-						node_id,
-						output_index: node_output_index,
-						lambda: false,
-					})
-					.collect();
-
-				for node_id in new_nodes {
-					self.flatten_with_fns(node_id, map_ids, gen_id);
+					NodeInput::Network(_) => {
+						*network_offsets.get_mut(network_input).unwrap() += 1;
+						if let Some(index) = self.inputs.iter().position(|i| *i == id) {
+							self.inputs[index] = *network_input;
+						}
+					}
+					NodeInput::ShortCircut(_) => (),
+					NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
+					NodeInput::Inline(_) => (),
 				}
 			}
-			DocumentNodeImplementation::Unresolved(_) => (),
-			DocumentNodeImplementation::Extract => (),
+
+			// Connect all nodes that were previously connected to this node to the nodes of the inner network
+			for (i, output) in inner_network.outputs.into_iter().enumerate() {
+				let node_input = |node_id, output_index, lambda| NodeInput::Node { node_id, output_index, lambda };
+				self.replace_node_inputs(node_input(id, i, false), node_input(output.node_id, output.node_output_index, false));
+				self.replace_node_inputs(node_input(id, i, true), node_input(output.node_id, output.node_output_index, true));
+
+				self.replace_network_outputs(NodeOutput::new(id, i), output);
+			}
+
+			for node_id in new_nodes {
+				self.flatten_with_fns(node_id, map_ids, gen_id);
+			}
+		} else {
+			// If the node is not a network, it is a primitive node and can be inserted into the network as is.
+			assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
+			self.nodes.insert(id, node);
 		}
-		assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
-		self.nodes.insert(id, node);
 	}
 
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {

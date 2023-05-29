@@ -107,6 +107,7 @@ pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
 fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi<'a>) -> Arc<SurfaceHandle<'a, CanvasRenderingContext2d>> {
+	log::debug!("Creating surface");
 	editor.application_io.create_surface().into()
 }
 
@@ -116,6 +117,7 @@ pub struct DrawImageFrameNode<Surface> {
 
 #[node_macro::node_fn(DrawImageFrameNode)]
 fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<SurfaceHandle<'a, CanvasRenderingContext2d>>) -> SurfaceHandleFrame<'a, CanvasRenderingContext2d> {
+	log::debug!("Drawing image frame");
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width as u32, image.image.height as u32).expect("Failed to construct ImageData");
