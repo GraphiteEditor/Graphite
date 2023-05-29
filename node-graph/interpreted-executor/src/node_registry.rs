@@ -298,29 +298,43 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					}
 
 					let blank_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
-					let background = image.and_then(ExtendImageNode::new(blank_image));
-
-					let mut blits = Vec::new();
+					let mut actual_image = image.and_then(ExtendImageNode::new(blank_image)).eval(()).await;
+					// let mut blends = Vec::new();
 					for stroke in strokes {
+						let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+
+						// Create brush texture.
+						// TODO: apply rotation from layer to stamp for non-rotationally-symmetric brushes.
 						let stamp = BrushStampGeneratorNode::new(CopiedNode::new(stroke.style.color), CopiedNode::new(stroke.style.hardness), CopiedNode::new(stroke.style.flow));
 						let stamp = stamp.eval(stroke.style.diameter);
-
 						let transform = DAffine2::from_scale_angle_translation(DVec2::splat(stroke.style.diameter), 0., -DVec2::splat(stroke.style.diameter / 2.0));
 						let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
+						let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
+						let brush_texture = blend_executor.eval((blank_texture, stamp)).image;
 
-						let blend_params = graphene_core::raster::BlendNode::new(CopiedNode::new(stroke.style.blend_mode), CopiedNode::new(100.));
+						// Compute transformation from stroke texture space into layer space, and create the stroke texture.
+						let positions: Vec<_> = stroke.compute_blit_points().into_iter().collect();
+						let mut bbox = stroke.bounding_box();
+						bbox.start = bbox.start.floor();
+						bbox.end = bbox.end.floor();
+						let stroke_size = bbox.size() + DVec2::splat(stroke.style.diameter);
+						// For numerical stability we want to place the first blit point at a stable, integer offset
+						// in layer space.
+						let snap_offset = positions[0].floor() - positions[0];
+						let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.0);
+						let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
+						let empty_stroke_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(stroke_to_layer);
+						let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(normal_blend));
+						let stroke_texture = blit_node.eval(empty_stroke_texture);
+
+						// TODO: Is this the correct way to do opacity in blending?
+						let blend_params = BlendNode::new(CopiedNode::new(stroke.style.blend_mode), CopiedNode::new(stroke.style.color.a() * 100.0));
 						let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
-						let texture = blend_executor.eval((blank_texture, stamp));
-
-						let translations: Vec<_> = stroke.compute_blit_points().into_iter().collect();
-						let blit_node = BlitNode::new(ClonedNode::new(texture), ClonedNode::new(translations), ClonedNode::new(blend_params));
-						blits.push(blit_node);
+						actual_image = blend_executor.eval((actual_image, stroke_texture));
 					}
 
-					let all_blits = ChainApplyNode::new(background);
-					let node = ClonedNode::new(blits.into_iter()).then(all_blits);
-
-					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
+					// TODO: there *has* to be a better way to do this.
+					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(FutureWrapperNode::new(ClonedNode::new(actual_image))));
 					Box::pin(any) as TypeErasedPinned
 				})
 			},

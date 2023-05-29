@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, Color, ImageFrame, Pixel, Sample};
+use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
@@ -159,7 +159,7 @@ pub struct BlitNode<P, Texture, Positions, BlendFn> {
 }
 
 #[node_fn(BlitNode<_P>)]
-fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<_P>, texture: ImageFrame<_P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<_P>
+fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<_P>, texture: Image<_P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<_P>
 where
 	BlendFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
@@ -168,14 +168,11 @@ where
 	}
 
 	let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
-	let texture_size = DVec2::new(texture.image.width as f64, texture.image.height as f64);
-	let document_to_target = target.transform.inverse();
+	let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
+	let document_to_target = DAffine2::from_translation(-texture_size / 2.0) * DAffine2::from_scale(target_size) * target.transform.inverse();
 
-	// Prevent numerical instability by choosing an integer starting point.
-	let start_pos = document_to_target.transform_point2(positions[0]) * target_size - texture_size / 2.;
-	let start_offset = start_pos.round() - positions[0];
 	for position in positions {
-		let start = start_offset + position;
+		let start = document_to_target.transform_point2(position).round();
 		let stop = start + texture_size;
 
 		// Half-open integer ranges [start, stop).
@@ -186,17 +183,17 @@ where
 		let blit_area_dimensions = (clamp_stop - clamp_start).min(texture_size.as_uvec2() - blit_area_offset);
 
 		// Tight blitting loop. Eagerly assert bounds to hopefully eliminate bounds check inside loop.
-		let texture_index = |x: u32, y: u32| -> usize { (y as usize * texture.image.width as usize) + (x as usize) };
+		let texture_index = |x: u32, y: u32| -> usize { (y as usize * texture.width as usize) + (x as usize) };
 		let target_index = |x: u32, y: u32| -> usize { (y as usize * target.image.width as usize) + (x as usize) };
 
 		let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 		let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
-		assert!(texture_index(max_x, max_y) < texture.image.data.len());
+		assert!(texture_index(max_x, max_y) < texture.data.len());
 		assert!(target_index(max_x, max_y) < target.image.data.len());
 
 		for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 			for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
-				let src_pixel = texture.image.data[texture_index(x, y)];
+				let src_pixel = texture.data[texture_index(x, y)];
 				let dst_pixel = &mut target.image.data[target_index(x + clamp_start.x, y + clamp_start.y)];
 				*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 			}

@@ -44,6 +44,8 @@ impl Hash for BrushStyle {
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushInputSample {
+	// The position of the sample in layer space, in pixels.
+	// The origin of layer space is not specified.
 	pub position: DVec2,
 	// Future work: pressure, stylus angle, etc.
 }
@@ -66,11 +68,11 @@ pub struct BrushStroke {
 impl BrushStroke {
 	pub fn bounding_box(&self) -> AxisAlignedBbox {
 		let radius = self.style.diameter / 2.;
-		self.trace
+		self.compute_blit_points()
 			.iter()
-			.map(|sample| AxisAlignedBbox {
-				start: sample.position + DVec2::new(-radius, -radius),
-				end: sample.position + DVec2::new(radius, radius),
+			.map(|pos| AxisAlignedBbox {
+				start: *pos + DVec2::new(-radius, -radius),
+				end: *pos + DVec2::new(radius, radius),
 			})
 			.reduce(|a, b| a.union(&b))
 			.unwrap_or(AxisAlignedBbox::ZERO)
