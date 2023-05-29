@@ -67,12 +67,15 @@ where
 
 impl<P: Copy + Pixel> Raster for Image<P> {
 	type Pixel = P;
+	#[inline(always)]
 	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
 		self.data.get((x + y * self.width) as usize).copied()
 	}
+	#[inline(always)]
 	fn width(&self) -> u32 {
 		self.width
 	}
+	#[inline(always)]
 	fn height(&self) -> u32 {
 		self.height
 	}
@@ -254,6 +257,7 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	type Pixel = P;
 
 	// TODO: Improve sampling logic
+	#[inline(always)]
 	fn sample(&self, pos: DVec2, _area: DVec2) -> Option<Self::Pixel> {
 		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
 		let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);

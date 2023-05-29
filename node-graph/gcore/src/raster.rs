@@ -199,6 +199,7 @@ pub trait Sample {
 impl<'i, T: Sample> Sample for &'i T {
 	type Pixel = T::Pixel;
 
+	#[inline(always)]
 	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
 		(**self).sample(pos, area)
 	}

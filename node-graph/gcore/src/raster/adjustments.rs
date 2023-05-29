@@ -466,10 +466,12 @@ pub struct BlendNode<BlendMode, Opacity> {
 
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	let opacity = opacity as f32 / 100.;
+	blend_colors(input.0, input.1, blend_mode, opacity as f32)
+}
 
-	let (foreground, background) = input;
-
+#[inline(always)]
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	let opacity = opacity / 100.;
 	let target_color = match blend_mode {
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
 		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),

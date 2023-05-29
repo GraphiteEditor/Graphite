@@ -322,9 +322,18 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
 						match stroke.style.blend_mode {
-							BlendMode::Erase | BlendMode::Restore => {
+							BlendMode::Erase => {
 								if let Some(mask) = erase_restore_mask {
-									let blend_params = BlendNode::new(CopiedNode::new(stroke.style.blend_mode), CopiedNode::new(100.));
+									let blend_params = BlendNode::new(CopiedNode::new(BlendMode::Erase), CopiedNode::new(100.));
+									let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
+									erase_restore_mask = Some(blit_node.eval(mask));
+								}
+							}
+
+							// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
+							BlendMode::Restore => {
+								if let Some(mask) = erase_restore_mask {
+									let blend_params = BlendNode::new(CopiedNode::new(BlendMode::Restore), CopiedNode::new(100.));
 									let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
 									erase_restore_mask = Some(blit_node.eval(mask));
 								}
@@ -335,9 +344,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 								let empty_stroke_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(stroke_to_layer);
 								let stroke_texture = blit_node.eval(empty_stroke_texture);
 								// TODO: Is this the correct way to do opacity in blending?
-								let blend_params = BlendNode::new(CopiedNode::new(blend_mode), CopiedNode::new(stroke.style.color.a() * 100.0));
-								let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
-								actual_image = blend_executor.eval((actual_image, stroke_texture));
+								actual_image = brush::blend_with_mode(actual_image, stroke_texture, blend_mode, stroke.style.color.a() * 100.0);
 							}
 						}
 					}

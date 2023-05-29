@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use glam::{DAffine2, DVec2};
+use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
 use graphene_core::raster::{BlendMode, BlendNode};
 use graphene_core::transform::{Transform, TransformMut};
@@ -10,7 +11,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
 
-use crate::raster::{BlendImageTupleNode, EmptyImageNode};
+use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReduceNode<Initial, Lambda> {
@@ -216,6 +217,61 @@ pub fn create_brush_texture(brush_style: BrushStyle) -> Image<Color> {
 	let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
 	blend_executor.eval((blank_texture, stamp)).image
+}
+
+macro_rules! inline_blend_funcs {
+	($bg:ident, $fg:ident, $blend_mode:ident, $opacity:ident, [$($mode:path,)*]) => {
+		match std::hint::black_box($blend_mode) {
+			$(
+				$mode => {
+					blend_image_closure($fg, $bg, |a, b| blend_colors(a, b, $mode, $opacity))
+				}
+			)*
+		}
+	};
+}
+
+pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+	inline_blend_funcs!(
+		background,
+		foreground,
+		blend_mode,
+		opacity,
+		[
+			BlendMode::Normal,
+			BlendMode::Multiply,
+			BlendMode::Darken,
+			BlendMode::ColorBurn,
+			BlendMode::LinearBurn,
+			BlendMode::DarkerColor,
+			BlendMode::Screen,
+			BlendMode::Lighten,
+			BlendMode::ColorDodge,
+			BlendMode::LinearDodge,
+			BlendMode::LighterColor,
+			BlendMode::Overlay,
+			BlendMode::SoftLight,
+			BlendMode::HardLight,
+			BlendMode::VividLight,
+			BlendMode::LinearLight,
+			BlendMode::PinLight,
+			BlendMode::HardMix,
+			BlendMode::Difference,
+			BlendMode::Exclusion,
+			BlendMode::Subtract,
+			BlendMode::Divide,
+			BlendMode::Hue,
+			BlendMode::Saturation,
+			BlendMode::Color,
+			BlendMode::Luminosity,
+			BlendMode::InsertRed,
+			BlendMode::InsertGreen,
+			BlendMode::InsertBlue,
+			BlendMode::Erase,
+			BlendMode::Restore,
+			BlendMode::MultiplyAlpha,
+		]
+	)
 }
 
 #[cfg(test)]
