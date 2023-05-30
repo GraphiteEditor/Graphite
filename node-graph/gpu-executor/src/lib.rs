@@ -32,11 +32,13 @@ impl ComputePassDimensions {
 pub trait GpuExecutor {
 	type ShaderHandle;
 	type BufferHandle;
+	type TextureHandle;
 	type CommandBuffer;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle>;
 	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>>;
 	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self::BufferHandle>>;
+	fn create_texture_buffer<T: ToTextureBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>>;
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self::BufferHandle>>;
 	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
@@ -85,11 +87,14 @@ impl GPUConstant {
 	}
 }
 
+type AbstractShaderInput = ShaderInput<(), ()>;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// All the possible inputs to a shader.
-pub enum ShaderInput<BufferHandle> {
+pub enum ShaderInput<BufferHandle, TextureHandle> {
 	UniformBuffer(BufferHandle, Type),
 	StorageBuffer(BufferHandle, Type),
+	TextureBuffer(TextureHandle, Type),
 	/// A struct representing a work group memory buffer. This cannot be accessed by the CPU.
 	WorkGroupMemory(usize, Type),
 	Constant(GPUConstant),
@@ -98,13 +103,14 @@ pub enum ShaderInput<BufferHandle> {
 }
 
 /// Extract the buffer handle from a shader input.
-impl<BufferHandle> ShaderInput<BufferHandle> {
+impl<BufferHandle, TextureHandle> ShaderInput<BufferHandle, TextureHandle> {
 	pub fn buffer(&self) -> Option<&BufferHandle> {
 		match self {
 			ShaderInput::UniformBuffer(buffer, _) => Some(buffer),
 			ShaderInput::StorageBuffer(buffer, _) => Some(buffer),
 			ShaderInput::WorkGroupMemory(_, _) => None,
 			ShaderInput::Constant(_) => None,
+			ShaderInput::TextureBuffer(_, _) => None,
 			ShaderInput::OutputBuffer(buffer, _) => Some(buffer),
 			ShaderInput::ReadBackBuffer(buffer, _) => Some(buffer),
 		}
@@ -115,6 +121,7 @@ impl<BufferHandle> ShaderInput<BufferHandle> {
 			ShaderInput::StorageBuffer(_, ty) => ty.clone(),
 			ShaderInput::WorkGroupMemory(_, ty) => ty.clone(),
 			ShaderInput::Constant(c) => c.ty(),
+			ShaderInput::TextureBuffer(_, ty) => ty.clone(),
 			ShaderInput::OutputBuffer(_, ty) => ty.clone(),
 			ShaderInput::ReadBackBuffer(_, ty) => ty.clone(),
 		}
@@ -133,8 +140,8 @@ pub struct Shader<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ShaderIO {
-	pub inputs: Vec<ShaderInput<()>>,
-	pub output: ShaderInput<()>,
+	pub inputs: Vec<AbstractShaderInput>,
+	pub output: AbstractShaderInput,
 }
 
 pub struct StorageBufferOptions {
@@ -170,7 +177,7 @@ impl<T: Pod + Zeroable + StaticTypeSized> ToStorageBuffer for Vec<T> {
 
 /// Collection of all arguments that are passed to the shader.
 pub struct Bindgroup<E: GpuExecutor + ?Sized> {
-	pub buffers: Vec<Arc<ShaderInput<E::BufferHandle>>>,
+	pub buffers: Vec<Arc<ShaderInput<E::BufferHandle, E::TextureHandle>>>,
 }
 
 /// A struct representing a compute pipeline.
@@ -178,7 +185,7 @@ pub struct PipelineLayout<E: GpuExecutor + ?Sized> {
 	pub shader: E::ShaderHandle,
 	pub entry_point: String,
 	pub bind_group: Bindgroup<E>,
-	pub output_buffer: Arc<ShaderInput<E::BufferHandle>>,
+	pub output_buffer: Arc<ShaderInput<E::BufferHandle, E::TextureHandle>>,
 }
 
 /// Extracts arguments from the function arguments and wraps them in a node.
