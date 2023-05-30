@@ -357,6 +357,8 @@ impl Fsm for PathToolFsmState {
 													// debug!("bottom")
 												} else {
 													let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
+													// debug!("input_pos_doc_space. {:?}", input_pos_doc_space);
+													// debug!("anchor: {:?}", anchor_subpath);
 
 													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
 													// Anchor below dragged anchor
@@ -383,13 +385,20 @@ impl Fsm for PathToolFsmState {
 													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - anchor_subpath.anchor.x)
 														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
 														.abs() / (slope_prev * slope_prev + 1.0).sqrt();
-
 													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x)
 														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
+													// This is not 100% it causes the lines to no change direction instantly
+													// Notes: I had a example where my anchor point moved out of line with the infinite lines
+													// The dist_from_line and diff variable are right intially, i think, but as we move they change
+													// Honestly not sure if this is what causes it i need to dig into those variables more and when they change
+													debug!("dist prev: {:?}", dist_from_line_prev);
+													debug!("dist next: {:?}", dist_from_line_next);
+													let next_line_closer = dist_from_line_prev > dist_from_line_next;
+
 													let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
-													let mut new_delta = delta.clone();
+													let mut new_delta = DVec2 { x: 0.0, y: 0.0 };
 
 													// y = mx + b
 													let y_on_line = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + anchor_subpath.anchor.y;
@@ -397,49 +406,48 @@ impl Fsm for PathToolFsmState {
 														x: input_pos_doc_space.x,
 														y: y_on_line,
 													};
-													// debug!("line coord: {:?}", line_coordinates);
-													// debug!("anchor x,y: {:?}, {:?}", anchor_subpath.anchor.x, anchor_subpath.anchor.y);
+													// debug!("x: {:?}", (input_pos_doc_space.x - anchor_subpath.anchor.x));
 													let diff = line_coordinates - anchor_subpath.anchor;
+													debug!("diff: {:?}", diff.x);
+
 													// Use the magnitude and theta to calculate the projected position
 													if diff.x > 0.0 {
-														new_delta = DVec2 {
-															x: (magnitude * theta_next.cos()),
-															y: -(magnitude * theta_next.sin()),
-														};
-													} else if diff.x < 0.0 {
-														new_delta = DVec2 {
-															x: -(magnitude * theta_next.cos()),
-															y: (magnitude * theta_next.sin()),
-														};
+														if dist_from_line_prev > dist_from_line_next {
+															debug!("next, right");
+															new_delta = DVec2 {
+																x: (magnitude * theta_next.cos()),
+																y: -(magnitude * theta_next.sin()),
+															};
+														}
+														if dist_from_line_prev < dist_from_line_next {
+															debug!("prev, right");
+															new_delta = DVec2 {
+																x: -(magnitude * theta_prev.cos()),
+																y: (magnitude * theta_prev.sin()),
+															};
+														}
+													} else if diff.x < -0.0 {
+														if dist_from_line_prev > dist_from_line_next {
+															debug!("next, left");
+															new_delta = DVec2 {
+																x: -(magnitude * theta_next.cos()),
+																y: (magnitude * theta_next.sin()),
+															};
+														}
+														if dist_from_line_prev < dist_from_line_next {
+															debug!("prev, left");
+															new_delta = DVec2 {
+																x: (magnitude * theta_prev.cos()),
+																y: -(magnitude * theta_prev.sin()),
+															};
+														}
 													}
-
-													// if delta.y > 0.0 {
-													// 	new_delta = DVec2 {
-													// 		x: (0.0 * theta_next.cos()),
-													// 		y: -(0.0 * theta_next.sin()),
-													// 	};
-													// } else if delta.y < 0.0 {
-													// 	new_delta = DVec2 {
-													// 		x: -(0.0 * theta_next.cos()),
-													// 		y: (0.0 * theta_next.sin()),
-													// 	};
-													// }
-
-													// TODO: Add both angles behavior based on distance between infinite lines
-													// Use the equation of the line with the least distance for line extension
-													if dist_from_line_prev < dist_from_line_next {
-														// debug!("next:");
-													} else if dist_from_line_prev > dist_from_line_next {
-														// debug!("prev");
-													}
-													// debug!("new_delta: {:?}", new_delta);
+													debug!("new: {:?}", new_delta);
 													shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 													tool_data.previous_mouse_position = snapped_position;
 												}
 											}
 										}
-										// TODO:
-										// Works rn on left to right movement, but vertical movements mess up. Figure out how to based direction based on line were extending's angle
 									}
 								}
 							}
