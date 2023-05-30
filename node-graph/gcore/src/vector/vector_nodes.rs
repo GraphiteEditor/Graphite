@@ -177,7 +177,7 @@ pub struct SetSplineFromPointsNode {}
 
 #[node_macro::node_fn(SetSplineFromPointsNode)]
 fn set_vector_data_spline_from_points(mut vector_data: VectorData) -> VectorData {
-	let points: Vec<DVec2> = vector_data.subpaths.iter().flat_map(|subpath| subpath.manipulator_groups().iter().map(|group| group.anchor)).collect();
+	let points: Vec<DVec2> = vector_data.subpaths.iter().flat_map(|subpath| subpath.anchors()).collect();
 
 	vector_data.subpaths = if points.is_empty() { vec![] } else { vec![Subpath::new_cubic_spline(points)] };
 	vector_data
