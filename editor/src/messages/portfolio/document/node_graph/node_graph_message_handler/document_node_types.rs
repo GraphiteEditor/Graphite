@@ -343,7 +343,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Begin Scope",
 			category: "Ignore",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 2],
+				inputs: vec![0],
 				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
@@ -360,7 +360,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "RefNode".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::lambda(1, 0)],
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::lambda(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::RefNode<_, _>")),
 						..Default::default()
 					},
@@ -1347,6 +1347,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	if len == 0 {
 		return network;
 	}
+
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
@@ -1387,7 +1388,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 	network.push_node(
 		resolve_document_node_type("Output")
 			.expect("Output node does not exist")
-			.to_document_node([NodeInput::node(output_node_id, 1)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
 		false,
 	);
 	network

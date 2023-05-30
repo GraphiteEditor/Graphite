@@ -45,7 +45,7 @@ pub struct DocumentNode {
 
 impl DocumentNode {
 	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool) {
-		let input = self
+		let (index, _) = self
 			.inputs
 			.iter()
 			.enumerate()
@@ -53,7 +53,6 @@ impl DocumentNode {
 			.nth(offset)
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
-		let index = input.0;
 		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
 	}
 
@@ -67,7 +66,7 @@ impl DocumentNode {
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode.");
+					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode. {:#?}", self.name);
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
@@ -675,6 +674,7 @@ impl NodeNetwork {
 
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
+			// Skip inputs that are already value nodes
 			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()) {
 				break;
 			}
@@ -720,9 +720,18 @@ impl NodeNetwork {
 			self.disabled.extend(inner_network.disabled);
 
 			let mut network_offsets = HashMap::new();
+			assert_eq!(
+				node.inputs.len(),
+				inner_network.inputs.len(),
+				"The number of inputs to the node and the inner network must be the same {}",
+				node.name
+			);
+			// Match the document node input and the inputs of the inner network
 			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
+				// Keep track of how many network inputs we have already connected for each node
 				let offset = network_offsets.entry(network_input).or_insert(0);
 				match document_input {
+					// If the input to self is a node, connect the corresponding output of the inner network to it
 					NodeInput::Node { node_id, output_index, lambda } => {
 						let network_input = self.nodes.get_mut(network_input).unwrap();
 						network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
@@ -742,6 +751,7 @@ impl NodeNetwork {
 			// Connect all nodes that were previously connected to this node to the nodes of the inner network
 			for (i, output) in inner_network.outputs.into_iter().enumerate() {
 				let node_input = |node_id, output_index, lambda| NodeInput::Node { node_id, output_index, lambda };
+
 				self.replace_node_inputs(node_input(id, i, false), node_input(output.node_id, output.node_output_index, false));
 				self.replace_node_inputs(node_input(id, i, true), node_input(output.node_id, output.node_output_index, true));
 
@@ -1049,17 +1059,8 @@ mod test {
 	fn resolve_flatten_add_as_proto_network() {
 		let construction_network = ProtoNetwork {
 			inputs: vec![10],
-			output: 1,
+			output: 11,
 			nodes: [
-				(
-					1,
-					ProtoNode {
-						identifier: "graphene_core::ops::IdNode".into(),
-						input: ProtoNodeInput::Node(11, false),
-						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![1],
-					},
-				),
 				(
 					10,
 					ProtoNode {
@@ -1094,18 +1095,8 @@ mod test {
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
 			inputs: vec![10],
-			outputs: vec![NodeOutput::new(1, 0)],
+			outputs: vec![NodeOutput::new(11, 0)],
 			nodes: [
-				(
-					1,
-					DocumentNode {
-						name: "Inc".into(),
-						inputs: vec![NodeInput::node(11, 0)],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
-						path: Some(vec![1]),
-						..Default::default()
-					},
-				),
 				(
 					10,
 					DocumentNode {
@@ -1182,7 +1173,7 @@ mod test {
 			outputs: network_outputs,
 			nodes: [
 				(
-					10,
+					0,
 					DocumentNode {
 						name: "Nested network".into(),
 						inputs: vec![NodeInput::value(TaggedValue::F32(1.), false), NodeInput::value(TaggedValue::F32(2.), false)],
@@ -1191,7 +1182,7 @@ mod test {
 					},
 				),
 				(
-					11,
+					1,
 					DocumentNode {
 						name: "Result".into(),
 						inputs: vec![result_node_input],
@@ -1205,17 +1196,18 @@ mod test {
 			..Default::default()
 		};
 		let mut new_ids = 101..;
-		network.duplicate_outputs(&mut || new_ids.next().unwrap());
+		network.flatten_with_fns(10, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
+		network.flatten_with_fns(11, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		network.remove_dead_nodes();
 		network
 	}
 
 	#[test]
 	fn simple_duplicate() {
-		let result = output_duplicate(vec![NodeOutput::new(10, 1)], NodeInput::node(10, 0));
+		let result = output_duplicate(vec![NodeOutput::new(0, 1)], NodeInput::node(0, 0));
 		assert_eq!(result.outputs.len(), 1, "The number of outputs should remain as 1");
-		assert_eq!(result.outputs[0], NodeOutput::new(101, 0), "The outer network output should be from a duplicated inner network");
-		assert_eq!(result.nodes.keys().copied().collect::<Vec<_>>(), vec![101], "Should just call nested network");
+		assert_eq!(result.outputs[0], NodeOutput::new(10, 0), "The outer network output should be from a duplicated inner network");
+		assert_eq!(result.nodes.keys().copied().collect::<Vec<_>>(), vec![10], "Should just call nested network");
 		let nested_network_node = result.nodes.get(&101).unwrap();
 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");

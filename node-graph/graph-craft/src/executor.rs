@@ -10,10 +10,12 @@ pub struct Compiler {}
 impl Compiler {
 	pub fn compile(&self, mut network: NodeNetwork, resolve_inputs: bool) -> impl Iterator<Item = ProtoNetwork> {
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
+		log::debug!("network: {:#?}", network);
 		println!("flattening");
 		for id in node_ids {
 			network.flatten(id);
 		}
+		log::debug!("network: {:#?}", network);
 		network.remove_redundant_id_nodes();
 		network.resolve_extract_nodes();
 		network.remove_dead_nodes();
