@@ -2,7 +2,7 @@ use graph_craft::document::DocumentNode;
 use graph_craft::proto::{NodeConstructor, TypeErasedPinned};
 use graphene_core::ops::IdNode;
 use graphene_core::quantization::QuantizationChannels;
-use graphene_core::raster::bbox::AxisAlignedBbox;
+use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::color::Color;
 use graphene_core::structural::Then;
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
@@ -288,8 +288,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let bounds: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[1]);
 					let strokes: DowncastBothNode<(), Vec<BrushStroke>> = DowncastBothNode::new(args[2]);
 
-					let strokes = strokes.eval(()).await;
-					let bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
+					let image_val = image.eval(()).await;
+					let strokes_val = strokes.eval(()).await;
+					let stroke_bbox = strokes_val.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
+					let image_bbox = Bbox::from_transform(image_val.transform).to_axis_aligned_bbox();
+					let bbox = stroke_bbox.union(&image_bbox);
 
 					let mut background_bounds = CopiedNode::new(bbox.to_transform());
 					let bounds_transform = bounds.eval(()).await.transform;
@@ -297,12 +300,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						background_bounds = CopiedNode::new(bounds_transform);
 					}
 
-					let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
+					let has_erase_strokes = strokes_val.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
 					let blank_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)));
 					let opaque_image = background_bounds.then(EmptyImageNode::new(CopiedNode::new(Color::WHITE)));
 					let mut erase_restore_mask = has_erase_strokes.then(|| opaque_image.eval(()));
-					let mut actual_image = image.and_then(ExtendImageNode::new(blank_image)).eval(()).await;
-					for stroke in strokes {
+					let mut actual_image = ExtendImageNode::new(blank_image).eval(image_val);
+					for stroke in strokes_val {
 						let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 
 						// Create brush texture.
