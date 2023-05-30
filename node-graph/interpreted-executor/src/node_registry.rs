@@ -685,6 +685,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f64, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: WasmSurfaceHandleFrame, params: [DVec2, f64, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [VectorData]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [DAffine2]),

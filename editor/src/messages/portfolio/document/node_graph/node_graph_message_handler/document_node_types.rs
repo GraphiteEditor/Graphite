@@ -184,7 +184,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Downres",
-			category: "Ignore",
+			category: "Raster",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
 				outputs: vec![NodeOutput::new(1, 0)],
@@ -1387,7 +1387,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 	network.push_node(
 		resolve_document_node_type("Output")
 			.expect("Output node does not exist")
-			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+			.to_document_node([NodeInput::node(output_node_id, 1)], DocumentNodeMetadata::position((output_offset + 8, 4))),
 		false,
 	);
 	network

@@ -41,9 +41,9 @@ impl Default for BrushOptions {
 	fn default() -> Self {
 		Self {
 			diameter: 40.,
-			hardness: 50.,
+			hardness: 0.,
 			flow: 100.,
-			spacing: 50.,
+			spacing: 20.,
 			color: ToolColorOptions::default(),
 		}
 	}
@@ -252,7 +252,7 @@ impl BrushToolData {
 
 		self.transform = DAffine2::IDENTITY;
 
-		matches!(layer.cached_output_data, CachedOutputData::BlobURL(_)).then_some(&self.layer_path)
+		matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)).then_some(&self.layer_path)
 	}
 
 	fn update_strokes(&self, brush_options: &BrushOptions, responses: &mut VecDeque<Message>) {

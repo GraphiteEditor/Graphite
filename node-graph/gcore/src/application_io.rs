@@ -1,4 +1,6 @@
 use crate::raster::ImageFrame;
+use crate::transform::Transform;
+use crate::transform::TransformMut;
 use crate::Color;
 use crate::Node;
 use alloc::sync::Arc;
@@ -53,6 +55,18 @@ pub struct SurfaceHandleFrame<'a, Surface> {
 
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<'_, T> {
 	type Static = SurfaceHandleFrame<'static, T>;
+}
+
+impl<T> Transform for SurfaceHandleFrame<'_, T> {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+
+impl<T> TransformMut for SurfaceHandleFrame<'_, T> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
+	}
 }
 
 // TODO: think about how to automatically clean up memory
