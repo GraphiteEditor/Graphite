@@ -120,7 +120,7 @@ impl NodeRuntime {
 	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
 		let mut scoped_network = wrap_network_in_scope(network);
 
-		scoped_network.generate_node_paths(&[]);
+		//scoped_network.generate_node_paths(&[]);
 		let monitor_nodes = scoped_network
 			.recursive_nodes()
 			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))

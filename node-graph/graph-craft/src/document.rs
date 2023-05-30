@@ -595,16 +595,19 @@ impl NodeNetwork {
 				network.generate_node_paths(new_path.as_slice());
 			}
 			if node.path.is_some() {
-				log::warn!("Overwriting node path");
+				log::warn!("Attempting to overwrite node path");
+			} else {
+				node.path = Some(new_path);
 			}
-			node.path = Some(new_path);
 		}
 	}
 
 	fn replace_node_inputs(&mut self, old_input: NodeInput, new_input: NodeInput) {
 		for node in self.nodes.values_mut() {
+			let node_string = format!("{:?}", node);
 			node.inputs.iter_mut().for_each(|input| {
 				if *input == old_input {
+					log::debug!("Replacing input {:?} with {:?} for {}", old_input, new_input, node_string);
 					*input = new_input.clone();
 				}
 			});
@@ -670,6 +673,9 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		}
+
+		log::debug!("Flattening node {:?}", node);
+
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
 			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()) {
@@ -721,6 +727,8 @@ impl NodeNetwork {
 				let offset = network_offsets.entry(network_input).or_insert(0);
 				match document_input {
 					NodeInput::Node { node_id, output_index, lambda } => {
+						log::debug!("Connecting node {} to node {} with output index {}", node_id, network_input, *offset);
+						log::debug!("Name: {}", node.name);
 						let network_input = self.nodes.get_mut(network_input).unwrap();
 						network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
 					}

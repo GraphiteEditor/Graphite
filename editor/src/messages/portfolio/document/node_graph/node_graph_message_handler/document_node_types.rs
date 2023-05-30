@@ -234,29 +234,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Input Frame",
 			category: "Ignore",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1],
-				outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(1, 0)],
-				nodes: [DocumentNode {
-					name: "Identity".to_string(),
-					inputs: vec![NodeInput::Network(concrete!(EditorApi))],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ExtractImageFrame")),
-					..Default::default()
-				}]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType {
-					name: "In",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(ImageFrame<Color>)),
-				},
-				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
-			],
+			identifier: NodeImplementation::proto("graphene_core::ExtractImageFrame"),
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::Network(concrete!(EditorApi)),
+			}],
 			outputs: vec![DocumentOutputType {
 				name: "Image Frame",
 				data_type: FrontendGraphDataType::Raster,
@@ -1339,6 +1322,7 @@ impl DocumentNodeType {
 pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 
+	network.generate_node_paths(&[]);
 	log::debug!("Flattening network");
 	log::debug!("Network before flattening: {:#?}", network);
 	for id in node_ids {
