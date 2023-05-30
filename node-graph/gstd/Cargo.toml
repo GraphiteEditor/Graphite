@@ -31,7 +31,6 @@ graphene-core = { path = "../gcore", features = [
 	"std",
 	"serde",
 ], default-features = false }
-borrow_stack = { path = "../borrow_stack" }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft" }
 vulkan-executor = { path = "../vulkan-executor", optional = true }

@@ -41,7 +41,6 @@ image = { version = "0.24", default-features = false, features = [
 ] }
 graph-craft = { path = "../node-graph/graph-craft" }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
-borrow_stack = { path = "../node-graph/borrow_stack" }
 dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }

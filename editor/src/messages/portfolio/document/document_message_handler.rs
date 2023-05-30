@@ -1001,6 +1001,7 @@ impl DocumentMessageHandler {
 			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+			log::debug!("Rasterizing region below layer {:?} with size {:?} and transform {:?}", layer_path, size, transform);
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
 			self.restore_document_transform(old_transforms);

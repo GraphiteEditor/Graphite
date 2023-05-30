@@ -18,7 +18,6 @@ graphene-std = { path = "../gstd" }
 graph-craft = { path = "../graph-craft" }
 dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "glam"] }
 num-traits = "0.2"
-borrow_stack = { path = "../borrow_stack" }
 dyn-clone = "1.0"
 log = "0.4"
 serde = { version = "1", features = ["derive"], optional = true }

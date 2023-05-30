@@ -8,6 +8,7 @@ use graphene_std::vector::subpath::Subpath;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::mem::MaybeUninit;
 
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -172,8 +173,12 @@ impl Operation {
 	/// # Safety
 	/// This function reads from uninitialized memory!!!
 	/// Only use if you know what you are doing
-	unsafe fn as_slice(&self) -> &[u8] {
-		core::slice::from_raw_parts(self as *const Operation as *const u8, std::mem::size_of::<Operation>())
+	unsafe fn to_byte_vec(&self) -> Vec<u8> {
+		let mut value: MaybeUninit<Operation> = MaybeUninit::zeroed();
+		value.as_mut_ptr().write(self.clone() as Operation);
+		let value = value.assume_init();
+		let slice = core::slice::from_raw_parts(&value as *const Operation as *const u8, std::mem::size_of::<Operation>());
+		slice.to_vec()
 	}
 	/// Returns a pseudo hash that should uniquely identify the operation.
 	/// This is needed because `Hash` is not implemented for f64s
@@ -182,7 +187,7 @@ impl Operation {
 	/// This function reads from uninitialized memory but the generated value should be fine.
 	pub fn pseudo_hash(&self) -> u64 {
 		let mut s = DefaultHasher::new();
-		unsafe { self.as_slice() }.hash(&mut s);
+		unsafe { self.to_byte_vec() }.hash(&mut s);
 		s.finish()
 	}
 }

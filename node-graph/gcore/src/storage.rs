@@ -94,7 +94,7 @@ where
 
 #[cfg(test)]
 mod test {
-	use crate::value::{CopiedNode, OnceCellNode, RefCellMutNode, UnsafeMutValueNode, ValueNode};
+	use crate::value::{CopiedNode, OnceCellNode};
 	use crate::Node;
 
 	use super::*;
