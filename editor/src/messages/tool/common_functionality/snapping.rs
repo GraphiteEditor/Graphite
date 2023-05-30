@@ -123,7 +123,7 @@ impl SnapOverlays {
 
 	/// Updates the snapping overlays with the specified distances.
 	/// `positions_and_distances` is a tuple of `x`, `y` & `point` iterators,, each with `(position, goal, distance)` values.
-	fn update_overlays<X, Y, P>(&mut self, responses: &mut VecDeque<Message>, positions_and_distances: (X, Y, P), closest_distance: DVec2)
+	fn update_overlays<X, Y, P>(&mut self, responses: &mut VecDeque<Message>, positions_and_distances: (X, Y, P), closest_distance: DVec2, snapped_to_point: bool)
 	where
 		X: Iterator<Item = (DVec2, DVec2, f64)>,
 		Y: Iterator<Item = (DVec2, DVec2, f64)>,
@@ -133,9 +133,11 @@ impl SnapOverlays {
 		self.point_index = 0;
 
 		let (x, y, points) = positions_and_distances;
-		self.draw_alignment_lines(true, y, responses, closest_distance);
-		self.draw_alignment_lines(false, x, responses, closest_distance);
-		self.draw_snap_points(points, responses, closest_distance);
+		if !snapped_to_point {
+			self.draw_alignment_lines(true, y, responses, closest_distance);
+			self.draw_alignment_lines(false, x, responses, closest_distance);
+			self.draw_snap_points(points, responses, closest_distance);
+		}
 
 		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, self.axis_index);
 		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, self.point_index);
@@ -190,18 +192,21 @@ impl SnapManager {
 		let min_points = points.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
 
 		// Snap to a point if possible
-		let clamped_closest_distance = if let Some(min_points) = min_points.filter(|&(_, _, dist)| dist <= SNAP_POINT_TOLERANCE) {
-			min_points.1
+		let (clamped_closest_distance, snapped_to_point) = if let Some(min_points) = min_points.filter(|&(_, _, dist)| dist <= SNAP_POINT_TOLERANCE) {
+			(min_points.1, true)
 		} else {
 			// Do not move if over snap tolerance
 			let closest_distance = DVec2::new(min_x.unwrap_or_default().2, min_y.unwrap_or_default().2);
-			DVec2::new(
-				if closest_distance.x.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.x },
-				if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
+			(
+				DVec2::new(
+					if closest_distance.x.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.x },
+					if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
+				),
+				false,
 			)
 		};
 
-		self.snap_overlays.update_overlays(responses, (x_axis, y_axis, points), clamped_closest_distance);
+		self.snap_overlays.update_overlays(responses, (x_axis, y_axis, points), clamped_closest_distance, snapped_to_point);
 
 		clamped_closest_distance
 	}
