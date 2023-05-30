@@ -232,6 +232,7 @@ macro_rules! inline_blend_funcs {
 }
 
 pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+	let opacity = opacity / 100.;
 	inline_blend_funcs!(
 		background,
 		foreground,
