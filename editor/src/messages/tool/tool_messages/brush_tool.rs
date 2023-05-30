@@ -211,6 +211,7 @@ impl PropertyHolder for BrushTool {
 			DropdownInput::new(blend_mode_entries)
 				.selected_index(blend_mode_dropdown_idx(self.options.blend_mode))
 				.tooltip("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
+				.disabled(self.options.draw_mode != DrawMode::Draw)
 				.widget_holder(),
 		);
 
