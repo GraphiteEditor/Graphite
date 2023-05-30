@@ -4,10 +4,12 @@ use futures::{future::Either, TryFutureExt};
 use glam::DVec2;
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::raster::{Color, Image, Luma, Pixel};
+use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
 use reqwest::Url;
 
 const PROGRESS_EVERY_N_STEPS: u32 = 5;
 const SDAPI_TEXT_TO_IMAGE: &str = "sdapi/v1/txt2img";
+const SDAPI_IMAGE_TO_IMAGE: &str = "sdapi/v1/img2img";
 const SDAPI_PROGRESS: &str = "sdapi/v1/progress?skip_current_image=true";
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -28,7 +30,9 @@ enum Error {
 	NoImage,
 	Base64Decode(base64::DecodeError),
 	ImageDecode(image::error::ImageError),
+	ImageEncode(image::error::ImageError),
 	UnsupportedPixelType(&'static str),
+	InconsistentImageSize,
 }
 
 impl core::fmt::Display for Error {
@@ -42,7 +46,9 @@ impl core::fmt::Display for Error {
 			Self::NoImage => write!(f, "got an empty API response"),
 			Self::Base64Decode(err) => write!(f, "failed to decode base64 encoded image ({err})"),
 			Self::ImageDecode(err) => write!(f, "failed to decode png image ({err})"),
+			Self::ImageEncode(err) => write!(f, "failed to encode png image ({err})"),
 			Self::UnsupportedPixelType(ty) => write!(f, "pixel type `{ty}` not supported for imaginate images"),
+			Self::InconsistentImageSize => write!(f, "image width and height do not match the image byte size"),
 		}
 	}
 }
@@ -75,9 +81,56 @@ impl Default for ImaginateTextToImageRequestOverrideSettings {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+struct ImaginateImageToImageRequestOverrideSettings {
+	show_progress_every_n_steps: u32,
+	img2img_fix_steps: bool,
+}
+
+impl Default for ImaginateImageToImageRequestOverrideSettings {
+	fn default() -> Self {
+		Self {
+			show_progress_every_n_steps: PROGRESS_EVERY_N_STEPS,
+			img2img_fix_steps: true,
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 struct ImaginateTextToImageRequest<'a> {
+	#[serde(flatten)]
+	common: ImaginateCommonImageRequest<'a>,
+	override_settings: ImaginateTextToImageRequestOverrideSettings,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+struct ImaginateMask {
+	mask: String,
+	mask_blur: String,
+	inpainting_fill: u32,
+	inpaint_full_res: bool,
+	inpainting_mask_invert: u32,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+struct ImaginateImageToImageRequest<'a> {
+	#[serde(flatten)]
+	common: ImaginateCommonImageRequest<'a>,
+	override_settings: ImaginateImageToImageRequestOverrideSettings,
+
+	init_images: Vec<String>,
+	denoising_strength: f64,
+	#[serde(flatten)]
+	mask: Option<ImaginateMask>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+struct ImaginateCommonImageRequest<'a> {
 	prompt: String,
 	seed: f64,
 	steps: u32,
@@ -87,7 +140,6 @@ struct ImaginateTextToImageRequest<'a> {
 	restore_faces: bool,
 	tiling: bool,
 	negative_prompt: String,
-	override_settings: ImaginateTextToImageRequestOverrideSettings,
 	sampler_index: &'a str,
 }
 
@@ -162,7 +214,7 @@ async fn imaginate_maybe_fail<P: Pixel>(
 	prompt: impl Future<Output = String>,
 	negative_prompt: impl Future<Output = String>,
 	adapt_input_image: impl Future<Output = bool>,
-	_image_creativity: impl Future<Output = f64>,
+	image_creativity: impl Future<Output = f64>,
 	_masking_layer: impl Future<Output = Option<Vec<u64>>>,
 	_inpaint: impl Future<Output = bool>,
 	_mask_blur: impl Future<Output = f64>,
@@ -184,22 +236,35 @@ async fn imaginate_maybe_fail<P: Pixel>(
 
 	let join_url = |path: &str| base_url.join(path).map_err(|err| Error::UrlParse { text: base_url.as_str().into(), err });
 
+	let res = res.await.unwrap_or_else(|| DVec2::new(image.width as _, image.height as _));
+	let common_request_data = ImaginateCommonImageRequest {
+		prompt: prompt.await,
+		seed: seed.await,
+		steps: samples.await,
+		cfg_scale: prompt_guidance.await,
+		width: res.x,
+		height: res.y,
+		restore_faces: improve_faces.await,
+		tiling: tiling.await,
+		negative_prompt: negative_prompt.await,
+		sampler_index,
+	};
 	let request_builder = if adapt_input_image.await {
-		todo!("imaginate: adapt input image")
-	} else {
-		let res = res.await.unwrap_or_else(|| DVec2::new(image.width as _, image.height as _));
-		let request_data = ImaginateTextToImageRequest {
-			prompt: prompt.await,
-			seed: seed.await,
-			steps: samples.await,
-			cfg_scale: prompt_guidance.await,
-			width: res.x,
-			height: res.y,
-			restore_faces: improve_faces.await,
-			tiling: tiling.await,
-			negative_prompt: negative_prompt.await,
+		let base64_data = image_to_base64(image)?;
+		let request_data = ImaginateImageToImageRequest {
+			common: common_request_data,
 			override_settings: Default::default(),
-			sampler_index,
+
+			init_images: vec![base64_data],
+			denoising_strength: image_creativity.await * 0.01,
+			mask: None,
+		};
+		let url = join_url(SDAPI_IMAGE_TO_IMAGE)?;
+		client.post(url).json(&request_data)
+	} else {
+		let request_data = ImaginateTextToImageRequest {
+			common: common_request_data,
+			override_settings: Default::default(),
 		};
 		let url = join_url(SDAPI_TEXT_TO_IMAGE)?;
 		client.post(url).json(&request_data)
@@ -241,26 +306,50 @@ async fn imaginate_maybe_fail<P: Pixel>(
 
 	set_progress(Progress::Idle);
 
-	let base64image = images.into_iter().next().ok_or(Error::NoImage)?;
+	images.into_iter().next().ok_or(Error::NoImage).and_then(|base64_data| base64_to_image(base64_data))
+}
 
+fn image_to_base64<P: Pixel>(image: Image<P>) -> Result<String, Error> {
 	use base64::prelude::*;
-	let png_data = BASE64_STANDARD.decode(base64image).map_err(Error::Base64Decode)?;
+
+	let Image { width, height, data } = image;
+
+	fn cast_with_f32<S: Pixel, D: image::Pixel<Subpixel = f32>>(data: Vec<S>, width: u32, height: u32) -> Result<DynamicImage, Error>
+	where
+		DynamicImage: From<ImageBuffer<D, Vec<f32>>>,
+	{
+		ImageBuffer::<D, Vec<f32>>::from_raw(width, height, bytemuck::cast_vec(data))
+			.ok_or(Error::InconsistentImageSize)
+			.map(Into::into)
+	}
+
+	let image: DynamicImage = match TypeId::of::<P>() {
+		id if id == TypeId::of::<Color>() => cast_with_f32::<_, image::Rgba<f32>>(data, width, height)?
+			// we need to do this cast, because png does not support rgba32f
+			.to_rgba16().into(),
+		id if id == TypeId::of::<Luma>() => cast_with_f32::<_, image::Luma<f32>>(data, width, height)?
+			// we need to do this cast, because png does not support luma32f
+			.to_luma16().into(),
+		_ => return Err(Error::UnsupportedPixelType(core::any::type_name::<P>())),
+	};
+
+	let mut png_data = std::io::Cursor::new(vec![]);
+	image.write_to(&mut png_data, ImageOutputFormat::Png).map_err(Error::ImageEncode)?;
+	Ok(BASE64_STANDARD.encode(png_data.into_inner()))
+}
+
+fn base64_to_image<D: AsRef<[u8]>, P: Pixel>(base64_data: D) -> Result<Image<P>, Error> {
+	use base64::prelude::*;
+
+	let png_data = BASE64_STANDARD.decode(base64_data).map_err(Error::Base64Decode)?;
 	let dyn_image = image::load_from_memory_with_format(&png_data, image::ImageFormat::Png).map_err(Error::ImageDecode)?;
 	let (width, height) = (dyn_image.width(), dyn_image.height());
 
-	// sadly we cannot use bytemucks cast functions here, because the image::Pixel types don't implement Pod
-	let dyn_data: Box<dyn core::any::Any + 'static> = match TypeId::of::<P>() {
-		id if id == TypeId::of::<Color>() => Box::new(
-			dyn_image
-				.into_rgba32f()
-				.pixels()
-				.map(|&image::Rgba([r, g, b, a])| Color::from_rgbaf32(r, g, b, a).unwrap_or(Color::BLACK))
-				.collect::<Vec<_>>(),
-		),
-		id if id == TypeId::of::<Color>() => Box::new(dyn_image.to_luma32f().into_raw().into_iter().map(Luma).collect::<Vec<_>>()),
+	let result_data: Vec<P> = match TypeId::of::<P>() {
+		id if id == TypeId::of::<Color>() => bytemuck::cast_vec(dyn_image.into_rgba32f().into_raw()),
+		id if id == TypeId::of::<Luma>() => bytemuck::cast_vec(dyn_image.to_luma32f().into_raw()),
 		_ => return Err(Error::UnsupportedPixelType(core::any::type_name::<P>())),
 	};
-	let result_image: Box<Vec<P>> = dyn_data.downcast().unwrap();
 
-	Ok(Image { data: *result_image, width, height })
+	Ok(Image { data: result_data, width, height })
 }

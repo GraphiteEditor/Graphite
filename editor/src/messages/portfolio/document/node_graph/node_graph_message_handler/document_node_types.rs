@@ -6,7 +6,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::imaginate_input::{ImaginatePreferences, ImaginateSamplingMethod};
+use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
 #[cfg(feature = "gpu")]
 use graphene_core::application_io::SurfaceHandle;
