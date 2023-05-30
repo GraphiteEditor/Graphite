@@ -60,6 +60,7 @@ export async function initWasm(): Promise<void> {
 	// eslint-disable-next-line import/no-cycle
 	await init();
 	wasmImport = await wasmMemory();
+	window["imageCanvases"] = {};
 
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers

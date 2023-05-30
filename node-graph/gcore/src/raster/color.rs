@@ -12,7 +12,92 @@ use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{Alpha, AssociatedAlpha, Luminance, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
+use super::{
+	discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float},
+	Alpha, AssociatedAlpha, Luminance, Pixel, RGBMut, Rec709Primaries, RGB, SRGB,
+};
+
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+pub struct SRGBA8 {
+	red: u8,
+	green: u8,
+	blue: u8,
+	alpha: u8,
+}
+
+impl From<Color> for SRGBA8 {
+	#[inline(always)]
+	fn from(c: Color) -> Self {
+		Self {
+			red: float_to_srgb_u8(c.r()),
+			green: float_to_srgb_u8(c.g()),
+			blue: float_to_srgb_u8(c.b()),
+			alpha: (c.a() * 255.0) as u8,
+		}
+	}
+}
+
+impl From<SRGBA8> for Color {
+	#[inline(always)]
+	fn from(color: SRGBA8) -> Self {
+		Self {
+			red: srgb_u8_to_float(color.red),
+			green: srgb_u8_to_float(color.green),
+			blue: srgb_u8_to_float(color.blue),
+			alpha: color.alpha as f32 / 255.0,
+		}
+	}
+}
+
+impl Luminance for SRGBA8 {
+	type LuminanceChannel = f32;
+	#[inline(always)]
+	fn luminance(&self) -> f32 {
+		// TODO: verify this is correct for sRGB
+		0.2126 * self.red() + 0.7152 * self.green() + 0.0722 * self.blue()
+	}
+}
+
+impl RGB for SRGBA8 {
+	type ColorChannel = f32;
+	#[inline(always)]
+	fn red(&self) -> f32 {
+		self.red as f32 / 255.0
+	}
+	#[inline(always)]
+	fn green(&self) -> f32 {
+		self.green as f32 / 255.0
+	}
+	#[inline(always)]
+	fn blue(&self) -> f32 {
+		self.blue as f32 / 255.0
+	}
+}
+
+impl Rec709Primaries for SRGBA8 {}
+impl SRGB for SRGBA8 {}
+
+impl Alpha for SRGBA8 {
+	type AlphaChannel = f32;
+	#[inline(always)]
+	fn alpha(&self) -> f32 {
+		self.alpha as f32 / 255.0
+	}
+
+	const TRANSPARENT: Self = SRGBA8 { red: 0, green: 0, blue: 0, alpha: 0 };
+
+	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
+		let alpha = alpha * 255.0;
+		let mut result = *self;
+		result.alpha = (alpha * self.alpha()) as u8;
+		result
+	}
+}
+
+impl Pixel for SRGBA8 {}
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

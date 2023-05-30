@@ -7,16 +7,19 @@ use crate::messages::prelude::*;
 use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::{LayerId, Operation};
 
+use dyn_any::DynAny;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::executor::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
+use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::vector::style::ViewMode;
 
-use graphene_core::{Color, EditorApi};
+use graphene_core::wasm_application_io::{WasmApplicationIo, WasmSurfaceHandleFrame};
+use graphene_core::{Color, EditorApi, SurfaceFrame, SurfaceId};
 use interpreted_executor::executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
@@ -31,7 +34,9 @@ pub struct NodeRuntime {
 	font_cache: FontCache,
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: Sender<GenerationResponse>,
+	wasm_io: WasmApplicationIo,
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
+	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
 fn get_imaginate_index(name: &str) -> usize {
@@ -70,6 +75,8 @@ impl NodeRuntime {
 			sender,
 			font_cache: FontCache::default(),
 			thumbnails: Default::default(),
+			wasm_io: WasmApplicationIo::default(),
+			canvas_cache: Default::default(),
 		}
 	}
 	pub async fn run(&mut self) {
@@ -94,7 +101,7 @@ impl NodeRuntime {
 				}) => {
 					let (network, monitor_nodes) = Self::wrap_network(graph);
 
-					let result = self.execute_network(network, image_frame).await;
+					let result = self.execute_network(&path, network, image_frame).await;
 					let mut responses = VecDeque::new();
 					self.update_thumbnails(&path, monitor_nodes, &mut responses);
 					let response = GenerationResponse {
@@ -113,22 +120,22 @@ impl NodeRuntime {
 	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
 		let mut scoped_network = wrap_network_in_scope(network);
 
-		scoped_network.generate_node_paths(&[]);
+		//scoped_network.generate_node_paths(&[]);
 		let monitor_nodes = scoped_network
 			.recursive_nodes()
 			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))
 			.map(|(_, _, path)| path)
 			.collect();
-		scoped_network.duplicate_outputs(&mut generate_uuid);
-		scoped_network.remove_dead_nodes();
+		//scoped_network.remove_dead_nodes();
 
 		(scoped_network, monitor_nodes)
 	}
 
-	async fn execute_network<'a>(&'a mut self, scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
 		let editor_api = EditorApi {
-			font_cache: Some(&self.font_cache),
+			font_cache: &self.font_cache,
 			image_frame,
+			application_io: &self.wasm_io,
 		};
 
 		// We assume only one output
@@ -150,11 +157,30 @@ impl NodeRuntime {
 			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).await.map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
 		};
+
 		match result {
-			Ok(result) => match TaggedValue::try_from_any(result) {
-				Some(x) => Ok(x),
-				None => Err("Invalid output type".to_string()),
-			},
+			Ok(result) => {
+				if DynAny::type_id(result.as_ref()) == core::any::TypeId::of::<WasmSurfaceHandleFrame>() {
+					let Ok(value) = dyn_any::downcast::<WasmSurfaceHandleFrame>(result) else { unreachable!()};
+					let new_id = value.surface_handle.surface_id;
+					let old_id = self.canvas_cache.insert(path.to_vec(), new_id);
+					if let Some(old_id) = old_id {
+						if old_id != new_id {
+							self.wasm_io.destroy_surface(old_id);
+						}
+					}
+					return Ok(TaggedValue::SurfaceFrame(SurfaceFrame {
+						surface_id: new_id,
+						transform: value.transform,
+					}));
+				}
+
+				let type_name = DynAny::type_name(result.as_ref());
+				match TaggedValue::try_from_any(result) {
+					Some(x) => Ok(x),
+					None => Err(format!("Invalid output type: {}", type_name)),
+				}
+			}
 			Err(e) => Err(e),
 		}
 	}
@@ -438,6 +464,11 @@ impl NodeGraphExecutor {
 				let transform = vector_data.transform.to_cols_array();
 				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 				responses.add(Operation::SetVectorData { path: layer_path, vector_data });
+			}
+			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {
+				let transform = transform.to_cols_array();
+				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
+				responses.add(Operation::SetSurface { path: layer_path, surface_id });
 			}
 			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
 				// Don't update the frame's transform if the new transform is DAffine2::ZERO.

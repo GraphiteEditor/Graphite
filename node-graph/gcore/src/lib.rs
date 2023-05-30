@@ -33,6 +33,8 @@ pub use graphic_element::*;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
+pub mod application_io;
+
 pub mod quantization;
 
 use core::any::TypeId;
@@ -142,5 +144,6 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 
 	}
 }
 
-#[cfg(feature = "alloc")]
-pub use crate::raster::image::{EditorApi, ExtractImageFrame};
+pub use crate::application_io::{ExtractImageFrame, SurfaceFrame, SurfaceId};
+#[cfg(feature = "wasm")]
+pub use application_io::{wasm_application_io, wasm_application_io::WasmEditorApi as EditorApi};

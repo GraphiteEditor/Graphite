@@ -21,12 +21,10 @@ impl Compiler {
 		proto_networks.map(move |mut proto_network| {
 			if resolve_inputs {
 				println!("resolving inputs");
-				log::debug!("resolving inputs");
 				proto_network.resolve_inputs();
 			}
 			proto_network.reorder_ids();
 			proto_network.generate_stable_node_ids();
-			log::debug!("proto network: {:?}", proto_network);
 			proto_network
 		})
 	}
