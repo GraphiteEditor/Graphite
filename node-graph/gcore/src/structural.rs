@@ -49,7 +49,9 @@ where
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = <Second as Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output>>::Output> + 'i>>;
 	fn eval(&'i self, input: Input) -> Self::Output {
 		Box::pin(async move {
+			log::debug!("AsyncComposeNode::eval");
 			let arg = self.first.eval(input).await;
+			log::debug!("AsyncComposeNode::eval: arg ");
 			self.second.eval(arg)
 		})
 	}

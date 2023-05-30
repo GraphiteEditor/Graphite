@@ -116,7 +116,7 @@ pub struct DrawImageFrameNode<Surface> {
 }
 
 #[node_macro::node_fn(DrawImageFrameNode)]
-fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<SurfaceHandle<'a, CanvasRenderingContext2d>>) -> SurfaceHandleFrame<'a, CanvasRenderingContext2d> {
+async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<SurfaceHandle<'a, CanvasRenderingContext2d>>) -> SurfaceHandleFrame<'a, CanvasRenderingContext2d> {
 	log::debug!("Drawing image frame");
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));

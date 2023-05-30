@@ -126,7 +126,7 @@ impl NodeRuntime {
 			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))
 			.map(|(_, _, path)| path)
 			.collect();
-		scoped_network.remove_dead_nodes();
+		//scoped_network.remove_dead_nodes();
 
 		(scoped_network, monitor_nodes)
 	}
