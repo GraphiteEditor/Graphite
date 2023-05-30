@@ -26,65 +26,25 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-macro_rules! construct_arg {
-	($args: ident, $type:ty) => {{
-		let node = graphene_std::any::input_node::<$type>($args.pop().expect("Not enough arguments provided to construct node"));
-		let value = node.eval(()).await;
-		graphene_core::value::ClonedNode::new(value)
-	}};
-	($args: ident, +$defered:ident $type:ty) => {
-		graphene_std::any::input_node::<$type>($args.pop().expect("Not enough arguments provided to construct node"));
-	};
-}
-
 macro_rules! construct_node {
-	($args: ident, $path:ty, [$($(+$defered:ident)? $type:ty),*]) => { async move {
+	($args: ident, $path:ty, [$($type:tt),*]) => { async move {
 		let mut args: Vec<TypeErasedPinnedRef<'static>> = $args.clone();
 		args.reverse();
-		let node = <$path>::new($(construct_arg!(args, $(+$defered)? $type)),*
+		let node = <$path>::new($(
+				{
+					let node = graphene_std::any::input_node::<$type>(args.pop().expect("Not enough arguments provided to construct node"));
+					let value = node.eval(()).await;
+					graphene_core::value::ClonedNode::new(value)
+				}
+			),*
 		);
 		node
 
 	}}
 }
 
-macro_rules! future_type {
-	(+defered $type:ty) => {
-		core::pin::Pin<Box<dyn core::future::Future<Output = $type> + '_>>
-	};
-	( $type:ty) => {
-		$type
-	};
-}
-
 macro_rules! register_node {
-	($path:ty, input: $input:ty, params: [$($(+$defered:ident)? $type:ty),*]) => {
-		vec![
-		(
-			NodeIdentifier::new(stringify!($path)),
-			|args| {
-				Box::pin(async move {
-				let node = construct_node!(args, $path, [$($(+$defered)?  $type),*]).await;
-				let node = graphene_std::any::FutureWrapperNode::new(node);
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-				Box::pin(any) as TypeErasedPinned
-				})
-			},
-			{
-				let node = <$path>::new($(
-						graphene_std::any::PanicNode::<(), future_type!($(+$defered)? $type)>::new()
-				),*);
-				let params = vec![$(value_fn!(future_type!($(+$defered)? $type))),*];
-				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
-				node_io.input = concrete!(<$input as StaticType>::Static);
-				node_io
-			},
-		)
-		]
-	};
-}
-macro_rules! register_node {
-	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
+	($path:ty, input: $input:ty, params: [ $($type:ty),*]) => {
 		vec![
 		(
 			NodeIdentifier::new(stringify!($path)),
@@ -101,31 +61,6 @@ macro_rules! register_node {
 						graphene_std::any::PanicNode::<(), $type>::new()
 				),*);
 				let params = vec![$(value_fn!($type)),*];
-				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
-				node_io.input = concrete!(<$input as StaticType>::Static);
-				node_io
-			},
-		)
-		]
-	};
-}
-macro_rules! async_node {
-	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
-		vec![
-		(
-			NodeIdentifier::new(stringify!($path)),
-			|args| {
-				Box::pin(async move {
-				let node = construct_node!(args, $path, [$(+defered $type),*]).await;
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-				Box::pin(any) as TypeErasedPinned
-				})
-			},
-			{
-				let node = <$path>::new($(
-						graphene_std::any::PanicNode::<(), future_type!(+defered $type)>::new()
-				),*);
-				let params = vec![$(value_fn!(future_type!(+defered $type))),*];
 				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io
@@ -280,11 +215,19 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
 		register_node!(graphene_core::wasm_application_io::CreateSurfaceNode, input: &graphene_core::EditorApi, params: []),
-		async_node!(
-			graphene_core::wasm_application_io::DrawImageFrameNode<_>,
-			input: ImageFrame<graphene_core::raster::SRGBA8>,
-			params: [Arc<graphene_core::wasm_application_io::WasmSurfaceHandle>]
-		),
+		vec![(
+			NodeIdentifier::new("graphene_core::wasm_application_io::DrawImageFrameNode<_>"),
+			|args| {
+				Box::pin(async move {
+					let surface: DowncastBothNode<(), Arc<WasmSurfaceHandle>> = DowncastBothNode::new(args[0]);
+					//let document_node = ClonedNode::new(document_node.eval(()));
+					let node = graphene_core::wasm_application_io::DrawImageFrameNode::new(surface);
+					let any: DynAnyNode<ImageFrame<SRGBA8>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					Box::pin(any) as TypeErasedPinned
+				})
+			},
+			NodeIOTypes::new(concrete!(ImageFrame<SRGBA8>), concrete!(WasmSurfaceHandleFrame), vec![value_fn!(Arc<WasmSurfaceHandle>)]),
+		)],
 		#[cfg(feature = "gpu")]
 		vec![(
 			NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode<_>"),
