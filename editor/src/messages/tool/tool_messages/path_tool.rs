@@ -366,7 +366,7 @@ impl Fsm for PathToolFsmState {
 													let dx = rounded_anchor_prev.x - tool_data.dragged_manipulation_anchor_pos.x;
 													let dy = -(rounded_anchor_prev.y - tool_data.dragged_manipulation_anchor_pos.y);
 
-													let slope_prev = -dy / dx;
+													let slope_prev = dy / dx;
 													let theta_prev = dy.atan2(dx);
 
 													// Anchor above dragged anchor
@@ -387,38 +387,43 @@ impl Fsm for PathToolFsmState {
 													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x)
 														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
-													debug!("dist from next: {:?}", dist_from_line_next);
-													debug!("dist from prev: {:?}", dist_from_line_prev);
 
 													let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
-
 													let mut new_delta = delta.clone();
-													// Need to based off distance
-													let new_y = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + doc_transform.inverse().transform_point2(tool_data.drag_start_pos).y;
+
+													// y = mx + b
+													let y_on_line = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + anchor_subpath.anchor.y;
+													let line_coordinates = DVec2 {
+														x: input_pos_doc_space.x,
+														y: y_on_line,
+													};
+													// debug!("line coord: {:?}", line_coordinates);
+													// debug!("anchor x,y: {:?}, {:?}", anchor_subpath.anchor.x, anchor_subpath.anchor.y);
+													let diff = line_coordinates - anchor_subpath.anchor;
 													// Use the magnitude and theta to calculate the projected position
-													if delta.x > 0.0 {
+													if diff.x > 0.0 {
 														new_delta = DVec2 {
 															x: (magnitude * theta_next.cos()),
 															y: -(magnitude * theta_next.sin()),
 														};
-													} else if delta.x < 0.0 {
+													} else if diff.x < 0.0 {
 														new_delta = DVec2 {
 															x: -(magnitude * theta_next.cos()),
 															y: (magnitude * theta_next.sin()),
 														};
 													}
 
-													if delta.y > 0.0 {
-														new_delta = DVec2 {
-															x: (0.0 * theta_next.cos()),
-															y: -(0.0 * theta_next.sin()),
-														};
-													} else if delta.y < 0.0 {
-														new_delta = DVec2 {
-															x: -(0.0 * theta_next.cos()),
-															y: (0.0 * theta_next.sin()),
-														};
-													}
+													// if delta.y > 0.0 {
+													// 	new_delta = DVec2 {
+													// 		x: (0.0 * theta_next.cos()),
+													// 		y: -(0.0 * theta_next.sin()),
+													// 	};
+													// } else if delta.y < 0.0 {
+													// 	new_delta = DVec2 {
+													// 		x: -(0.0 * theta_next.cos()),
+													// 		y: (0.0 * theta_next.sin()),
+													// 	};
+													// }
 
 													// TODO: Add both angles behavior based on distance between infinite lines
 													// Use the equation of the line with the least distance for line extension
