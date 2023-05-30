@@ -131,7 +131,6 @@ pub struct ExtractImageFrame;
 impl<'a: 'input, 'input, T> Node<'input, &'a EditorApi<'a, T>> for ExtractImageFrame {
 	type Output = ImageFrame<Color>;
 	fn eval(&'input self, editor_api: &'a EditorApi<'a, T>) -> Self::Output {
-		log::debug!("ExtractImageFrame::eval");
 		editor_api.image_frame.clone().unwrap_or(ImageFrame::identity())
 	}
 }

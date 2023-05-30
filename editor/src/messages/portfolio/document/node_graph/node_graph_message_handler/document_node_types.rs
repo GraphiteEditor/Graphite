@@ -1323,14 +1323,9 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 
 	network.generate_node_paths(&[]);
-	log::debug!("Flattening network");
-	log::debug!("Network before flattening: {:#?}", network);
 	for id in node_ids {
 		network.flatten(id);
 	}
-
-	log::debug!("Wrapping network in scope");
-	log::debug!("Network before wrapping: {:#?}", network);
 
 	let mut network_inputs = Vec::new();
 	let mut input_type = None;
@@ -1340,7 +1335,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 				if input_type.is_none() {
 					input_type = Some(input.clone());
 				}
-				log::debug!("Found network input {} on node {}", index, id);
 				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type");
 				network_inputs.push(*id);
 			}

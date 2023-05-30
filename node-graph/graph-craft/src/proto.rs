@@ -428,7 +428,6 @@ impl TypingContext {
 	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), String> {
 		for (id, node) in network.nodes.iter() {
-			log::debug!("Infering types for node {:?}", node);
 			self.infer(*id, node)?;
 		}
 		Ok(())

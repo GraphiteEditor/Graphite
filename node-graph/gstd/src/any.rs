@@ -21,7 +21,6 @@ where
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		let node = self.node.eval(());
 		let node_name = core::any::type_name::<N>();
-		log::debug!("DynAnyNode eval, node: {}", node_name);
 		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name));
 		let output = async move {
 			let result = node.eval(*input).await;
@@ -63,7 +62,6 @@ where
 	type Output = FutureAny<'input>;
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		let node_name = core::any::type_name::<N>();
-		log::debug!("DynAnyRefNode eval, node: {}", node_name);
 		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyRefNode Input, {e} in:\n{node_name}"));
 		let result = self.node.eval(*input);
 		let output = async move { Box::new(result) as Any<'input> };
@@ -92,7 +90,6 @@ where
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		{
 			let node_name = core::any::type_name::<N>();
-			log::debug!("DynAnyInRefNode eval, node: {}", node_name);
 			let input: Box<&_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyInRefNode Input, {e} in:\n{node_name}"));
 			let result = self.node.eval(*input);
 			Box::pin(async move { Box::new(result.await) as Any<'_> })
@@ -115,7 +112,6 @@ where
 {
 	type Output = DynFuture<'i, N::Output>;
 	fn eval(&'i self, input: T) -> Self::Output {
-		log::debug!("FutureWrapperNode eval");
 		Box::pin(async move { self.node.eval(input) })
 	}
 	fn reset(self: std::pin::Pin<&mut Self>) {
@@ -178,7 +174,6 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
 			let node_name = self.node.node_name();
-			log::debug!("DowncastBothNode eval, node: {}", node_name);
 			let input = Box::new(input);
 			let future = self.node.eval(input);
 			Box::pin(async move {
@@ -210,7 +205,6 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
 			let node_name = self.node.node_name();
-			log::debug!("DowncastBothRefNode eval, node: {}", node_name);
 			let input = Box::new(input);
 			Box::pin(async move {
 				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
@@ -233,9 +227,7 @@ pub struct ComposeTypeErased<'a> {
 impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
 	type Output = DynFuture<'i, Any<'i>>;
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
-		log::debug!("ComposeTypeErased");
 		Box::pin(async move {
-			log::debug!("ComposeTypeErased poll");
 			let arg = self.first.eval(input).await;
 			self.second.eval(arg).await
 		})

@@ -26,7 +26,6 @@ where
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty acurate xD
 	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
 	fn eval(&'i self, input: I) -> Self::Output {
-		log::debug!("CacheNode::eval");
 		Box::pin(async move {
 			let mut hasher = Xxh3::new();
 			input.hash(&mut hasher);
@@ -97,7 +96,6 @@ pub struct LetNode<T> {
 impl<'i, T: 'i + Hash> Node<'i, Option<T>> for LetNode<T> {
 	type Output = &'i T;
 	fn eval(&'i self, input: Option<T>) -> Self::Output {
-		log::debug!("LetNode eval");
 		match input {
 			Some(input) => {
 				let mut hasher = Xxh3::new();
@@ -143,9 +141,7 @@ where
 {
 	type Output = <Input>::Output;
 	fn eval(&'i self, _: &'i T) -> Self::Output {
-		log::debug!("EndLetNode eval");
 		let result = self.input.eval(());
-		log::debug!("EndLetNode eval done");
 		result
 	}
 }
@@ -170,7 +166,6 @@ where
 {
 	type Output = <Let as Node<'i, Option<T>>>::Output;
 	fn eval(&'i self, _: ()) -> Self::Output {
-		log::debug!("RefNode::eval");
 		self.let_node.eval(None)
 	}
 }

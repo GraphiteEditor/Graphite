@@ -83,9 +83,7 @@ impl LayerData for LayerLayer {
 				let _ = write!(
 					svg,
 					r#"
-					<forgeinObject width="{}" height="{}" transform="matrix({})" />
-						<div data-canvas-placeholder="canvas_{}"></div>
-					</foreignObject>
+					<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>
 					"#,
 					width.abs(),
 					height.abs(),

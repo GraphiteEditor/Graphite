@@ -57,7 +57,7 @@
 	let rulerInterval = 100;
 
 	// Rendered SVG viewport data
-	let artworkSvg = new Document();
+	let artworkSvg = "";
 	let artboardSvg = "";
 	let overlaysSvg = "";
 
@@ -122,21 +122,19 @@
 
 	// Update rendered SVGs
 	export async function updateDocumentArtwork(svg: string) {
-		// Parse the SVG string into an SVG document
-		const parser = new DOMParser();
-		const svgDoc = parser.parseFromString(svg, "image/svg+xml");
+		artworkSvg = svg;
+		rasterizedCanvas = undefined;
 
-		// Find the placeholders in the SVG document
-		const placeholders = svgDoc.querySelectorAll("[data-canvas-placeholder]");
+		await tick();
 
+		const placeholders = window.document.querySelectorAll("[data-canvas] [data-canvas-placeholder]");
 		// Replace the placeholders with the actual canvas elements
 		placeholders.forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
-			const canvas = (window as any)["imageCanvases"][canvasName]; // Get the canvas element from the global variable
-			placeholder.replaceWith(canvas);
+			// Get the canvas element from the global storage
+			const context = (window as any).imageCanvases[canvasName];
+			placeholder.replaceWith(context.canvas);
 		});
-		artworkSvg = svgDoc;
-		rasterizedCanvas = undefined;
 	}
 
 	export function updateDocumentOverlays(svg: string) {
@@ -590,6 +588,11 @@
 						height: 100%;
 						// Allows dev tools to select the artwork without being blocked by the SVG containers
 						pointer-events: none;
+
+						canvas {
+							width: 100%;
+							height: 100%;
+						}
 
 						// Prevent inheritance from reaching the child elements
 						> * {

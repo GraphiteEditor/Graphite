@@ -220,7 +220,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			|args| {
 				Box::pin(async move {
 					let surface: DowncastBothNode<(), Arc<WasmSurfaceHandle>> = DowncastBothNode::new(args[0]);
-					//let document_node = ClonedNode::new(document_node.eval(()));
 					let node = graphene_core::wasm_application_io::DrawImageFrameNode::new(surface);
 					let any: DynAnyNode<ImageFrame<SRGBA8>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					Box::pin(any) as TypeErasedPinned

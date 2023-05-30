@@ -39,7 +39,7 @@ impl ApplicationIo for WasmApplicationIo {
 			let document = window().expect("should have a window in this context").document().expect("window should have a document");
 
 			let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into::<HtmlCanvasElement>()?;
-
+			// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from ImageData (lives on cpu)
 			let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 			let mut guard = self.ids.borrow_mut();
 			let id = SurfaceId(*guard);
@@ -59,9 +59,8 @@ impl ApplicationIo for WasmApplicationIo {
 			}
 
 			// Convert key and value to JsValue
-			let js_key = JsValue::from_str(format!("canvas_{}", id.0).as_str());
-			let canvas = canvas.get_context("2d")?.unwrap().dyn_into::<CanvasRenderingContext2d>()?;
-			let js_value = JsValue::from(canvas.clone());
+			let js_key = JsValue::from_str(format!("canvas{}", id.0).as_str());
+			let js_value = JsValue::from(context.clone());
 
 			let canvases = Object::from(canvases.unwrap());
 
@@ -69,7 +68,7 @@ impl ApplicationIo for WasmApplicationIo {
 			Reflect::set(&canvases, &js_key, &js_value)?;
 			Ok::<_, JsValue>(SurfaceHandle {
 				surface_id: id,
-				surface: canvas,
+				surface: context,
 				application_io: self,
 			})
 		};
@@ -88,7 +87,7 @@ impl ApplicationIo for WasmApplicationIo {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas_{}", surface_id.0).as_str());
+				let js_key = JsValue::from_str(format!("canvas{}", surface_id.0).as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;
@@ -107,7 +106,6 @@ pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
 fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi<'a>) -> Arc<SurfaceHandle<'a, CanvasRenderingContext2d>> {
-	log::debug!("Creating surface");
 	editor.application_io.create_surface().into()
 }
 
@@ -117,10 +115,12 @@ pub struct DrawImageFrameNode<Surface> {
 
 #[node_macro::node_fn(DrawImageFrameNode)]
 async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<SurfaceHandle<'a, CanvasRenderingContext2d>>) -> SurfaceHandleFrame<'a, CanvasRenderingContext2d> {
-	log::debug!("Drawing image frame");
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
+		let canvas = surface_handle.surface.canvas().expect("Failed to get canvas");
+		canvas.set_width(image.image.width);
+		canvas.set_height(image.image.height);
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width as u32, image.image.height as u32).expect("Failed to construct ImageData");
 		surface_handle.surface.put_image_data(&image_data, 0.0, 0.0).unwrap();
 	}

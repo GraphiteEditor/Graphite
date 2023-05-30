@@ -165,7 +165,9 @@ impl NodeRuntime {
 					let new_id = value.surface_handle.surface_id;
 					let old_id = self.canvas_cache.insert(path.to_vec(), new_id);
 					if let Some(old_id) = old_id {
-						self.wasm_io.destroy_surface(old_id);
+						if old_id != new_id {
+							self.wasm_io.destroy_surface(old_id);
+						}
 					}
 					return Ok(TaggedValue::SurfaceFrame(SurfaceFrame {
 						surface_id: new_id,
