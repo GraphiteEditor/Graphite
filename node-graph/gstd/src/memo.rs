@@ -141,7 +141,8 @@ where
 {
 	type Output = <Input>::Output;
 	fn eval(&'i self, _: &'i T) -> Self::Output {
-		self.input.eval(())
+		let result = self.input.eval(());
+		result
 	}
 }
 

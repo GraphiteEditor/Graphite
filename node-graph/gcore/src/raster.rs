@@ -5,7 +5,7 @@ use crate::Node;
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
 
-pub use self::color::{Color, Luma};
+pub use self::color::{Color, Luma, SRGBA8};
 
 pub mod adjustments;
 pub mod bbox;

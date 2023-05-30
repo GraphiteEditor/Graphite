@@ -76,6 +76,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		vector_data: graphene_core::vector::VectorData,
 	},
+	SetSurface {
+		path: Vec<LayerId>,
+		surface_id: graphene_core::SurfaceId,
+	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

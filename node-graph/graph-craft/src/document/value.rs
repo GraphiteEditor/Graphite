@@ -56,11 +56,11 @@ pub enum TaggedValue {
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
-	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
 	Artboard(graphene_core::Artboard),
 	IVec2(glam::IVec2),
+	SurfaceFrame(graphene_core::SurfaceFrame),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -121,11 +121,11 @@ impl Hash for TaggedValue {
 					segment.hash(state)
 				}
 			}
-			Self::EditorApi(editor_api) => editor_api.hash(state),
 			Self::DocumentNode(document_node) => document_node.hash(state),
 			Self::GraphicGroup(graphic_group) => graphic_group.hash(state),
 			Self::Artboard(artboard) => artboard.hash(state),
 			Self::IVec2(v) => v.hash(state),
+			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
 		}
 	}
 }
@@ -173,11 +173,11 @@ impl<'a> TaggedValue {
 			TaggedValue::Font(x) => Box::new(x),
 			TaggedValue::BrushStrokes(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
-			TaggedValue::EditorApi(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
 			TaggedValue::Artboard(x) => Box::new(x),
 			TaggedValue::IVec2(x) => Box::new(x),
+			TaggedValue::SurfaceFrame(x) => Box::new(x),
 		}
 	}
 
@@ -237,11 +237,11 @@ impl<'a> TaggedValue {
 			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
 			TaggedValue::BrushStrokes(_) => concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
-			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
 			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
 			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
+			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
 		}
 	}
 
@@ -289,11 +289,11 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::text::Font>() => Some(TaggedValue::Font(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Some(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Some(TaggedValue::Segments(*downcast(input).unwrap())),
-			x if x == TypeId::of::<graphene_core::EditorApi>() => Some(TaggedValue::EditorApi(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Some(TaggedValue::DocumentNode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Some(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::Artboard>() => Some(TaggedValue::Artboard(*downcast(input).unwrap())),
 			x if x == TypeId::of::<glam::IVec2>() => Some(TaggedValue::IVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Some(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
 			_ => None,
 		}
 	}

@@ -204,6 +204,7 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
+			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			Box::pin(async move {
 				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
