@@ -9,9 +9,11 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::LayerId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -115,6 +117,8 @@ enum PathToolFsmState {
 struct PathToolData {
 	snap_manager: SnapManager,
 	drag_start_pos: DVec2,
+	dragged_manipulation: Option<(Vec<LayerId>, ManipulatorPointId)>,
+	dragged_manipulation_anchor_pos: DVec2,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
@@ -219,6 +223,14 @@ impl Fsm for PathToolFsmState {
 
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 
+						let nearest_anchor = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD).unwrap();
+						let anchors_layer = document.document_legacy.layer(nearest_anchor.0.as_slice()).unwrap();
+						let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
+						let mut anchor_subpath = subpaths.manipulator_from_id(nearest_anchor.1.group).unwrap();
+
+						tool_data.dragged_manipulation_anchor_pos = (anchor_subpath.anchor * 100.0).round() / 100.0;
+						tool_data.dragged_manipulation = Some(nearest_anchor);
+
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -286,53 +298,152 @@ impl Fsm for PathToolFsmState {
 
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let mut delta = snapped_position - tool_data.previous_mouse_position;
+
+					let doc_transform = document.document_legacy.root.transform;
 
 					if document.grid_enabled {
-						let doc_transform = document.document_legacy.root.transform;
 						let previous_mouse_pos_doc_space = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
 						let previous_mouse_pos_viewport_space = doc_transform.transform_point2(previous_mouse_pos_doc_space);
 						let previous_mouse_pos_viewport_space_rounded = doc_transform.transform_point2(previous_mouse_pos_doc_space.round());
 
 						if let Some(_point_under) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
-							let delta = snapped_position - previous_mouse_pos_viewport_space;
-							shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
+							delta = snapped_position - previous_mouse_pos_viewport_space;
 						} else {
-							let delta = snapped_position - previous_mouse_pos_viewport_space_rounded;
-							shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
+							delta = snapped_position - previous_mouse_pos_viewport_space_rounded;
 						}
-						tool_data.previous_mouse_position = snapped_position;
-					} else {
-						let delta = snapped_position - tool_data.previous_mouse_position;
-						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
-						tool_data.previous_mouse_position = snapped_position;
 					}
 
-					// Plan:
 					if tool_data.line_extension {
-						if let Some(point_under) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
-							let anchor_id = point_under.0;
-							let manipulator_point_id = point_under.1;
+						match &tool_data.dragged_manipulation {
+							Some((anchor_point_id, anchor_point_manipulator)) => {
+								// debug!("anhor point id: {:?}", anchor_point_id);
+								// debug!("anchor point manipulator: {:?}", anchor_point_manipulator);
+								if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
+									let anchors_layer = document.document_legacy.layer(&anchor_point_id.as_slice()).unwrap();
+									let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
+									let mut anchor_subpath = subpaths.manipulator_from_id(anchor_point_manipulator.group).unwrap();
 
-							if manipulator_point_id.manipulator_type == SelectedType::Anchor {
-								// Based on the anchor were dragging obtain the subpath
-								// Given the subpath, determine if the selected anchor has (no handles, or if it has handles only if its handles are near the anchor)
-								let anchor_id_layer = document.document_legacy.layer(&anchor_id).unwrap();
-								let subpaths = anchor_id_layer.as_vector_data().unwrap().subpaths.first().unwrap();
-								let anchor_subpath = subpaths.manipulator_from_id(manipulator_point_id.group).unwrap();
-								if (anchor_subpath.in_handle == None && anchor_subpath.out_handle == None)
-									|| (anchor_subpath.in_handle == None && anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
-									|| (anchor_subpath.out_handle == None && anchor_subpath.in_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0))
-									|| (anchor_subpath.in_handle != None
-										&& anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0)
-										&& anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
-								{
-									debug!("line segment");
-									// Use the subpath and the above and below subpath, use the position to obtain the angle
-									// Change delta to be restricted to the angle the line segment is drawn
+									// Based on the anchor were dragging obtain the subpath
+									// Given the subpath, determine if the selected anchor has (no handles, or if it has handles only if its handles are near the anchor)
+									if (anchor_subpath.in_handle == None && anchor_subpath.out_handle == None)
+										|| (anchor_subpath.in_handle == None && anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
+										|| (anchor_subpath.out_handle == None && anchor_subpath.in_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0))
+										|| (anchor_subpath.in_handle != None
+											&& anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0)
+											&& anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
+									{
+										// Use the subpath and the above and below subpath, use the position to obtain the angle
+										let anchor_subpath_index = subpaths.manipulator_groups().iter().position(|&manu_group| manu_group == *anchor_subpath).unwrap_or_default();
+										let scaling_factor = 100.0;
+										let rounded_anchor_transform = DMat2 {
+											x_axis: DVec2 {
+												x: (anchors_layer.transform.matrix2.x_axis.x * scaling_factor).round() / scaling_factor,
+												y: anchors_layer.transform.matrix2.x_axis.y,
+											},
+											y_axis: DVec2 {
+												x: anchors_layer.transform.matrix2.y_axis.x,
+												y: (anchors_layer.transform.matrix2.y_axis.y * scaling_factor).round() / scaling_factor,
+											},
+										};
+										let is_line = rounded_anchor_transform.x_axis == DVec2 { x: 1.0, y: 0.0 } && rounded_anchor_transform.y_axis == DVec2 { x: 0.0, y: 1.0 };
+
+										// debug!("subpath: {:?}", anchor_subpath);
+										if delta != DVec2::new(0.0, 0.0) {
+											if is_line {
+												if anchor_subpath_index == 0 {
+													// debug!("top");
+												} else if anchor_subpath_index == subpaths.manipulator_groups().len() - 1 {
+													// debug!("bottom")
+												} else {
+													let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
+
+													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
+													// Anchor below dragged anchor
+													let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
+													let rounded_anchor_prev = (prev_anchor_subpath.anchor * 100.0).round() / 100.0;
+
+													let dx = rounded_anchor_prev.x - tool_data.dragged_manipulation_anchor_pos.x;
+													let dy = -(rounded_anchor_prev.y - tool_data.dragged_manipulation_anchor_pos.y);
+
+													let slope_prev = -dy / dx;
+													let theta_prev = dy.atan2(dx);
+
+													// Anchor above dragged anchor
+													let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
+													let rounded_anchor_next = (next_anchor_subpath.anchor * 100.0).round() / 100.0;
+
+													let dx = rounded_anchor_next.x - tool_data.dragged_manipulation_anchor_pos.x;
+													let dy = -(rounded_anchor_next.y - tool_data.dragged_manipulation_anchor_pos.y);
+
+													let slope_next = dy / dx;
+													let theta_next = dy.atan2(dx);
+
+													// Use the slope, anchor position, and the mouse position calculate the distance from the mouse to the infinite lines
+													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - anchor_subpath.anchor.x)
+														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
+														.abs() / (slope_prev * slope_prev + 1.0).sqrt();
+
+													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x)
+														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
+														.abs() / (slope_next * slope_next + 1.0).sqrt();
+													debug!("dist from next: {:?}", dist_from_line_next);
+													debug!("dist from prev: {:?}", dist_from_line_prev);
+
+													let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
+
+													let mut new_delta = delta.clone();
+													// Need to based off distance
+													let new_y = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + doc_transform.inverse().transform_point2(tool_data.drag_start_pos).y;
+													// Use the magnitude and theta to calculate the projected position
+													if delta.x > 0.0 {
+														new_delta = DVec2 {
+															x: (magnitude * theta_next.cos()),
+															y: -(magnitude * theta_next.sin()),
+														};
+													} else if delta.x < 0.0 {
+														new_delta = DVec2 {
+															x: -(magnitude * theta_next.cos()),
+															y: (magnitude * theta_next.sin()),
+														};
+													}
+
+													if delta.y > 0.0 {
+														new_delta = DVec2 {
+															x: (0.0 * theta_next.cos()),
+															y: -(0.0 * theta_next.sin()),
+														};
+													} else if delta.y < 0.0 {
+														new_delta = DVec2 {
+															x: -(0.0 * theta_next.cos()),
+															y: (0.0 * theta_next.sin()),
+														};
+													}
+
+													// TODO: Add both angles behavior based on distance between infinite lines
+													// Use the equation of the line with the least distance for line extension
+													if dist_from_line_prev < dist_from_line_next {
+														// debug!("next:");
+													} else if dist_from_line_prev > dist_from_line_next {
+														// debug!("prev");
+													}
+													// debug!("new_delta: {:?}", new_delta);
+													shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
+													tool_data.previous_mouse_position = snapped_position;
+												}
+											}
+										}
+										// TODO:
+										// Works rn on left to right movement, but vertical movements mess up. Figure out how to based direction based on line were extending's angle
+									}
 								}
 							}
+							None => debug!("None"),
 						}
 					}
+
+					// shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
+					// tool_data.previous_mouse_position = snapped_position;
 
 					PathToolFsmState::Dragging
 				}
@@ -354,6 +465,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
+					tool_data.dragged_manipulation = None;
 					tool_data.snap_manager.cleanup(responses);
 					PathToolFsmState::Ready
 				}
