@@ -86,13 +86,11 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 						let viewport_pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
 						*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
-						// *selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
 					}
 				}
 			} else {
 				let viewport_pivot = selected.mean_average_of_pivots(render_data);
 				*selected.pivot = transform.inverse().transform_point2(viewport_pivot);
-				// *selected.pivot = selected.mean_average_of_pivots(render_data);
 			}
 			*mouse_position = ipp.mouse.position;
 			*start_mouse = ipp.mouse.position;

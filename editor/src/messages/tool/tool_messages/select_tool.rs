@@ -626,7 +626,7 @@ impl Fsm for SelectToolFsmState {
 						.collect();
 
 					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
-					let transform_vec = mouse_delta + closest_move;
+					let mut transform_vec = mouse_delta + closest_move;
 					let mut new_transform_vec = transform_vec.clone();
 					let transform_vec_round = transform_vec.round();
 					let empty_vec = DVec2 { x: 0.0, y: 0.0 };
@@ -662,33 +662,26 @@ impl Fsm for SelectToolFsmState {
 							// If the x or y positions are off the grid, based on direction of mouse movement calculate the new transform that positioned on the grid
 							if !x_aligned && transform_vec_round.y == 0.0 {
 								if transform_vec.x > 0.0 {
-									new_transform_vec.x = new_transform_vec.x.abs() * (1.0 - adjustment.x);
+									transform_vec.x = transform_vec.x.abs() * (1.0 - adjustment.x);
 								} else if transform_vec.x < 0.0 {
-									new_transform_vec.x = new_transform_vec.x.abs() * adjustment.x * -1.0;
+									transform_vec.x = transform_vec.x.abs() * adjustment.x * -1.0;
 								}
 							}
 							if !y_aligned && transform_vec_round.x == 0.0 {
 								if transform_vec.y > 0.0 {
-									new_transform_vec.y = new_transform_vec.y.abs() * (1.0 - adjustment.y);
+									transform_vec.y = transform_vec.y.abs() * (1.0 - adjustment.y);
 								} else if transform_vec.y < 0.0 {
-									new_transform_vec.y = new_transform_vec.y.abs() * adjustment.y * -1.0;
+									transform_vec.y = transform_vec.y.abs() * adjustment.y * -1.0;
 								}
 							}
-
-							responses.add_front(GraphOperationMessage::TransformChange {
-								layer: path.to_vec(),
-								transform: DAffine2::from_translation(new_transform_vec),
-								transform_in: TransformIn::Viewport,
-								skip_rerender: true,
-							});
-						} else {
-							responses.add_front(GraphOperationMessage::TransformChange {
-								layer: path.to_vec(),
-								transform: DAffine2::from_translation(transform_vec),
-								transform_in: TransformIn::Viewport,
-								skip_rerender: true,
-							});
 						}
+
+						responses.add_front(GraphOperationMessage::TransformChange {
+							layer: path.to_vec(),
+							transform: DAffine2::from_translation(transform_vec),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: true,
+						});
 					}
 					tool_data.drag_current = mouse_position + closest_move;
 

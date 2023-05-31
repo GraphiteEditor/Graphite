@@ -157,7 +157,6 @@ impl ShapeState {
 			.flat_map(|(shape_layer_path, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { shape_layer_path, point_id }))
 			.collect();
 
-		// //TODO: loop thru selected points and see if theres an INhandle and Outhandle, with same layer path and point group
 		let in_handle_info = points.iter().find(|point| point.point_id.manipulator_type == SelectedType::InHandle);
 		if let Some(in_handle) = in_handle_info {
 			let group_id = in_handle.point_id.group;

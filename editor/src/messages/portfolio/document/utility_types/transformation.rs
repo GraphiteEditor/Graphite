@@ -394,8 +394,8 @@ impl<'a> Selected<'a> {
 					let mut new = to.inverse() * transformation * to * original_layer_transforms;
 
 					match transform_operator {
-						Some(_transform_operation) => {
-							if let TransformOperation::Grabbing(_) = transform_operator.unwrap() {
+						Some(transform_operation) => {
+							if let TransformOperation::Grabbing(_) = transform_operator.unwrap_or_default() {
 								match mouse_movement {
 									Some(direction) => {
 										if grid {
@@ -450,7 +450,7 @@ impl<'a> Selected<'a> {
 								}
 							}
 
-							if let TransformOperation::Rotating(_) = transform_operator.unwrap() {
+							if let TransformOperation::Rotating(_) = transform_operator.unwrap_or_default() {
 								self.responses.add(GraphOperationMessage::TransformSet {
 									layer: layer_path.to_vec(),
 									transform: new,
@@ -459,7 +459,7 @@ impl<'a> Selected<'a> {
 								});
 							}
 
-							if let TransformOperation::Scaling(_) = transform_operator.unwrap() {
+							if let TransformOperation::Scaling(_) = transform_operator.unwrap_or_default() {
 								self.responses.add(GraphOperationMessage::TransformSet {
 									layer: layer_path.to_vec(),
 									transform: new,
