@@ -36,6 +36,15 @@ unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;
 }
 
+impl<'a, S> From<SurfaceHandleFrame<'a, S>> for SurfaceFrame {
+	fn from(x: SurfaceHandleFrame<'a, S>) -> Self {
+		Self {
+			surface_id: x.surface_handle.surface_id,
+			transform: x.transform,
+		}
+	}
+}
+
 #[derive(Clone)]
 pub struct SurfaceHandle<'a, Surface> {
 	pub surface_id: SurfaceId,

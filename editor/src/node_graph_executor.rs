@@ -149,40 +149,23 @@ impl NodeRuntime {
 			return Err(e);
 		}
 
-		use dyn_any::IntoDynAny;
 		use graph_craft::executor::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(EditorApi) => self.executor.execute(editor_api.into_dyn()).await.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(EditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
-		};
+		}?;
 
-		match result {
-			Ok(result) => {
-				if DynAny::type_id(result.as_ref()) == core::any::TypeId::of::<WasmSurfaceHandleFrame>() {
-					let Ok(value) = dyn_any::downcast::<WasmSurfaceHandleFrame>(result) else { unreachable!()};
-					let new_id = value.surface_handle.surface_id;
-					let old_id = self.canvas_cache.insert(path.to_vec(), new_id);
-					if let Some(old_id) = old_id {
-						if old_id != new_id {
-							self.wasm_io.destroy_surface(old_id);
-						}
-					}
-					return Ok(TaggedValue::SurfaceFrame(SurfaceFrame {
-						surface_id: new_id,
-						transform: value.transform,
-					}));
-				}
-
-				let type_name = DynAny::type_name(result.as_ref());
-				match TaggedValue::try_from_any(result) {
-					Some(x) => Ok(x),
-					None => Err(format!("Invalid output type: {}", type_name)),
+		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) = result {
+			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
+			if let Some(old_id) = old_id {
+				if old_id != surface_id {
+					self.wasm_io.destroy_surface(old_id);
 				}
 			}
-			Err(e) => Err(e),
 		}
+		Ok(result)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
