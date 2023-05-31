@@ -317,12 +317,12 @@ impl Fsm for PathToolFsmState {
 					if tool_data.line_extension {
 						match &tool_data.dragged_manipulation {
 							Some((anchor_point_id, anchor_point_manipulator)) => {
-								// debug!("anhor point id: {:?}", anchor_point_id);
-								// debug!("anchor point manipulator: {:?}", anchor_point_manipulator);
 								if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
 									let anchors_layer = document.document_legacy.layer(&anchor_point_id.as_slice()).unwrap();
 									let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
 									let mut anchor_subpath = subpaths.manipulator_from_id(anchor_point_manipulator.group).unwrap();
+									// debug!("anchor subpath anchor: {:?}", anchor_subpath.anchor);
+									// debug!("tool_data.anchor pos: {:?}", tool_data.dragged_manipulation_anchor_pos);
 
 									// Based on the anchor were dragging obtain the subpath
 									// Given the subpath, determine if the selected anchor has (no handles, or if it has handles only if its handles are near the anchor)
@@ -348,7 +348,6 @@ impl Fsm for PathToolFsmState {
 										};
 										let is_line = rounded_anchor_transform.x_axis == DVec2 { x: 1.0, y: 0.0 } && rounded_anchor_transform.y_axis == DVec2 { x: 0.0, y: 1.0 };
 
-										// debug!("subpath: {:?}", anchor_subpath);
 										if delta != DVec2::new(0.0, 0.0) {
 											if is_line {
 												if anchor_subpath_index == 0 {
@@ -382,67 +381,75 @@ impl Fsm for PathToolFsmState {
 													let theta_next = dy.atan2(dx);
 
 													// Use the slope, anchor position, and the mouse position calculate the distance from the mouse to the infinite lines
-													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - anchor_subpath.anchor.x)
-														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
+													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x)
+														+ (input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
+														+ 0.0)
 														.abs() / (slope_prev * slope_prev + 1.0).sqrt();
-													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x)
-														+ (input_pos_doc_space.y - anchor_subpath.anchor.y) + 0.0)
+													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x)
+														+ (input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
+														+ 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
 													// This is not 100% it causes the lines to no change direction instantly
 													// Notes: I had a example where my anchor point moved out of line with the infinite lines
 													// The dist_from_line and diff variable are right intially, i think, but as we move they change
 													// Honestly not sure if this is what causes it i need to dig into those variables more and when they change
-													debug!("dist prev: {:?}", dist_from_line_prev);
-													debug!("dist next: {:?}", dist_from_line_next);
-													let next_line_closer = dist_from_line_prev > dist_from_line_next;
 
-													let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
+													// debug!("dist prev: {:?}", dist_from_line_prev);
+													// debug!("dist next: {:?}", dist_from_line_next);
+													let magnitude = 1.0;
+													// let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
 													let mut new_delta = DVec2 { x: 0.0, y: 0.0 };
 
+													// debug!("input_pos x: {:?}", input_pos_doc_space.x);
+													// debug!("tool_data x: {:?}", anchor_subpath.anchor.x);
+													debug!("x: {:?}", (input_pos_doc_space.x - anchor_subpath.anchor.x));
+
 													// y = mx + b
-													let y_on_line = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + anchor_subpath.anchor.y;
-													let line_coordinates = DVec2 {
+													let y_on_line_prev = slope_prev * (input_pos_doc_space.x - anchor_subpath.anchor.x) + tool_data.dragged_manipulation_anchor_pos.y;
+													let line_coordinates_prev = DVec2 {
 														x: input_pos_doc_space.x,
-														y: y_on_line,
+														y: y_on_line_prev,
 													};
-													// debug!("x: {:?}", (input_pos_doc_space.x - anchor_subpath.anchor.x));
-													let diff = line_coordinates - anchor_subpath.anchor;
-													debug!("diff: {:?}", diff.x);
+													let y_on_line_next = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + tool_data.dragged_manipulation_anchor_pos.y;
+													let line_coordinates_next = DVec2 {
+														x: input_pos_doc_space.x,
+														y: y_on_line_next,
+													};
+													let diff_prev = line_coordinates_prev - tool_data.dragged_manipulation_anchor_pos;
+													let diff_next = line_coordinates_next - tool_data.dragged_manipulation_anchor_pos;
 
 													// Use the magnitude and theta to calculate the projected position
-													if diff.x > 0.0 {
-														if dist_from_line_prev > dist_from_line_next {
-															debug!("next, right");
+													if dist_from_line_prev > dist_from_line_next {
+														// debug!("next: {:?}", diff_next.x);
+														if diff_next.x > 0.0 {
 															new_delta = DVec2 {
 																x: (magnitude * theta_next.cos()),
 																y: -(magnitude * theta_next.sin()),
 															};
 														}
-														if dist_from_line_prev < dist_from_line_next {
-															debug!("prev, right");
-															new_delta = DVec2 {
-																x: -(magnitude * theta_prev.cos()),
-																y: (magnitude * theta_prev.sin()),
-															};
-														}
-													} else if diff.x < -0.0 {
-														if dist_from_line_prev > dist_from_line_next {
-															debug!("next, left");
+														if diff_next.x < 0.0 {
 															new_delta = DVec2 {
 																x: -(magnitude * theta_next.cos()),
 																y: (magnitude * theta_next.sin()),
 															};
 														}
-														if dist_from_line_prev < dist_from_line_next {
-															debug!("prev, left");
+													} else if dist_from_line_prev < dist_from_line_next {
+														// debug!("prev: {:?}", diff_prev.x);
+														if diff_prev.x > 0.0 {
 															new_delta = DVec2 {
 																x: (magnitude * theta_prev.cos()),
 																y: -(magnitude * theta_prev.sin()),
 															};
 														}
+														if diff_prev.x < 0.0 {
+															new_delta = DVec2 {
+																x: -(magnitude * theta_prev.cos()),
+																y: (magnitude * theta_prev.sin()),
+															};
+														}
 													}
-													debug!("new: {:?}", new_delta);
+													// debug!("new: {:?}", new_delta);
 													shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 													tool_data.previous_mouse_position = snapped_position;
 												}
