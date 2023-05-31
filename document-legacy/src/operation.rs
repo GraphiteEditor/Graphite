@@ -8,7 +8,6 @@ use graphene_std::vector::subpath::Subpath;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
 
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -170,7 +169,6 @@ pub enum Operation {
 impl Operation {
 	pub fn pseudo_hash(&self) -> u64 {
 		let mut s = DefaultHasher::new();
-		//unsafe { self.to_byte_vec() }.hash(&mut s);
 		std::mem::discriminant(self).hash(&mut s);
 		s.finish()
 	}

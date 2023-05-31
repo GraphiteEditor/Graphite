@@ -8,7 +8,7 @@ use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
 use graph_craft::proto::{ConstructionArgs, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
 use graph_craft::Type;
-use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
+use graphene_std::any::{TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;
 

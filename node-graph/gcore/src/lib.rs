@@ -20,6 +20,7 @@ pub mod value;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+pub mod memo;
 pub mod storage;
 
 pub mod raster;
@@ -44,7 +45,7 @@ pub use raster::Color;
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
-	fn reset(self: Pin<&mut Self>) {}
+	fn reset(&self) {}
 	#[cfg(feature = "std")]
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());

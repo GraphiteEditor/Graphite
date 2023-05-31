@@ -95,7 +95,6 @@ fn node_impl_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 enum Asyncness {
 	Sync,
-	AsyncOut,
 	AllAsync,
 }
 
@@ -111,7 +110,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	let async_out = match asyncness {
 		Asyncness::Sync => false,
-		Asyncness::AsyncOut | Asyncness::AllAsync => true,
+		Asyncness::AllAsync => true,
 	};
 	let async_in = matches!(asyncness, Asyncness::AllAsync);
 

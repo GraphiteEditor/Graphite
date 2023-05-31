@@ -603,7 +603,6 @@ impl NodeNetwork {
 
 	fn replace_node_inputs(&mut self, old_input: NodeInput, new_input: NodeInput) {
 		for node in self.nodes.values_mut() {
-			let node_string = format!("{:?}", node);
 			node.inputs.iter_mut().for_each(|input| {
 				if *input == old_input {
 					*input = new_input.clone();

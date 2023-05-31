@@ -1,7 +1,6 @@
 use crate::Node;
 
 use core::{
-	borrow::BorrowMut,
 	cell::{Cell, RefCell, RefMut},
 	marker::PhantomData,
 };

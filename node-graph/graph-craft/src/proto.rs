@@ -99,7 +99,6 @@ impl PartialEq for ConstructionArgs {
 			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
 			_ => {
 				use std::hash::Hasher;
-				use xxhash_rust::xxh3::Xxh3;
 				let hash = |input: &Self| {
 					let mut hasher = Xxh3::new();
 					input.hash(&mut hasher);

@@ -6,9 +6,8 @@ use crate::proto::{Any as DAny, FutureAny};
 use graphene_core::raster::{to_primtive_string, BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
 
+use dyn_any::DynAny;
 pub use dyn_any::StaticType;
-use dyn_any::{DynAny, Upcast};
-use dyn_clone::DynClone;
 pub use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 pub use std::sync::Arc;

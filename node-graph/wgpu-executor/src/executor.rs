@@ -5,10 +5,7 @@ use wgpu::util::DeviceExt;
 use super::context::Context;
 use bytemuck::Pod;
 use dyn_any::StaticTypeSized;
-use graph_craft::{
-	executor::{Any, Executor},
-	proto::LocalFuture,
-};
+use graph_craft::{executor::Executor, proto::LocalFuture};
 
 #[derive(Debug)]
 pub struct GpuExecutor<'a, I: StaticTypeSized, O> {
