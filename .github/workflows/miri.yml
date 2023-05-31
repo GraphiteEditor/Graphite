@@ -1,0 +1,9 @@
+name: Continuous Integration
+
+on:
+  push:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:

@@ -168,23 +168,6 @@ pub enum Operation {
 }
 
 impl Operation {
-	/// Returns the byte representation of the message.
-	///
-	/// # Safety
-	/// This function reads from uninitialized memory!!!
-	/// Only use if you know what you are doing
-	unsafe fn to_byte_vec(&self) -> Vec<u8> {
-		let mut value: MaybeUninit<Operation> = MaybeUninit::zeroed();
-		value.as_mut_ptr().write(self.clone() as Operation);
-		let value = value.assume_init();
-		let slice = core::slice::from_raw_parts(&value as *const Operation as *const u8, std::mem::size_of::<Operation>());
-		slice.to_vec()
-	}
-	/// Returns a pseudo hash that should uniquely identify the operation.
-	/// This is needed because `Hash` is not implemented for f64s
-	///
-	/// # Safety
-	/// This function reads from uninitialized memory but the generated value should be fine.
 	pub fn pseudo_hash(&self) -> u64 {
 		let mut s = DefaultHasher::new();
 		//unsafe { self.to_byte_vec() }.hash(&mut s);
