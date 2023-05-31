@@ -10,8 +10,10 @@ mod tests {
 	use graphene_core::*;
 	use std::borrow::Cow;
 
-	#[tokio::test]
-	async fn execute_add() {
+	use futures::executor::block_on;
+
+	#[test]
+	fn execute_add() {
 		use graph_craft::document::*;
 
 		use graph_craft::*;
@@ -75,15 +77,15 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let exec = DynamicExecutor::new(protograph).await.unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
+		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
 
-		let result = exec.execute(32_u32.into_dyn()).await.unwrap();
+		let result = block_on(exec.execute(32_u32.into_dyn())).unwrap();
 		let val = *dyn_any::downcast::<u32>(result).unwrap();
 		assert_eq!(val, 33_u32);
 	}
 
-	#[tokio::test]
-	async fn double_number() {
+	#[test]
+	fn double_number() {
 		use graph_craft::document::*;
 
 		use graph_craft::*;
@@ -124,6 +126,6 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let _exec = DynamicExecutor::new(protograph).await.map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
+		let _exec = block_on(DynamicExecutor::new(protograph)).map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
 	}
 }

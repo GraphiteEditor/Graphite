@@ -226,12 +226,15 @@ mod test {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn push_node() {
+	#[test]
+	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
-		tree.push_node(0, val_1_protonode, &TypingContext::default()).await.unwrap();
+		let context = TypingContext::default();
+		let future = tree.push_node(0, val_1_protonode, &context); //.await.unwrap();
+		futures::executor::block_on(future).unwrap();
 		let _node = tree.get(0).unwrap();
-		assert_eq!(tree.eval(0, ()).await, Some(2u32));
+		let result = futures::executor::block_on(tree.eval(0, ()));
+		assert_eq!(result, Some(2u32));
 	}
 }

@@ -2216,7 +2216,6 @@ dependencies = [
  "num-traits",
  "once_cell",
  "serde",
- "tokio",
 ]
 
 [[package]]

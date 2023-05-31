@@ -187,7 +187,8 @@ impl Operation {
 	/// This function reads from uninitialized memory but the generated value should be fine.
 	pub fn pseudo_hash(&self) -> u64 {
 		let mut s = DefaultHasher::new();
-		unsafe { self.to_byte_vec() }.hash(&mut s);
+		//unsafe { self.to_byte_vec() }.hash(&mut s);
+		std::mem::discriminant(self).hash(&mut s);
 		s.finish()
 	}
 }
