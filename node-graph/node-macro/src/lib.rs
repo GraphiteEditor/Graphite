@@ -86,12 +86,11 @@ fn args(node: &syn::PathSegment) -> Vec<Type> {
 fn node_impl_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
 	let fn_item = item.clone();
 	let function = parse_macro_input!(fn_item as ItemFn);
-	let sync_input = if function.sig.asyncness.is_some() {
+	if function.sig.asyncness.is_some() {
 		node_impl_impl(attr, item, Asyncness::AllAsync)
 	} else {
 		node_impl_impl(attr, item, Asyncness::Sync)
-	};
-	sync_input
+	}
 }
 enum Asyncness {
 	Sync,
