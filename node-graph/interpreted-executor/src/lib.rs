@@ -7,6 +7,7 @@ pub mod node_registry;
 #[cfg(test)]
 mod tests {
 	use dyn_any::IntoDynAny;
+	use graph_craft::document::value::TaggedValue;
 	use graphene_core::*;
 	use std::borrow::Cow;
 
@@ -79,9 +80,8 @@ mod tests {
 
 		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
 
-		let result = block_on(exec.execute(32_u32.into_dyn())).unwrap();
-		let val = *dyn_any::downcast::<u32>(result).unwrap();
-		assert_eq!(val, 33_u32);
+		let result = block_on((&exec).execute(32_u32)).unwrap();
+		assert_eq!(result, TaggedValue::U32(33));
 	}
 
 	#[test]
