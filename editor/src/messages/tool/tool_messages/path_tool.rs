@@ -321,7 +321,7 @@ impl Fsm for PathToolFsmState {
 									let anchors_layer = document.document_legacy.layer(&anchor_point_id.as_slice()).unwrap();
 									let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
 									let mut anchor_subpath = subpaths.manipulator_from_id(anchor_point_manipulator.group).unwrap();
-									// debug!("anchor subpath anchor: {:?}", anchor_subpath.anchor);
+									debug!("anchor subpath anchor: {:?}", anchor_subpath.anchor);
 									// debug!("tool_data.anchor pos: {:?}", tool_data.dragged_manipulation_anchor_pos);
 
 									// Based on the anchor were dragging obtain the subpath
@@ -356,8 +356,7 @@ impl Fsm for PathToolFsmState {
 													// debug!("bottom")
 												} else {
 													let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
-													// debug!("input_pos_doc_space. {:?}", input_pos_doc_space);
-													// debug!("anchor: {:?}", anchor_subpath);
+													let prev_input_pos_doc_space = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
 
 													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
 													// Anchor below dragged anchor
@@ -390,35 +389,30 @@ impl Fsm for PathToolFsmState {
 														+ 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
-													// This is not 100% it causes the lines to no change direction instantly
-													// Notes: I had a example where my anchor point moved out of line with the infinite lines
-													// The dist_from_line and diff variable are right intially, i think, but as we move they change
-													// Honestly not sure if this is what causes it i need to dig into those variables more and when they change
-
 													// debug!("dist prev: {:?}", dist_from_line_prev);
 													// debug!("dist next: {:?}", dist_from_line_next);
-													let magnitude = 1.0;
-													// let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
-													let mut new_delta = DVec2 { x: 0.0, y: 0.0 };
+													let magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
 
 													// debug!("input_pos x: {:?}", input_pos_doc_space.x);
 													// debug!("tool_data x: {:?}", anchor_subpath.anchor.x);
-													debug!("x: {:?}", (input_pos_doc_space.x - anchor_subpath.anchor.x));
+													// debug!("x: {:?}", input_pos_doc_space.x - anchor_subpath.anchor.x);
 
 													// y = mx + b
-													let y_on_line_prev = slope_prev * (input_pos_doc_space.x - anchor_subpath.anchor.x) + tool_data.dragged_manipulation_anchor_pos.y;
+													let y_on_line_prev = slope_prev * (input_pos_doc_space.x - prev_input_pos_doc_space.x) + tool_data.dragged_manipulation_anchor_pos.y;
 													let line_coordinates_prev = DVec2 {
 														x: input_pos_doc_space.x,
 														y: y_on_line_prev,
 													};
-													let y_on_line_next = slope_next * (input_pos_doc_space.x - anchor_subpath.anchor.x) + tool_data.dragged_manipulation_anchor_pos.y;
+													let y_on_line_next = slope_next * (input_pos_doc_space.x - prev_input_pos_doc_space.x) + tool_data.dragged_manipulation_anchor_pos.y;
 													let line_coordinates_next = DVec2 {
 														x: input_pos_doc_space.x,
 														y: y_on_line_next,
 													};
-													let diff_prev = line_coordinates_prev - tool_data.dragged_manipulation_anchor_pos;
-													let diff_next = line_coordinates_next - tool_data.dragged_manipulation_anchor_pos;
+													let diff_prev = line_coordinates_prev - anchor_subpath.anchor;
+													let diff_next = line_coordinates_next - anchor_subpath.anchor;
+													// debug!("sub next: {:?}", line_coordinates_next - anchor_subpath.anchor);
 
+													let mut new_delta = DVec2 { x: 0.0, y: 0.0 };
 													// Use the magnitude and theta to calculate the projected position
 													if dist_from_line_prev > dist_from_line_next {
 														// debug!("next: {:?}", diff_next.x);
@@ -438,20 +432,20 @@ impl Fsm for PathToolFsmState {
 														// debug!("prev: {:?}", diff_prev.x);
 														if diff_prev.x > 0.0 {
 															new_delta = DVec2 {
-																x: (magnitude * theta_prev.cos()),
-																y: -(magnitude * theta_prev.sin()),
+																x: (0.0 * theta_prev.cos()),
+																y: -(0.0 * theta_prev.sin()),
 															};
 														}
 														if diff_prev.x < 0.0 {
 															new_delta = DVec2 {
-																x: -(magnitude * theta_prev.cos()),
-																y: (magnitude * theta_prev.sin()),
+																x: -(0.0 * theta_prev.cos()),
+																y: (0.0 * theta_prev.sin()),
 															};
 														}
 													}
-													// debug!("new: {:?}", new_delta);
+													debug!("new: {:?}", new_delta);
 													shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
-													tool_data.previous_mouse_position = snapped_position;
+													// tool_data.previous_mouse_position = snapped_position;
 												}
 											}
 										}
@@ -463,7 +457,7 @@ impl Fsm for PathToolFsmState {
 					}
 
 					// shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
-					// tool_data.previous_mouse_position = snapped_position;
+					tool_data.previous_mouse_position = snapped_position;
 
 					PathToolFsmState::Dragging
 				}
