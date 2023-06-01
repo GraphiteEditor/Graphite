@@ -231,7 +231,7 @@ impl Fsm for PathToolFsmState {
 						let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
 						let mut anchor_subpath = subpaths.manipulator_from_id(nearest_anchor.1.group).unwrap();
 
-						tool_data.dragged_manipulation_anchor_pos = (anchor_subpath.anchor * 100.0).round() / 100.0;
+						tool_data.dragged_manipulation_anchor_pos = anchor_subpath.anchor;
 						tool_data.dragged_manipulation = Some(nearest_anchor);
 
 						PathToolFsmState::Dragging
@@ -356,7 +356,8 @@ impl Fsm for PathToolFsmState {
 												if anchor_subpath_index == 0 {
 													// debug!("top");
 												} else if anchor_subpath_index == subpaths.manipulator_groups().len() - 1 {
-													// debug!("bottom")
+													debug!("bottom")
+												// print slop here figure out if we use next or prev copy code from below repeat for top if opposite slope
 												} else {
 													let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
 													let prev_input_pos_doc_space = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
@@ -364,7 +365,7 @@ impl Fsm for PathToolFsmState {
 													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
 													// Anchor below dragged anchor
 													let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
-													let rounded_anchor_prev = (prev_anchor_subpath.anchor * 100.0).round() / 100.0;
+													let rounded_anchor_prev = (prev_anchor_subpath.anchor);
 
 													let dx = rounded_anchor_prev.x - tool_data.dragged_manipulation_anchor_pos.x;
 													let dy = -(rounded_anchor_prev.y - tool_data.dragged_manipulation_anchor_pos.y);
@@ -374,7 +375,7 @@ impl Fsm for PathToolFsmState {
 
 													// Anchor above dragged anchor
 													let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
-													let rounded_anchor_next = (next_anchor_subpath.anchor * 100.0).round() / 100.0;
+													let rounded_anchor_next = (next_anchor_subpath.anchor);
 
 													// x and y swap signs gets reversed
 													let mut dx = rounded_anchor_next.x - tool_data.dragged_manipulation_anchor_pos.x;
@@ -399,94 +400,23 @@ impl Fsm for PathToolFsmState {
 														+ 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
-													// debug!("dist prev: {:?}", dist_from_line_prev);
-													// debug!("dist next: {:?}", dist_from_line_next);
-													let mut magnitude = (delta.x * delta.x + delta.y * delta.y).sqrt();
-
-													// debug!("delta: {:?}", delta);
-													// debug!("tool_data x: {:?}", anchor_subpath.anchor.x);
-													// debug!("x: {:?}", input_pos_doc_space.x - anchor_subpath.anchor.x);
-
-													// y = mx + b
-													let y_on_line_prev = slope_prev * (input_pos_doc_space.x - prev_input_pos_doc_space.x) + tool_data.dragged_manipulation_anchor_pos.y;
-													let line_coordinates_prev = DVec2 {
-														x: input_pos_doc_space.x,
-														y: y_on_line_prev,
-													};
-													let y_on_line_next = slope_next * (input_pos_doc_space.x - prev_input_pos_doc_space.x) + tool_data.dragged_manipulation_anchor_pos.y;
-													let line_coordinates_next = DVec2 {
-														x: input_pos_doc_space.x,
-														y: y_on_line_next,
-													};
-													let diff_prev = line_coordinates_prev - anchor_subpath.anchor;
-													let diff_next = line_coordinates_next - anchor_subpath.anchor;
-													// debug!("sub next: {:?}", line_coordinates_next - anchor_subpath.anchor);
-
-													let line_y_next = slope_next * delta.x + tool_data.dragged_manipulation_anchor_pos.y;
-													let line_y_prev = slope_prev * delta.x + tool_data.dragged_manipulation_anchor_pos.y;
-
-													// ------------------
-
-													// let mut new_delta = DVec2 { x: 0.0, y: 0.0 };
-													// Use the magnitude and theta to calculate the projected position
-													// if dist_from_line_prev > dist_from_line_next {
-													// 	// debug!("next: {:?}", diff_next.x);
-													// 	if (tool_data.dragged_manipulation_anchor_pos.y + (delta.y * 100.0)) < line_y_next {
-													// 		new_delta = DVec2 {
-													// 			x: (magnitude * theta_next.cos()),
-													// 			y: -(magnitude * theta_next.sin()),
-													// 		};
-													// 	}
-													// 	if (tool_data.dragged_manipulation_anchor_pos.y + (delta.y * 100.0)) > line_y_next {
-													// 		new_delta = DVec2 {
-													// 			x: -(magnitude * theta_next.cos()),
-													// 			y: (magnitude * theta_next.sin()),
-													// 		};
-													// 	}
-													// } else if dist_from_line_prev < dist_from_line_next {
-													// 	// debug!("ZEROED");
-
-													// 	// debug!("prev: {:?}", diff_prev.x);
-													// 	magnitude = 0.0;
-													// 	if (tool_data.dragged_manipulation_anchor_pos.y + (delta.y * 100.0)) < line_y_prev {
-													// 		new_delta = DVec2 {
-													// 			x: (magnitude * theta_prev.cos()),
-													// 			y: -(magnitude * theta_prev.sin()),
-													// 		};
-													// 	}
-													// 	if (tool_data.dragged_manipulation_anchor_pos.y + (delta.y * 100.0)) > line_y_prev {
-													// 		new_delta = DVec2 {
-													// 			x: -(magnitude * theta_prev.cos()),
-													// 			y: (magnitude * theta_prev.sin()),
-													// 		};
-													// 	}
-													// }
-													debug!("slope next: {:?}", slope_next);
-													// debug!("slope prev: {:?}", slope_prev);
-													debug!("sub: {:?}", (slope_next) - (-1.0 / slope_next));
-
 													if dist_from_line_prev > dist_from_line_next {
-														let intersection_x = (tool_data.dragged_manipulation_anchor_pos.y - input_pos_doc_space.y) / ((slope_next) - (-1.0 / slope_next));
-														let intersection_y = -(slope_next * (intersection_x)) + tool_data.dragged_manipulation_anchor_pos.y;
-														debug!("int: {:?}, {:?}", intersection_x + tool_data.dragged_manipulation_anchor_pos.x, intersection_y);
+														let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
+															- ((-1.0 / slope_next) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
+														let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
+														let intersection_y = -(slope_next * (intersection_x)) + 0.0;
 
 														let mut move_point = |point: ManipulatorPointId| {
 															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
 
-															// let position = previous_position + delta;
 															responses.add(GraphOperationMessage::Vector {
 																layer: anchor_point_id.to_vec(),
 																modification: VectorDataModification::SetManipulatorPosition {
 																	point: point,
 																	position: DVec2 {
 																		x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
-																		y: intersection_y,
+																		y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
 																	},
-																	// position: DVec2 {
-																	// 	x: input_pos_doc_space.x,
-																	// 	y: (-slope_next) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x)
-																	// 		+ tool_data.dragged_manipulation_anchor_pos.y,
-																	// },
 																},
 															});
 														};
@@ -498,27 +428,22 @@ impl Fsm for PathToolFsmState {
 															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
 														}
 													} else if dist_from_line_prev < dist_from_line_next {
-														let intersection_x = (tool_data.dragged_manipulation_anchor_pos.y - input_pos_doc_space.y) / ((slope_prev) - (-1.0 / slope_prev));
-														let intersection_y = -(slope_prev * (intersection_x)) + tool_data.dragged_manipulation_anchor_pos.y;
-														debug!("int: {:?}, {:?}", intersection_x + tool_data.dragged_manipulation_anchor_pos.x, intersection_y);
+														let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
+															- ((-1.0 / slope_prev) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
+														let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
+														let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
 
 														let mut move_point = |point: ManipulatorPointId| {
 															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
 
-															// let position = previous_position + delta;
 															responses.add(GraphOperationMessage::Vector {
 																layer: anchor_point_id.to_vec(),
 																modification: VectorDataModification::SetManipulatorPosition {
 																	point: point,
 																	position: DVec2 {
 																		x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
-																		y: intersection_y,
+																		y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
 																	},
-																	// position: DVec2 {
-																	// 	x: input_pos_doc_space.x,
-																	// 	y: (-slope_prev) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x)
-																	// 		+ tool_data.dragged_manipulation_anchor_pos.y,
-																	// },
 																},
 															});
 														};
