@@ -8,6 +8,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
+use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
@@ -677,11 +678,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Brush",
 			category: "Brush",
-			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Background", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Bounds", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Trace", TaggedValue::BrushStrokes(Vec::new()), false),
+				DocumentInputType::value("Cache", TaggedValue::BrushCache(BrushCache::new_proto()), false),
 			],
 			outputs: vec![DocumentOutputType {
 				name: "Image",
