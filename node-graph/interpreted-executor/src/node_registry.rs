@@ -421,7 +421,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::Artboard, params: [graphene_core::EditorApi]),
 		register_node!(graphene_core::memo::EndLetNode<_>, input: WasmSurfaceHandleFrame, params: [graphene_core::EditorApi]),
 		vec![(
-			NodeIdentifier::new("graphene_core::memo::RefNode<_,_>"),
+			NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
 			|args| {
 				Box::pin(async move {
 					let node: DowncastBothNode<Option<graphene_core::EditorApi>, graphene_core::EditorApi> = graphene_std::any::DowncastBothNode::new(args[0]);
