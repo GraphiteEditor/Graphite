@@ -1001,6 +1001,10 @@ impl DocumentMessageHandler {
 			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+			// TODO: Fix this hack
+			// This is a hack to prevent the compiler from optimizing out the size calculation which likely is due
+			// to undefined behavior. THIS IS NOT A FIX.
+			log::trace!("size: {:?}", size);
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
 			self.restore_document_transform(old_transforms);
