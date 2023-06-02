@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 pub mod dynamic_executor;
 pub mod node_registry;
 

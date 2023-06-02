@@ -133,7 +133,7 @@ impl BorrowTree {
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
 	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
-		let node = self.nodes.get(&id).cloned().ok_or_else(|| "Output node not found in executor")?;
+		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
 	}
