@@ -352,16 +352,93 @@ impl Fsm for PathToolFsmState {
 										let is_line = rounded_anchor_transform.x_axis == DVec2 { x: 1.0, y: 0.0 } && rounded_anchor_transform.y_axis == DVec2 { x: 0.0, y: 1.0 };
 
 										if delta != DVec2::new(0.0, 0.0) {
+											let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
+											let prev_input_pos_doc_space = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
 											if is_line {
 												if anchor_subpath_index == 0 {
-													// debug!("top");
-												} else if anchor_subpath_index == subpaths.manipulator_groups().len() - 1 {
-													debug!("bottom")
-												// print slop here figure out if we use next or prev copy code from below repeat for top if opposite slope
-												} else {
-													let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
-													let prev_input_pos_doc_space = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
+													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
+													// Anchor above dragged anchor
+													let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
+													let rounded_anchor_next = (next_anchor_subpath.anchor);
 
+													// x and y swap signs gets reversed
+													let mut dx = rounded_anchor_next.x - tool_data.dragged_manipulation_anchor_pos.x;
+													let mut dy = -(rounded_anchor_next.y - tool_data.dragged_manipulation_anchor_pos.y);
+
+													// if our anchor is on the other side of the next anchor, flip direction
+													if dy < 0.0 {
+														dx *= -1.0;
+														dy *= -1.0;
+													}
+
+													let slope_next = dy / dx;
+													let theta_next = dy.atan2(dx);
+
+													let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
+														- ((-1.0 / slope_next) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
+													let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
+													let intersection_y = -(slope_next * (intersection_x)) + 0.0;
+
+													let mut move_point = |point: ManipulatorPointId| {
+														let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+
+														responses.add(GraphOperationMessage::Vector {
+															layer: anchor_point_id.to_vec(),
+															modification: VectorDataModification::SetManipulatorPosition {
+																point: point,
+																position: DVec2 {
+																	x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
+																	y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
+																},
+															},
+														});
+													};
+
+													move_point(*anchor_point_manipulator);
+
+													if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
+														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
+														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
+													}
+												} else if anchor_subpath_index == subpaths.manipulator_groups().len() - 1 {
+													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
+													// Anchor below dragged anchor
+													let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
+													let rounded_anchor_prev = (prev_anchor_subpath.anchor);
+
+													let dx = rounded_anchor_prev.x - tool_data.dragged_manipulation_anchor_pos.x;
+													let dy = -(rounded_anchor_prev.y - tool_data.dragged_manipulation_anchor_pos.y);
+
+													let slope_prev = dy / dx;
+													let theta_prev = dy.atan2(dx);
+
+													let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
+														- ((-1.0 / slope_prev) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
+													let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
+													let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
+
+													let mut move_point = |point: ManipulatorPointId| {
+														let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+
+														responses.add(GraphOperationMessage::Vector {
+															layer: anchor_point_id.to_vec(),
+															modification: VectorDataModification::SetManipulatorPosition {
+																point: point,
+																position: DVec2 {
+																	x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
+																	y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
+																},
+															},
+														});
+													};
+
+													move_point(*anchor_point_manipulator);
+
+													if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
+														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
+														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
+													}
+												} else {
 													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
 													// Anchor below dragged anchor
 													let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
