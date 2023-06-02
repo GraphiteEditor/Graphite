@@ -46,37 +46,28 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 29] {
+	pub fn list() -> [&'static [BlendMode]; 6] {
 		[
-			BlendMode::Normal,
-			BlendMode::Multiply,
-			BlendMode::Darken,
-			BlendMode::ColorBurn,
-			BlendMode::LinearBurn,
-			BlendMode::DarkerColor,
-			BlendMode::Screen,
-			BlendMode::Lighten,
-			BlendMode::ColorDodge,
-			BlendMode::LinearDodge,
-			BlendMode::LighterColor,
-			BlendMode::Overlay,
-			BlendMode::SoftLight,
-			BlendMode::HardLight,
-			BlendMode::VividLight,
-			BlendMode::LinearLight,
-			BlendMode::PinLight,
-			BlendMode::HardMix,
-			BlendMode::Difference,
-			BlendMode::Exclusion,
-			BlendMode::Subtract,
-			BlendMode::Divide,
-			BlendMode::Hue,
-			BlendMode::Saturation,
-			BlendMode::Color,
-			BlendMode::Luminosity,
-			BlendMode::InsertRed,
-			BlendMode::InsertGreen,
-			BlendMode::InsertBlue,
+			// Normal group
+			&[BlendMode::Normal],
+			// Darken group
+			&[BlendMode::Darken, BlendMode::Multiply, BlendMode::ColorBurn, BlendMode::LinearBurn, BlendMode::DarkerColor],
+			// Lighten group
+			&[BlendMode::Lighten, BlendMode::Screen, BlendMode::ColorDodge, BlendMode::LinearDodge, BlendMode::LighterColor],
+			// Contrast group
+			&[
+				BlendMode::Overlay,
+				BlendMode::SoftLight,
+				BlendMode::HardLight,
+				BlendMode::VividLight,
+				BlendMode::LinearLight,
+				BlendMode::PinLight,
+				BlendMode::HardMix,
+			],
+			// Inversion group
+			&[BlendMode::Difference, BlendMode::Exclusion, BlendMode::Subtract, BlendMode::Divide],
+			// Component group
+			&[BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity],
 		]
 	}
 }
@@ -84,7 +75,7 @@ impl BlendMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
-#[repr(i32)] // TODO: Enable Int8 capability for SPRIV so that we don't need this?
+#[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
 	#[default]
 	// Basic group
@@ -126,29 +117,30 @@ pub enum BlendMode {
 	Color,
 	Luminosity,
 
-	// Other Stuff
-	InsertRed,
-	InsertGreen,
-	InsertBlue,
+	// Other stuff
+	Erase,
+	Restore,
+	MultiplyAlpha,
 }
 
 impl core::fmt::Display for BlendMode {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
+			// Normal group
 			BlendMode::Normal => write!(f, "Normal"),
-
-			BlendMode::Multiply => write!(f, "Multiply"),
+			// Darken group
 			BlendMode::Darken => write!(f, "Darken"),
+			BlendMode::Multiply => write!(f, "Multiply"),
 			BlendMode::ColorBurn => write!(f, "Color Burn"),
 			BlendMode::LinearBurn => write!(f, "Linear Burn"),
 			BlendMode::DarkerColor => write!(f, "Darker Color"),
-
-			BlendMode::Screen => write!(f, "Screen"),
+			// Lighten group
 			BlendMode::Lighten => write!(f, "Lighten"),
+			BlendMode::Screen => write!(f, "Screen"),
 			BlendMode::ColorDodge => write!(f, "Color Dodge"),
 			BlendMode::LinearDodge => write!(f, "Linear Dodge"),
 			BlendMode::LighterColor => write!(f, "Lighter Color"),
-
+			// Contrast group
 			BlendMode::Overlay => write!(f, "Overlay"),
 			BlendMode::SoftLight => write!(f, "Soft Light"),
 			BlendMode::HardLight => write!(f, "Hard Light"),
@@ -156,61 +148,21 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::LinearLight => write!(f, "Linear Light"),
 			BlendMode::PinLight => write!(f, "Pin Light"),
 			BlendMode::HardMix => write!(f, "Hard Mix"),
-
+			// Inversion group
 			BlendMode::Difference => write!(f, "Difference"),
 			BlendMode::Exclusion => write!(f, "Exclusion"),
 			BlendMode::Subtract => write!(f, "Subtract"),
 			BlendMode::Divide => write!(f, "Divide"),
-
+			// Component group
 			BlendMode::Hue => write!(f, "Hue"),
 			BlendMode::Saturation => write!(f, "Saturation"),
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
-
-			BlendMode::InsertRed => write!(f, "Insert Red"),
-			BlendMode::InsertGreen => write!(f, "Insert Green"),
-			BlendMode::InsertBlue => write!(f, "Insert Blue"),
+			// Other utility blend modes (hidden from the normal list)
+			BlendMode::Erase => write!(f, "Erase"),
+			BlendMode::Restore => write!(f, "Restore"),
+			BlendMode::MultiplyAlpha => write!(f, "Multiply Alpha"),
 		}
-	}
-}
-
-pub fn to_primtive_string(blend_mode: &BlendMode) -> &'static str {
-	match blend_mode {
-		BlendMode::Normal => "Normal",
-
-		BlendMode::Multiply => "Multiply",
-		BlendMode::Darken => "Darken",
-		BlendMode::ColorBurn => "ColorBurn",
-		BlendMode::LinearBurn => "LinearBurn",
-		BlendMode::DarkerColor => "DarkerColor",
-
-		BlendMode::Screen => "Screen",
-		BlendMode::Lighten => "Lighten",
-		BlendMode::ColorDodge => "ColorDodge",
-		BlendMode::LinearDodge => "LinearDodge",
-		BlendMode::LighterColor => "LighterColor",
-
-		BlendMode::Overlay => "Overlay",
-		BlendMode::SoftLight => "SoftLight",
-		BlendMode::HardLight => "HardLight",
-		BlendMode::VividLight => "VividLight",
-		BlendMode::LinearLight => "LinearLight",
-		BlendMode::PinLight => "PinLight",
-		BlendMode::HardMix => "HardMix",
-
-		BlendMode::Difference => "Difference",
-		BlendMode::Exclusion => "Exclusion",
-		BlendMode::Subtract => "Subtract",
-		BlendMode::Divide => "Divide",
-
-		BlendMode::Hue => "Hue",
-		BlendMode::Saturation => "Saturation",
-		BlendMode::Color => "Color",
-		BlendMode::Luminosity => "Luminosity",
-
-		BlendMode::InsertRed => "InsertRed",
-		BlendMode::InsertGreen => "InsertGreen",
-		BlendMode::InsertBlue => "InsertBlue",
 	}
 }
 
@@ -452,24 +404,27 @@ pub struct BlendNode<BlendMode, Opacity> {
 
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	let opacity = opacity as f32 / 100.;
+	blend_colors(input.0, input.1, blend_mode, opacity as f32 / 100.)
+}
 
-	let (foreground, background) = input;
-
+#[inline(always)]
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
 	let target_color = match blend_mode {
+		// Normal group
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
-		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
+		// Darken group
 		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
+		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
 		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
 		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
 		BlendMode::DarkerColor => background.blend_darker_color(foreground),
-
-		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
+		// Lighten group
 		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
+		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
 		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
 		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
 		BlendMode::LighterColor => background.blend_lighter_color(foreground),
-
+		// Contrast group
 		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
 		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
 		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
@@ -477,20 +432,20 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
 		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
 		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
-
-		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_exclusion),
+		// Inversion group
+		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_difference),
 		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
 		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
 		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
-
+		// Component group
 		BlendMode::Hue => background.blend_hue(foreground),
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
-
-		BlendMode::InsertRed => foreground.with_red(background.r()),
-		BlendMode::InsertGreen => foreground.with_green(background.g()),
-		BlendMode::InsertBlue => foreground.with_blue(background.b()),
+		// Other utility blend modes (hidden from the normal list)
+		BlendMode::Erase => return background.alpha_subtract(foreground),
+		BlendMode::Restore => return background.alpha_add(foreground),
+		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity))

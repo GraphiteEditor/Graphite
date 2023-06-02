@@ -938,6 +938,30 @@ impl Color {
 			alpha: self.alpha * inv_alpha + other.alpha,
 		}
 	}
+
+	#[inline(always)]
+	pub fn alpha_add(&self, other: Color) -> Self {
+		Self {
+			alpha: (self.alpha + other.alpha).clamp(0., 1.),
+			..*self
+		}
+	}
+
+	#[inline(always)]
+	pub fn alpha_subtract(&self, other: Color) -> Self {
+		Self {
+			alpha: (self.alpha - other.alpha).clamp(0., 1.),
+			..*self
+		}
+	}
+
+	#[inline(always)]
+	pub fn alpha_multiply(&self, other: Color) -> Self {
+		Self {
+			alpha: (self.alpha * other.alpha).clamp(0., 1.),
+			..*self
+		}
+	}
 }
 
 #[test]
