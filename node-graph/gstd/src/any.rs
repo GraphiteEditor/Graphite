@@ -29,9 +29,8 @@ where
 		Box::pin(output)
 	}
 
-	fn reset(self: std::pin::Pin<&mut Self>) {
-		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
-		Node::reset(wrapped_node);
+	fn reset(&self) {
+		self.node.reset();
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
@@ -67,9 +66,8 @@ where
 		let output = async move { Box::new(result) as Any<'input> };
 		Box::pin(output)
 	}
-	fn reset(self: std::pin::Pin<&mut Self>) {
-		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
-		Node::reset(wrapped_node);
+	fn reset(&self) {
+		self.node.reset();
 	}
 }
 
@@ -114,9 +112,8 @@ where
 	fn eval(&'i self, input: T) -> Self::Output {
 		Box::pin(async move { self.node.eval(input) })
 	}
-	fn reset(self: std::pin::Pin<&mut Self>) {
-		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
-		Node::reset(wrapped_node);
+	fn reset(&self) {
+		self.node.reset();
 	}
 }
 
@@ -207,7 +204,7 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			Box::pin(async move {
-				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
+				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e} in {node_name}"));
 				*out
 			})
 		}

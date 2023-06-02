@@ -38,6 +38,6 @@ impl Compiler {
 }
 pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
-pub trait Executor {
-	fn execute<'a>(&'a self, input: Any<'a>) -> LocalFuture<Result<Any<'a>, Box<dyn Error>>>;
+pub trait Executor<I, O> {
+	fn execute(&self, input: I) -> LocalFuture<Result<O, Box<dyn Error>>>;
 }

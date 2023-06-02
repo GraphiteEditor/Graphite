@@ -1,22 +1,10 @@
 use crate::Node;
 
-use core::cell::RefMut;
-use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut, Index, IndexMut};
 
 pub struct SetNode<Storage> {
 	storage: Storage,
 }
-/*
-#[node_macro::node_fn(SetNode)]
-fn set_node<_T, _I, A: 'input>(input: (_T, _I), mut storage: RefMut<'input, A>)
-where
-	A: DerefMut,
-	A::Target: IndexMut<_I, Output = _T>,
-{
-	let (value, index) = input;
-	*storage.deref_mut().index_mut(index).deref_mut() = value;
-}*/
 impl<'input, T: 'input, I: 'input, A: 'input + 'input, S0: 'input> Node<'input, (T, I)> for SetNode<S0>
 where
 	A: DerefMut,
@@ -94,7 +82,7 @@ where
 
 #[cfg(test)]
 mod test {
-	use crate::value::{CopiedNode, OnceCellNode, RefCellMutNode, UnsafeMutValueNode, ValueNode};
+	use crate::value::{CopiedNode, OnceCellNode};
 	use crate::Node;
 
 	use super::*;

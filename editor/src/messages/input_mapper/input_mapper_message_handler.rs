@@ -37,9 +37,9 @@ impl InputMapperMessageHandler {
 			.filter_map(|(i, m)| {
 				let ma = m.0.iter().find_map(|m| actions.find_map(|a| (a == m.action.to_discriminant()).then(|| m.action.to_discriminant())));
 
-				ma.map(|a| unsafe { (std::mem::transmute_copy::<usize, Key>(&i), a) })
+				ma.map(|a| ((i as u8).try_into().unwrap(), a))
 			})
-			.for_each(|(k, a)| {
+			.for_each(|(k, a): (Key, _)| {
 				let _ = write!(output, "{}: {}, ", k.to_discriminant().local_name(), a.local_name().split('.').last().unwrap());
 			});
 		output.replace("Key", "")
@@ -72,7 +72,7 @@ impl InputMapperMessageHandler {
 							"Attempting to convert a Key with enum index {}, which is larger than the number of Key enums",
 							i
 						);
-						unsafe { std::mem::transmute_copy::<usize, Key>(&i) }
+						(i as u8).try_into().unwrap()
 					})
 					.collect::<Vec<_>>();
 
