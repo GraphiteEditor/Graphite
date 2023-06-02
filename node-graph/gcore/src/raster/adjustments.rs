@@ -184,50 +184,6 @@ impl core::fmt::Display for BlendMode {
 	}
 }
 
-pub fn to_primtive_string(blend_mode: &BlendMode) -> &'static str {
-	match blend_mode {
-		BlendMode::Normal => "Normal",
-
-		BlendMode::Multiply => "Multiply",
-		BlendMode::Darken => "Darken",
-		BlendMode::ColorBurn => "ColorBurn",
-		BlendMode::LinearBurn => "LinearBurn",
-		BlendMode::DarkerColor => "DarkerColor",
-
-		BlendMode::Screen => "Screen",
-		BlendMode::Lighten => "Lighten",
-		BlendMode::ColorDodge => "ColorDodge",
-		BlendMode::LinearDodge => "LinearDodge",
-		BlendMode::LighterColor => "LighterColor",
-
-		BlendMode::Overlay => "Overlay",
-		BlendMode::SoftLight => "SoftLight",
-		BlendMode::HardLight => "HardLight",
-		BlendMode::VividLight => "VividLight",
-		BlendMode::LinearLight => "LinearLight",
-		BlendMode::PinLight => "PinLight",
-		BlendMode::HardMix => "HardMix",
-
-		BlendMode::Difference => "Difference",
-		BlendMode::Exclusion => "Exclusion",
-		BlendMode::Subtract => "Subtract",
-		BlendMode::Divide => "Divide",
-
-		BlendMode::Hue => "Hue",
-		BlendMode::Saturation => "Saturation",
-		BlendMode::Color => "Color",
-		BlendMode::Luminosity => "Luminosity",
-
-		BlendMode::InsertRed => "InsertRed",
-		BlendMode::InsertGreen => "InsertGreen",
-		BlendMode::InsertBlue => "InsertBlue",
-
-		BlendMode::Erase => "Erase",
-		BlendMode::Restore => "Restore",
-		BlendMode::MultiplyAlpha => "MultiplyAlpha",
-	}
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LuminanceNode<LuminanceCalculation> {
 	luminance_calc: LuminanceCalculation,

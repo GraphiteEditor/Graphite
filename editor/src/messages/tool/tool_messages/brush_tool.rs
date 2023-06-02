@@ -181,6 +181,14 @@ impl PropertyHolder for BrushTool {
 
 		widgets.push(WidgetHolder::section_separator());
 
+		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
+			.into_iter()
+			.map(|draw_mode| RadioEntryData::new(format!("{draw_mode:?}")).on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into()))
+			.collect();
+		widgets.push(RadioInput::new(draw_mode_entries).selected_index(self.options.draw_mode as u32).widget_holder());
+
+		widgets.push(WidgetHolder::section_separator());
+
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
 			false,
@@ -189,9 +197,6 @@ impl PropertyHolder for BrushTool {
 			WidgetCallback::new(|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into()),
 		));
 
-		widgets.push(WidgetHolder::section_separator());
-
-		widgets.push(TextLabel::new("Blend mode").widget_holder());
 		widgets.push(WidgetHolder::related_separator());
 
 		let blend_mode_entries: Vec<Vec<_>> = EXPOSED_BLEND_MODES
@@ -214,15 +219,6 @@ impl PropertyHolder for BrushTool {
 				.disabled(self.options.draw_mode != DrawMode::Draw)
 				.widget_holder(),
 		);
-
-		widgets.push(WidgetHolder::related_separator());
-
-		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
-			.into_iter()
-			.map(|draw_mode| RadioEntryData::new(format!("{draw_mode:?}")).on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into()))
-			.collect();
-
-		widgets.push(RadioInput::new(draw_mode_entries).selected_index(self.options.draw_mode as u32).widget_holder());
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
