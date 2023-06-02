@@ -224,11 +224,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
 		self.modify_inputs("Brush", false, |inputs| {
-			if matches!(inputs[0], NodeInput::Node { .. }) {
-				inputs[1] = core::mem::replace(&mut inputs[0], NodeInput::value(TaggedValue::None, false));
-			}
-			inputs[0] = NodeInput::value(TaggedValue::None, false);
-			inputs[3] = NodeInput::value(TaggedValue::BrushStrokes(strokes), false);
+			inputs[2] = NodeInput::value(TaggedValue::BrushStrokes(strokes), false);
 		});
 	}
 }

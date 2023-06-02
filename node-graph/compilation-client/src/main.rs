@@ -14,7 +14,7 @@ fn main() {
 	let client = reqwest::blocking::Client::new();
 
 	let network = add_network();
-	let compiler = graph_craft::executor::Compiler {};
+	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let proto_network = compiler.compile_single(network, true).unwrap();
 
 	let io = ShaderIO {
