@@ -206,6 +206,19 @@ impl NodeRuntime {
 		}
 	}
 }
+pub fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	NODE_RUNTIME
+		.try_with(|runtime| {
+			let runtime = runtime.try_borrow();
+			if let Ok(ref runtime) = runtime {
+				if let Some(ref mut runtime) = runtime.as_ref() {
+					return runtime.executor.introspect(path).flatten();
+				}
+			}
+			None
+		})
+		.unwrap_or(None)
+}
 
 pub async fn run_node_graph() {
 	let result = NODE_RUNTIME.try_with(|runtime| {
@@ -226,7 +239,6 @@ pub async fn run_node_graph() {
 
 #[derive(Debug)]
 pub struct NodeGraphExecutor {
-	pub(crate) executor: DynamicExecutor,
 	sender: Sender<NodeRuntimeMessage>,
 	receiver: Receiver<GenerationResponse>,
 	// TODO: This is a memory leak since layers are never removed
@@ -250,7 +262,6 @@ impl Default for NodeGraphExecutor {
 		});
 
 		Self {
-			executor: Default::default(),
 			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_reciever,
@@ -275,12 +286,12 @@ impl NodeGraphExecutor {
 		generation_id
 	}
 
-	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+		introspect_node(path)
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-		self.executor.introspect(path).flatten()
+	pub fn update_font_cache(&self, font_cache: FontCache) {
+		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
 	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {

@@ -1,18 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::NodeId;
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
+use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, TypeErasedBox, TypeErasedNode, TypeErasedRef, TypingContext};
 use graph_craft::Type;
-use graphene_std::any::{TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;
 
-#[derive(Debug, Clone)]
 pub struct DynamicExecutor {
 	output: NodeId,
 	tree: BorrowTree,
@@ -79,45 +78,14 @@ impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
 	}
 }
 
-pub struct NodeContainer<'n> {
-	pub node: TypeErasedPinned<'n>,
-	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
-	_dependencies: Vec<Arc<RwLock<NodeContainer<'static>>>>,
-}
-
-impl<'a> core::fmt::Debug for NodeContainer<'a> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeContainer").finish()
-	}
-}
-
-impl<'a> NodeContainer<'a> {
-	pub fn new(node: TypeErasedPinned<'a>, _dependencies: Vec<Arc<RwLock<NodeContainer<'static>>>>) -> Self {
-		Self { node, _dependencies }
-	}
-
-	/// Return a static reference to the TypeErasedNode
-	/// # Safety
-	/// This is unsafe because the returned reference is only valid as long as the NodeContainer is alive
-	pub unsafe fn erase_lifetime(self) -> NodeContainer<'static> {
-		std::mem::transmute(self)
-	}
-}
-impl NodeContainer<'static> {
-	pub unsafe fn static_ref(&self) -> TypeErasedPinnedRef<'static> {
-		let s = &*(self as *const Self);
-		*(&s.node.as_ref() as *const TypeErasedPinnedRef<'static>)
-	}
-}
-
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 pub struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<RwLock<NodeContainer<'static>>>>,
+	nodes: HashMap<NodeId, Arc<NodeContainer>>,
 	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 
 impl BorrowTree {
-	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Self, String> {
+	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, String> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
 			nodes.push_node(id, node, typing_context).await?
@@ -133,8 +101,7 @@ impl BorrowTree {
 				self.push_node(id, node, typing_context).await?;
 			} else {
 				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
-				let mut node_container_writer = node_container.write().unwrap();
-				let node = node_container_writer.node.as_mut();
+				let node = node_container.node;
 				node.reset();
 			}
 			old_nodes.remove(&id);
@@ -143,40 +110,32 @@ impl BorrowTree {
 		Ok(old_nodes.into_iter().collect())
 	}
 
-	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef<'static>> {
-		self.node_deps(nodes).into_iter().map(|node| unsafe { node.read().unwrap().static_ref() }).collect()
-	}
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<RwLock<NodeContainer<'static>>>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: Arc<RwLock<NodeContainer<'static>>>, id: NodeId) -> Arc<RwLock<NodeContainer<'static>>> {
-		self.nodes.insert(id, node.clone());
-		node
+	fn store_node(&mut self, node: Arc<NodeContainer>, id: NodeId) {
+		self.nodes.insert(id, node);
 	}
 
 	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		let id = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
-		let reader = node.read().unwrap();
-		let node = reader.node.as_ref();
-		Some(node.serialize())
+		Some(node.node.serialize())
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<RwLock<NodeContainer<'static>>>> {
+	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer>> {
 		self.nodes.get(&id).cloned()
 	}
 
 	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
-		let reader = node.read().unwrap();
-		let output = reader.node.eval(Box::new(input));
+		let output = node.node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
 	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or_else(|| "Output node not found in executor")?;
-		let reader = node.read().unwrap();
-		let output = reader.node.eval(Box::new(input));
+		let output = node.node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
 	}
 
@@ -196,23 +155,18 @@ impl BorrowTree {
 		match construction_args {
 			ConstructionArgs::Value(value) => {
 				let upcasted = UpcastNode::new(value);
-				let node = Box::pin(upcasted) as TypeErasedPinned<'_>;
-				let node = NodeContainer { node, _dependencies: vec![] };
-				let node = unsafe { node.erase_lifetime() };
-				self.store_node(Arc::new(node.into()), id);
+				let node = Box::new(upcasted) as TypeErasedBox<'_>;
+				let node = NodeContainer::new(node);
+				self.store_node(node.into(), id);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
-				let construction_nodes = self.node_refs(&ids);
+				let construction_nodes = self.node_deps(&ids);
 				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {:?}", identifier))?;
 				let node = constructor(construction_nodes).await;
-				let node = NodeContainer {
-					node,
-					_dependencies: self.node_deps(&ids),
-				};
-				let node = unsafe { node.erase_lifetime() };
-				self.store_node(Arc::new(node.into()), id);
+				let node = NodeContainer::new(node);
+				self.store_node(node.into(), id);
 			}
 		};
 		Ok(())

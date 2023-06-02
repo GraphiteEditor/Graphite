@@ -1,6 +1,10 @@
 use std::borrow::Cow;
+use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
+use std::sync::Arc;
 
+use graphene_core::ops::IdNode;
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
 
@@ -18,9 +22,52 @@ pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n)>;
+pub type TypeErasedRef<'n> = &'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n);
+pub type TypeErasedBox<'n> = Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>;
 pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> DynFuture<'static, TypeErasedPinned<'static>>;
+pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
+
+#[derive(Clone)]
+pub struct NodeContainer {
+	pub node: TypeErasedRef<'static>,
+}
+
+impl Deref for NodeContainer {
+	type Target = TypeErasedRef<'static>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.node
+	}
+}
+
+// TODO: Add feature guard
+/*
+impl Drop for NodeContainer {
+	fn drop(&mut self) {
+
+		unsafe { self.dealloc_unchecked() }
+	}
+}*/
+
+impl core::fmt::Debug for NodeContainer {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("NodeContainer").finish()
+	}
+}
+
+impl NodeContainer {
+	pub fn new(node: TypeErasedBox<'static>) -> Arc<Self> {
+		let node = Box::leak(node);
+		Arc::new(Self { node })
+	}
+
+	/*
+	unsafe fn dealloc_unchecked(&mut self) {
+		std::mem::drop(Box::from_raw(self.node as *const TypeErasedNode as *mut TypeErasedNode<'static>));
+	}
+	*/
+}
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
@@ -406,7 +453,7 @@ impl ProtoNetwork {
 }
 
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
@@ -539,7 +586,7 @@ impl TypingContext {
 				dbg!(&self.inferred);
 				Err(format!(
 					"No implementations found for {identifier} with \ninput: {input:?} and \nparameters: {parameters:?}.\nOther Implementations found: {:?}",
-					impls,
+					impls.keys().collect::<Vec<_>>(),
 				))
 			}
 			[(org_nio, output)] => {

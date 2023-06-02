@@ -1,11 +1,12 @@
-use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode};
+use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, ExtendImageNode};
 
 use graphene_core::raster::adjustments::blend_colors;
+use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
 use graphene_core::raster::{BlendMode, BlendNode};
 use graphene_core::transform::{Transform, TransformMut};
-use graphene_core::value::{CopiedNode, ValueNode};
-use graphene_core::vector::brush_stroke::BrushStyle;
+use graphene_core::value::{ClonedNode, CopiedNode, OnceCellNode, ValueNode};
+use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
@@ -277,6 +278,89 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 			BlendMode::MultiplyAlpha,
 		]
 	)
+}
+
+pub struct BrushNode<Bounds, Strokes> {
+	bounds: Bounds,
+	strokes: Strokes,
+}
+
+#[node_macro::node_fn(BrushNode)]
+async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec<BrushStroke>) -> ImageFrame<Color> {
+	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
+	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
+	let bbox = stroke_bbox.union(&image_bbox);
+
+	let mut background_bounds = bbox.to_transform();
+
+	if bounds.transform != DAffine2::ZERO {
+		background_bounds = bounds.transform;
+	}
+
+	let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
+	let blank_image = ImageFrame {
+		image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::TRANSPARENT),
+		transform: background_bounds,
+	};
+	let opaque_image = ImageFrame {
+		image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE),
+		transform: background_bounds,
+	};
+	let mut erase_restore_mask = has_erase_strokes.then_some(opaque_image);
+	let mut actual_image = ExtendImageNode::new(OnceCellNode::new(blank_image)).eval(image);
+	for stroke in strokes {
+		let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+
+		// Create brush texture.
+		// TODO: apply rotation from layer to stamp for non-rotationally-symmetric brushes.
+		let brush_texture = create_brush_texture(stroke.style.clone());
+
+		// Compute transformation from stroke texture space into layer space, and create the stroke texture.
+		let positions: Vec<_> = stroke.compute_blit_points().into_iter().collect();
+		let mut bbox = stroke.bounding_box();
+		bbox.start = bbox.start.floor();
+		bbox.end = bbox.end.floor();
+		let stroke_size = bbox.size() + DVec2::splat(stroke.style.diameter);
+		// For numerical stability we want to place the first blit point at a stable, integer offset
+		// in layer space.
+		let snap_offset = positions[0].floor() - positions[0];
+		let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
+		let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
+
+		match stroke.style.blend_mode {
+			BlendMode::Erase => {
+				if let Some(mask) = erase_restore_mask {
+					let blend_params = BlendNode::new(CopiedNode::new(BlendMode::Erase), CopiedNode::new(100.));
+					let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
+					erase_restore_mask = Some(blit_node.eval(mask));
+				}
+			}
+
+			// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
+			BlendMode::Restore => {
+				if let Some(mask) = erase_restore_mask {
+					let blend_params = BlendNode::new(CopiedNode::new(BlendMode::Restore), CopiedNode::new(100.));
+					let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
+					erase_restore_mask = Some(blit_node.eval(mask));
+				}
+			}
+
+			blend_mode => {
+				let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(normal_blend));
+				let empty_stroke_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(stroke_to_layer);
+				let stroke_texture = blit_node.eval(empty_stroke_texture);
+				// TODO: Is this the correct way to do opacity in blending?
+				actual_image = blend_with_mode(actual_image, stroke_texture, blend_mode, stroke.style.color.a() * 100.);
+			}
+		}
+	}
+
+	if let Some(mask) = erase_restore_mask {
+		let blend_params = BlendNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.));
+		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
+		actual_image = blend_executor.eval((actual_image, mask));
+	}
+	actual_image
 }
 
 #[cfg(test)]

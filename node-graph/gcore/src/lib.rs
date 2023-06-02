@@ -38,7 +38,7 @@ pub mod application_io;
 
 pub mod quantization;
 
-use core::any::TypeId;
+use core::{any::TypeId, cell::UnsafeCell};
 pub use raster::Color;
 
 // pub trait Node: for<'n> NodeIO<'n> {
@@ -96,13 +96,6 @@ where
 {
 }
 
-/*impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'n> Node<'n, I, Output = O> {
-	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
-		(**self).eval(input)
-	}
-}*/
 impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N {
 	type Output = O;
 
@@ -118,8 +111,16 @@ impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for Box<N
 		(**self).eval(input)
 	}
 }
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for alloc::sync::Arc<N> {
+	type Output = O;
 
-impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+
+impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn Node<'i, I, Output = O> {
 	type Output = O;
 
 	fn eval(&'i self, input: I) -> Self::Output {
@@ -130,7 +131,7 @@ use core::pin::Pin;
 
 use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
 	type Output = O;
 
 	fn eval(&'i self, input: I) -> Self::Output {
