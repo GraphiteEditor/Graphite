@@ -1002,7 +1002,6 @@ impl DocumentMessageHandler {
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-			log::debug!("SVG: {}", svg);
 
 			self.restore_document_transform(old_transforms);
 
@@ -1055,7 +1054,6 @@ impl DocumentMessageHandler {
 	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
 		// Render the document SVG code
 
-		log::info!("Rendering document SVG code {}x{}...", size.x, size.y);
 		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
 
 		let (artwork, outside) = match render_mode {

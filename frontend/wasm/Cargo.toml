@@ -65,8 +65,7 @@ demangle-name-section = false
 dwarf-debug-info = false
 
 [package.metadata.wasm-pack.profile.profiling]
-#wasm-opt = ["-Os", "-g"]
-wasm-opt = false
+wasm-opt = ["-Os", "-g"]
 
 [package.metadata.wasm-pack.profile.profiling.wasm-bindgen]
 debug-js-glue = true

@@ -16,15 +16,9 @@ impl Editor {
 	}
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
-		let message: Message = message.into();
-		log::debug!("in: {}", serde_json::to_string(&message).unwrap());
 		self.dispatcher.handle_message(message);
 
-		let mut responses = Vec::new();
-		std::mem::swap(&mut responses, &mut self.dispatcher.responses);
-
-		log::debug!("out: {}", serde_json::to_string(&responses).unwrap());
-		responses
+		std::mem::take(&mut self.dispatcher.responses)
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
