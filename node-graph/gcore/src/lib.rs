@@ -38,7 +38,7 @@ pub mod application_io;
 
 pub mod quantization;
 
-use core::{any::TypeId};
+use core::any::TypeId;
 pub use raster::Color;
 
 // pub trait Node: for<'n> NodeIO<'n> {

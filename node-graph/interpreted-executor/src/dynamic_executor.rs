@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
@@ -101,8 +101,7 @@ impl BorrowTree {
 				self.push_node(id, node, typing_context).await?;
 			} else {
 				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
-				let node = node_container.node;
-				node.reset();
+				node_container.reset();
 			}
 			old_nodes.remove(&id);
 		}
@@ -121,7 +120,7 @@ impl BorrowTree {
 	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		let id = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
-		Some(node.node.serialize())
+		Some(node.serialize())
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer>> {
@@ -130,12 +129,12 @@ impl BorrowTree {
 
 	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
-		let output = node.node.eval(Box::new(input));
+		let output = node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
 	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or_else(|| "Output node not found in executor")?;
-		let output = node.node.eval(Box::new(input));
+		let output = node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
 	}
 

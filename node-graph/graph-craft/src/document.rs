@@ -892,7 +892,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 
 #[cfg(test)]
 mod test {
-	use std::{sync::atomic::AtomicU64};
+	use std::sync::atomic::AtomicU64;
 
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};

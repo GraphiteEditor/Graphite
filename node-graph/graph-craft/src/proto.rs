@@ -29,14 +29,24 @@ pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'sta
 
 #[derive(Clone)]
 pub struct NodeContainer {
+	#[cfg(feature = "dealloc_nodes")]
+	pub node: *mut TypeErasedNode<'static>,
+	#[cfg(not(feature = "dealloc_nodes"))]
 	pub node: TypeErasedRef<'static>,
 }
 
 impl Deref for NodeContainer {
-	type Target = TypeErasedRef<'static>;
+	type Target = TypeErasedNode<'static>;
 
+	#[cfg(feature = "dealloc_nodes")]
 	fn deref(&self) -> &Self::Target {
-		&self.node
+		unsafe { &*(self.node as *const TypeErasedNode) }
+		#[cfg(not(feature = "dealloc_nodes"))]
+		self.node
+	}
+	#[cfg(not(feature = "dealloc_nodes"))]
+	fn deref(&self) -> &Self::Target {
+		self.node
 	}
 }
 
@@ -59,8 +69,9 @@ impl NodeContainer {
 		Arc::new(Self { node })
 	}
 
+	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node as *const TypeErasedNode as *mut TypeErasedNode<'static>));
+		std::mem::drop(Box::from_raw(self.node));
 	}
 }
 
