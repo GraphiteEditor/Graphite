@@ -95,7 +95,7 @@ impl<'i, T: 'i + Clone> Node<'i, Option<T>> for LetNode<T> {
 		} else {
 			let value = self.cache.take();
 			self.cache.set(value.clone());
-			value.expect("LetNode was not initialized")
+			value.expect("LetNode was not initialized. This can happen if you try to evaluate a node that depends on the EditorApi in the node_registry")
 		}
 	}
 	fn reset(&self) {

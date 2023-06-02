@@ -83,8 +83,11 @@ macro_rules! async_node {
 				let node = <$path>::new($(
 							graphene_std::any::PanicNode::<(), core::pin::Pin<Box<dyn core::future::Future<Output = $type>>>>::new()
 				),*);
-				let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
-				let mut node_io = node.to_node_io(params);
+				// TODO: Propagate the future type through the node graph
+				//let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
+				let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))),*];
+				let mut node_io = NodeIO::<'_, $input>::to_node_io(&node, params);
+				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io
 			},
@@ -415,11 +418,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<graphene_core::EditorApi>, params: []),
-		register_node!(graphene_core::memo::EndLetNode<_>, input: ImageFrame<Color>, params: [graphene_core::EditorApi]),
-		register_node!(graphene_core::memo::EndLetNode<_>, input: VectorData, params: [graphene_core::EditorApi]),
-		register_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::GraphicGroup, params: [graphene_core::EditorApi]),
-		register_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::Artboard, params: [graphene_core::EditorApi]),
-		register_node!(graphene_core::memo::EndLetNode<_>, input: WasmSurfaceHandleFrame, params: [graphene_core::EditorApi]),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [ImageFrame<Color>]),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [VectorData]),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [graphene_core::GraphicGroup]),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [graphene_core::Artboard]),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [WasmSurfaceHandleFrame]),
 		vec![(
 			NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
 			|args| {
