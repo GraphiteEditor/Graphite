@@ -101,7 +101,7 @@ pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<CanvasRenderingContext2d>;
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi<'a>) -> Arc<SurfaceHandle<CanvasRenderingContext2d>> {
+fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<CanvasRenderingContext2d>> {
 	editor.application_io.create_surface().into()
 }
 
