@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::ops::Deref;
-use std::sync::{Arc, RwLock};
+
+use std::sync::{Arc};
 
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::NodeId;
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, TypeErasedBox, TypeErasedNode, TypeErasedRef, TypingContext};
+use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, TypeErasedBox, TypingContext};
 use graph_craft::Type;
 
 use crate::node_registry;

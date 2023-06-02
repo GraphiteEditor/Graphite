@@ -892,7 +892,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 
 #[cfg(test)]
 mod test {
-	use std::{cell::Cell, sync::atomic::AtomicU64};
+	use std::{sync::atomic::AtomicU64};
 
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
@@ -1193,7 +1193,7 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		let mut new_ids = 101..;
+		let _new_ids = 101..;
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000);
 		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001);
 		network.remove_dead_nodes();

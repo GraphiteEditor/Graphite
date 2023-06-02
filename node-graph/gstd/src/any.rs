@@ -282,7 +282,7 @@ mod test {
 		type_erased.eval(Box::new((4u32, 2u32)));
 		let id_node = FutureWrapperNode::new(IdNode::new());
 		let type_erased_id = Box::new(id_node) as TypeErasedBox;
-		let type_erased = ComposeTypeErased::new(type_erased.as_ref(), type_erased_id.as_ref());
+		let type_erased = ComposeTypeErased::new(NodeContainer::new(type_erased), NodeContainer::new(type_erased_id));
 		type_erased.eval(Box::new((4u32, 2u32)));
 		//let downcast: DowncastBothNode<(u32, u32), u32> = DowncastBothNode::new(type_erased.as_ref());
 		//downcast.eval((4u32, 2u32));
