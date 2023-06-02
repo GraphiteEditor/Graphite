@@ -172,6 +172,7 @@ mod test {
 	}
 
 	#[test]
+	#[allow(clippy::unit_cmp)]
 	fn test_apply() {
 		let mut array = [1, 2, 3];
 		let slice = &mut array;

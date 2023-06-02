@@ -3,12 +3,12 @@ use std::error::Error;
 use std::sync::{Arc, RwLock};
 
 use dyn_any::StaticType;
-use graph_craft::document::value::UpcastNode;
+use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::NodeId;
 use graph_craft::executor::Executor;
 use graph_craft::proto::{ConstructionArgs, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
 use graph_craft::Type;
-use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
+use graphene_std::any::{TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;
 
@@ -73,9 +73,9 @@ impl DynamicExecutor {
 	}
 }
 
-impl Executor for DynamicExecutor {
-	fn execute<'a>(&'a self, input: Any<'a>) -> LocalFuture<Result<Any<'a>, Box<dyn Error>>> {
-		Box::pin(async move { self.tree.eval_any(self.output, input).await.ok_or_else(|| "Failed to execute".into()) })
+impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
+	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
+		Box::pin(async move { self.tree.eval_tagged_value(self.output, input).await.map_err(|e| e.into()) })
 	}
 }
 
@@ -167,18 +167,17 @@ impl BorrowTree {
 		self.nodes.get(&id).cloned()
 	}
 
-	pub async fn eval<'i, I: StaticType + 'i + Send + Sync, O: StaticType + Send + Sync + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
+	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
 		let reader = node.read().unwrap();
 		let output = reader.node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
-	pub async fn eval_any<'i>(&'i self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
-		let node = self.nodes.get(&id)?;
-		// TODO: Comments by @TrueDoctor before this was merged:
-		// TODO: Oof I dislike the evaluation being an unsafe operation but I guess its fine because it only is a lifetime extension
-		// TODO: We should ideally let miri run on a test that evaluates the nodegraph multiple times to check if this contains any subtle UB but this looks fine for now
-		Some(unsafe { (*((&*node.read().unwrap()) as *const NodeContainer)).node.eval(input).await })
+	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
+		let node = self.nodes.get(&id).cloned().ok_or_else(|| "Output node not found in executor")?;
+		let reader = node.read().unwrap();
+		let output = reader.node.eval(Box::new(input));
+		TaggedValue::try_from_any(output.await)
 	}
 
 	pub fn free_node(&mut self, id: NodeId) {
@@ -226,12 +225,15 @@ mod test {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn push_node() {
+	#[test]
+	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
-		tree.push_node(0, val_1_protonode, &TypingContext::default()).await.unwrap();
+		let context = TypingContext::default();
+		let future = tree.push_node(0, val_1_protonode, &context); //.await.unwrap();
+		futures::executor::block_on(future).unwrap();
 		let _node = tree.get(0).unwrap();
-		assert_eq!(tree.eval(0, ()).await, Some(2u32));
+		let result = futures::executor::block_on(tree.eval(0, ()));
+		assert_eq!(result, Some(2u32));
 	}
 }

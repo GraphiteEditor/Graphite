@@ -36,34 +36,42 @@ unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;
 }
 
+impl<S> From<SurfaceHandleFrame<S>> for SurfaceFrame {
+	fn from(x: SurfaceHandleFrame<S>) -> Self {
+		Self {
+			surface_id: x.surface_handle.surface_id,
+			transform: x.transform,
+		}
+	}
+}
+
 #[derive(Clone)]
-pub struct SurfaceHandle<'a, Surface> {
+pub struct SurfaceHandle<Surface> {
 	pub surface_id: SurfaceId,
 	pub surface: Surface,
-	application_io: &'a dyn ApplicationIo<Surface = Surface>,
 }
 
-unsafe impl<T: 'static> StaticType for SurfaceHandle<'_, T> {
-	type Static = SurfaceHandle<'static, T>;
+unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
+	type Static = SurfaceHandle<T>;
 }
 
 #[derive(Clone)]
-pub struct SurfaceHandleFrame<'a, Surface> {
-	pub surface_handle: Arc<SurfaceHandle<'a, Surface>>,
+pub struct SurfaceHandleFrame<Surface> {
+	pub surface_handle: Arc<SurfaceHandle<Surface>>,
 	pub transform: DAffine2,
 }
 
-unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<'_, T> {
-	type Static = SurfaceHandleFrame<'static, T>;
+unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
+	type Static = SurfaceHandleFrame<T>;
 }
 
-impl<T> Transform for SurfaceHandleFrame<'_, T> {
+impl<T> Transform for SurfaceHandleFrame<T> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
 }
 
-impl<T> TransformMut for SurfaceHandleFrame<'_, T> {
+impl<T> TransformMut for SurfaceHandleFrame<T> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
 	}
@@ -142,10 +150,10 @@ impl<'a, T> AsRef<EditorApi<'a, T>> for EditorApi<'a, T> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExtractImageFrame;
 
-impl<'a: 'input, 'input, T> Node<'input, &'a EditorApi<'a, T>> for ExtractImageFrame {
+impl<'a: 'input, 'input, T> Node<'input, EditorApi<'a, T>> for ExtractImageFrame {
 	type Output = ImageFrame<Color>;
-	fn eval(&'input self, editor_api: &'a EditorApi<'a, T>) -> Self::Output {
-		editor_api.image_frame.clone().unwrap_or(ImageFrame::identity())
+	fn eval(&'input self, editor_api: EditorApi<'a, T>) -> Self::Output {
+		editor_api.image_frame.unwrap_or(ImageFrame::identity())
 	}
 }
 

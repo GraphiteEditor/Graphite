@@ -72,31 +72,33 @@ async fn poll_node_graph_evaluation() {
 	editor::node_graph_executor::run_node_graph().await;
 
 	// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
-	EDITOR_INSTANCES.with(|instances| {
-		JS_EDITOR_HANDLES.with(|handles| {
-			// Mutably borrow the editors, and if successful, we can access them in the closure
-			instances.try_borrow_mut().map(|mut editors| {
-				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-				for (id, editor) in editors.iter_mut() {
-					let handles = handles.borrow_mut();
-					let handle = handles.get(id).unwrap();
-					let mut messages = VecDeque::new();
-					editor.poll_node_graph_evaluation(&mut messages);
-					// Send each `FrontendMessage` to the JavaScript frontend
+	EDITOR_INSTANCES
+		.with(|instances| {
+			JS_EDITOR_HANDLES.with(|handles| {
+				// Mutably borrow the editors, and if successful, we can access them in the closure
+				instances.try_borrow_mut().map(|mut editors| {
+					// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
+					for (id, editor) in editors.iter_mut() {
+						let handles = handles.borrow_mut();
+						let handle = handles.get(id).unwrap();
+						let mut messages = VecDeque::new();
+						editor.poll_node_graph_evaluation(&mut messages);
+						// Send each `FrontendMessage` to the JavaScript frontend
 
-					let mut responses = Vec::new();
-					for message in messages.into_iter() {
-						responses.extend(editor.handle_message(message));
-					}
+						let mut responses = Vec::new();
+						for message in messages.into_iter() {
+							responses.extend(editor.handle_message(message));
+						}
 
-					for response in responses.into_iter() {
-						handle.send_frontend_message_to_js(response);
+						for response in responses.into_iter() {
+							handle.send_frontend_message_to_js(response);
+						}
+						// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 					}
-					// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-				}
+				})
 			})
 		})
-	});
+		.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
 }
 
 #[wasm_bindgen]

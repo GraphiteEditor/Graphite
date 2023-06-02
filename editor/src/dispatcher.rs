@@ -323,6 +323,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select shape
 	/// - copy
@@ -362,6 +363,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	fn copy_paste_folder() {
 		let mut editor = create_editor_with_three_layers();
 
@@ -450,6 +452,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
 	/// - copy
