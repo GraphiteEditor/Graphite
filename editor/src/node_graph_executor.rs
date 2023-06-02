@@ -155,7 +155,7 @@ impl NodeRuntime {
 			_ => Err("Invalid input type".to_string()),
 		}?;
 
-		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) = result {
+		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
 			if let Some(old_id) = old_id {
 				if old_id != surface_id {

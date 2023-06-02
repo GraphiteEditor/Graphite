@@ -14,7 +14,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
@@ -300,7 +300,6 @@ impl ToolTransition for BrushTool {
 struct BrushToolData {
 	strokes: Vec<BrushStroke>,
 	layer_path: Vec<LayerId>,
-	node_path: Vec<NodeId>,
 	transform: DAffine2,
 }
 
@@ -315,7 +314,7 @@ impl BrushToolData {
 		let network = &layer.network;
 		for (node, _node_id) in network.primary_flow() {
 			if node.name == "Brush" {
-				let points_input = node.inputs.get(3)?;
+				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value { tagged_value: TaggedValue::BrushStrokes(strokes), .. } = points_input else {
 					continue;
 				};
@@ -332,7 +331,7 @@ impl BrushToolData {
 		matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)).then_some(&self.layer_path)
 	}
 
-	fn update_strokes(&self, brush_options: &BrushOptions, responses: &mut VecDeque<Message>) {
+	fn update_strokes(&self, responses: &mut VecDeque<Message>) {
 		let layer = self.layer_path.clone();
 		let strokes = self.strokes.clone();
 		responses.add(GraphOperationMessage::Brush { layer, strokes });
@@ -394,7 +393,7 @@ impl Fsm for BrushToolFsmState {
 					if new_layer {
 						add_brush_render(tool_options, tool_data, responses);
 					}
-					tool_data.update_strokes(tool_options, responses);
+					tool_data.update_strokes(responses);
 
 					BrushToolFsmState::Drawing
 				}
@@ -403,7 +402,7 @@ impl Fsm for BrushToolFsmState {
 					if let Some(stroke) = tool_data.strokes.last_mut() {
 						stroke.trace.push(BrushInputSample { position: layer_position })
 					}
-					tool_data.update_strokes(tool_options, responses);
+					tool_data.update_strokes(responses);
 
 					BrushToolFsmState::Drawing
 				}
@@ -448,7 +447,7 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, responses: &mut VecDeque<Message>) {
+fn add_brush_render(_tool_options: &BrushOptions, data: &BrushToolData, responses: &mut VecDeque<Message>) {
 	let mut network = NodeNetwork::default();
 	let output_node = network.push_output_node();
 	if let Some(node) = network.nodes.get_mut(&output_node) {

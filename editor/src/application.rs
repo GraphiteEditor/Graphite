@@ -71,7 +71,6 @@ mod test {
 		use super::Message::*;
 
 		let messages: Vec<Message> = vec![
-			GlobalsMessage::SetPlatform { platform: crate::messages::portfolio::utility_types::Platform::Linux }.into(),
 			Init,
 			Preferences(
 				PreferencesMessage::Load {

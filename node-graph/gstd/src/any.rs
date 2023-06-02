@@ -274,14 +274,15 @@ mod test {
 	}
 
 	#[test]
-	pub fn dyn_input_invalid_eval_panic_() {
+	pub fn dyn_input_compose() {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
 		let type_erased = Box::new(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new((4u32, 2u32)));
 		let id_node = FutureWrapperNode::new(IdNode::new());
-		let type_erased_id = Box::new(id_node) as TypeErasedBox;
+		let any_id = DynAnyNode::<u32, u32, _>::new(ValueNode::new(id_node));
+		let type_erased_id = Box::new(any_id) as TypeErasedBox;
 		let type_erased = ComposeTypeErased::new(NodeContainer::new(type_erased), NodeContainer::new(type_erased_id));
 		type_erased.eval(Box::new((4u32, 2u32)));
 		//let downcast: DowncastBothNode<(u32, u32), u32> = DowncastBothNode::new(type_erased.as_ref());

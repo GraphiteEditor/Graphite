@@ -274,7 +274,7 @@ where
 
 fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
 	foreground: Frame,
-	mut background: Background,
+	background: Background,
 	map_fn: &MapFn,
 ) -> Background
 where
