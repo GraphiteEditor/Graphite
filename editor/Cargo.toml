@@ -42,6 +42,7 @@ dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }
 num_enum = "0.6.1"
+futures = "0.3.28"
 
 [dependencies.document-legacy]
 path = "../document-legacy"

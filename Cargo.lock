@@ -1762,6 +1762,7 @@ dependencies = [
  "derivative",
  "dyn-any",
  "env_logger",
+ "futures",
  "glam",
  "graph-craft",
  "graphene-core",
