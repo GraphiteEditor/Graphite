@@ -9,7 +9,7 @@ use document_legacy::{LayerId, Operation};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
-use graph_craft::executor::Compiler;
+use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::{Image, ImageFrame};
@@ -19,7 +19,7 @@ use graphene_core::vector::style::ViewMode;
 
 use graphene_core::wasm_application_io::WasmApplicationIo;
 use graphene_core::{Color, EditorApi, SurfaceFrame, SurfaceId};
-use interpreted_executor::executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
@@ -147,7 +147,7 @@ impl NodeRuntime {
 			return Err(e);
 		}
 
-		use graph_craft::executor::Executor;
+		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(EditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
@@ -155,7 +155,7 @@ impl NodeRuntime {
 			_ => Err("Invalid input type".to_string()),
 		}?;
 
-		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) = result {
+		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
 			if let Some(old_id) = old_id {
 				if old_id != surface_id {
@@ -206,6 +206,19 @@ impl NodeRuntime {
 		}
 	}
 }
+pub fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	NODE_RUNTIME
+		.try_with(|runtime| {
+			let runtime = runtime.try_borrow();
+			if let Ok(ref runtime) = runtime {
+				if let Some(ref mut runtime) = runtime.as_ref() {
+					return runtime.executor.introspect(path).flatten();
+				}
+			}
+			None
+		})
+		.unwrap_or(None)
+}
 
 pub async fn run_node_graph() {
 	let result = NODE_RUNTIME.try_with(|runtime| {
@@ -226,7 +239,6 @@ pub async fn run_node_graph() {
 
 #[derive(Debug)]
 pub struct NodeGraphExecutor {
-	pub(crate) executor: DynamicExecutor,
 	sender: Sender<NodeRuntimeMessage>,
 	receiver: Receiver<GenerationResponse>,
 	// TODO: This is a memory leak since layers are never removed
@@ -250,7 +262,6 @@ impl Default for NodeGraphExecutor {
 		});
 
 		Self {
-			executor: Default::default(),
 			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_reciever,
@@ -275,12 +286,12 @@ impl NodeGraphExecutor {
 		generation_id
 	}
 
-	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+		introspect_node(path)
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-		self.executor.introspect(path).flatten()
+	pub fn update_font_cache(&self, font_cache: FontCache) {
+		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
 	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {

@@ -3,8 +3,6 @@ use crate::messages::prelude::*;
 use graphite_proc_macros::*;
 
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 #[remain::sorted]
 #[impl_message]

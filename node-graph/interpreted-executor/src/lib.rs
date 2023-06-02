@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate log;
-
-pub mod executor;
+pub mod dynamic_executor;
 pub mod node_registry;
 
 #[cfg(test)]
@@ -72,8 +69,8 @@ mod tests {
 			..Default::default()
 		};
 
-		use crate::executor::DynamicExecutor;
-		use graph_craft::executor::{Compiler, Executor};
+		use crate::dynamic_executor::DynamicExecutor;
+		use graph_craft::graphene_compiler::{Compiler, Executor};
 
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
@@ -120,12 +117,12 @@ mod tests {
 			..Default::default()
 		};
 
-		use crate::executor::DynamicExecutor;
-		use graph_craft::executor::Compiler;
+		use crate::dynamic_executor::DynamicExecutor;
+		use graph_craft::graphene_compiler::Compiler;
 
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let _exec = block_on(DynamicExecutor::new(protograph)).map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
+		let _exec = block_on(DynamicExecutor::new(protograph)).map(|e| panic!("The network should not type check ")).unwrap_err();
 	}
 }

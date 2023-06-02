@@ -5,8 +5,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [features]
-default = []
+default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
+dealloc_nodes = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
