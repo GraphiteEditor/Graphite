@@ -85,8 +85,8 @@ pub struct DocumentNodeType {
 	pub identifier: NodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
-	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 	pub primary_output: bool,
+	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
 // We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
