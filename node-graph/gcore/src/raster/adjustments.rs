@@ -443,9 +443,9 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
 		// Other utility blend modes (hidden from the normal list)
-		BlendMode::Erase => return background.alpha_sub(foreground),
+		BlendMode::Erase => return background.alpha_subtract(foreground),
 		BlendMode::Restore => return background.alpha_add(foreground),
-		BlendMode::MultiplyAlpha => return background.alpha_mul(foreground),
+		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity))

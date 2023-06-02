@@ -948,7 +948,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn alpha_sub(&self, other: Color) -> Self {
+	pub fn alpha_subtract(&self, other: Color) -> Self {
 		Self {
 			alpha: (self.alpha - other.alpha).clamp(0., 1.),
 			..*self
@@ -956,7 +956,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn alpha_mul(&self, other: Color) -> Self {
+	pub fn alpha_multiply(&self, other: Color) -> Self {
 		Self {
 			alpha: (self.alpha * other.alpha).clamp(0., 1.),
 			..*self

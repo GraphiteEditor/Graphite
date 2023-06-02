@@ -1,6 +1,5 @@
-use std::marker::PhantomData;
+use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode};
 
-use glam::{DAffine2, DVec2};
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
 use graphene_core::raster::{BlendMode, BlendNode};
@@ -11,7 +10,8 @@ use graphene_core::vector::VectorData;
 use graphene_core::Node;
 use node_macro::node_fn;
 
-use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode};
+use glam::{DAffine2, DVec2};
+use std::marker::PhantomData;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReduceNode<Initial, Lambda> {
@@ -175,7 +175,7 @@ where
 
 	let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
 	let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
-	let document_to_target = DAffine2::from_translation(-texture_size / 2.0) * DAffine2::from_scale(target_size) * target.transform.inverse();
+	let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * target.transform.inverse();
 
 	for position in positions {
 		let start = document_to_target.transform_point2(position).round();
@@ -212,7 +212,7 @@ where
 pub fn create_brush_texture(brush_style: BrushStyle) -> Image<Color> {
 	let stamp = BrushStampGeneratorNode::new(CopiedNode::new(brush_style.color), CopiedNode::new(brush_style.hardness), CopiedNode::new(brush_style.flow));
 	let stamp = stamp.eval(brush_style.diameter);
-	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.0));
+	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
 	let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
 	let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));

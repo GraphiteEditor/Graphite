@@ -345,7 +345,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						// For numerical stability we want to place the first blit point at a stable, integer offset
 						// in layer space.
 						let snap_offset = positions[0].floor() - positions[0];
-						let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.0);
+						let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 						let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
 						match stroke.style.blend_mode {
@@ -371,13 +371,13 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 								let empty_stroke_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(stroke_to_layer);
 								let stroke_texture = blit_node.eval(empty_stroke_texture);
 								// TODO: Is this the correct way to do opacity in blending?
-								actual_image = brush::blend_with_mode(actual_image, stroke_texture, blend_mode, stroke.style.color.a() * 100.0);
+								actual_image = brush::blend_with_mode(actual_image, stroke_texture, blend_mode, stroke.style.color.a() * 100.);
 							}
 						}
 					}
 
 					if let Some(mask) = erase_restore_mask {
-						let blend_params = BlendNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.0));
+						let blend_params = BlendNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.));
 						let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 						actual_image = blend_executor.eval((actual_image, mask));
 					}
