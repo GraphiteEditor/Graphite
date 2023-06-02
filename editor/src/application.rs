@@ -78,12 +78,11 @@ mod test {
 
 		let messages: Vec<Message> = vec![
 			GlobalsMessage::SetPlatform { platform: crate::messages::portfolio::utility_types::Platform::Linux }.into(),
-			Init.into(),
+			Init,
 			Preferences(
 				PreferencesMessage::Load {
 					preferences: r#"{"imaginate_server_hostname":"https://exchange-encoding-watched-insured.trycloudflare.com/","imaginate_refresh_frequency":1,"zoom_with_scroll":false}"#.to_string(),
-				}
-				.into(),
+				},
 			),
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id: 0,
@@ -110,7 +109,13 @@ r#"
 			//println!("out: {:#?}", res);
 			responses.push(res);
 		}
+		let responses = responses.pop().unwrap();
+		let trigger_message = responses[responses.len() - 2].clone();
+		if let FrontendMessage::TriggerRasterizeRegionBelowLayer { size, .. } = trigger_message {
+			assert!(size.x > 0. && size.y > 0.);
+		} else {
+			panic!();
+		}
 		println!("responses: {:#?}", responses);
-		panic!();
 	}
 }
