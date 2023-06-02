@@ -67,7 +67,9 @@ macro_rules! register_node {
 	};
 }
 macro_rules! async_node {
-	($path:ty, input: $input:ty, params: [ $($type:ty),*]) => {
+	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
+	// assign a Pin<Box<dyn Fututure<Output=T>>> type to the node, which is not what we want for now.
+	($path:ty, input: $input:ty, output: $output:ty, params: [ $($type:ty),*]) => {
 		vec![
 		(
 			NodeIdentifier::new(stringify!($path)),
@@ -89,6 +91,7 @@ macro_rules! async_node {
 				let mut node_io = NodeIO::<'_, $input>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io.input = concrete!(<$input as StaticType>::Static);
+				node_io.output = concrete!(<$output as StaticType>::Static);
 				node_io
 			},
 		)
@@ -241,7 +244,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
 		register_node!(graphene_core::wasm_application_io::CreateSurfaceNode, input: &graphene_core::EditorApi, params: []),
-		async_node!(graphene_core::wasm_application_io::DrawImageFrameNode<_>, input: ImageFrame<SRGBA8>, params: [Arc<WasmSurfaceHandle>]),
+		async_node!(
+			graphene_core::wasm_application_io::DrawImageFrameNode<_>,
+			input: ImageFrame<SRGBA8>,
+			output: WasmSurfaceHandleFrame,
+			params: [Arc<WasmSurfaceHandle>]
+		),
 		#[cfg(feature = "gpu")]
 		vec![(
 			NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode<_>"),
@@ -418,11 +426,31 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<graphene_core::EditorApi>, params: []),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [ImageFrame<Color>]),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [VectorData]),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [graphene_core::GraphicGroup]),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [graphene_core::Artboard]),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, params: [WasmSurfaceHandleFrame]),
+		async_node!(
+			graphene_core::memo::EndLetNode<_>,
+			input: graphene_core::EditorApi,
+			output: ImageFrame<Color>,
+			params: [ImageFrame<Color>]
+		),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: graphene_core::EditorApi, output: VectorData, params: [VectorData]),
+		async_node!(
+			graphene_core::memo::EndLetNode<_>,
+			input: graphene_core::EditorApi,
+			output: graphene_core::GraphicGroup,
+			params: [graphene_core::GraphicGroup]
+		),
+		async_node!(
+			graphene_core::memo::EndLetNode<_>,
+			input: graphene_core::EditorApi,
+			output: graphene_core::Artboard,
+			params: [graphene_core::Artboard]
+		),
+		async_node!(
+			graphene_core::memo::EndLetNode<_>,
+			input: graphene_core::EditorApi,
+			output: WasmSurfaceHandleFrame,
+			params: [WasmSurfaceHandleFrame]
+		),
 		vec![(
 			NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
 			|args| {
@@ -439,11 +467,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				vec![fn_type!(Option<graphene_core::EditorApi>, graphene_core::EditorApi)],
 			),
 		)],
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [Image<Color>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [ImageFrame<Color>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [QuantizationChannels]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [Vec<DVec2>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [WasmSurfaceHandle]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Image<Color>, params: [Image<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ImageFrame<Color>, params: [ImageFrame<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: QuantizationChannels, params: [QuantizationChannels]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Vec<DVec2>, params: [Vec<DVec2>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: WasmSurfaceHandleFrame, params: [WasmSurfaceHandle]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
 		#[cfg(feature = "quantization")]
