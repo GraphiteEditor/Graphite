@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::NodeId;
-use graph_craft::executor::Executor;
+use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
 use graph_craft::Type;
 use graphene_std::any::{TypeErasedPinned, TypeErasedPinnedRef};

@@ -2,7 +2,7 @@ use std::error::Error;
 
 use super::context::Context;
 
-use graph_craft::executor::Executor;
+use graph_craft::graphene_compiler::Executor;
 
 use graph_craft::proto::LocalFuture;
 use graphene_core::gpu::PushConstants;

@@ -9,7 +9,7 @@ use document_legacy::{LayerId, Operation};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
-use graph_craft::executor::Compiler;
+use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::{Image, ImageFrame};
@@ -19,7 +19,7 @@ use graphene_core::vector::style::ViewMode;
 
 use graphene_core::wasm_application_io::WasmApplicationIo;
 use graphene_core::{Color, EditorApi, SurfaceFrame, SurfaceId};
-use interpreted_executor::executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
@@ -147,7 +147,7 @@ impl NodeRuntime {
 			return Err(e);
 		}
 
-		use graph_craft::executor::Executor;
+		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(EditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),

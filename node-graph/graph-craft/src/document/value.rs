@@ -1,5 +1,5 @@
 use super::DocumentNode;
-use crate::executor::Any;
+use crate::graphene_compiler::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use crate::proto::{Any as DAny, FutureAny};
 
