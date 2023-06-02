@@ -28,17 +28,15 @@ const EXPOSED_BLEND_MODES: &'static [&'static [BlendMode]] = {
 		// Basic group
 		&[Normal],
 		// Darken group
-		&[Multiply, Darken, ColorBurn, LinearBurn, DarkerColor],
+		&[Darken, Multiply, ColorBurn, LinearBurn, DarkerColor],
 		// Lighten group
-		&[Screen, Lighten, ColorDodge, LinearDodge, LighterColor],
+		&[Lighten, Screen, ColorDodge, LinearDodge, LighterColor],
 		// Contrast group
 		&[Overlay, SoftLight, HardLight, VividLight, LinearLight, PinLight, HardMix],
 		// Inversion group
 		&[Difference, Exclusion, Subtract, Divide],
 		// Component group
 		&[Hue, Saturation, Color, Luminosity],
-		// Other Stuff
-		&[InsertRed, InsertGreen, InsertBlue],
 	]
 };
 

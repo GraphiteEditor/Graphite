@@ -239,17 +239,21 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 		blend_mode,
 		opacity,
 		[
+			// Normal group
 			BlendMode::Normal,
-			BlendMode::Multiply,
+			// Darken group
 			BlendMode::Darken,
+			BlendMode::Multiply,
 			BlendMode::ColorBurn,
 			BlendMode::LinearBurn,
 			BlendMode::DarkerColor,
-			BlendMode::Screen,
+			// Lighten group
 			BlendMode::Lighten,
+			BlendMode::Screen,
 			BlendMode::ColorDodge,
 			BlendMode::LinearDodge,
 			BlendMode::LighterColor,
+			// Contrast group
 			BlendMode::Overlay,
 			BlendMode::SoftLight,
 			BlendMode::HardLight,
@@ -257,17 +261,17 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 			BlendMode::LinearLight,
 			BlendMode::PinLight,
 			BlendMode::HardMix,
+			// Inversion group
 			BlendMode::Difference,
 			BlendMode::Exclusion,
 			BlendMode::Subtract,
 			BlendMode::Divide,
+			// Component group
 			BlendMode::Hue,
 			BlendMode::Saturation,
 			BlendMode::Color,
 			BlendMode::Luminosity,
-			BlendMode::InsertRed,
-			BlendMode::InsertGreen,
-			BlendMode::InsertBlue,
+			// Other utility blend modes (hidden from the normal list)
 			BlendMode::Erase,
 			BlendMode::Restore,
 			BlendMode::MultiplyAlpha,
