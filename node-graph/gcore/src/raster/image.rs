@@ -67,12 +67,15 @@ where
 
 impl<P: Copy + Pixel> Raster for Image<P> {
 	type Pixel = P;
+	#[inline(always)]
 	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
 		self.data.get((x + y * self.width) as usize).copied()
 	}
+	#[inline(always)]
 	fn width(&self) -> u32 {
 		self.width
 	}
+	#[inline(always)]
 	fn height(&self) -> u32 {
 		self.height
 	}
@@ -237,6 +240,16 @@ fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
+
+	// The transform that maps image space to layer space.
+	//
+	// Image space is unitless [0, 1] for both axes, with x axis positive
+	// going right and y axis positive going down, with the origin lying at
+	// the topleft of the image and (1, 1) lying at the bottom right of the image.
+	//
+	// Layer space has pixels as its units for both axes, with the x axis
+	// positive going right and y axis positive going down, with the origin
+	// being an unspecified quantity.
 	pub transform: DAffine2,
 }
 
@@ -244,6 +257,7 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	type Pixel = P;
 
 	// TODO: Improve sampling logic
+	#[inline(always)]
 	fn sample(&self, pos: DVec2, _area: DVec2) -> Option<Self::Pixel> {
 		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
 		let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);
