@@ -56,15 +56,11 @@ macro_rules! generic {
 
 #[macro_export]
 macro_rules! fn_type {
-	($input:ty, $output:ty) => {
-		Type::Fn(Box::new(concrete!($input)), Box::new(concrete!($output)))
+	($type:ty) => {
+		Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
 	};
-}
-
-#[macro_export]
-macro_rules! value_fn {
-	($output:ty) => {
-		Type::Fn(Box::new(concrete!(())), Box::new(concrete!($output)))
+	($in_type:ty, $type:ty) => {
+		Type::Fn(Box::new(concrete!(($in_type))), Box::new(concrete!($type)))
 	};
 }
 
@@ -109,6 +105,7 @@ pub enum Type {
 	Generic(Cow<'static, str>),
 	Concrete(TypeDescriptor),
 	Fn(Box<Type>, Box<Type>),
+	Future(Box<Type>),
 }
 
 impl Type {
@@ -169,6 +166,7 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
+			Self::Future(_) => None,
 		}
 	}
 
@@ -177,6 +175,7 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
+			Self::Future(_) => None,
 		}
 	}
 }
@@ -190,6 +189,7 @@ impl core::fmt::Debug for Type {
 			#[cfg(not(feature = "type_id_logging"))]
 			Self::Concrete(arg0) => write!(f, "Concrete({})", arg0.name),
 			Self::Fn(arg0, arg1) => write!(f, "({:?} -> {:?})", arg0, arg1),
+			Self::Future(arg0) => write!(f, "Future({:?})", arg0),
 		}
 	}
 }
@@ -200,6 +200,7 @@ impl std::fmt::Display for Type {
 			Type::Generic(name) => write!(f, "{}", name),
 			Type::Concrete(ty) => write!(f, "{}", ty.name),
 			Type::Fn(input, output) => write!(f, "({} -> {})", input, output),
+			Type::Future(ty) => write!(f, "Future<{}>", ty),
 		}
 	}
 }
