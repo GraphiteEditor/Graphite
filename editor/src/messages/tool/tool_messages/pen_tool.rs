@@ -577,7 +577,16 @@ impl Fsm for PenToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let transform = tool_data.path.as_ref().and_then(|path| document.document_legacy.multiply_transforms(path).ok()).unwrap_or_default();
+		let mut transform = tool_data.path.as_ref().and_then(|path| document.document_legacy.multiply_transforms(path).ok()).unwrap_or_default();
+
+		if !transform.inverse().is_finite() {
+			let parent_transform = tool_data
+				.path
+				.as_ref()
+				.and_then(|path| document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).ok());
+
+			transform = parent_transform.ok_or(DAffine2::IDENTITY);
+		}
 
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
