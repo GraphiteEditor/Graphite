@@ -699,7 +699,7 @@ pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: Nod
 	]
 }
 
-pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
 	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
 
@@ -869,7 +869,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 }
 
 #[cfg(feature = "gpu")]
-pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let map = text_widget(document_node, node_id, 1, "Map", true);
 
 	vec![LayoutGroup::Row { widgets: map }]

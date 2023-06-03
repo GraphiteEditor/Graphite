@@ -38,7 +38,7 @@ pub struct NodeRuntime {
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
-fn get_imaginate_index(name: &str) -> usize {
+fn _get_imaginate_index(name: &str) -> usize {
 	use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 	IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"))
 }
