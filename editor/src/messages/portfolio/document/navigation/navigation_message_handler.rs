@@ -1,5 +1,5 @@
 use crate::consts::{
-	VIEWPORT_MINIMUM_FRACTION_COVER, VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
+	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
 	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -367,8 +367,8 @@ impl NavigationMessageHandler {
 		let document_size = (document_bounds.map(|[min, max]| max - min).unwrap_or_default() / old_zoom) * zoom;
 		let scale_factor = (document_size / ipp.viewport_bounds.size()).max_element();
 
-		if scale_factor > f64::EPSILON * 100. && scale_factor.is_finite() && scale_factor < VIEWPORT_MINIMUM_FRACTION_COVER {
-			VIEWPORT_MINIMUM_FRACTION_COVER / scale_factor
+		if scale_factor > f64::EPSILON * 100. && scale_factor.is_finite() && scale_factor < VIEWPORT_ZOOM_MIN_FRACTION_COVER {
+			VIEWPORT_ZOOM_MIN_FRACTION_COVER / scale_factor
 		} else {
 			1.
 		}
