@@ -309,12 +309,15 @@ fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let calculation_modes = BlendMode::list();
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(method), node_id, index)));
-		}
-		let entries = vec![entries];
+		let entries = BlendMode::list()
+			.iter()
+			.map(|category| {
+				category
+					.iter()
+					.map(|mode| DropdownEntryData::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(*mode), node_id, index)))
+					.collect()
+			})
+			.collect();
 
 		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
 	}

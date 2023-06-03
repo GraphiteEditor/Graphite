@@ -274,11 +274,22 @@ where
 
 fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
 	foreground: Frame,
-	mut background: Background,
+	background: Background,
 	map_fn: &MapFn,
 ) -> Background
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+{
+	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
+}
+
+pub fn blend_image_closure<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+	foreground: Frame,
+	mut background: Background,
+	map_fn: MapFn,
+) -> Background
+where
+	MapFn: Fn(_P, _P) -> _P,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
 	// Transforms a point from the background image to the forground image
@@ -299,7 +310,7 @@ where
 
 			if let Some(src_pixel) = foreground.sample(fg_point, area) {
 				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
-					*dst_pixel = map_fn.eval((src_pixel, *dst_pixel));
+					*dst_pixel = map_fn(src_pixel, *dst_pixel);
 				}
 			}
 		}

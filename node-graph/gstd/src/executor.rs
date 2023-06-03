@@ -1,17 +1,13 @@
-use glam::{DAffine2, DMat2, DVec2, Mat2, UVec3, Vec2};
+use glam::{DAffine2, DVec2, Mat2, Vec2};
 use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
 use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
-use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::NewExecutor;
 
-use bytemuck::Pod;
-use core::marker::PhantomData;
-use dyn_any::StaticTypeSized;
 use std::sync::Arc;
 
 pub struct GpuCompiler<TypingContext, ShaderIO> {
@@ -22,7 +18,7 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 // TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
 async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> compilation_client::Shader {
-	let compiler = graph_craft::executor::Compiler {};
+	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
 	let proto_networks: Vec<_> = compiler.compile(network.clone(), true).collect();
 
@@ -48,7 +44,7 @@ pub struct MapGpuNode<Node> {
 #[node_macro::node_fn(MapGpuNode)]
 async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
-	let compiler = graph_craft::executor::Compiler {};
+	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
 	log::debug!("inner_network: {:?}", inner_network);
@@ -266,7 +262,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let translation: Vec2 = bg_to_fg.translation.as_vec2();
 
 	log::debug!("Executing gpu blend node!");
-	let compiler = graph_craft::executor::Compiler {};
+	let compiler = graph_craft::graphene_compiler::Compiler {};
 
 	let network = NodeNetwork {
 		inputs: vec![],

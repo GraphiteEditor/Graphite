@@ -9,8 +9,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-memoization = ["once_cell"]
-default = ["memoization", "wgpu"]
+default = ["wgpu"]
 gpu = [
 	"graphene-core/gpu",
 	"gpu-compiler-bin-wrapper",
@@ -31,7 +30,6 @@ graphene-core = { path = "../gcore", features = [
 	"std",
 	"serde",
 ], default-features = false }
-borrow_stack = { path = "../borrow_stack" }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft" }
 vulkan-executor = { path = "../vulkan-executor", optional = true }
@@ -41,16 +39,6 @@ gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", 
 compilation-client = { path = "../compilation-client", optional = true }
 bytemuck = { version = "1.8" }
 tempfile = "3"
-once_cell = { version = "1.10", optional = true }
-#pretty-token-stream = {path = "../../pretty-token-stream"}
-syn = { version = "1.0", default-features = false, features = [
-	"parsing",
-	"printing",
-] }
-proc-macro2 = { version = "1.0", default-features = false, features = [
-	"proc-macro",
-] }
-quote = { version = "1.0", default-features = false }
 image = { version = "*", default-features = false }
 dyn-clone = "1.0"
 
@@ -61,7 +49,6 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 ] }
 glam = { version = "0.22", features = ["serde"] }
 node-macro = { path = "../node-macro" }
-boxcar = "0.1.0"
 xxhash-rust = { workspace = true }
 serde_json = "1.0.96"
 reqwest = { version = "0.11.17", features = ["rustls", "rustls-tls"] }

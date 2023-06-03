@@ -391,19 +391,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "borrow_stack"
-version = "0.1.0"
-dependencies = [
- "dyn-any",
-]
-
-[[package]]
-name = "boxcar"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38c99613cb3cd7429889a08dfcf651721ca971c86afa30798461f8eee994de47"
-
-[[package]]
 name = "brotli"
 version = "3.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1707,8 +1694,6 @@ version = "0.1.0"
 dependencies = [
  "autoquant",
  "bezier-rs",
- "borrow_stack",
- "boxcar",
  "bytemuck",
  "compilation-client",
  "dyn-any",
@@ -1723,13 +1708,9 @@ dependencies = [
  "kurbo",
  "log",
  "node-macro",
- "once_cell",
- "proc-macro2",
- "quote",
  "reqwest",
  "serde",
  "serde_json",
- "syn 1.0.109",
  "tempfile",
  "vulkan-executor",
  "wgpu-executor",
@@ -1778,10 +1759,10 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "bitflags 1.3.2",
- "borrow_stack",
  "derivative",
  "dyn-any",
  "env_logger",
+ "futures",
  "glam",
  "graph-craft",
  "graphene-core",
@@ -1792,6 +1773,7 @@ dependencies = [
  "interpreted-executor",
  "kurbo",
  "log",
+ "num_enum 0.6.1",
  "once_cell",
  "remain",
  "serde",
@@ -2214,7 +2196,6 @@ dependencies = [
 name = "interpreted-executor"
 version = "0.1.0"
 dependencies = [
- "borrow_stack",
  "dyn-any",
  "dyn-clone",
  "futures",
@@ -2226,7 +2207,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "serde",
- "tokio",
+ "typed-arena",
 ]
 
 [[package]]
@@ -2706,7 +2687,7 @@ dependencies = [
  "bitflags 1.3.2",
  "jni-sys",
  "ndk-sys",
- "num_enum",
+ "num_enum 0.5.11",
  "thiserror",
 ]
 
@@ -2873,7 +2854,16 @@ version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f646caf906c20226733ed5b1374287eb97e3c2a5c227ce668c1f2ce20ae57c9"
 dependencies = [
- "num_enum_derive",
+ "num_enum_derive 0.5.11",
+]
+
+[[package]]
+name = "num_enum"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a015b430d3c108a207fd776d2e2196aaf8b1cf8cf93253e3a097ff3085076a1"
+dependencies = [
+ "num_enum_derive 0.6.1",
 ]
 
 [[package]]
@@ -2886,6 +2876,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "num_enum_derive"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96667db765a921f7b295ffee8b60472b686a51d4f21c2ee4ffdb94c7013b65a6"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -5009,6 +5011,12 @@ name = "ttf-parser"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "375812fa44dab6df41c195cd2f7fecb488f6c09fbaafb62807488cefab642bff"
+
+[[package]]
+name = "typed-arena"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typenum"

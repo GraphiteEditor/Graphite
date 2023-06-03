@@ -603,7 +603,6 @@ impl NodeNetwork {
 
 	fn replace_node_inputs(&mut self, old_input: NodeInput, new_input: NodeInput) {
 		for node in self.nodes.values_mut() {
-			let node_string = format!("{:?}", node);
 			node.inputs.iter_mut().for_each(|input| {
 				if *input == old_input {
 					*input = new_input.clone();
@@ -893,16 +892,15 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 
 #[cfg(test)]
 mod test {
+	use std::sync::atomic::AtomicU64;
+
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 	use graphene_core::NodeIdentifier;
 
 	fn gen_node_id() -> NodeId {
-		static mut NODE_ID: NodeId = 3;
-		unsafe {
-			NODE_ID += 1;
-			NODE_ID
-		}
+		static NODE_ID: AtomicU64 = AtomicU64::new(4);
+		NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 	}
 
 	fn add_network() -> NodeNetwork {
@@ -1195,7 +1193,7 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		let mut new_ids = 101..;
+		let _new_ids = 101..;
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000);
 		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001);
 		network.remove_dead_nodes();

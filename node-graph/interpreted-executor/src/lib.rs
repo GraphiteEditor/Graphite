@@ -1,51 +1,17 @@
-#[macro_use]
-extern crate log;
-
-pub mod executor;
+pub mod dynamic_executor;
 pub mod node_registry;
 
 #[cfg(test)]
 mod tests {
 	use dyn_any::IntoDynAny;
+	use graph_craft::document::value::TaggedValue;
 	use graphene_core::*;
 	use std::borrow::Cow;
 
-	/*
+	use futures::executor::block_on;
+
 	#[test]
-	fn borrow_stack() {
-		let stack = borrow_stack::FixedSizeStack::new(256);
-		unsafe {
-			let dynanynode: DynAnyNode<ValueNode<u32>, (), _, _> = DynAnyNode::new(ValueNode(2_u32));
-			stack.push(dynanynode.into_box());
-		}
-		stack.push_fn(|nodes| {
-			let pre_node = nodes.get(0).unwrap();
-			let downcast: DowncastNode<&TypeErasedNode, &u32> = DowncastNode::new(pre_node);
-			let dynanynode: DynAnyNode<ConsNode<_, Any<'_>>, u32, _, _> = DynAnyNode::new(ConsNode(downcast, PhantomData));
-			dynanynode.into_box()
-		});
-		stack.push_fn(|_| {
-			let dynanynode: DynAnyNode<_, (u32, &u32), _, _> = DynAnyNode::new(AddNode);
-			dynanynode.into_box()
-		});
-		stack.push_fn(|nodes| {
-			let compose_node = nodes[1].after(&nodes[2]);
-			TypeErasedNode(Box::pin(compose_node))
-		});
-
-		let result = unsafe { &stack.get()[0] }.eval_ref(().into_dyn());
-		assert_eq!(*downcast::<&u32>(result).unwrap(), &2_u32);
-		let result = unsafe { &stack.get()[1] }.eval_ref(4_u32.into_dyn());
-		assert_eq!(*downcast::<(u32, &u32)>(result).unwrap(), (4_u32, &2_u32));
-		let result = unsafe { &stack.get()[1] }.eval_ref(4_u32.into_dyn());
-		let add = unsafe { &stack.get()[2] }.eval_ref(result);
-		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
-		let add = unsafe { &stack.get()[3] }.eval_ref(4_u32.into_dyn());
-		assert_eq!(*downcast::<u32>(add).unwrap(), 6_u32);
-	}*/
-
-	#[tokio::test]
-	async fn execute_add() {
+	fn execute_add() {
 		use graph_craft::document::*;
 
 		use graph_craft::*;
@@ -103,21 +69,20 @@ mod tests {
 			..Default::default()
 		};
 
-		use crate::executor::DynamicExecutor;
-		use graph_craft::executor::{Compiler, Executor};
+		use crate::dynamic_executor::DynamicExecutor;
+		use graph_craft::graphene_compiler::{Compiler, Executor};
 
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let exec = DynamicExecutor::new(protograph).await.unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
+		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
 
-		let result = exec.execute(32_u32.into_dyn()).await.unwrap();
-		let val = *dyn_any::downcast::<u32>(result).unwrap();
-		assert_eq!(val, 33_u32);
+		let result = block_on((&exec).execute(32_u32)).unwrap();
+		assert_eq!(result, TaggedValue::U32(33));
 	}
 
-	#[tokio::test]
-	async fn double_number() {
+	#[test]
+	fn double_number() {
 		use graph_craft::document::*;
 
 		use graph_craft::*;
@@ -152,12 +117,12 @@ mod tests {
 			..Default::default()
 		};
 
-		use crate::executor::DynamicExecutor;
-		use graph_craft::executor::Compiler;
+		use crate::dynamic_executor::DynamicExecutor;
+		use graph_craft::graphene_compiler::Compiler;
 
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
-		let _exec = DynamicExecutor::new(protograph).await.map(|e| panic!("The network should not type check: {:#?}", e)).unwrap_err();
+		let _exec = block_on(DynamicExecutor::new(protograph)).map(|e| panic!("The network should not type check ")).unwrap_err();
 	}
 }

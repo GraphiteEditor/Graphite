@@ -4,7 +4,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::*;
-use graphene_core::raster::adjustments::{BlendMode, BlendNode};
+use graphene_core::raster::adjustments::BlendMode;
 use graphene_core::Color;
 
 use std::borrow::Cow;
@@ -14,7 +14,7 @@ fn main() {
 	let client = reqwest::blocking::Client::new();
 
 	let network = add_network();
-	let compiler = graph_craft::executor::Compiler {};
+	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let proto_network = compiler.compile_single(network, true).unwrap();
 
 	let io = ShaderIO {
