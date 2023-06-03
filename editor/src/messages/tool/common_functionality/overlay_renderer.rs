@@ -36,7 +36,7 @@ const POINT_STROKE_WEIGHT: f64 = 2.;
 #[derive(Clone, Debug, Default)]
 pub struct OverlayRenderer {
 	shape_overlay_cache: HashMap<LayerId, Vec<LayerId>>,
-	manipulator_group_overlay_cache: HashMap<(LayerId, ManipulatorGroupId), ManipulatorGroupOverlays>,
+	manipulator_group_overlay_cache: HashMap<LayerId, HashMap<ManipulatorGroupId, ManipulatorGroupOverlays>>,
 }
 
 impl OverlayRenderer {
@@ -68,7 +68,7 @@ impl OverlayRenderer {
 
 				// Create, place, and style the manipulator overlays
 				for manipulator_group in vector_data.manipulator_groups() {
-					let manipulator_group_cache = self.manipulator_group_overlay_cache.entry((*layer_id, manipulator_group.id)).or_default();
+					let manipulator_group_cache = self.manipulator_group_overlay_cache.entry(*layer_id).or_default().entry(manipulator_group.id).or_default();
 
 					// Only view in and out handles if they are not on top of the anchor
 					let [in_handle, out_handle] = {
@@ -103,6 +103,19 @@ impl OverlayRenderer {
 					Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_cache, &transform, responses);
 					Self::style_overlays(selected_shape_state, &layer_path, manipulator_group, manipulator_group_cache, responses);
 				}
+
+				if let Some(layer_overlays) = self.manipulator_group_overlay_cache.get_mut(layer_id) {
+					if layer_overlays.len() > vector_data.manipulator_groups().count() {
+						layer_overlays.retain(|manipulator, manipulator_group_overlays| {
+							if vector_data.manipulator_groups().any(|current_manipulator| current_manipulator.id == *manipulator) {
+								true
+							} else {
+								Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
+								false
+							}
+						});
+					}
+				}
 				// TODO Handle removing shapes from cache so we don't memory leak
 				// Eventually will get replaced with am immediate mode renderer for overlays
 			}
@@ -120,16 +133,10 @@ impl OverlayRenderer {
 		self.shape_overlay_cache.remove(layer_id);
 
 		// Remove the ManipulatorGroup overlays
-		if let Ok(layer) = document.layer(&layer_path) {
-			if let Some(vector_data) = layer.as_vector_data() {
-				for manipulator_group in vector_data.manipulator_groups() {
-					let id = manipulator_group.id;
-					if let Some(manipulator_group_overlays) = self.manipulator_group_overlay_cache.get(&(*layer_id, id)) {
-						Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
-						self.manipulator_group_overlay_cache.remove(&(*layer_id, id));
-					}
-				}
-			}
+		let Some(layer_cache) = self.manipulator_group_overlay_cache.remove(layer_id) else { return };
+
+		for manipulator_group_overlays in layer_cache.values() {
+			Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
 		}
 	}
 
@@ -142,14 +149,19 @@ impl OverlayRenderer {
 		}
 
 		// Hide the manipulator group overlays
-		if let Ok(layer) = document.layer(&layer_path) {
-			if let Some(vector_data) = layer.as_vector_data() {
-				for manipulator_group in vector_data.manipulator_groups() {
-					let id = manipulator_group.id;
-					if let Some(manipulator_group_overlays) = self.manipulator_group_overlay_cache.get(&(*layer_id, id)) {
-						Self::set_manipulator_group_overlay_visibility(manipulator_group_overlays, visibility, responses);
-					}
+		let Some(manipulator_groups) = self.manipulator_group_overlay_cache.get(layer_id) else { return };
+		if visibility {
+			let Ok(layer) = document.layer(&layer_path) else { return };
+			let Some(vector_data) = layer.as_vector_data()  else { return };
+			for manipulator_group in vector_data.manipulator_groups() {
+				let id = manipulator_group.id;
+				if let Some(manipulator_group_overlays) = manipulator_groups.get(&id) {
+					Self::set_manipulator_group_overlay_visibility(manipulator_group_overlays, visibility, responses);
 				}
+			}
+		} else {
+			for manipulator_group_overlays in manipulator_groups.values() {
+				Self::set_manipulator_group_overlay_visibility(manipulator_group_overlays, visibility, responses);
 			}
 		}
 	}
