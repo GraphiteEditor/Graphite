@@ -1,5 +1,4 @@
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
-use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
@@ -11,7 +10,6 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::LayerId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -121,7 +119,6 @@ struct PathToolData {
 	drag_start_pos: DVec2,
 	dragged_manipulation: Option<(Vec<LayerId>, ManipulatorPointId)>,
 	dragged_manipulation_anchor_pos: DVec2,
-	dragged_direction_right: bool,
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
@@ -229,7 +226,7 @@ impl Fsm for PathToolFsmState {
 						let nearest_anchor = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD).unwrap();
 						let anchors_layer = document.document_legacy.layer(nearest_anchor.0.as_slice()).unwrap();
 						let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
-						let mut anchor_subpath = subpaths.manipulator_from_id(nearest_anchor.1.group).unwrap();
+						let anchor_subpath = subpaths.manipulator_from_id(nearest_anchor.1.group).unwrap();
 
 						tool_data.dragged_manipulation_anchor_pos = anchor_subpath.anchor;
 						tool_data.dragged_manipulation = Some(nearest_anchor);
@@ -320,12 +317,12 @@ impl Fsm for PathToolFsmState {
 					if tool_data.line_extension {
 						match &tool_data.dragged_manipulation {
 							Some((anchor_point_id, anchor_point_manipulator)) => {
+								// Based on the anchor were dragging obtain the subpath
 								if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
 									let anchors_layer = document.document_legacy.layer(&anchor_point_id.as_slice()).unwrap();
 									let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
-									let mut anchor_subpath = subpaths.manipulator_from_id(anchor_point_manipulator.group).unwrap();
+									let anchor_subpath = subpaths.manipulator_from_id(anchor_point_manipulator.group).unwrap();
 
-									// Based on the anchor were dragging obtain the subpath
 									// Given the subpath, determine if the selected anchor has (no handles, or if it has handles only if its handles are near the anchor)
 									if (anchor_subpath.in_handle == None && anchor_subpath.out_handle == None)
 										|| (anchor_subpath.in_handle == None && anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
@@ -334,8 +331,9 @@ impl Fsm for PathToolFsmState {
 											&& anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap() == DVec2::new(0.0, 0.0)
 											&& anchor_subpath.anchor - anchor_subpath.out_handle.unwrap() == DVec2::new(0.0, 0.0))
 									{
-										// Use the subpath and the above and below subpath, use the position to obtain the angle
-										let mut anchor_subpath_index = subpaths.manipulator_groups().iter().position(|&manu_group| manu_group == *anchor_subpath).unwrap_or_default();
+										let anchor_subpath_index = subpaths.manipulator_groups().iter().position(|&manu_group| manu_group == *anchor_subpath).unwrap_or_default();
+
+										// Determine if the anchor is Bezier to determine if we need to translate the position from local to document space
 										let scaling_factor = 100.0;
 										let rounded_anchor_transform = DMat2 {
 											x_axis: DVec2 {
@@ -347,38 +345,96 @@ impl Fsm for PathToolFsmState {
 												y: (anchors_layer.transform.matrix2.y_axis.y * scaling_factor).round() / scaling_factor,
 											},
 										};
+										let is_bezier = rounded_anchor_transform.x_axis == DVec2 { x: 1.0, y: 0.0 } && rounded_anchor_transform.y_axis == DVec2 { x: 0.0, y: 1.0 };
 
 										let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
-										let prev_input_pos_doc_space = doc_transform.inverse().transform_point2(tool_data.previous_mouse_position);
 
-										let is_line = rounded_anchor_transform.x_axis == DVec2 { x: 1.0, y: 0.0 } && rounded_anchor_transform.y_axis == DVec2 { x: 0.0, y: 1.0 };
+										let viewspace = document.document_legacy.generate_transform_relative_to_viewport(&anchor_point_id).ok().unwrap_or_default();
+										let viewspace_start_position = viewspace.transform_point2(tool_data.dragged_manipulation_anchor_pos);
+										let docspace_start_position = doc_transform.inverse().transform_point2(viewspace_start_position);
 
 										if delta != DVec2::new(0.0, 0.0) {
-											if !is_line {
-												let viewspace = document.document_legacy.generate_transform_relative_to_viewport(&anchor_point_id).ok().unwrap_or_default();
-												let viewspace_pos = viewspace.transform_point2(anchor_subpath.anchor);
-												let doc_pos = doc_transform.inverse().transform_point2(viewspace_pos);
+											let mut index_prev: Option<usize> = Some(anchor_subpath_index);
+											let mut index_next: Option<usize> = Some(anchor_subpath_index);
 
-												let viewspace_start_pos = viewspace.transform_point2(tool_data.dragged_manipulation_anchor_pos);
-												let doc_pos_start = doc_transform.inverse().transform_point2(viewspace_start_pos);
-												if subpaths.closed() {
-													let mut index = anchor_subpath_index;
-													if anchor_subpath_index == 0 {
-														index = subpaths.len() - 1;
-													} else {
-														index = anchor_subpath_index - 1;
+											// Determine the previous and next anchor indices
+											if subpaths.closed() {
+												if anchor_subpath_index == 0 {
+													index_prev = Some(subpaths.len() - 1);
+												} else {
+													index_prev = Some(anchor_subpath_index - 1);
+												}
+
+												if anchor_subpath_index == (subpaths.len() - 1) {
+													index_next = Some(0);
+												} else {
+													index_next = Some(anchor_subpath_index + 1);
+												}
+											} else if !subpaths.closed() {
+												if anchor_subpath_index == 0 {
+													index_prev = None;
+													index_next = Some(anchor_subpath_index + 1);
+												} else if anchor_subpath_index == subpaths.len() - 1 {
+													index_prev = Some(anchor_subpath_index - 1);
+													index_next = None;
+												} else {
+													index_prev = Some(anchor_subpath_index - 1);
+													index_next = Some(anchor_subpath_index + 1);
+												}
+											}
+
+											let mut intersection: DVec2 = DVec2::NAN;
+
+											if !subpaths.closed() {
+												if let (Some(prev_index), Some(next_index)) = (index_prev, index_next) {
+													let mut prev_anchor_subpath = subpaths[prev_index];
+													let mut next_anchor_subpath = subpaths[next_index];
+
+													// For non-bezier, we have to translate the manipulation points from Local to Document space
+													if !is_bezier {
+														let viewspace_prev_anchor = viewspace.transform_point2(prev_anchor_subpath.anchor);
+														let docspace_prev_anchor = doc_transform.inverse().transform_point2(viewspace_prev_anchor);
+														prev_anchor_subpath.anchor = docspace_prev_anchor;
+														if let Some(prev_anchor_in_handle) = prev_anchor_subpath.in_handle {
+															let viewspace_prev_anchor_in_handle = viewspace.transform_point2(prev_anchor_in_handle);
+															let docspace_prev_anchor_in_handle = doc_transform.inverse().transform_point2(viewspace_prev_anchor_in_handle);
+															if docspace_prev_anchor_in_handle == prev_anchor_subpath.anchor {
+																prev_anchor_subpath.in_handle = Some(docspace_prev_anchor);
+															}
+														}
+														if let Some(prev_anchor_out_handle) = prev_anchor_subpath.out_handle {
+															let viewspace_prev_anchor_out_handle = viewspace.transform_point2(prev_anchor_out_handle);
+															let docspace_prev_anchor_out_handle = doc_transform.inverse().transform_point2(viewspace_prev_anchor_out_handle);
+															if docspace_prev_anchor_out_handle == prev_anchor_subpath.anchor {
+																prev_anchor_subpath.out_handle = Some(docspace_prev_anchor);
+															}
+														}
+
+														let viewspace_next_anchor = viewspace.transform_point2(next_anchor_subpath.anchor);
+														let docspace_next_anchor = doc_transform.inverse().transform_point2(viewspace_next_anchor);
+														next_anchor_subpath.anchor = docspace_next_anchor;
+														if let Some(next_anchor_in_handle) = next_anchor_subpath.in_handle {
+															let viewspace_next_anchor_in_handle = viewspace.transform_point2(next_anchor_in_handle);
+															let docspace_next_anchor_in_handle = doc_transform.inverse().transform_point2(viewspace_next_anchor_in_handle);
+															if docspace_next_anchor_in_handle == next_anchor_subpath.anchor {
+																next_anchor_subpath.in_handle = Some(docspace_next_anchor);
+															}
+														}
+														if let Some(next_anchor_out_handle) = next_anchor_subpath.out_handle {
+															let viewspace_next_anchor_out_handle = viewspace.transform_point2(next_anchor_out_handle);
+															let docspace_next_anchor_out_handle = doc_transform.inverse().transform_point2(viewspace_next_anchor_out_handle);
+															if docspace_next_anchor_out_handle == next_anchor_subpath.anchor {
+																next_anchor_subpath.out_handle = Some(docspace_next_anchor);
+															}
+														}
 													}
-													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-													// Anchor below dragged anchor
-													let prev_anchor_subpath = subpaths[index];
-													let view_prev = viewspace.transform_point2(prev_anchor_subpath.anchor);
-													let doc_prev = doc_transform.inverse().transform_point2(view_prev);
-													let rounded_anchor_prev = doc_prev;
 
-													let mut dx = rounded_anchor_prev.x - doc_pos_start.x;
-													let dy = -(rounded_anchor_prev.y - doc_pos_start.y);
+													// x and y swap signs gets reversed
+													let dx = prev_anchor_subpath.anchor.x - docspace_start_position.x;
+													let dy = -(prev_anchor_subpath.anchor.y - docspace_start_position.y);
 
 													let mut slope_prev = dy / dx;
+													// If divide by zero error occurs, update the value of infinite to a large slope
 													if slope_prev == std::f64::INFINITY || slope_prev == std::f64::NEG_INFINITY {
 														slope_prev = 99999999999999.0;
 													}
@@ -386,20 +442,9 @@ impl Fsm for PathToolFsmState {
 														slope_prev = 0.0000000000000000000000000001;
 													}
 
-													// Anchor above dragged anchor
-													let mut next_anchor_subpath = subpaths[0];
-													if anchor_subpath_index == (subpaths.len() - 1) {
-														next_anchor_subpath = subpaths[0];
-													} else {
-														next_anchor_subpath = subpaths[anchor_subpath_index + 1];
-													}
-													let view_next = viewspace.transform_point2(next_anchor_subpath.anchor);
-													let doc_next = doc_transform.inverse().transform_point2(view_next);
-													let rounded_anchor_next = doc_next;
-
 													// x and y swap signs gets reversed
-													let mut dx = rounded_anchor_next.x - doc_pos_start.x;
-													let mut dy = -(rounded_anchor_next.y - doc_pos_start.y);
+													let mut dx = next_anchor_subpath.anchor.x - docspace_start_position.x;
+													let mut dy = -(next_anchor_subpath.anchor.y - docspace_start_position.y);
 
 													// if our anchor is on the other side of the next anchor, flip direction
 													if dy < 0.0 {
@@ -408,6 +453,7 @@ impl Fsm for PathToolFsmState {
 													}
 
 													let mut slope_next = dy / dx;
+													// If divide by zero error occurs, update the value of infinite to a large slope
 													if slope_next == std::f64::INFINITY || slope_next == std::f64::NEG_INFINITY {
 														slope_next = 99999999999999.0;
 													}
@@ -416,62 +462,59 @@ impl Fsm for PathToolFsmState {
 													}
 
 													// Use the slope, anchor position, and the mouse position calculate the distance from the mouse to the infinite lines
-													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - doc_pos_start.x) + (input_pos_doc_space.y - doc_pos_start.y) + 0.0).abs()
-														/ (slope_prev * slope_prev + 1.0).sqrt();
-													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - doc_pos_start.x) + (input_pos_doc_space.y - doc_pos_start.y) + 0.0).abs()
-														/ (slope_next * slope_next + 1.0).sqrt();
+													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - docspace_start_position.x)
+														+ (input_pos_doc_space.y - docspace_start_position.y) + 0.0)
+														.abs() / (slope_prev * slope_prev + 1.0).sqrt();
+													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - docspace_start_position.x)
+														+ (input_pos_doc_space.y - docspace_start_position.y) + 0.0)
+														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
-													if dist_from_line_prev > dist_from_line_next {
-														let b = -(input_pos_doc_space.y - doc_pos_start.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - doc_pos_start.x));
-														let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
-														let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-														let intersection = DVec2 {
-															x: intersection_x + doc_pos_start.x,
-															y: intersection_y + doc_pos_start.y,
-														};
-														let view_intersection = doc_transform.transform_point2(intersection);
-														let local_intersection = viewspace.inverse().transform_point2(view_intersection);
-														let mut move_point = |point: ManipulatorPointId| {
-															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+													if dist_from_line_prev >= dist_from_line_next {
+														if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
+															&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
+														{
+															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
+															let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
+															let intersection_y = -(slope_next * (intersection_x)) + 0.0;
+															intersection = DVec2 {
+																x: intersection_x + docspace_start_position.x,
+																y: intersection_y + docspace_start_position.y,
+															};
 
-															responses.add(GraphOperationMessage::Vector {
-																layer: anchor_point_id.to_vec(),
-																modification: VectorDataModification::SetManipulatorPosition {
-																	point: point,
-																	position: local_intersection,
-																},
-															});
-														};
-
-														move_point(*anchor_point_manipulator);
-
-														if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
-															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
-															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
+															if !is_bezier {
+																let viewspace_intersection = doc_transform.transform_point2(intersection);
+																intersection = viewspace.inverse().transform_point2(viewspace_intersection);
+															}
 														}
 													} else if dist_from_line_prev < dist_from_line_next {
-														let b = -(input_pos_doc_space.y - doc_pos_start.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - doc_pos_start.x));
-														let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
-														let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-														let intersection = DVec2 {
-															x: intersection_x + doc_pos_start.x,
-															y: intersection_y + doc_pos_start.y,
-														};
-														let view_intersection = doc_transform.transform_point2(intersection);
-														let local_intersection = viewspace.inverse().transform_point2(view_intersection);
+														if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
+															&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
+														{
+															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
+															let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
+															let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
+															intersection = DVec2 {
+																x: intersection_x + docspace_start_position.x,
+																y: intersection_y + docspace_start_position.y,
+															};
 
-														let mut move_point = |point: ManipulatorPointId| {
-															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+															if !is_bezier {
+																let viewspace_intersection = doc_transform.transform_point2(intersection);
+																intersection = viewspace.inverse().transform_point2(viewspace_intersection);
+															}
+														}
+													}
 
-															responses.add(GraphOperationMessage::Vector {
-																layer: anchor_point_id.to_vec(),
-																modification: VectorDataModification::SetManipulatorPosition {
-																	point: point,
-																	position: local_intersection,
-																},
-															});
-														};
+													let mut move_point = |point: ManipulatorPointId| {
+														let Some(_previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
 
+														responses.add(GraphOperationMessage::Vector {
+															layer: anchor_point_id.to_vec(),
+															modification: VectorDataModification::SetManipulatorPosition { point: point, position: intersection },
+														});
+													};
+
+													if !intersection.is_nan() {
 														move_point(*anchor_point_manipulator);
 
 														if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
@@ -479,231 +522,223 @@ impl Fsm for PathToolFsmState {
 															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
 														}
 													}
-												} else if !subpaths.closed() {
-													if anchor_subpath_index == 0 {
-														// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-														// Anchor above dragged anchor
-
-														let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
-														let view_next = viewspace.transform_point2(next_anchor_subpath.anchor);
-														let doc_next = doc_transform.inverse().transform_point2(view_next);
-														let rounded_anchor_next = doc_next;
-
-														// x and y swap signs gets reversed
-														let mut dx = rounded_anchor_next.x - doc_pos_start.x;
-														let mut dy = -(rounded_anchor_next.y - doc_pos_start.y);
-
-														// if our anchor is on the other side of the next anchor, flip direction
-														if dy < 0.0 {
-															dx *= -1.0;
-															dy *= -1.0;
+												} else if let (Some(prev_index), None) = (index_prev, index_next) {
+													let mut prev_anchor_subpath = subpaths[prev_index];
+													// For non-bezier, we have to translate the manipulation points from Local to Document space
+													if !is_bezier {
+														let viewspace_prev_anchor = viewspace.transform_point2(prev_anchor_subpath.anchor);
+														let docspace_prev_anchor = doc_transform.inverse().transform_point2(viewspace_prev_anchor);
+														prev_anchor_subpath.anchor = docspace_prev_anchor;
+														if let Some(prev_anchor_in_handle) = prev_anchor_subpath.in_handle {
+															let viewspace_prev_anchor_in_handle = viewspace.transform_point2(prev_anchor_in_handle);
+															let docspace_prev_anchor_in_handle = doc_transform.inverse().transform_point2(viewspace_prev_anchor_in_handle);
+															if docspace_prev_anchor_in_handle == prev_anchor_subpath.anchor {
+																prev_anchor_subpath.in_handle = Some(docspace_prev_anchor);
+															}
 														}
-
-														let mut slope_next = dy / dx;
-														if slope_next == std::f64::INFINITY || slope_next == std::f64::NEG_INFINITY {
-															slope_next = 99999999999999.0;
+														if let Some(prev_anchor_out_handle) = prev_anchor_subpath.out_handle {
+															let viewspace_prev_anchor_out_handle = viewspace.transform_point2(prev_anchor_out_handle);
+															let docspace_prev_anchor_out_handle = doc_transform.inverse().transform_point2(viewspace_prev_anchor_out_handle);
+															if docspace_prev_anchor_out_handle == prev_anchor_subpath.anchor {
+																prev_anchor_subpath.out_handle = Some(docspace_prev_anchor);
+															}
 														}
-														if slope_next.abs() == 0.0 {
-															slope_next = 0.0000000000000000000000000001;
-														}
+													}
 
-														let b = -(input_pos_doc_space.y - doc_pos_start.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - doc_pos_start.x));
-														let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
+													// x and y swap signs gets reversed
+													let mut dx = prev_anchor_subpath.anchor.x - docspace_start_position.x;
+													let mut dy = -(prev_anchor_subpath.anchor.y - docspace_start_position.y);
+
+													// if our anchor is on the other side of the next anchor, flip direction
+													if dy < 0.0 {
+														dx *= -1.0;
+														dy *= -1.0;
+													}
+
+													let mut slope_next = dy / dx;
+													// If divide by zero error occurs, update the value of infinite to a large slope
+													if slope_next == std::f64::INFINITY || slope_next == std::f64::NEG_INFINITY {
+														slope_next = 99999999999999.0;
+													}
+													if slope_next.abs() == 0.0 {
+														slope_next = 0.0000000000000000000000000001;
+													}
+
+													if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
+														&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
+													{
+														let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
+														let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
 														let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-														let intersection = DVec2 {
-															x: intersection_x + doc_pos_start.x,
-															y: intersection_y + doc_pos_start.y,
-														};
-														let view_intersection = doc_transform.transform_point2(intersection);
-														let local_intersection = viewspace.inverse().transform_point2(view_intersection);
-
-														let mut move_point = |point: ManipulatorPointId| {
-															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
-
-															responses.add(GraphOperationMessage::Vector {
-																layer: anchor_point_id.to_vec(),
-																modification: VectorDataModification::SetManipulatorPosition {
-																	point: point,
-																	position: local_intersection,
-																},
-															});
+														intersection = DVec2 {
+															x: intersection_x + docspace_start_position.x,
+															y: intersection_y + docspace_start_position.y,
 														};
 
+														if !is_bezier {
+															let viewspace_intersection = doc_transform.transform_point2(intersection);
+															intersection = viewspace.inverse().transform_point2(viewspace_intersection);
+														}
+													}
+
+													let mut move_point = |point: ManipulatorPointId| {
+														let Some(_previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+
+														responses.add(GraphOperationMessage::Vector {
+															layer: anchor_point_id.to_vec(),
+															modification: VectorDataModification::SetManipulatorPosition { point: point, position: intersection },
+														});
+													};
+
+													if !intersection.is_nan() {
 														move_point(*anchor_point_manipulator);
 
 														if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
 															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
 															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
 														}
-													} else if anchor_subpath_index == subpaths.manipulator_groups().len() - 1 {
-														// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-														// Anchor below dragged anchor
-														let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
-														let view_prev = viewspace.transform_point2(prev_anchor_subpath.anchor);
-														let doc_prev = doc_transform.inverse().transform_point2(view_prev);
-														let rounded_anchor_prev = doc_prev;
-
-														let dx = rounded_anchor_prev.x - doc_pos_start.x;
-														let dy = -(rounded_anchor_prev.y - doc_pos_start.y);
-
-														let mut slope_prev = dy / dx;
-														if slope_prev == std::f64::INFINITY || slope_prev == std::f64::NEG_INFINITY {
-															slope_prev = 99999999999999.0;
+													}
+												} else if let (None, Some(next_index)) = (index_prev, index_next) {
+													let mut next_anchor_subpath = subpaths[next_index];
+													// For non-bezier, we have to translate the manipulation points from Local to Document space
+													if !is_bezier {
+														let viewspace_next_anchor = viewspace.transform_point2(next_anchor_subpath.anchor);
+														let docspace_next_anchor = doc_transform.inverse().transform_point2(viewspace_next_anchor);
+														next_anchor_subpath.anchor = docspace_next_anchor;
+														if let Some(next_anchor_in_handle) = next_anchor_subpath.in_handle {
+															let viewspace_next_anchor_in_handle = viewspace.transform_point2(next_anchor_in_handle);
+															let docspace_next_anchor_in_handle = doc_transform.inverse().transform_point2(viewspace_next_anchor_in_handle);
+															if docspace_next_anchor_in_handle == next_anchor_subpath.anchor {
+																next_anchor_subpath.in_handle = Some(docspace_next_anchor);
+															}
 														}
-														if slope_prev.abs() == 0.0 {
-															slope_prev = 0.0000000000000000000000000001;
+														if let Some(next_anchor_out_handle) = next_anchor_subpath.out_handle {
+															let viewspace_next_anchor_out_handle = viewspace.transform_point2(next_anchor_out_handle);
+															let docspace_next_anchor_out_handle = doc_transform.inverse().transform_point2(viewspace_next_anchor_out_handle);
+															if docspace_next_anchor_out_handle == next_anchor_subpath.anchor {
+																next_anchor_subpath.out_handle = Some(docspace_next_anchor);
+															}
 														}
+													}
 
-														let b = -(input_pos_doc_space.y - doc_pos_start.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - doc_pos_start.x));
-														let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
-														let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-														let intersection = DVec2 {
-															x: intersection_x + doc_pos_start.x,
-															y: intersection_y + doc_pos_start.y,
+													// x and y swap signs gets reversed
+													let mut dx = next_anchor_subpath.anchor.x - docspace_start_position.x;
+													let mut dy = -(next_anchor_subpath.anchor.y - docspace_start_position.y);
+
+													// if our anchor is on the other side of the next anchor, flip direction
+													if dy < 0.0 {
+														dx *= -1.0;
+														dy *= -1.0;
+													}
+
+													let mut slope_next = dy / dx;
+													// If divide by zero error occurs, update the value of infinite to a large slope
+													if slope_next == std::f64::INFINITY || slope_next == std::f64::NEG_INFINITY {
+														slope_next = 99999999999999.0;
+													}
+													if slope_next.abs() == 0.0 {
+														slope_next = 0.0000000000000000000000000001;
+													}
+
+													if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
+														&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
+													{
+														let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
+														let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
+														let intersection_y = -(slope_next * (intersection_x)) + 0.0;
+														intersection = DVec2 {
+															x: intersection_x + docspace_start_position.x,
+															y: intersection_y + docspace_start_position.y,
 														};
-														let view_intersection = doc_transform.transform_point2(intersection);
-														let local_intersection = viewspace.inverse().transform_point2(view_intersection);
 
-														let mut move_point = |point: ManipulatorPointId| {
-															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+														if !is_bezier {
+															let viewspace_intersection = doc_transform.transform_point2(intersection);
+															intersection = viewspace.inverse().transform_point2(viewspace_intersection);
+														}
+													}
 
-															responses.add(GraphOperationMessage::Vector {
-																layer: anchor_point_id.to_vec(),
-																modification: VectorDataModification::SetManipulatorPosition {
-																	point: point,
-																	position: local_intersection,
-																},
-															});
-														};
+													let mut move_point = |point: ManipulatorPointId| {
+														let Some(_previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
 
+														responses.add(GraphOperationMessage::Vector {
+															layer: anchor_point_id.to_vec(),
+															modification: VectorDataModification::SetManipulatorPosition { point: point, position: intersection },
+														});
+													};
+
+													if !intersection.is_nan() {
 														move_point(*anchor_point_manipulator);
 
 														if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
 															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
 															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
-														}
-													} else {
-														// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-														// Anchor below dragged anchor
-														let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
-														let view_prev = viewspace.transform_point2(prev_anchor_subpath.anchor);
-														let doc_prev = doc_transform.inverse().transform_point2(view_prev);
-														let rounded_anchor_prev = doc_prev;
-
-														let dx = rounded_anchor_prev.x - doc_pos_start.x;
-														let dy = -(rounded_anchor_prev.y - doc_pos_start.y);
-
-														let mut slope_prev = dy / dx;
-														if slope_prev == std::f64::INFINITY || slope_prev == std::f64::NEG_INFINITY {
-															slope_prev = 99999999999999.0;
-														}
-														if slope_prev.abs() == 0.0 {
-															slope_prev = 0.0000000000000000000000000001;
-														}
-
-														// Anchor above dragged anchor
-														let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
-														let view_next = viewspace.transform_point2(next_anchor_subpath.anchor);
-														let doc_next = doc_transform.inverse().transform_point2(view_next);
-														let rounded_anchor_next = doc_next;
-
-														// x and y swap signs gets reversed
-														let mut dx = rounded_anchor_next.x - doc_pos_start.x;
-														let mut dy = -(rounded_anchor_next.y - doc_pos_start.y);
-
-														// if our anchor is on the other side of the next anchor, flip direction
-														if dy < 0.0 {
-															dx *= -1.0;
-															dy *= -1.0;
-														}
-
-														let mut slope_next = dy / dx;
-														if slope_next == std::f64::INFINITY || slope_next == std::f64::NEG_INFINITY {
-															slope_next = 99999999999999.0;
-														}
-														if slope_next.abs() == 0.0 {
-															slope_next = 0.0000000000000000000000000001;
-														}
-
-														// Use the slope, anchor position, and the mouse position calculate the distance from the mouse to the infinite lines
-														let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - doc_pos_start.x) + (input_pos_doc_space.y - doc_pos_start.y) + 0.0).abs()
-															/ (slope_prev * slope_prev + 1.0).sqrt();
-														let dist_from_line_next = (slope_next * (input_pos_doc_space.x - doc_pos_start.x) + (input_pos_doc_space.y - doc_pos_start.y) + 0.0).abs()
-															/ (slope_next * slope_next + 1.0).sqrt();
-
-														if dist_from_line_prev > dist_from_line_next {
-															let b = -(input_pos_doc_space.y - doc_pos_start.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - doc_pos_start.x));
-															let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
-															let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-
-															let intersection = DVec2 {
-																x: intersection_x + doc_pos_start.x,
-																y: intersection_y + doc_pos_start.y,
-															};
-															let view_intersection = doc_transform.transform_point2(intersection);
-															let local_intersection = viewspace.inverse().transform_point2(view_intersection);
-
-															let mut move_point = |point: ManipulatorPointId| {
-																let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
-
-																responses.add(GraphOperationMessage::Vector {
-																	layer: anchor_point_id.to_vec(),
-																	modification: VectorDataModification::SetManipulatorPosition {
-																		point: point,
-																		position: local_intersection,
-																	},
-																});
-															};
-
-															move_point(*anchor_point_manipulator);
-
-															if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
-																move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
-																move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
-															}
-														} else if dist_from_line_prev < dist_from_line_next {
-															let b = -(input_pos_doc_space.y - doc_pos_start.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - doc_pos_start.x));
-															let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
-															let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-
-															let intersection = DVec2 {
-																x: intersection_x + doc_pos_start.x,
-																y: intersection_y + doc_pos_start.y,
-															};
-															let view_intersection = doc_transform.transform_point2(intersection);
-															let local_intersection = viewspace.inverse().transform_point2(view_intersection);
-
-															let mut move_point = |point: ManipulatorPointId| {
-																let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
-
-																responses.add(GraphOperationMessage::Vector {
-																	layer: anchor_point_id.to_vec(),
-																	modification: VectorDataModification::SetManipulatorPosition {
-																		point: point,
-																		position: local_intersection,
-																	},
-																});
-															};
-
-															move_point(*anchor_point_manipulator);
-
-															if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
-																move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
-																move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
-															}
 														}
 													}
 												}
-											} else if is_line {
-												if anchor_subpath_index == 0 {
-													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-													// Anchor above dragged anchor
-													let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
-													let rounded_anchor_next = (next_anchor_subpath.anchor);
+											}
+											// Dragging a closed-shape
+											else if subpaths.closed() {
+												if let (Some(prev_index), Some(next_index)) = (index_prev, index_next) {
+													let mut prev_anchor_subpath = subpaths[prev_index];
+													let mut next_anchor_subpath = subpaths[next_index];
+
+													// For non-bezier, we have to translate the manipulation points from Local to Document space
+													if !is_bezier {
+														if !is_bezier {
+															let viewspace_prev_anchor = viewspace.transform_point2(prev_anchor_subpath.anchor);
+															let docspace_prev_anchor = doc_transform.inverse().transform_point2(viewspace_prev_anchor);
+															prev_anchor_subpath.anchor = docspace_prev_anchor;
+															if let Some(prev_anchor_in_handle) = prev_anchor_subpath.in_handle {
+																let viewspace_prev_anchor_in_handle = viewspace.transform_point2(prev_anchor_in_handle);
+																let docspace_prev_anchor_in_handle = doc_transform.inverse().transform_point2(viewspace_prev_anchor_in_handle);
+																if docspace_prev_anchor_in_handle == prev_anchor_subpath.anchor {
+																	prev_anchor_subpath.in_handle = Some(docspace_prev_anchor);
+																}
+															}
+															if let Some(prev_anchor_out_handle) = prev_anchor_subpath.out_handle {
+																let viewspace_prev_anchor_out_handle = viewspace.transform_point2(prev_anchor_out_handle);
+																let docspace_prev_anchor_out_handle = doc_transform.inverse().transform_point2(viewspace_prev_anchor_out_handle);
+																if docspace_prev_anchor_out_handle == prev_anchor_subpath.anchor {
+																	prev_anchor_subpath.out_handle = Some(docspace_prev_anchor);
+																}
+															}
+
+															let viewspace_next_anchor = viewspace.transform_point2(next_anchor_subpath.anchor);
+															let docspace_next_anchor = doc_transform.inverse().transform_point2(viewspace_next_anchor);
+															next_anchor_subpath.anchor = docspace_next_anchor;
+															if let Some(next_anchor_in_handle) = next_anchor_subpath.in_handle {
+																let viewspace_next_anchor_in_handle = viewspace.transform_point2(next_anchor_in_handle);
+																let docspace_next_anchor_in_handle = doc_transform.inverse().transform_point2(viewspace_next_anchor_in_handle);
+																if docspace_next_anchor_in_handle == next_anchor_subpath.anchor {
+																	next_anchor_subpath.in_handle = Some(docspace_next_anchor);
+																}
+															}
+															if let Some(next_anchor_out_handle) = next_anchor_subpath.out_handle {
+																let viewspace_next_anchor_out_handle = viewspace.transform_point2(next_anchor_out_handle);
+																let docspace_next_anchor_out_handle = doc_transform.inverse().transform_point2(viewspace_next_anchor_out_handle);
+																if docspace_next_anchor_out_handle == next_anchor_subpath.anchor {
+																	next_anchor_subpath.out_handle = Some(docspace_next_anchor);
+																}
+															}
+														}
+													}
 
 													// x and y swap signs gets reversed
-													let mut dx = rounded_anchor_next.x - tool_data.dragged_manipulation_anchor_pos.x;
-													let mut dy = -(rounded_anchor_next.y - tool_data.dragged_manipulation_anchor_pos.y);
+													let dx = prev_anchor_subpath.anchor.x - docspace_start_position.x;
+													let dy = -(prev_anchor_subpath.anchor.y - docspace_start_position.y);
+
+													let mut slope_prev = dy / dx;
+													// If divide by zero error occurs, update the value of infinite to a large slope
+													if slope_prev == std::f64::INFINITY || slope_prev == std::f64::NEG_INFINITY {
+														slope_prev = 99999999999999.0;
+													}
+													if slope_prev.abs() == 0.0 {
+														slope_prev = 0.0000000000000000000000000001;
+													}
+
+													// x and y swap signs gets reversed
+													let mut dx = next_anchor_subpath.anchor.x - docspace_start_position.x;
+													let mut dy = -(next_anchor_subpath.anchor.y - docspace_start_position.y);
 
 													// if our anchor is on the other side of the next anchor, flip direction
 													if dy < 0.0 {
@@ -711,160 +746,67 @@ impl Fsm for PathToolFsmState {
 														dy *= -1.0;
 													}
 
-													let slope_next = dy / dx;
-													let theta_next = dy.atan2(dx);
-
-													let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
-														- ((-1.0 / slope_next) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
-													let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
-													let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-
-													let mut move_point = |point: ManipulatorPointId| {
-														let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
-
-														responses.add(GraphOperationMessage::Vector {
-															layer: anchor_point_id.to_vec(),
-															modification: VectorDataModification::SetManipulatorPosition {
-																point: point,
-																position: DVec2 {
-																	x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
-																	y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
-																},
-															},
-														});
-													};
-
-													move_point(*anchor_point_manipulator);
-
-													if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
-														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
-														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
+													let mut slope_next = dy / dx;
+													// If divide by zero error occurs, update the value of infinite to a large slope
+													if slope_next == std::f64::INFINITY || slope_next == std::f64::NEG_INFINITY {
+														slope_next = 99999999999999.0;
 													}
-												} else if anchor_subpath_index == subpaths.manipulator_groups().len() - 1 {
-													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-													// Anchor below dragged anchor
-													let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
-													let rounded_anchor_prev = (prev_anchor_subpath.anchor);
-
-													let dx = rounded_anchor_prev.x - tool_data.dragged_manipulation_anchor_pos.x;
-													let dy = -(rounded_anchor_prev.y - tool_data.dragged_manipulation_anchor_pos.y);
-
-													let slope_prev = dy / dx;
-													let theta_prev = dy.atan2(dx);
-
-													let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
-														- ((-1.0 / slope_prev) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
-													let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
-													let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-
-													let mut move_point = |point: ManipulatorPointId| {
-														let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
-
-														responses.add(GraphOperationMessage::Vector {
-															layer: anchor_point_id.to_vec(),
-															modification: VectorDataModification::SetManipulatorPosition {
-																point: point,
-																position: DVec2 {
-																	x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
-																	y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
-																},
-															},
-														});
-													};
-
-													move_point(*anchor_point_manipulator);
-
-													if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
-														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
-														move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
+													if slope_next.abs() == 0.0 {
+														slope_next = 0.0000000000000000000000000001;
 													}
-												} else {
-													// Using the dragged anchor and the surrounding anchors, calculate the the slope, theta, and angle
-													// Anchor below dragged anchor
-													let prev_anchor_subpath = subpaths[anchor_subpath_index - 1];
-													let rounded_anchor_prev = (prev_anchor_subpath.anchor);
-
-													let dx = rounded_anchor_prev.x - tool_data.dragged_manipulation_anchor_pos.x;
-													let dy = -(rounded_anchor_prev.y - tool_data.dragged_manipulation_anchor_pos.y);
-
-													let slope_prev = dy / dx;
-													let theta_prev = dy.atan2(dx);
-
-													// Anchor above dragged anchor
-													let next_anchor_subpath = subpaths[anchor_subpath_index + 1];
-													let rounded_anchor_next = (next_anchor_subpath.anchor);
-
-													// x and y swap signs gets reversed
-													let mut dx = rounded_anchor_next.x - tool_data.dragged_manipulation_anchor_pos.x;
-													let mut dy = -(rounded_anchor_next.y - tool_data.dragged_manipulation_anchor_pos.y);
-
-													// if our anchor is on the other side of the next anchor, flip direction
-													if dy < 0.0 {
-														dx *= -1.0;
-														dy *= -1.0;
-													}
-
-													let slope_next = dy / dx;
-													let theta_next = dy.atan2(dx);
 
 													// Use the slope, anchor position, and the mouse position calculate the distance from the mouse to the infinite lines
-													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x)
-														+ (input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
-														+ 0.0)
+													let dist_from_line_prev = (slope_prev * (input_pos_doc_space.x - docspace_start_position.x)
+														+ (input_pos_doc_space.y - docspace_start_position.y) + 0.0)
 														.abs() / (slope_prev * slope_prev + 1.0).sqrt();
-													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x)
-														+ (input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
-														+ 0.0)
+													let dist_from_line_next = (slope_next * (input_pos_doc_space.x - docspace_start_position.x)
+														+ (input_pos_doc_space.y - docspace_start_position.y) + 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
-													if dist_from_line_prev > dist_from_line_next {
-														let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
-															- ((-1.0 / slope_next) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
-														let intersection_x = ((b - 0.0) / ((slope_next) - (-1.0 / slope_next)));
-														let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-
-														let mut move_point = |point: ManipulatorPointId| {
-															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
-
-															responses.add(GraphOperationMessage::Vector {
-																layer: anchor_point_id.to_vec(),
-																modification: VectorDataModification::SetManipulatorPosition {
-																	point: point,
-																	position: DVec2 {
-																		x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
-																		y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
-																	},
-																},
-															});
-														};
-
-														move_point(*anchor_point_manipulator);
-
-														if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
-															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::InHandle));
-															move_point(ManipulatorPointId::new(anchor_point_manipulator.group, SelectedType::OutHandle));
+													if dist_from_line_prev >= dist_from_line_next {
+														if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
+															&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
+														{
+															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
+															let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
+															let intersection_y = -(slope_next * (intersection_x)) + 0.0;
+															intersection = DVec2 {
+																x: intersection_x + docspace_start_position.x,
+																y: intersection_y + docspace_start_position.y,
+															};
+															if !is_bezier {
+																let viewspace_intersection = doc_transform.transform_point2(intersection);
+																intersection = viewspace.inverse().transform_point2(viewspace_intersection);
+															}
 														}
 													} else if dist_from_line_prev < dist_from_line_next {
-														let b = -(input_pos_doc_space.y - tool_data.dragged_manipulation_anchor_pos.y)
-															- ((-1.0 / slope_prev) * (input_pos_doc_space.x - tool_data.dragged_manipulation_anchor_pos.x));
-														let intersection_x = ((b - 0.0) / ((slope_prev) - (-1.0 / slope_prev)));
-														let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
+														if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
+															&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
+														{
+															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
+															let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
+															let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
+															intersection = DVec2 {
+																x: intersection_x + docspace_start_position.x,
+																y: intersection_y + docspace_start_position.y,
+															};
+															if !is_bezier {
+																let viewspace_intersection = doc_transform.transform_point2(intersection);
+																intersection = viewspace.inverse().transform_point2(viewspace_intersection);
+															}
+														}
+													}
 
-														let mut move_point = |point: ManipulatorPointId| {
-															let Some(previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
+													let mut move_point = |point: ManipulatorPointId| {
+														let Some(_previous_position) = point.manipulator_type.get_position(anchor_subpath) else { return };
 
-															responses.add(GraphOperationMessage::Vector {
-																layer: anchor_point_id.to_vec(),
-																modification: VectorDataModification::SetManipulatorPosition {
-																	point: point,
-																	position: DVec2 {
-																		x: intersection_x + tool_data.dragged_manipulation_anchor_pos.x,
-																		y: intersection_y + tool_data.dragged_manipulation_anchor_pos.y,
-																	},
-																},
-															});
-														};
+														responses.add(GraphOperationMessage::Vector {
+															layer: anchor_point_id.to_vec(),
+															modification: VectorDataModification::SetManipulatorPosition { point: point, position: intersection },
+														});
+													};
 
+													if !intersection.is_nan() {
 														move_point(*anchor_point_manipulator);
 
 														if anchor_point_manipulator.manipulator_type == SelectedType::Anchor {
@@ -882,8 +824,10 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
-					// shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
-					// tool_data.previous_mouse_position = snapped_position;
+					if !tool_data.line_extension {
+						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses);
+						tool_data.previous_mouse_position = snapped_position;
+					}
 
 					PathToolFsmState::Dragging
 				}
