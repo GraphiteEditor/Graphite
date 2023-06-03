@@ -583,9 +583,13 @@ impl Fsm for PenToolFsmState {
 			let parent_transform = tool_data
 				.path
 				.as_ref()
-				.and_then(|path| document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).ok());
+				.and_then(|layer_path| document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).ok());
 
-			transform = parent_transform.ok_or(DAffine2::IDENTITY);
+			transform = parent_transform.unwrap_or(DAffine2::IDENTITY);
+		}
+
+		if !transform.inverse().is_finite() {
+			transform = DAffine2::IDENTITY;
 		}
 
 		if let ToolMessage::Pen(event) = event {
