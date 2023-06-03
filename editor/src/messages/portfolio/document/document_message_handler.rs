@@ -484,12 +484,16 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				imaginate_node,
 				then_generate,
 			} => {
+				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+				// outside of this range can get rounded in f64
+				let random_bits = generate_uuid();
+				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 				// Set a random seed input
 				responses.add(NodeGraphMessage::SetInputValue {
 					node_id: *imaginate_node.last().unwrap(),
 					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-					input_index: 1,
-					value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+					input_index: 2,
+					value: graph_craft::document::value::TaggedValue::F64(random_value),
 				});
 
 				// Generate the image

@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
-use document_legacy::{Operation, layers::layer_info::LayerDataTypeDiscriminant};
+use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
@@ -1150,6 +1150,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
+						info!("hitted the random seed button :3");
 						move |_| {
 							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
@@ -1226,8 +1227,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(seed))
-					.min(0.)
 					.int()
+					.min(-((1u64 << f64::MANTISSA_DIGITS) as f64))
+					.max((1u64 << f64::MANTISSA_DIGITS) as f64)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index))
 					.widget_holder(),
 			])
