@@ -600,33 +600,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Notifies the Imaginate layer of a new percentage of completion and whether or not it's currently generating
-	#[wasm_bindgen(js_name = setImaginateGeneratingStatus)]
-	pub fn set_imaginate_generating_status(&self, document_id: u64, layer_path: Vec<LayerId>, node_path: Vec<NodeId>, percent: Option<f64>, status: String) {
-		use graph_craft::imaginate_input::ImaginateStatus;
-
-		let status = match status.as_str() {
-			"Idle" => ImaginateStatus::Idle,
-			"Beginning" => ImaginateStatus::Beginning,
-			"Uploading" => ImaginateStatus::Uploading(percent.expect("Percent needs to be supplied to set ImaginateStatus::Uploading")),
-			"Generating" => ImaginateStatus::Generating,
-			"Terminating" => ImaginateStatus::Terminating,
-			"Terminated" => ImaginateStatus::Terminated,
-			_ => panic!("Invalid string from JS for ImaginateStatus, received: {}", status),
-		};
-
-		let percent = if matches!(status, ImaginateStatus::Uploading(_)) { None } else { percent };
-
-		let message = PortfolioMessage::ImaginateSetGeneratingStatus {
-			document_id,
-			layer_path,
-			node_path,
-			percent,
-			status,
-		};
-		self.dispatch(message);
-	}
-
 	/// Notifies the editor that the Imaginate server is available or unavailable
 	#[wasm_bindgen(js_name = setImaginateServerStatus)]
 	pub fn set_imaginate_server_status(&self, available: bool) {

@@ -1,8 +1,10 @@
+use crate::wasm_application_io::WasmEditorApi;
 use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
 use glam::DVec2;
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
+use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender};
 use graphene_core::raster::{Color, Image, Luma, Pixel};
 use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
 use reqwest::Url;
@@ -11,14 +13,6 @@ const PROGRESS_EVERY_N_STEPS: u32 = 5;
 const SDAPI_TEXT_TO_IMAGE: &str = "sdapi/v1/txt2img";
 const SDAPI_IMAGE_TO_IMAGE: &str = "sdapi/v1/img2img";
 const SDAPI_PROGRESS: &str = "sdapi/v1/progress?skip_current_image=true";
-
-#[derive(Default, Debug, Clone, Copy)]
-pub enum Progress {
-	#[default]
-	Idle,
-	Generating(f32),
-	Uploading,
-}
 
 #[derive(Debug)]
 enum Error {
@@ -64,7 +58,7 @@ struct ImageResponse {
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 struct ProgressResponse {
-	progress: f32,
+	progress: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -144,8 +138,10 @@ struct ImaginateCommonImageRequest<'a> {
 }
 
 #[cfg(feature = "imaginate")]
-pub async fn imaginate<P: Pixel>(
+pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
+	editor_api: impl Future<Output = WasmEditorApi<'a>>,
+	output_status: impl Future<Output = ImaginateOutputStatus>,
 	preferences: impl Future<Output = ImaginatePreferences>,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
@@ -167,6 +163,8 @@ pub async fn imaginate<P: Pixel>(
 ) -> Image<P> {
 	imaginate_maybe_fail(
 		image,
+		editor_api,
+		output_status,
 		preferences,
 		seed,
 		res,
@@ -193,18 +191,11 @@ pub async fn imaginate<P: Pixel>(
 	})
 }
 
-// TODO: this function just serves as a marker. This should be replaced by code, that actually sends the progress to a client
-fn set_progress(progress: Progress) {
-	match progress {
-		Progress::Idle => info!("imaginate progress: idling"),
-		Progress::Generating(x) => info!("imaginate progress: image is being generated {:.1}%", x * 100.),
-		Progress::Uploading => info!("imaginate progress: server is done generating, now uploading"),
-	}
-}
-
 #[cfg(feature = "imaginate")]
-async fn imaginate_maybe_fail<P: Pixel>(
+async fn imaginate_maybe_fail<'a, P: Pixel>(
 	image: Image<P>,
+	editor_api: impl Future<Output = WasmEditorApi<'a>>,
+	output_status: impl Future<Output = ImaginateOutputStatus>,
 	preferences: impl Future<Output = ImaginatePreferences>,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
@@ -225,6 +216,13 @@ async fn imaginate_maybe_fail<P: Pixel>(
 	_status: impl Future<Output = ImaginateStatus>,
 ) -> Result<Image<P>, Error> {
 	let preferences = preferences.await;
+
+	let editor_api = editor_api.await;
+	let output_status = output_status.await;
+	let set_progress = |progress: ImaginateStatus| {
+		output_status.set(progress);
+		editor_api.node_graph_message_sender.send(NodeGraphUpdateMessage::ImaginateStatusUpdate);
+	};
 
 	let base_url: &str = &preferences.host_name;
 	let base_url: Url = base_url.try_into().map_err(|err| Error::UrlParse { text: base_url.into(), err })?;
@@ -292,7 +290,7 @@ async fn imaginate_maybe_fail<P: Pixel>(
 			}
 			Either::Right((progress, response_future)) => {
 				if let Ok(Ok(ProgressResponse { progress })) = progress {
-					set_progress(Progress::Generating(progress));
+					set_progress(ImaginateStatus::Generating(progress * 100.));
 				}
 				response_future
 			}
@@ -300,11 +298,11 @@ async fn imaginate_maybe_fail<P: Pixel>(
 	};
 	let response = response.and_then(reqwest::Response::error_for_status).map_err(Error::Request)?;
 
-	set_progress(Progress::Uploading);
+	set_progress(ImaginateStatus::Uploading);
 
 	let ImageResponse { images } = response.json().await.map_err(Error::ResponseFormat)?;
 
-	set_progress(Progress::Idle);
+	set_progress(ImaginateStatus::Idle);
 
 	images.into_iter().next().ok_or(Error::NoImage).and_then(|base64_data| base64_to_image(base64_data))
 }

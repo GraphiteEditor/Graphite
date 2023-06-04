@@ -1,4 +1,4 @@
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
 use graphene_core::quantization::QuantizationChannels;
@@ -445,17 +445,18 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			params: [WasmSurfaceHandleFrame]
 		),
 		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: SurfaceFrame, params: [SurfaceFrame]),
-		vec![(
-			NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
-			|args| {
-				Box::pin(async move {
-					let node: DowncastBothNode<Option<WasmEditorApi>, WasmEditorApi> = graphene_std::any::DowncastBothNode::new(args[0].clone());
-					let node = <graphene_core::memo::RefNode<_, _>>::new(node);
-					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
-					any.into_type_erased()
-				})
-			},
-			NodeIOTypes::new(concrete!(()), concrete!(WasmEditorApi), vec![fn_type!(Option<WasmEditorApi>, WasmEditorApi)]),
+		vec![
+			(
+				NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
+				|args| {
+					Box::pin(async move {
+						let node: DowncastBothNode<Option<WasmEditorApi>, WasmEditorApi> = graphene_std::any::DowncastBothNode::new(args[0].clone());
+						let node = <graphene_core::memo::RefNode<_, _>>::new(node);
+						let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+						any.into_type_erased()
+					})
+				},
+				NodeIOTypes::new(concrete!(()), concrete!(WasmEditorApi), vec![fn_type!(Option<WasmEditorApi>, WasmEditorApi)]),
 			),
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
@@ -465,8 +466,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						macro_rules! instanciate_imaginate_node {
 							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)*) };
 						}
-						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> =
-							instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,);
+						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> =
+							instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,);
 						let any = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 						any.into_type_erased()
 					})
@@ -475,6 +476,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					concrete!(ImageFrame<Color>),
 					concrete!(ImageFrame<Color>),
 					vec![
+						fn_type!(WasmEditorApi),
+						fn_type!(ImaginateOutputStatus),
 						fn_type!(ImaginatePreferences),
 						fn_type!(f64),
 						fn_type!(Option<DVec2>),

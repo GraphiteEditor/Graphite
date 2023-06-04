@@ -1674,7 +1674,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	name: "Imaginate",
 	category: "Image Synthesis",
 	identifier: NodeImplementation::DocumentNode(NodeNetwork {
-		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
 			(
@@ -1690,6 +1690,8 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 				DocumentNode {
 					inputs: vec![
 						NodeInput::node(0, 0),
+						NodeInput::Network(concrete!(WasmEditorApi)),
+						NodeInput::Network(concrete!(ImaginateOutputStatus)),
 						NodeInput::Network(concrete!(ImaginatePreferences)),
 						NodeInput::Network(concrete!(f64)),
 						NodeInput::Network(concrete!(Option<DVec2>)),
@@ -1719,6 +1721,12 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	}),
 	inputs: vec![
 		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+		DocumentInputType {
+			name: "Editor Api",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::Network(concrete!(WasmEditorApi)),
+		},
+		DocumentInputType::value("Output Status", TaggedValue::ImaginateOutputStatus(Default::default()), false),
 		DocumentInputType::value("Preferences", TaggedValue::ImaginatePreferences(Default::default()), false),
 		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),

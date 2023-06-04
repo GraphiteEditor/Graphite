@@ -9,6 +9,7 @@ use dyn_any::StaticTypeSized;
 use glam::DAffine2;
 
 use core::hash::{Hash, Hasher};
+use std::sync::mpsc::Sender;
 
 use crate::text::FontCache;
 
@@ -112,10 +113,20 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	}
 }
 
+#[derive(Debug, Clone)]
+pub enum NodeGraphUpdateMessage {
+	ImaginateStatusUpdate,
+}
+
+pub trait NodeGraphUpdateSender {
+	fn send(&self, message: NodeGraphUpdateMessage);
+}
+
 pub struct EditorApi<'a, Io> {
 	pub image_frame: Option<ImageFrame<Color>>,
 	pub font_cache: &'a FontCache,
 	pub application_io: &'a Io,
+	pub node_graph_message_sender: &'a dyn NodeGraphUpdateSender,
 }
 
 impl<'a, Io> Clone for EditorApi<'a, Io> {
@@ -124,6 +135,7 @@ impl<'a, Io> Clone for EditorApi<'a, Io> {
 			image_frame: self.image_frame.clone(),
 			font_cache: self.font_cache,
 			application_io: self.application_io,
+			node_graph_message_sender: self.node_graph_message_sender,
 		}
 	}
 }

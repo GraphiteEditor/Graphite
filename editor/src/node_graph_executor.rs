@@ -12,15 +12,14 @@ use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, N
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::application_io::ApplicationIo;
+use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::vector::style::ViewMode;
 
 use graphene_core::{Color, SurfaceFrame, SurfaceId};
-use graphene_std::wasm_application_io::WasmApplicationIo;
-use graphene_std::wasm_application_io::WasmEditorApi;
+use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
@@ -34,7 +33,7 @@ pub struct NodeRuntime {
 	pub(crate) executor: DynamicExecutor,
 	font_cache: FontCache,
 	receiver: Receiver<NodeRuntimeMessage>,
-	sender: Sender<GenerationResponse>,
+	sender: InternalNodeGraphUpdateSender,
 	wasm_io: Option<WasmApplicationIo>,
 	imaginate_preferences: ImaginatePreferences,
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
@@ -53,6 +52,7 @@ pub(crate) struct GenerationRequest {
 	path: Vec<LayerId>,
 	image_frame: Option<ImageFrame<Color>>,
 }
+
 pub(crate) struct GenerationResponse {
 	generation_id: u64,
 	result: Result<TaggedValue, String>,
@@ -60,17 +60,36 @@ pub(crate) struct GenerationResponse {
 	new_thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 }
 
+enum NodeGraphUpdate {
+	GenerationResponse(GenerationResponse),
+	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
+}
+
+struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
+
+impl InternalNodeGraphUpdateSender {
+	fn send_generation_response(&self, response: GenerationResponse) {
+		self.0.send(NodeGraphUpdate::GenerationResponse(response)).expect("Failed to send response")
+	}
+}
+
+impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
+	fn send(&self, message: NodeGraphUpdateMessage) {
+		self.0.send(NodeGraphUpdate::NodeGraphUpdateMessage(message)).expect("Failed to send response")
+	}
+}
+
 thread_local! {
 	pub(crate) static NODE_RUNTIME: Rc<RefCell<Option<NodeRuntime>>> = Rc::new(RefCell::new(None));
 }
 
 impl NodeRuntime {
-	fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<GenerationResponse>) -> Self {
+	fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
 		let executor = DynamicExecutor::default();
 		Self {
 			executor,
 			receiver,
-			sender,
+			sender: InternalNodeGraphUpdateSender(sender),
 			font_cache: FontCache::default(),
 			imaginate_preferences: Default::default(),
 			thumbnails: Default::default(),
@@ -110,7 +129,7 @@ impl NodeRuntime {
 						updates: responses,
 						new_thumbnails: self.thumbnails.clone(),
 					};
-					self.sender.send(response).expect("Failed to send response");
+					self.sender.send_generation_response(response);
 				}
 			}
 		}
@@ -139,6 +158,7 @@ impl NodeRuntime {
 			font_cache: &self.font_cache,
 			image_frame,
 			application_io: &self.wasm_io.as_ref().unwrap(),
+			node_graph_message_sender: &self.sender,
 		};
 
 		// We assume only one output
@@ -245,7 +265,7 @@ pub async fn run_node_graph() {
 #[derive(Debug)]
 pub struct NodeGraphExecutor {
 	sender: Sender<NodeRuntimeMessage>,
-	receiver: Receiver<GenerationResponse>,
+	receiver: Receiver<NodeGraphUpdate>,
 	// TODO: This is a memory leak since layers are never removed
 	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
@@ -307,11 +327,17 @@ impl NodeGraphExecutor {
 		self.last_output_type.get(path).cloned().flatten()
 	}
 
-	pub fn introspect_first_node_in_network<T: std::any::Any, U, F: FnOnce(&T) -> U>(&mut self, network: &NodeNetwork, node_path: &[NodeId], extract_data: F) -> Option<U> {
+	pub fn introspect_node_in_network<T: std::any::Any + core::fmt::Debug, U, F1: FnOnce(&NodeNetwork) -> Option<NodeId>, F2: FnOnce(&T) -> U>(
+		&mut self,
+		network: &NodeNetwork,
+		node_path: &[NodeId],
+		find_node: F1,
+		extract_data: F2,
+	) -> Option<U> {
 		let wrapping_document_node = network.nodes.get(node_path.last()?)?;
 		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else { return None; };
-		let first_node = wrapped_network.inputs.first()?;
-		let introspection = self.introspect_node(&[node_path, core::slice::from_ref(first_node)].concat())?;
+		let introspection_node = find_node(&wrapped_network)?;
+		let introspection = self.introspect_node(&[node_path, &[introspection_node]].concat())?;
 		let downcasted: &T = <dyn std::any::Any>::downcast_ref(introspection.as_ref())?;
 		Some(extract_data(downcasted))
 	}
@@ -393,26 +419,32 @@ impl NodeGraphExecutor {
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
-			let GenerationResponse {
-				generation_id,
-				result,
-				updates,
-				new_thumbnails,
-			} = response;
-			self.thumbnails = new_thumbnails;
-			let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
-			let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
-			responses.extend(updates);
-			self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
-			responses.add(DocumentMessage::LayerChanged {
-				affected_layer_path: execution_context.layer_path,
-			});
-			responses.add(DocumentMessage::RenderDocument);
-			responses.add(ArtboardMessage::RenderArtboards);
-			responses.add(DocumentMessage::DocumentStructureChanged);
-			responses.add(BroadcastEvent::DocumentIsDirty);
-			responses.add(DocumentMessage::DirtyRenderDocument);
-			responses.add(DocumentMessage::Overlays(OverlaysMessage::Rerender));
+			match response {
+				NodeGraphUpdate::GenerationResponse(GenerationResponse {
+					generation_id,
+					result,
+					updates,
+					new_thumbnails,
+				}) => {
+					self.thumbnails = new_thumbnails;
+					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
+					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
+					responses.extend(updates);
+					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
+					responses.add(DocumentMessage::LayerChanged {
+						affected_layer_path: execution_context.layer_path,
+					});
+					responses.add(DocumentMessage::RenderDocument);
+					responses.add(ArtboardMessage::RenderArtboards);
+					responses.add(DocumentMessage::DocumentStructureChanged);
+					responses.add(BroadcastEvent::DocumentIsDirty);
+					responses.add(DocumentMessage::DirtyRenderDocument);
+					responses.add(DocumentMessage::Overlays(OverlaysMessage::Rerender));
+				}
+				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
+					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::ResendActiveProperties))
+				}
+			}
 		}
 		Ok(())
 	}

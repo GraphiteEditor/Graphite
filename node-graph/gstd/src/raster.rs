@@ -1,10 +1,11 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
 use graphene_core::transform::Transform;
 
+use crate::wasm_application_io::WasmEditorApi;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::value::CopiedNode;
 use graphene_core::{Color, Node};
@@ -419,30 +420,34 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 macro_rules! generate_imaginate_node {
 	($($val:ident: $t:ident: $o:ty,)*) => {
 		#[derive(Debug, Clone)]
-		pub struct ImaginateNode<P, $($t,)*> {
+		pub struct ImaginateNode<P, E, $($t,)*> {
+			editor_api: E,
 			$($val: $t,)*
 			_p: PhantomData<P>,
 		}
 
-		impl<'e, P, $($t,)*> ImaginateNode<P, $($t,)*>
+		impl<'e, P, E, $($t,)*> ImaginateNode<P, E, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
 		{
-			pub fn new($($val: $t,)*) -> Self {
-				Self { $($val,)* _p: PhantomData }
+			pub fn new(editor_api: E, $($val: $t,)*) -> Self {
+				Self { editor_api, $($val,)* _p: PhantomData }
 			}
 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, $($t,)*>
+		impl<'i, 'e: 'i, P: Pixel + 'i, E: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>
 		{
 			type Output = DynFuture<'i, ImageFrame<P>>;
 
 			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
+				let editor_api = self.editor_api.eval(());
 				$(let $val = self.$val.eval(());)*
 				Box::pin(async move {
 					ImageFrame {
 						transform: frame.transform,
-						image: super::imaginate::imaginate(frame.image, $($val,)*).await,
+						image: super::imaginate::imaginate(frame.image, editor_api, $($val,)*).await,
 					}
 				})
 			}
@@ -451,6 +456,7 @@ macro_rules! generate_imaginate_node {
 }
 
 generate_imaginate_node! {
+	output_status: OutputStatus: ImaginateOutputStatus,
 	preferences: Preferences: ImaginatePreferences,
 	seed: Seed: f64,
 	res: Res: Option<DVec2>,

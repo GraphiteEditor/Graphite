@@ -10,7 +10,7 @@ use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -1011,7 +1011,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let tiling_index = resolve_input("Tiling");
 
 	let complete_value = &document_node.inputs[resolve_input("Percent Complete")];
-	let status_value = &document_node.inputs[resolve_input("Status")];
+	let output_status = &document_node.inputs[resolve_input("Output Status")];
 
 	let server_status = {
 		let status = match &context.persistent_data.imaginate_server_status {
@@ -1055,12 +1055,14 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else {
-		panic!("Invalid status input")
-	};
-	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
+	let &NodeInput::Value {tagged_value: TaggedValue::F64(percent_complete),..} = complete_value else {
 		panic!("Invalid percent complete input")
 	};
+	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateOutputStatus(ref output_status),..} = output_status else {
+		panic!("Invalid output status input")
+	};
+	let imaginate_status = output_status.get();
+
 	let use_base_image = if let &NodeInput::Value {
 		tagged_value: TaggedValue::Bool(use_base_image),
 		..
@@ -1074,20 +1076,11 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let transform_not_connected = false;
 
 	let progress = {
-		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
-		let mut interpreted_status = imaginate_status;
-		if imaginate_status == ImaginateStatus::Idle && percent_complete > 0. && percent_complete < 100. {
-			interpreted_status = ImaginateStatus::Terminated;
-		}
-
-		let status = match interpreted_status {
-			ImaginateStatus::Idle => match percent_complete {
-				100.0.. => "Done".into(),
-				_ => "Ready".into(),
-			},
+		let status = match imaginate_status {
+			ImaginateStatus::Idle => "Idle".into(),
 			ImaginateStatus::Beginning => "Beginning...".into(),
-			ImaginateStatus::Uploading(percent) => format!("Uploading Input Image: {percent:.0}%"),
-			ImaginateStatus::Generating => format!("Generating: {percent_complete:.0}%"),
+			ImaginateStatus::Uploading => format!("Uploading Input Image"),
+			ImaginateStatus::Generating(percent) => format!("Generating: {percent:.0}%"),
 			ImaginateStatus::Terminating => "Terminating...".into(),
 			ImaginateStatus::Terminated => format!("{percent_complete:.0}% (Terminated)"),
 		};
@@ -1113,11 +1106,11 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		];
 
 		match imaginate_status {
-			ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => {
+			ImaginateStatus::Beginning | ImaginateStatus::Uploading => {
 				widgets.extend_from_slice(&assist_separators);
 				widgets.push(TextButton::new("Beginning...").tooltip("Sending image generation request to the server").disabled(true).widget_holder());
 			}
-			ImaginateStatus::Generating => {
+			ImaginateStatus::Generating(_) => {
 				widgets.extend_from_slice(&assist_separators);
 				widgets.push(
 					TextButton::new("Terminate")
@@ -1150,7 +1143,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
-						info!("hitted the random seed button :3");
 						move |_| {
 							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
@@ -1240,7 +1232,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 	let transform = context
 		.executor
-		.introspect_first_node_in_network(context.network, &imaginate_node, |frame: &ImageFrame<Color>| frame.transform)
+		.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
 		.unwrap_or_default();
 
 	let resolution = {

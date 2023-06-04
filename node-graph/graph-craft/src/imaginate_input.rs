@@ -1,7 +1,34 @@
-use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
+
+#[derive(Default, Debug, Clone, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImaginateOutputStatus(pub Arc<Mutex<ImaginateStatus>>);
+
+impl ImaginateOutputStatus {
+	pub fn get(&self) -> ImaginateStatus {
+		*self.0.lock().unwrap()
+	}
+
+	pub fn set(&self, status: ImaginateStatus) {
+		*self.0.lock().unwrap() = status
+	}
+}
+
+impl std::cmp::PartialEq for ImaginateOutputStatus {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.0, &other.0)
+	}
+}
+
+impl core::hash::Hash for ImaginateOutputStatus {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		use std::ops::Deref;
+		self.0.lock().unwrap().deref().hash(state)
+	}
+}
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -9,8 +36,8 @@ pub enum ImaginateStatus {
 	#[default]
 	Idle,
 	Beginning,
-	Uploading(f64),
-	Generating,
+	Uploading,
+	Generating(f64),
 	Terminating,
 	Terminated,
 }
@@ -21,11 +48,11 @@ impl core::hash::Hash for ImaginateStatus {
 		match self {
 			Self::Idle => 0.hash(state),
 			Self::Beginning => 1.hash(state),
-			Self::Uploading(f) => {
-				2.hash(state);
+			Self::Uploading => 2.hash(state),
+			Self::Generating(f) => {
+				3.hash(state);
 				f.to_bits().hash(state);
 			}
-			Self::Generating => 3.hash(state),
 			Self::Terminating => 4.hash(state),
 			Self::Terminated => 5.hash(state),
 		}
