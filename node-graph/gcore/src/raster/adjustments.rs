@@ -260,6 +260,9 @@ pub struct ExtractOpaqueNode;
 
 #[node_macro::node_fn(ExtractOpaqueNode)]
 fn extract_opaque_node(color: Color) -> Color {
+	if color.a() == 0. {
+		return color.with_alpha(1.);
+	}
 	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.0).unwrap()
 }
 
