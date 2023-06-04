@@ -7,10 +7,9 @@ use crate::messages::prelude::*;
 use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::{LayerId, Operation};
 
-use dyn_any::DynAny;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
-use graph_craft::executor::Compiler;
+use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::{Image, ImageFrame};
@@ -18,9 +17,9 @@ use graphene_core::renderer::{SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::vector::style::ViewMode;
 
-use graphene_core::wasm_application_io::{WasmApplicationIo, WasmSurfaceHandleFrame};
+use graphene_core::wasm_application_io::WasmApplicationIo;
 use graphene_core::{Color, EditorApi, SurfaceFrame, SurfaceId};
-use interpreted_executor::executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
 use std::borrow::Cow;
@@ -110,7 +109,7 @@ impl NodeRuntime {
 						updates: responses,
 						new_thumbnails: self.thumbnails.clone(),
 					};
-					self.sender.send(response);
+					self.sender.send(response).expect("Failed to send response");
 				}
 			}
 		}
@@ -118,7 +117,7 @@ impl NodeRuntime {
 
 	/// Wraps a network in a scope and returns the new network and the paths to the monitor nodes.
 	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
-		let mut scoped_network = wrap_network_in_scope(network);
+		let scoped_network = wrap_network_in_scope(network);
 
 		//scoped_network.generate_node_paths(&[]);
 		let monitor_nodes = scoped_network
@@ -126,7 +125,6 @@ impl NodeRuntime {
 			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))
 			.map(|(_, _, path)| path)
 			.collect();
-		//scoped_network.remove_dead_nodes();
 
 		(scoped_network, monitor_nodes)
 	}
@@ -149,40 +147,23 @@ impl NodeRuntime {
 			return Err(e);
 		}
 
-		use dyn_any::IntoDynAny;
-		use graph_craft::executor::Executor;
+		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(EditorApi) => self.executor.execute(editor_api.into_dyn()).await.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => self.executor.execute(().into_dyn()).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(EditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
-		};
+		}?;
 
-		match result {
-			Ok(result) => {
-				if DynAny::type_id(result.as_ref()) == core::any::TypeId::of::<WasmSurfaceHandleFrame>() {
-					let Ok(value) = dyn_any::downcast::<WasmSurfaceHandleFrame>(result) else { unreachable!()};
-					let new_id = value.surface_handle.surface_id;
-					let old_id = self.canvas_cache.insert(path.to_vec(), new_id);
-					if let Some(old_id) = old_id {
-						if old_id != new_id {
-							self.wasm_io.destroy_surface(old_id);
-						}
-					}
-					return Ok(TaggedValue::SurfaceFrame(SurfaceFrame {
-						surface_id: new_id,
-						transform: value.transform,
-					}));
-				}
-
-				let type_name = DynAny::type_name(result.as_ref());
-				match TaggedValue::try_from_any(result) {
-					Some(x) => Ok(x),
-					None => Err(format!("Invalid output type: {}", type_name)),
+		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
+			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
+			if let Some(old_id) = old_id {
+				if old_id != surface_id {
+					self.wasm_io.destroy_surface(old_id);
 				}
 			}
-			Err(e) => Err(e),
 		}
+		Ok(result)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
@@ -225,6 +206,19 @@ impl NodeRuntime {
 		}
 	}
 }
+pub fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	NODE_RUNTIME
+		.try_with(|runtime| {
+			let runtime = runtime.try_borrow();
+			if let Ok(ref runtime) = runtime {
+				if let Some(ref mut runtime) = runtime.as_ref() {
+					return runtime.executor.introspect(path).flatten();
+				}
+			}
+			None
+		})
+		.unwrap_or(None)
+}
 
 pub async fn run_node_graph() {
 	let result = NODE_RUNTIME.try_with(|runtime| {
@@ -245,7 +239,6 @@ pub async fn run_node_graph() {
 
 #[derive(Debug)]
 pub struct NodeGraphExecutor {
-	pub(crate) executor: DynamicExecutor,
 	sender: Sender<NodeRuntimeMessage>,
 	receiver: Receiver<GenerationResponse>,
 	// TODO: This is a memory leak since layers are never removed
@@ -269,7 +262,6 @@ impl Default for NodeGraphExecutor {
 		});
 
 		Self {
-			executor: Default::default(),
 			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_reciever,
@@ -289,17 +281,17 @@ impl NodeGraphExecutor {
 			image_frame,
 			generation_id,
 		};
-		self.sender.send(NodeRuntimeMessage::GenerationRequest(request));
+		self.sender.send(NodeRuntimeMessage::GenerationRequest(request)).expect("Failed to send generation request");
 
 		generation_id
 	}
 
-	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache));
+	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+		introspect_node(path)
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-		self.executor.introspect(path).flatten()
+	pub fn update_font_cache(&self, font_cache: FontCache) {
+		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
 	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {

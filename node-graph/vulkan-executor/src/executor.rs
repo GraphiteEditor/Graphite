@@ -1,6 +1,8 @@
+use std::error::Error;
+
 use super::context::Context;
 
-use graph_craft::executor::{Any, Executor};
+use graph_craft::graphene_compiler::Executor;
 
 use graph_craft::proto::LocalFuture;
 use graphene_core::gpu::PushConstants;
@@ -38,9 +40,8 @@ impl<I: StaticTypeSized, O> GpuExecutor<I, O> {
 	}
 }
 
-impl<I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> Executor for GpuExecutor<I, O> {
-	fn execute<'i>(&'i self, input: Any<'i>) -> LocalFuture<Result<Any<'i>, Box<dyn std::error::Error>>> {
-		let input = dyn_any::downcast::<Vec<I>>(input).expect("Wrong input type");
+impl<'a, I: StaticTypeSized + Sync + Pod + Send + 'a, O: StaticTypeSized + Send + Sync + Pod + 'a> Executor<Vec<I>, Vec<O>> for &'a GpuExecutor<I, O> {
+	fn execute(&self, input: Vec<I>) -> LocalFuture<Result<Vec<O>, Box<dyn Error>>> {
 		let context = &self.context;
 		let result: Vec<O> = execute_shader(
 			context.device.clone(),
@@ -48,9 +49,9 @@ impl<I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + 
 			self.shader.entry_point(&self.entry_point).expect("Entry point not found in shader"),
 			&context.allocator,
 			&context.command_buffer_allocator,
-			*input,
+			input,
 		);
-		Box::pin(async move { Ok(Box::new(result) as Any) })
+		Box::pin(async move { Ok(result) })
 	}
 }
 

@@ -1,18 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::sync::{Arc, RwLock};
+
+use std::sync::Arc;
 
 use dyn_any::StaticType;
-use graph_craft::document::value::UpcastNode;
+use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::NodeId;
-use graph_craft::executor::Executor;
-use graph_craft::proto::{ConstructionArgs, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
+use graph_craft::graphene_compiler::Executor;
+use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, TypeErasedBox, TypingContext};
 use graph_craft::Type;
-use graphene_std::any::{Any, TypeErasedPinned, TypeErasedPinnedRef};
 
 use crate::node_registry;
 
-#[derive(Debug, Clone)]
 pub struct DynamicExecutor {
 	output: NodeId,
 	tree: BorrowTree,
@@ -73,51 +72,20 @@ impl DynamicExecutor {
 	}
 }
 
-impl Executor for DynamicExecutor {
-	fn execute<'a>(&'a self, input: Any<'a>) -> LocalFuture<Result<Any<'a>, Box<dyn Error>>> {
-		Box::pin(async move { self.tree.eval_any(self.output, input).await.ok_or_else(|| "Failed to execute".into()) })
+impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
+	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
+		Box::pin(async move { self.tree.eval_tagged_value(self.output, input).await.map_err(|e| e.into()) })
 	}
 }
 
-pub struct NodeContainer<'n> {
-	pub node: TypeErasedPinned<'n>,
-	// the dependencies are only kept to ensure that the nodes are not dropped while still in use
-	_dependencies: Vec<Arc<RwLock<NodeContainer<'static>>>>,
-}
-
-impl<'a> core::fmt::Debug for NodeContainer<'a> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeContainer").finish()
-	}
-}
-
-impl<'a> NodeContainer<'a> {
-	pub fn new(node: TypeErasedPinned<'a>, _dependencies: Vec<Arc<RwLock<NodeContainer<'static>>>>) -> Self {
-		Self { node, _dependencies }
-	}
-
-	/// Return a static reference to the TypeErasedNode
-	/// # Safety
-	/// This is unsafe because the returned reference is only valid as long as the NodeContainer is alive
-	pub unsafe fn erase_lifetime(self) -> NodeContainer<'static> {
-		std::mem::transmute(self)
-	}
-}
-impl NodeContainer<'static> {
-	pub unsafe fn static_ref(&self) -> TypeErasedPinnedRef<'static> {
-		let s = &*(self as *const Self);
-		*(&s.node.as_ref() as *const TypeErasedPinnedRef<'static>)
-	}
-}
-
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 pub struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<RwLock<NodeContainer<'static>>>>,
+	nodes: HashMap<NodeId, Arc<NodeContainer>>,
 	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 
 impl BorrowTree {
-	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Self, String> {
+	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, String> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
 			nodes.push_node(id, node, typing_context).await?
@@ -133,9 +101,7 @@ impl BorrowTree {
 				self.push_node(id, node, typing_context).await?;
 			} else {
 				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
-				let mut node_container_writer = node_container.write().unwrap();
-				let node = node_container_writer.node.as_mut();
-				node.reset();
+				node_container.reset();
 			}
 			old_nodes.remove(&id);
 		}
@@ -143,42 +109,33 @@ impl BorrowTree {
 		Ok(old_nodes.into_iter().collect())
 	}
 
-	fn node_refs(&self, nodes: &[NodeId]) -> Vec<TypeErasedPinnedRef<'static>> {
-		self.node_deps(nodes).into_iter().map(|node| unsafe { node.read().unwrap().static_ref() }).collect()
-	}
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<RwLock<NodeContainer<'static>>>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: Arc<RwLock<NodeContainer<'static>>>, id: NodeId) -> Arc<RwLock<NodeContainer<'static>>> {
-		self.nodes.insert(id, node.clone());
-		node
+	fn store_node(&mut self, node: Arc<NodeContainer>, id: NodeId) {
+		self.nodes.insert(id, node);
 	}
 
 	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		let id = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
-		let reader = node.read().unwrap();
-		let node = reader.node.as_ref();
 		Some(node.serialize())
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<RwLock<NodeContainer<'static>>>> {
+	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer>> {
 		self.nodes.get(&id).cloned()
 	}
 
-	pub async fn eval<'i, I: StaticType + 'i + Send + Sync, O: StaticType + Send + Sync + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
+	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
-		let reader = node.read().unwrap();
-		let output = reader.node.eval(Box::new(input));
+		let output = node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
-	pub async fn eval_any<'i>(&'i self, id: NodeId, input: Any<'i>) -> Option<Any<'i>> {
-		let node = self.nodes.get(&id)?;
-		// TODO: Comments by @TrueDoctor before this was merged:
-		// TODO: Oof I dislike the evaluation being an unsafe operation but I guess its fine because it only is a lifetime extension
-		// TODO: We should ideally let miri run on a test that evaluates the nodegraph multiple times to check if this contains any subtle UB but this looks fine for now
-		Some(unsafe { (*((&*node.read().unwrap()) as *const NodeContainer)).node.eval(input).await })
+	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
+		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
+		let output = node.eval(Box::new(input));
+		TaggedValue::try_from_any(output.await)
 	}
 
 	pub fn free_node(&mut self, id: NodeId) {
@@ -197,23 +154,18 @@ impl BorrowTree {
 		match construction_args {
 			ConstructionArgs::Value(value) => {
 				let upcasted = UpcastNode::new(value);
-				let node = Box::pin(upcasted) as TypeErasedPinned<'_>;
-				let node = NodeContainer { node, _dependencies: vec![] };
-				let node = unsafe { node.erase_lifetime() };
-				self.store_node(Arc::new(node.into()), id);
+				let node = Box::new(upcasted) as TypeErasedBox<'_>;
+				let node = NodeContainer::new(node);
+				self.store_node(node.into(), id);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
-				let construction_nodes = self.node_refs(&ids);
+				let construction_nodes = self.node_deps(&ids);
 				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {:?}", identifier))?;
 				let node = constructor(construction_nodes).await;
-				let node = NodeContainer {
-					node,
-					_dependencies: self.node_deps(&ids),
-				};
-				let node = unsafe { node.erase_lifetime() };
-				self.store_node(Arc::new(node.into()), id);
+				let node = NodeContainer::new(node);
+				self.store_node(node.into(), id);
 			}
 		};
 		Ok(())
@@ -226,12 +178,15 @@ mod test {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn push_node() {
+	#[test]
+	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
-		tree.push_node(0, val_1_protonode, &TypingContext::default()).await.unwrap();
+		let context = TypingContext::default();
+		let future = tree.push_node(0, val_1_protonode, &context); //.await.unwrap();
+		futures::executor::block_on(future).unwrap();
 		let _node = tree.get(0).unwrap();
-		assert_eq!(tree.eval(0, ()).await, Some(2u32));
+		let result = futures::executor::block_on(tree.eval(0, ()));
+		assert_eq!(result, Some(2u32));
 	}
 }

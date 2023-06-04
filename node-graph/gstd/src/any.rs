@@ -1,9 +1,9 @@
 use dyn_any::StaticType;
-pub use graph_craft::proto::{Any, TypeErasedNode, TypeErasedPinned, TypeErasedPinnedRef};
+pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny};
 use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 pub struct DynAnyNode<I, O, Node> {
 	node: Node,
@@ -29,9 +29,8 @@ where
 		Box::pin(output)
 	}
 
-	fn reset(self: std::pin::Pin<&mut Self>) {
-		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
-		Node::reset(wrapped_node);
+	fn reset(&self) {
+		self.node.reset();
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
@@ -67,9 +66,8 @@ where
 		let output = async move { Box::new(result) as Any<'input> };
 		Box::pin(output)
 	}
-	fn reset(self: std::pin::Pin<&mut Self>) {
-		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
-		Node::reset(wrapped_node);
+	fn reset(&self) {
+		self.node.reset();
 	}
 }
 
@@ -114,9 +112,8 @@ where
 	fn eval(&'i self, input: T) -> Self::Output {
 		Box::pin(async move { self.node.eval(input) })
 	}
-	fn reset(self: std::pin::Pin<&mut Self>) {
-		let wrapped_node = unsafe { self.map_unchecked_mut(|e| &mut e.node) };
-		Node::reset(wrapped_node);
+	fn reset(&self) {
+		self.node.reset();
 	}
 }
 
@@ -127,15 +124,15 @@ impl<'i, N> FutureWrapperNode<N> {
 }
 
 pub trait IntoTypeErasedNode<'n> {
-	fn into_type_erased(self) -> TypeErasedPinned<'n>;
+	fn into_type_erased(self) -> TypeErasedBox<'n>;
 }
 
 impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
 where
 	N: for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n,
 {
-	fn into_type_erased(self) -> TypeErasedPinned<'n> {
-		Box::pin(self)
+	fn into_type_erased(self) -> TypeErasedBox<'n> {
+		Box::new(self)
 	}
 }
 
@@ -162,13 +159,13 @@ where
 
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
-#[derive(Clone, Copy)]
-pub struct DowncastBothNode<'a, I, O> {
-	node: TypeErasedPinnedRef<'a>,
+#[derive(Clone)]
+pub struct DowncastBothNode<I, O> {
+	node: Arc<NodeContainer>,
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<'n, I, O> {
+impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<I, O> {
 	type Output = DynFuture<'input, O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -183,8 +180,8 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 		}
 	}
 }
-impl<'n, I, O> DowncastBothNode<'n, I, O> {
-	pub const fn new(node: TypeErasedPinnedRef<'n>) -> Self {
+impl<I, O> DowncastBothNode<I, O> {
+	pub const fn new(node: Arc<NodeContainer>) -> Self {
 		Self {
 			node,
 			_i: core::marker::PhantomData,
@@ -194,12 +191,12 @@ impl<'n, I, O> DowncastBothNode<'n, I, O> {
 }
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
-#[derive(Clone, Copy)]
-pub struct DowncastBothRefNode<'a, I, O> {
-	node: TypeErasedPinnedRef<'a>,
+#[derive(Clone)]
+pub struct DowncastBothRefNode<I, O> {
+	node: Arc<NodeContainer>,
 	_i: PhantomData<(I, O)>,
 }
-impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<'n, I, O> {
+impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<I, O> {
 	type Output = DynFuture<'input, &'input O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -207,24 +204,24 @@ impl<'n: 'input, 'input, O: 'input + StaticType, I: 'input + StaticType> Node<'i
 			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			Box::pin(async move {
-				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e}"));
+				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e} in {node_name}"));
 				*out
 			})
 		}
 	}
 }
-impl<'n, I, O> DowncastBothRefNode<'n, I, O> {
-	pub const fn new(node: TypeErasedPinnedRef<'n>) -> Self {
+impl<I, O> DowncastBothRefNode<I, O> {
+	pub const fn new(node: Arc<NodeContainer>) -> Self {
 		Self { node, _i: core::marker::PhantomData }
 	}
 }
 
-pub struct ComposeTypeErased<'a> {
-	first: TypeErasedPinnedRef<'a>,
-	second: TypeErasedPinnedRef<'a>,
+pub struct ComposeTypeErased {
+	first: Arc<NodeContainer>,
+	second: Arc<NodeContainer>,
 }
 
-impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
+impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased {
 	type Output = DynFuture<'i, Any<'i>>;
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
 		Box::pin(async move {
@@ -234,13 +231,13 @@ impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased<'a> {
 	}
 }
 
-impl<'a> ComposeTypeErased<'a> {
-	pub const fn new(first: TypeErasedPinnedRef<'a>, second: TypeErasedPinnedRef<'a>) -> Self {
+impl ComposeTypeErased {
+	pub const fn new(first: Arc<NodeContainer>, second: Arc<NodeContainer>) -> Self {
 		ComposeTypeErased { first, second }
 	}
 }
 
-pub fn input_node<O: StaticType>(n: TypeErasedPinnedRef) -> DowncastBothNode<(), O> {
+pub fn input_node<O: StaticType>(n: Arc<NodeContainer>) -> DowncastBothNode<(), O> {
 	DowncastBothNode::new(n)
 }
 
@@ -270,22 +267,23 @@ mod test {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
-		let type_erased = Box::pin(dyn_any) as TypeErasedPinned;
+		let type_erased = Box::new(dyn_any) as TypeErasedBox;
 		let _ref_type_erased = type_erased.as_ref();
-		//let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
+		//let type_erased = Box::pin(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new(&("32", 32u32)));
 	}
 
 	#[test]
-	pub fn dyn_input_invalid_eval_panic_() {
+	pub fn dyn_input_compose() {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
-		let type_erased = Box::pin(dyn_any) as TypeErasedPinned<'_>;
+		let type_erased = Box::new(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new((4u32, 2u32)));
 		let id_node = FutureWrapperNode::new(IdNode::new());
-		let type_erased_id = Box::pin(id_node) as TypeErasedPinned;
-		let type_erased = ComposeTypeErased::new(type_erased.as_ref(), type_erased_id.as_ref());
+		let any_id = DynAnyNode::<u32, u32, _>::new(ValueNode::new(id_node));
+		let type_erased_id = Box::new(any_id) as TypeErasedBox;
+		let type_erased = ComposeTypeErased::new(NodeContainer::new(type_erased), NodeContainer::new(type_erased_id));
 		type_erased.eval(Box::new((4u32, 2u32)));
 		//let downcast: DowncastBothNode<(u32, u32), u32> = DowncastBothNode::new(type_erased.as_ref());
 		//downcast.eval((4u32, 2u32));

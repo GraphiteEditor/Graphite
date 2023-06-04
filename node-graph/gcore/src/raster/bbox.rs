@@ -65,6 +65,15 @@ impl Bbox {
 		}
 	}
 
+	pub fn from_transform(transform: DAffine2) -> Self {
+		Self {
+			top_left: transform.transform_point2(DVec2::new(0., 1.)),
+			top_right: transform.transform_point2(DVec2::new(1., 1.)),
+			bottom_left: transform.transform_point2(DVec2::new(0., 0.)),
+			bottom_right: transform.transform_point2(DVec2::new(1., 0.)),
+		}
+	}
+
 	pub fn affine_transform(self, transform: DAffine2) -> Self {
 		Self {
 			top_left: transform.transform_point2(self.top_left),

@@ -1,7 +1,6 @@
 use crate::Node;
 
 use core::{
-	borrow::BorrowMut,
 	cell::{Cell, RefCell, RefMut},
 	marker::PhantomData,
 };
@@ -47,10 +46,7 @@ impl<'i, T: 'i> Node<'i, ()> for RefCellMutNode<T> {
 	type Output = RefMut<'i, T>;
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
-		#[cfg(not(target_arch = "spirv"))]
 		let a = self.0.borrow_mut();
-		#[cfg(target_arch = "spirv")]
-		let a = unsafe { self.0.try_borrow_mut().unwrap_unchecked() };
 		a
 	}
 }
@@ -58,24 +54,6 @@ impl<'i, T: 'i> Node<'i, ()> for RefCellMutNode<T> {
 impl<T> RefCellMutNode<T> {
 	pub const fn new(value: T) -> RefCellMutNode<T> {
 		RefCellMutNode(RefCell::new(value))
-	}
-}
-/// #Safety: Never use this as it is unsound.
-#[derive(Default, Debug)]
-pub struct UnsafeMutValueNode<T>(pub T);
-
-/// #Safety: Never use this as it is unsound.
-impl<'i, T: 'i> Node<'i, ()> for UnsafeMutValueNode<T> {
-	type Output = &'i mut T;
-	#[inline(always)]
-	fn eval(&'i self, _input: ()) -> Self::Output {
-		unsafe { &mut *(&self.0 as &T as *const T as *mut T) }
-	}
-}
-
-impl<T> UnsafeMutValueNode<T> {
-	pub const fn new(value: T) -> UnsafeMutValueNode<T> {
-		UnsafeMutValueNode(value)
 	}
 }
 
