@@ -606,6 +606,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
+			name: "Extract Opaque",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::no_properties,
+		},
+		DocumentNodeType {
 			name: "Split Channels",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
