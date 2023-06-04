@@ -116,6 +116,10 @@ where
 	fn reset(&self) {
 		self.node.reset();
 	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		self.node.serialize()
+	}
 }
 
 impl<N> FutureWrapperNode<N> {

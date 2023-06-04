@@ -989,17 +989,30 @@ pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, render_data: &RenderD
 pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
 	const MAX_RESOLUTION: u64 = 1000 * 1000;
 
-	let mut scale_factor = 1.;
+	// this is the maximum width/height that can be obtained
+	const MAX_DIMENSION: u64 = (MAX_RESOLUTION / 64) & !63;
 
-	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
+	// round the resolution to the nearest multiple of 64
+	let [width, height] = [width, height].map(|c| (c.round().clamp(0., MAX_DIMENSION as _) as u64 + 32).max(64) & !63);
+	let resolution = width * height;
 
-	loop {
-		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
+	if resolution > MAX_RESOLUTION {
+		// scale down the image, so it is smaller than MAX_RESOLUTION
+		let scale = (MAX_RESOLUTION as f64 / resolution as f64).sqrt();
+		let [width, height] = [width, height].map(|c| c as f64 * scale);
 
-		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
-			return possible_solution;
+		if width < 64.0 {
+			// the image is extremely wide
+			(64, MAX_DIMENSION)
+		} else if height < 64.0 {
+			// the image is extremely high
+			(MAX_DIMENSION, 64)
+		} else {
+			// round down to a multiple of 64, so that the resolution still is smaller than MAX_RESOLUTION
+			let [width, height] = [width, height].map(|c| c as u64 & !63);
+			(width, height)
 		}
-
-		scale_factor -= 0.1;
+	} else {
+		(width, height)
 	}
 }

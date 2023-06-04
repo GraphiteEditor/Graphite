@@ -1238,17 +1238,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	// Create the input to the graph using an empty image
-	/*
-	let editor_api = std::borrow::Cow::Owned(EditorApi {
-		image_frame: None,
-		font_cache: Some(&context.persistent_data.font_cache),
-	});
-	// Compute the transform input to the image frame
-	let image_frame: ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, editor_api).unwrap_or_default();
-	*/
-	let image_frame: ImageFrame<Color> = ImageFrame::identity();
-	let transform = image_frame.transform;
+	let transform = context
+		.executor
+		.introspect_first_node_in_network(context.network, &imaginate_node, |frame: &ImageFrame<Color>| frame.transform)
+		.unwrap_or_default();
 
 	let resolution = {
 		use document_legacy::document::pick_safe_imaginate_resolution;
@@ -1257,7 +1250,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 		let round = |x: DVec2| {
 			let (x, y) = pick_safe_imaginate_resolution(x.into());
-			Some(DVec2::new(x as f64, y as f64))
+			DVec2::new(x as f64, y as f64)
 		};
 
 		if let &NodeInput::Value {
@@ -1266,14 +1259,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		} = &document_node.inputs[resolution_index]
 		{
 			let dimensions_is_auto = vec2.is_none();
-			let vec2 = vec2.unwrap_or_else(|| {
-				let w = transform.transform_vector2(DVec2::new(1., 0.)).length();
-				let h = transform.transform_vector2(DVec2::new(0., 1.)).length();
-
-				let (x, y) = pick_safe_imaginate_resolution((w, h));
-
-				DVec2::new(x as f64, y as f64)
-			});
+			let vec2 = vec2.unwrap_or_else(|| round([transform.matrix2.x_axis, transform.matrix2.y_axis].map(DVec2::length).into()));
 
 			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
@@ -1318,7 +1304,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
-						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
+						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(Some(round(DVec2::new(number_input.value.unwrap(), vec2.y)))),
 						node_id,
 						resolution_index,
 					))
@@ -1331,7 +1317,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
-						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
+						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(Some(round(DVec2::new(vec2.x, number_input.value.unwrap())))),
 						node_id,
 						resolution_index,
 					))

@@ -307,6 +307,15 @@ impl NodeGraphExecutor {
 		self.last_output_type.get(path).cloned().flatten()
 	}
 
+	pub fn introspect_first_node_in_network<T: std::any::Any, U, F: FnOnce(&T) -> U>(&mut self, network: &NodeNetwork, node_path: &[NodeId], extract_data: F) -> Option<U> {
+		let wrapping_document_node = network.nodes.get(node_path.last()?)?;
+		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else { return None; };
+		let first_node = wrapped_network.inputs.first()?;
+		let introspection = self.introspect_node(&[node_path, core::slice::from_ref(first_node)].concat())?;
+		let downcasted: &T = <dyn std::any::Any>::downcast_ref(introspection.as_ref())?;
+		Some(extract_data(downcasted))
+	}
+
 	/// Encodes an image into a format using the image crate
 	fn encode_img(image: Image<Color>, resize: Option<DVec2>, format: image::ImageOutputFormat) -> Result<(Vec<u8>, (u32, u32)), String> {
 		use image::{ImageBuffer, Rgba};

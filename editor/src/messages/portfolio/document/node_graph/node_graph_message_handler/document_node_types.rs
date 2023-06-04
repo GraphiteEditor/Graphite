@@ -1673,7 +1673,50 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeType {
 	name: "Imaginate",
 	category: "Image Synthesis",
-	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+	identifier: NodeImplementation::DocumentNode(NodeNetwork {
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		outputs: vec![NodeOutput::new(1, 0)],
+		nodes: [
+			(
+				0,
+				DocumentNode {
+					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+					..Default::default()
+				},
+			),
+			(
+				1,
+				DocumentNode {
+					inputs: vec![
+						NodeInput::node(0, 0),
+						NodeInput::Network(concrete!(ImaginatePreferences)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(Option<DVec2>)),
+						NodeInput::Network(concrete!(u32)),
+						NodeInput::Network(concrete!(ImaginateSamplingMethod)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(String)),
+						NodeInput::Network(concrete!(String)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(Option<Vec<u64>>)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(ImaginateMaskStartingFill)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(ImaginateStatus)),
+					],
+					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+					..Default::default()
+				},
+			),
+		]
+		.into(),
+		..Default::default()
+	}),
 	inputs: vec![
 		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 		DocumentInputType::value("Preferences", TaggedValue::ImaginatePreferences(Default::default()), false),

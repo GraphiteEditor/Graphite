@@ -1197,8 +1197,8 @@ mod test {
 			..Default::default()
 		};
 		let _new_ids = 101..;
-		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000);
-		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001);
+		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000, &Default::default());
+		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001, &Default::default());
 		network.remove_dead_nodes();
 		network
 	}
