@@ -1,5 +1,5 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@/utils/options";
+import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions, xSliderOptions, ySliderOptions } from "@/utils/options";
 import { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption, BEZIER_T_VALUE_VARIANTS } from "@/utils/types";
 
 const bezierFeatures = {
@@ -17,6 +17,7 @@ const bezierFeatures = {
 			return WasmBezier.cubic_through_points(points, options.t, options["midpoint separation"]);
 		},
 		demoOptions: {
+
 			Linear: {
 				disabled: true,
 			},
@@ -122,6 +123,21 @@ const bezierFeatures = {
 		demoOptions: {
 			Quadratic: {
 				inputOptions: [bezierTValueVariantOptions, tSliderOptions],
+			},
+		},
+	},
+	tangent_line: {
+		name: "Tangent from Point",
+		callback: (bezier: WasmBezierInstance, options: Record<number, number>, _: undefined): string => bezier.tangent_line(options.raw_g,options.raw_y ),
+		demoOptions: {
+			Linear: {
+				disabled: true,
+			},
+			Q: {
+				disabled: true,
+			},
+			Cubic: {
+				inputOptions: [xSliderOptions, ySliderOptions],
 			},
 		},
 	},

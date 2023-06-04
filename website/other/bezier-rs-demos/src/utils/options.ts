@@ -8,6 +8,21 @@ export const tSliderOptions = {
 	variable: "t",
 };
 
+export const xSliderOptions = {
+	min: 0,
+	max: 10,
+	step: 1,
+	default: 0,
+	variable: "X",
+};
+export const ySliderOptions = {
+	min: 0,
+	max: 10,
+	step: 1,
+	default: 0,
+	variable: "Y",
+};
+
 export const errorOptions = {
 	variable: "error",
 	min: 0.1,

@@ -2,7 +2,10 @@ use super::*;
 use crate::utils::{solve_cubic, solve_quadratic, TValue};
 
 use glam::DMat2;
+use kurbo::CubicBez;
+use kurbo::Point;
 use std::ops::Range;
+use std::vec;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
 impl Bezier {
@@ -70,6 +73,34 @@ impl Bezier {
 		} else {
 			tangent
 		}
+	}
+
+	pub fn tangent_line(&self, p: DVec2) -> Vec<f64> {
+		let handles = match self.handles {
+			BezierHandles::Linear => vec![],
+			BezierHandles::Quadratic { handle } => vec![handle],
+			BezierHandles::Cubic { handle_start, handle_end } => vec![handle_start, handle_end],
+		};
+		// for cubics
+		// let a = self.start;
+
+		// let b = handles[0];
+		// let c = handles[1];
+		// let d_orig = self.end;
+
+		let a = Point::new(self.start.x, self.start.y);
+		let b = Point::new(handles[0].x, handles[0].y);
+		let c = Point::new(handles[1].x, handles[1].y);
+		let d_orig = Point::new(self.end.x, self.end.y);
+
+		let cubicbez = CubicBez::new(a, b, c, d_orig);
+		let point = Point::new(p.x, p.y);
+		let res = cubicbez.tangents_to_point(point);
+		let mut vec = vec![];
+		for t in res {
+			vec.push(t);
+		}
+		vec
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -576,6 +607,20 @@ mod tests {
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		assert_eq!(cubic.tangent(TValue::Parametric(0.)), DVec2::new(90., 60.).normalize());
 		assert_eq!(cubic.tangent(TValue::Parametric(1.)), DVec2::new(30., 120.).normalize());
+	}
+	#[test]
+	fn test_tangent_line() {
+		// Test tangents at start and end points of each Bezier curve type
+		let p0 = DVec2::new(0., 0.);
+		let p1 = DVec2::new(2., 4.);
+		let p2 = DVec2::new(4., 0.);
+		let p3 = DVec2::new(6., 4.);
+		let point = DVec2::new(2., 2.);
+		let res = vec![0.5000000048392939, 0.4999999951607057, 0.25000000000000033];
+		let cubic = Bezier::from_cubic_dvec2(p0, p1, p2, p3);
+		println!("res {:?}", cubic.tangent_line(point));
+		assert_eq!(cubic.tangent_line(point), res);
+		
 	}
 
 	#[test]

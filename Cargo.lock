@@ -321,6 +321,7 @@ version = "0.2.0"
 dependencies = [
  "dyn-any",
  "glam",
+ "kurbo 0.9.5",
  "serde",
 ]
 
@@ -331,6 +332,7 @@ dependencies = [
  "bezier-rs",
  "glam",
  "js-sys",
+ "kurbo 0.9.5",
  "log",
  "serde",
  "serde-wasm-bindgen",
@@ -1672,7 +1674,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "js-sys",
- "kurbo",
+ "kurbo 0.9.4",
  "log",
  "node-macro",
  "num-derive",
@@ -1705,7 +1707,7 @@ dependencies = [
  "graph-craft",
  "graphene-core",
  "image",
- "kurbo",
+ "kurbo 0.9.4",
  "log",
  "node-macro",
  "reqwest",
@@ -1746,7 +1748,7 @@ dependencies = [
  "graphene-core",
  "graphene-std",
  "image",
- "kurbo",
+ "kurbo 0.9.4",
  "log",
  "rustybuzz",
  "serde",
@@ -1771,7 +1773,7 @@ dependencies = [
  "graphite-proc-macros",
  "image",
  "interpreted-executor",
- "kurbo",
+ "kurbo 0.9.4",
  "log",
  "num_enum 0.6.1",
  "once_cell",
@@ -2332,6 +2334,14 @@ source = "git+https://github.com/linebender/kurbo.git#01b52cd85c3a9b1be2c6e39ab9
 dependencies = [
  "arrayvec",
  "serde",
+]
+
+[[package]]
+name = "kurbo"
+version = "0.9.5"
+source = "git+https://github.com/linebender/kurbo.git?branch=tangent#5cdb803b8d5f867f7b414c6700bfa6d7ee358110"
+dependencies = [
+ "arrayvec",
 ]
 
 [[package]]
