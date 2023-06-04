@@ -388,7 +388,7 @@ impl Fsm for PathToolFsmState {
 										let input_pos_doc_space = doc_transform.inverse().transform_point2(input.mouse.position);
 
 										// Translate the dragged and its neighboring anchors to document space
-										let viewspace = document.document_legacy.generate_transform_relative_to_viewport(&anchor_point_id).ok().unwrap_or_default();
+										let mut viewspace = document.document_legacy.generate_transform_relative_to_viewport(&anchor_point_id).ok().unwrap_or_default();
 
 										let viewspace_start_position = viewspace.transform_point2(anchor_start_position);
 										let docspace_start_position = doc_transform.inverse().transform_point2(viewspace_start_position);
@@ -405,6 +405,7 @@ impl Fsm for PathToolFsmState {
 											let viewspace_anchor = viewspace.transform_point2(docspace_anchor);
 											docspace_anchor = doc_transform.inverse().transform_point2(viewspace_anchor);
 										}
+										// debug!("doc start: {:?}", docspace_start_position);
 
 										if delta != DVec2::new(0.0, 0.0) {
 											let mut index_prev: Option<usize> = Some(anchor_subpath_index);
@@ -531,7 +532,7 @@ impl Fsm for PathToolFsmState {
 														+ (input_pos_doc_space.y - docspace_start_position.y) + 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
-													let mut intersection = DVec2::ZERO;
+													let mut intersection = docspace_start_position;
 													if dist_from_line_prev >= dist_from_line_next {
 														if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
 															&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
@@ -539,26 +540,34 @@ impl Fsm for PathToolFsmState {
 															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
 															let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
 															let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-															intersection = DVec2 {
+															let intersection = DVec2 {
 																x: intersection_x + docspace_start_position.x,
 																y: intersection_y + docspace_start_position.y,
 															};
-														}
-														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
-														else {
-															if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
-																&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
-															{
-																let b =
-																	-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
-																let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
-																let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-																intersection = DVec2 {
-																	x: intersection_x + docspace_start_position.x,
-																	y: intersection_y + docspace_start_position.y,
-																};
+															if is_bezier {
+																let mut new_delta = intersection - docspace_anchor;
+																new_delta = viewspace.transform_vector2(new_delta);
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
+															} else if !is_bezier {
+																let new_delta = intersection - docspace_anchor;
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															}
 														}
+													// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
+													// else {
+													// 	if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
+													// 		&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
+													// 	{
+													// 		let b =
+													// 			-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
+													// 		let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
+													// 		let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
+													// 		intersection = DVec2 {
+													// 			x: intersection_x + docspace_start_position.x,
+													// 			y: intersection_y + docspace_start_position.y,
+													// 		};
+													// 	}
+													// }
 													} else if dist_from_line_prev < dist_from_line_next {
 														if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
 															&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
@@ -566,37 +575,34 @@ impl Fsm for PathToolFsmState {
 															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
 															let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
 															let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-															intersection = DVec2 {
+															let intersection = DVec2 {
 																x: intersection_x + docspace_start_position.x,
 																y: intersection_y + docspace_start_position.y,
 															};
-														}
-														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
-														else {
-															if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
-																&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
-															{
-																let b =
-																	-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
-																let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
-																let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-																intersection = DVec2 {
-																	x: intersection_x + docspace_start_position.x,
-																	y: intersection_y + docspace_start_position.y,
-																};
+															if is_bezier {
+																let mut new_delta = intersection - docspace_anchor;
+																new_delta = viewspace.transform_vector2(new_delta);
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
+															} else if !is_bezier {
+																let new_delta = intersection - docspace_anchor;
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															}
 														}
-													}
-
-													if intersection != DVec2::ZERO {
-														if is_bezier {
-															let mut new_delta = intersection - docspace_anchor;
-															new_delta = viewspace.transform_vector2(new_delta);
-															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
-														} else if !is_bezier {
-															let new_delta = intersection - docspace_anchor;
-															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
-														}
+														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
+														// else {
+														// 	if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
+														// 		&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
+														// 	{
+														// 		let b =
+														// 			-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
+														// 		let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
+														// 		let intersection_y = -(slope_next * (intersection_x)) + 0.0;
+														// 		intersection = DVec2 {
+														// 			x: intersection_x + docspace_start_position.x,
+														// 			y: intersection_y + docspace_start_position.y,
+														// 		};
+														// 	}
+														// }
 													}
 												} else if let (Some(prev_index), None) = (index_prev, index_next) {
 													let mut prev_anchor_subpath = subpaths[prev_index];
@@ -641,20 +647,17 @@ impl Fsm for PathToolFsmState {
 														slope_prev = 0.0000000000000000000000000001;
 													}
 
-													let mut intersection = DVec2::ZERO;
+													let mut intersection = docspace_start_position;
 													if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
 														&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
 													{
 														let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
 														let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
 														let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-														intersection = DVec2 {
+														let intersection = DVec2 {
 															x: intersection_x + docspace_start_position.x,
 															y: intersection_y + docspace_start_position.y,
 														};
-													}
-
-													if intersection != DVec2::ZERO {
 														if is_bezier {
 															let mut new_delta = intersection - docspace_anchor;
 															new_delta = viewspace.transform_vector2(new_delta);
@@ -707,20 +710,17 @@ impl Fsm for PathToolFsmState {
 														slope_next = 0.0000000000000000000000000001;
 													}
 
-													let mut intersection = DVec2::ZERO;
+													let mut intersection = docspace_start_position;
 													if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
 														&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
 													{
 														let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
 														let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
 														let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-														intersection = DVec2 {
+														let intersection = DVec2 {
 															x: intersection_x + docspace_start_position.x,
 															y: intersection_y + docspace_start_position.y,
 														};
-													}
-
-													if intersection != DVec2::ZERO {
 														if is_bezier {
 															let mut new_delta = intersection - docspace_anchor;
 															new_delta = viewspace.transform_vector2(new_delta);
@@ -822,7 +822,7 @@ impl Fsm for PathToolFsmState {
 														+ (input_pos_doc_space.y - docspace_start_position.y) + 0.0)
 														.abs() / (slope_next * slope_next + 1.0).sqrt();
 
-													let mut intersection = DVec2::ZERO;
+													let mut intersection = docspace_start_position;
 													if dist_from_line_prev >= dist_from_line_next {
 														if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
 															&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
@@ -830,26 +830,34 @@ impl Fsm for PathToolFsmState {
 															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
 															let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
 															let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-															intersection = DVec2 {
+															let intersection = DVec2 {
 																x: intersection_x + docspace_start_position.x,
 																y: intersection_y + docspace_start_position.y,
 															};
-														}
-														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
-														else {
-															if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
-																&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
-															{
-																let b =
-																	-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
-																let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
-																let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-																intersection = DVec2 {
-																	x: intersection_x + docspace_start_position.x,
-																	y: intersection_y + docspace_start_position.y,
-																};
+															if is_bezier {
+																let mut new_delta = intersection - docspace_anchor;
+																new_delta = viewspace.transform_vector2(new_delta);
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
+															} else if !is_bezier {
+																let new_delta = intersection - docspace_anchor;
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															}
 														}
+													// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
+													// else {
+													// 	if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
+													// 		&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
+													// 	{
+													// 		let b =
+													// 			-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
+													// 		let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
+													// 		let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
+													// 		intersection = DVec2 {
+													// 			x: intersection_x + docspace_start_position.x,
+													// 			y: intersection_y + docspace_start_position.y,
+													// 		};
+													// 	}
+													// }
 													} else if dist_from_line_prev < dist_from_line_next {
 														if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
 															&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
@@ -857,33 +865,34 @@ impl Fsm for PathToolFsmState {
 															let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
 															let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
 															let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
-															intersection = DVec2 {
+															let intersection = DVec2 {
 																x: intersection_x + docspace_start_position.x,
 																y: intersection_y + docspace_start_position.y,
 															};
-														}
-														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
-														else {
-															if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
-																&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
-															{
-																let b =
-																	-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
-																let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
-																let intersection_y = -(slope_next * (intersection_x)) + 0.0;
-																intersection = DVec2 {
-																	x: intersection_x + docspace_start_position.x,
-																	y: intersection_y + docspace_start_position.y,
-																};
+															if is_bezier {
+																let mut new_delta = intersection - docspace_anchor;
+																new_delta = viewspace.transform_vector2(new_delta);
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
+															} else if !is_bezier {
+																let new_delta = intersection - docspace_anchor;
+																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															}
 														}
-													}
-
-													if intersection != DVec2::ZERO {
-														if !is_bezier {
-															let new_delta = intersection - docspace_anchor;
-															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
-														}
+														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
+														// else {
+														// 	if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
+														// 		&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
+														// 	{
+														// 		let b =
+														// 			-(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_next) * (input_pos_doc_space.x - docspace_start_position.x));
+														// 		let intersection_x = (b - 0.0) / ((slope_next) - (-1.0 / slope_next));
+														// 		let intersection_y = -(slope_next * (intersection_x)) + 0.0;
+														// 		intersection = DVec2 {
+														// 			x: intersection_x + docspace_start_position.x,
+														// 			y: intersection_y + docspace_start_position.y,
+														// 		};
+														// 	}
+														// }
 													}
 												}
 											}
