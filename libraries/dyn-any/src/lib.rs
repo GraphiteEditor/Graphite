@@ -193,8 +193,17 @@ unsafe impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
 	type Static = [<T as StaticTypeSized>::Static; N];
 }
 
-unsafe impl<'a> StaticType for dyn DynAny<'a> + '_ {
+unsafe impl StaticType for dyn for<'i> DynAny<'_> + '_ {
 	type Static = dyn DynAny<'static>;
+}
+unsafe impl StaticType for dyn for<'i> DynAny<'_> + Send + Sync + '_ {
+	type Static = dyn DynAny<'static> + Send + Sync;
+}
+unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + Send + Sync + '_ {
+	type Static = dyn core::future::Future<Output = T::Static> + Send + Sync;
+}
+unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + '_ {
+	type Static = dyn core::future::Future<Output = T::Static>;
 }
 #[cfg(feature = "alloc")]
 pub trait IntoDynAny<'n>: Sized + StaticType + 'n {
@@ -228,13 +237,14 @@ use core::{
 	mem::{ManuallyDrop, MaybeUninit},
 	num::Wrapping,
 	ops::Range,
+	pin::Pin,
 	time::Duration,
 };
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
 	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>, Range<T>,
-	Wrapping<T>, Duration, bool, f32, f64, char,
+	Wrapping<T>, Pin<T>, Duration, bool, f32, f64, char,
 	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64,  usize, AtomicUsize,
 	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64,  isize, AtomicIsize,
 	i128, u128, AtomicBool, AtomicPtr<T>

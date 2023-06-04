@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
 
 	let metadata = compiler::Metadata::new("project".to_owned(), vec!["test@example.com".to_owned()]);
 
-	compiler::create_files(&metadata, &request.network, &compile_dir, &request.io)?;
+	compiler::create_files(&metadata, &request.networks, &compile_dir, &request.io)?;
 	let result = compiler::compile(&compile_dir)?;
 
 	let bytes = std::fs::read(result.module.unwrap_single())?;

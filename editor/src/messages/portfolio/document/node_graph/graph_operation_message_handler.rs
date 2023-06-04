@@ -5,12 +5,13 @@ use document_legacy::document::Document;
 use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
+use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
 use transform_utils::LayerBounds;
 
 use glam::{DAffine2, DVec2};
 
-mod transform_utils;
+pub mod transform_utils;
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct GraphOperationMessageHandler;
@@ -70,7 +71,7 @@ impl<'a> ModifyInputsContext<'a> {
 		} else {
 			self.modify_new_node(name, update_input);
 		}
-		self.node_graph.layer_path = Some(self.layer.to_vec());
+		self.node_graph.update_layer_path(Some(self.layer.to_vec()), self.responses);
 		self.node_graph.nested_path.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
@@ -220,6 +221,16 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
 	}
+
+	fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
+		self.modify_inputs("Brush", false, |inputs| {
+			if matches!(inputs[0], NodeInput::Node { .. }) {
+				inputs[1] = core::mem::replace(&mut inputs[0], NodeInput::value(TaggedValue::None, false));
+			}
+			inputs[0] = NodeInput::value(TaggedValue::None, false);
+			inputs[3] = NodeInput::value(TaggedValue::BrushStrokes(strokes), false);
+		});
+	}
 }
 
 impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
@@ -244,7 +255,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					responses.add(Operation::SetLayerStroke { path: layer, stroke });
 				}
 			}
-
 			GraphOperationMessage::TransformChange {
 				layer,
 				transform,
@@ -298,10 +308,14 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let pivot = pivot.into();
 				responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
-
 			GraphOperationMessage::Vector { layer, modification } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
+				}
+			}
+			GraphOperationMessage::Brush { layer, strokes } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+					modify_inputs.brush_modify(strokes);
 				}
 			}
 		}

@@ -53,11 +53,15 @@ opt-level = 3
 [profile.dev.package.image]
 opt-level = 3
 
-[profile.dev.package.png]
-opt-level = 3
-
 [profile.dev.package.xxhash-rust]
 opt-level = 3
 
 [profile.dev]
 opt-level = 1
+
+[profile.release]
+lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+debug = true

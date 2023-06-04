@@ -1,3 +1,4 @@
+pub mod brush_stroke;
 pub mod consts;
 pub mod generator_nodes;
 pub mod manipulator_group;

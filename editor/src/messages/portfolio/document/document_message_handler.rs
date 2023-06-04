@@ -142,8 +142,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									reverse_index,
 								} => responses.add(MoveSelectedLayersTo {
 									folder_path: folder_path.clone(),
-									insert_index: insert_index.clone(),
-									reverse_index: reverse_index.clone(),
+									insert_index: *insert_index,
+									reverse_index: *reverse_index,
 								}),
 								DocumentResponse::CreatedLayer { path, is_selected } => {
 									if self.layer_metadata.contains_key(path) {
@@ -207,7 +207,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor));
+				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor, document_id));
 			}
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
@@ -511,7 +511,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				});
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => {
-				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
+				if layer_path.is_empty() {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
 					responses.add(message);
 				}
 			}
@@ -1512,7 +1514,7 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
+	fn update_insert_index(&self, layers: &[&[LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
 		let folder = self.document_legacy.folder(path)?;
 		let insert_index = if reverse_index { folder.layer_ids.len() as isize - insert_index } else { insert_index };
 		let layer_ids_above = if insert_index < 0 { &folder.layer_ids } else { &folder.layer_ids[..(insert_index as usize)] };

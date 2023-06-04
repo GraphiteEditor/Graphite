@@ -11,22 +11,22 @@
 		"print-building-help": "echo 'bezier-rs interactive demos project failed to build. Did you remember to `npm install` the node dependencies?'"
 	},
 	"dependencies": {
-		"core-js": "^3.26.1"
+		"core-js": "^3.30.2"
 	},
 	"devDependencies": {
+		"@types/webpack": "^5.28.1",
 		"@types/webpack-dev-server": "^4.7.2",
-		"@types/webpack": "^5.28.0",
-		"@wasm-tool/wasm-pack-plugin": "^1.6.0",
-		"css-loader": "^6.7.3",
-		"sass-loader": "^13.2.0",
-		"sass": "^1.57.1",
-		"ts-loader": "^9.4.2",
-		"typescript": "^4.9.4",
-		"webpack-cli": "^5.0.1",
-		"webpack-dev-server": "^4.11.1",
-		"webpack": "^5.75.0"
+		"@wasm-tool/wasm-pack-plugin": "^1.7.0",
+		"css-loader": "^6.7.4",
+		"sass": "^1.62.1",
+		"sass-loader": "^13.3.0",
+		"ts-loader": "^9.4.3",
+		"typescript": "^5.0.4",
+		"webpack": "^5.84.1",
+		"webpack-cli": "^5.1.1",
+		"webpack-dev-server": "^4.15.0"
 	},
 	"optionalDependencies": {
-		"wasm-pack": "^0.10.3"
+		"wasm-pack": "0.10.3"
 	}
 }

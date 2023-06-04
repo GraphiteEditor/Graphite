@@ -18,7 +18,7 @@ std = [
 	"num-traits/std",
 	"rustybuzz",
 ]
-default = ["async", "serde", "kurbo", "log", "std", "rand_chacha"]
+default = ["async", "serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
 log = ["dep:log"]
 serde = [
 	"dep:serde",
@@ -32,6 +32,7 @@ async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs", "once_cell"]
 type_id_logging = []
+wasm = ["wasm-bindgen", "web-sys", "js-sys", "std"]
 
 [dependencies]
 dyn-any = { path = "../../libraries/dyn-any", features = [
@@ -68,3 +69,18 @@ num-derive = { version = "0.3.3" }
 num-traits = { version = "0.2.15", default-features = false, features = [
 	"i128",
 ] }
+
+
+wasm-bindgen = { version = "0.2.84", optional = true }
+js-sys = { version = "0.3.55", optional = true }
+
+[dependencies.web-sys]
+version = "0.3.4"
+optional = true
+features = [
+	"Window",
+	"CanvasRenderingContext2d",
+	"ImageData",
+	"Document",
+	"HtmlCanvasElement",
+]

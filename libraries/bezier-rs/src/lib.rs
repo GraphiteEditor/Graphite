@@ -1,4 +1,5 @@
-//! Bezier-rs: A Bezier Math Library for Rust
+#![doc = include_str!("../README.md")]
+
 pub(crate) mod compare;
 
 mod bezier;

@@ -1,6 +1,7 @@
 use crate::messages::prelude::*;
 
 use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::ManipulatorPointId;
 
@@ -45,6 +46,10 @@ pub enum GraphOperationMessage {
 	Vector {
 		layer: LayerIdentifier,
 		modification: VectorDataModification,
+	},
+	Brush {
+		layer: LayerIdentifier,
+		strokes: Vec<BrushStroke>,
 	},
 }
 

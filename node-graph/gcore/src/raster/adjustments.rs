@@ -46,7 +46,7 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 26] {
+	pub fn list() -> [BlendMode; 29] {
 		[
 			BlendMode::Normal,
 			BlendMode::Multiply,
@@ -74,6 +74,9 @@ impl BlendMode {
 			BlendMode::Saturation,
 			BlendMode::Color,
 			BlendMode::Luminosity,
+			BlendMode::InsertRed,
+			BlendMode::InsertGreen,
+			BlendMode::InsertBlue,
 		]
 	}
 }
@@ -81,6 +84,7 @@ impl BlendMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[repr(i32)] // TODO: Enable Int8 capability for SPRIV so that we don't need this?
 pub enum BlendMode {
 	#[default]
 	// Basic group
@@ -121,6 +125,11 @@ pub enum BlendMode {
 	Saturation,
 	Color,
 	Luminosity,
+
+	// Other Stuff
+	InsertRed,
+	InsertGreen,
+	InsertBlue,
 }
 
 impl core::fmt::Display for BlendMode {
@@ -157,7 +166,51 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Saturation => write!(f, "Saturation"),
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
+
+			BlendMode::InsertRed => write!(f, "Insert Red"),
+			BlendMode::InsertGreen => write!(f, "Insert Green"),
+			BlendMode::InsertBlue => write!(f, "Insert Blue"),
 		}
+	}
+}
+
+pub fn to_primtive_string(blend_mode: &BlendMode) -> &'static str {
+	match blend_mode {
+		BlendMode::Normal => "Normal",
+
+		BlendMode::Multiply => "Multiply",
+		BlendMode::Darken => "Darken",
+		BlendMode::ColorBurn => "ColorBurn",
+		BlendMode::LinearBurn => "LinearBurn",
+		BlendMode::DarkerColor => "DarkerColor",
+
+		BlendMode::Screen => "Screen",
+		BlendMode::Lighten => "Lighten",
+		BlendMode::ColorDodge => "ColorDodge",
+		BlendMode::LinearDodge => "LinearDodge",
+		BlendMode::LighterColor => "LighterColor",
+
+		BlendMode::Overlay => "Overlay",
+		BlendMode::SoftLight => "SoftLight",
+		BlendMode::HardLight => "HardLight",
+		BlendMode::VividLight => "VividLight",
+		BlendMode::LinearLight => "LinearLight",
+		BlendMode::PinLight => "PinLight",
+		BlendMode::HardMix => "HardMix",
+
+		BlendMode::Difference => "Difference",
+		BlendMode::Exclusion => "Exclusion",
+		BlendMode::Subtract => "Subtract",
+		BlendMode::Divide => "Divide",
+
+		BlendMode::Hue => "Hue",
+		BlendMode::Saturation => "Saturation",
+		BlendMode::Color => "Color",
+		BlendMode::Luminosity => "Luminosity",
+
+		BlendMode::InsertRed => "InsertRed",
+		BlendMode::InsertGreen => "InsertGreen",
+		BlendMode::InsertBlue => "InsertBlue",
 	}
 }
 
@@ -176,6 +229,30 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 	};
 	color.map_rgb(|_| luminance)
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractChannelNode<TargetChannel> {
+	channel: TargetChannel,
+}
+
+#[node_macro::node_fn(ExtractChannelNode)]
+fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
+	let extracted_value = match channel {
+		RedGreenBlue::Red => color.r(),
+		RedGreenBlue::Green => color.g(),
+		RedGreenBlue::Blue => color.b(),
+	};
+	return color.map_rgb(|_| extracted_value);
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractAlphaNode;
+
+#[node_macro::node_fn(ExtractAlphaNode)]
+fn extract_alpha_node(color: Color) -> Color {
+	let alpha = color.a();
+	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -327,6 +404,19 @@ fn invert_image(color: Color) -> Color {
 	color.to_linear_srgb()
 }
 
+// TODO replace with trait based implementation
+impl<'i> Node<'i, &'i Color> for InvertRGBNode {
+	type Output = Color;
+
+	fn eval(&'i self, color: &'i Color) -> Self::Output {
+		let color = color.to_gamma_srgb();
+
+		let color = color.map_rgb(|c| color.a() - c);
+
+		color.to_linear_srgb()
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 	min_luminance: MinLuminance,
@@ -362,7 +452,7 @@ pub struct BlendNode<BlendMode, Opacity> {
 
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	let opacity = opacity / 100.;
+	let opacity = opacity as f32 / 100.;
 
 	let (foreground, background) = input;
 
@@ -397,9 +487,13 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
+
+		BlendMode::InsertRed => foreground.with_red(background.r()),
+		BlendMode::InsertGreen => foreground.with_green(background.g()),
+		BlendMode::InsertBlue => foreground.with_blue(background.b()),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
+	background.alpha_blend(target_color.to_associated_alpha(opacity))
 }
 
 #[derive(Debug, Clone, Copy)]

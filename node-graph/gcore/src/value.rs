@@ -1,6 +1,10 @@
 use crate::Node;
 
-use core::marker::PhantomData;
+use core::{
+	borrow::BorrowMut,
+	cell::{Cell, RefCell, RefMut},
+	marker::PhantomData,
+};
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;
@@ -13,7 +17,7 @@ impl<'i, const N: u32> Node<'i, ()> for IntNode<N> {
 	}
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct ValueNode<T>(pub T);
 
 impl<'i, T: 'i> Node<'i, ()> for ValueNode<T> {
@@ -35,12 +39,62 @@ impl<T> From<T> for ValueNode<T> {
 		ValueNode::new(value)
 	}
 }
-impl<T: Clone> Clone for ValueNode<T> {
-	fn clone(&self) -> Self {
-		Self(self.0.clone())
+
+#[derive(Default, Debug, Clone)]
+pub struct RefCellMutNode<T>(pub RefCell<T>);
+
+impl<'i, T: 'i> Node<'i, ()> for RefCellMutNode<T> {
+	type Output = RefMut<'i, T>;
+	#[inline(always)]
+	fn eval(&'i self, _input: ()) -> Self::Output {
+		#[cfg(not(target_arch = "spirv"))]
+		let a = self.0.borrow_mut();
+		#[cfg(target_arch = "spirv")]
+		let a = unsafe { self.0.try_borrow_mut().unwrap_unchecked() };
+		a
 	}
 }
-impl<T: Clone + Copy> Copy for ValueNode<T> {}
+
+impl<T> RefCellMutNode<T> {
+	pub const fn new(value: T) -> RefCellMutNode<T> {
+		RefCellMutNode(RefCell::new(value))
+	}
+}
+/// #Safety: Never use this as it is unsound.
+#[derive(Default, Debug)]
+pub struct UnsafeMutValueNode<T>(pub T);
+
+/// #Safety: Never use this as it is unsound.
+impl<'i, T: 'i> Node<'i, ()> for UnsafeMutValueNode<T> {
+	type Output = &'i mut T;
+	#[inline(always)]
+	fn eval(&'i self, _input: ()) -> Self::Output {
+		unsafe { &mut *(&self.0 as &T as *const T as *mut T) }
+	}
+}
+
+impl<T> UnsafeMutValueNode<T> {
+	pub const fn new(value: T) -> UnsafeMutValueNode<T> {
+		UnsafeMutValueNode(value)
+	}
+}
+
+#[derive(Default)]
+pub struct OnceCellNode<T>(pub Cell<T>);
+
+impl<'i, T: Default + 'i> Node<'i, ()> for OnceCellNode<T> {
+	type Output = T;
+	#[inline(always)]
+	fn eval(&'i self, _input: ()) -> Self::Output {
+		self.0.replace(T::default())
+	}
+}
+
+impl<T> OnceCellNode<T> {
+	pub const fn new(value: T) -> OnceCellNode<T> {
+		OnceCellNode(Cell::new(value))
+	}
+}
 
 #[derive(Clone, Copy)]
 pub struct ClonedNode<T: Clone>(pub T);
@@ -75,6 +129,7 @@ impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
 		// KEEP THIS `debug!()` - It acts as the output for the debug node itself
+		#[cfg(not(target_arch = "spirv"))]
 		log::debug!("DebugClonedNode::eval");
 
 		self.0.clone()
@@ -158,6 +213,7 @@ mod test {
 		assert_eq!(node.eval(()), 0);
 	}
 	#[test]
+	#[allow(clippy::unit_cmp)]
 	fn test_unit_node() {
 		let node = ForgetNode::new();
 		assert_eq!(node.eval(()), ());

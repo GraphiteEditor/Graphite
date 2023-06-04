@@ -1,21 +1,17 @@
+use super::document_node_types::NodePropertiesContext;
+use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use document_legacy::Operation;
-use glam::DVec2;
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::{concrete, imaginate_input::*};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
-use graphene_core::EditorApi;
 use graphene_core::{Cow, Type, TypeDescriptor};
 
-use super::document_node_types::NodePropertiesContext;
-use super::{FrontendGraphDataType, IMAGINATE_NODE};
+use glam::{DVec2, IVec2};
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = WidgetHolder::text_widget(text);
@@ -129,6 +125,58 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
+fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, false);
+
+	assist(&mut widgets);
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::DVec2(vec2),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			NumberInput::new(Some(vec2.x))
+				.label(x)
+				.unit(unit)
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(vec2.y))
+				.label(y)
+				.unit(unit)
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
+				.widget_holder(),
+		]);
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::IVec2(vec2),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, vec2.y));
+		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(vec2.x, input.value.unwrap() as i32));
+		widgets.extend_from_slice(&[
+			WidgetHolder::unrelated_separator(),
+			NumberInput::new(Some(vec2.x as f64))
+				.int()
+				.label(x)
+				.unit(unit)
+				.on_update(update_value(update_x, node_id, index))
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(vec2.y as f64))
+				.int()
+				.label(y)
+				.unit(unit)
+				.on_update(update_value(update_y, node_id, index))
+				.widget_holder(),
+		]);
+	}
+
+	LayoutGroup::Row { widgets }
+}
+
 fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
 
@@ -234,6 +282,26 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 //TODO Use generalized Version of this as soon as it's available
+fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::RedGreenBlue(mode),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index)));
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
+}
+
+//TODO Use generalized Version of this as soon as it's available
 fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -253,7 +321,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
 }
 
-// TODO: Generalize this for all dropdowns ( also see blend_mode )
+// TODO: Generalize this for all dropdowns ( also see blend_mode and channel_extration )
 fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -592,6 +660,18 @@ pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	vec![luminance_calc]
 }
 
+pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
+
+	vec![color_channel]
+}
+
+pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_channel = color_channel(document_node, node_id, 1, "From", true);
+
+	vec![color_channel]
+}
+
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
 	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
@@ -621,16 +701,6 @@ pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
 
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
-}
-
-pub fn brush_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 7, "Color", ColorInput::default().allow_none(false), true);
-
-	let size = number_widget(document_node, node_id, 4, "Diameter", NumberInput::default().min(1.).max(100.).unit(" px"), true);
-	let hardness = number_widget(document_node, node_id, 5, "Hardness", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let flow = number_widget(document_node, node_id, 6, "Flow", NumberInput::default().min(1.).max(100.).unit("%"), true);
-
-	vec![color, LayoutGroup::Row { widgets: size }, LayoutGroup::Row { widgets: hardness }, LayoutGroup::Row { widgets: flow }]
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -731,7 +801,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			.into_iter()
 			.map(|section| {
 				section
-					.into_iter()
+					.iter()
 					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
 					.collect()
 			})
@@ -844,11 +914,7 @@ pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &
 }
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let translation = {
-		let index = 1;
-
-		let mut widgets = start_widgets(document_node, node_id, index, "Translation", FrontendGraphDataType::Vector, false);
-
+	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
 		let pivot_index = 5;
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(pivot),
@@ -862,32 +928,10 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					.widget_holder(),
 			);
 		} else {
-			add_blank_assist(&mut widgets);
+			add_blank_assist(widgets);
 		}
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(vec2),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				NumberInput::new(Some(vec2.x))
-					.label("X")
-					.unit(" px")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
-					.widget_holder(),
-				WidgetHolder::related_separator(),
-				NumberInput::new(Some(vec2.y))
-					.label("Y")
-					.unit(" px")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
-					.widget_holder(),
-			]);
-		}
-
-		LayoutGroup::Row { widgets }
 	};
+	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", translation_assist);
 
 	let rotation = {
 		let index = 2;
@@ -914,32 +958,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets }
 	};
 
-	let scale = {
-		let index = 3;
-
-		let mut widgets = start_widgets(document_node, node_id, index, "Scale", FrontendGraphDataType::Vector, true);
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(vec2),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
-			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
-				NumberInput::new(Some(vec2.x))
-					.label("X")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
-					.widget_holder(),
-				WidgetHolder::related_separator(),
-				NumberInput::new(Some(vec2.y))
-					.label("Y")
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
-					.widget_holder(),
-			]);
-		}
-
-		LayoutGroup::Row { widgets }
-	};
+	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
 	vec![translation, rotation, scale]
 }
 
@@ -956,7 +975,8 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 	result
 }
 
-pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	/*
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
 	let layer_path = context.layer_path.to_vec();
 
@@ -1513,6 +1533,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	layout.extend_from_slice(&[improve_faces, tiling]);
 
 	layout
+		*/
+	todo!()
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
@@ -1622,6 +1644,8 @@ pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	]
 }
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let label = text_widget(document_node, node_id, 1, "Label", true);
-	vec![LayoutGroup::Row { widgets: label }]
+	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);
+	let background = color_widget(document_node, node_id, 3, "Background", ColorInput::default().allow_none(false), true);
+	vec![location, dimensions, background]
 }

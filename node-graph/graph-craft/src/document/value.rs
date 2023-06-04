@@ -1,8 +1,9 @@
 use super::DocumentNode;
 use crate::executor::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+use crate::proto::{Any as DAny, FutureAny};
 
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::raster::{to_primtive_string, BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
 
 pub use dyn_any::StaticType;
@@ -53,13 +54,13 @@ pub enum TaggedValue {
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
-	VecDVec2(Vec<DVec2>),
+	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
-	EditorApi(graphene_core::EditorApi<'static>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
 	Artboard(graphene_core::Artboard),
-	Optional2IVec2(Option<[glam::IVec2; 2]>),
+	IVec2(glam::IVec2),
+	SurfaceFrame(graphene_core::SurfaceFrame),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -114,22 +115,17 @@ impl Hash for TaggedValue {
 			Self::OptionalColor(color) => color.hash(state),
 			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
 			Self::Font(font) => font.hash(state),
-			Self::VecDVec2(vec_dvec2) => {
-				vec_dvec2.len().hash(state);
-				for dvec2 in vec_dvec2 {
-					dvec2.to_array().iter().for_each(|x| x.to_bits().hash(state));
-				}
-			}
+			Self::BrushStrokes(brush_strokes) => brush_strokes.hash(state),
 			Self::Segments(segments) => {
 				for segment in segments {
 					segment.hash(state)
 				}
 			}
-			Self::EditorApi(editor_api) => editor_api.hash(state),
 			Self::DocumentNode(document_node) => document_node.hash(state),
 			Self::GraphicGroup(graphic_group) => graphic_group.hash(state),
 			Self::Artboard(artboard) => artboard.hash(state),
-			Self::Optional2IVec2(v) => v.hash(state),
+			Self::IVec2(v) => v.hash(state),
+			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
 		}
 	}
 }
@@ -175,24 +171,25 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(x) => Box::new(x),
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::Font(x) => Box::new(x),
-			TaggedValue::VecDVec2(x) => Box::new(x),
+			TaggedValue::BrushStrokes(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
-			TaggedValue::EditorApi(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
 			TaggedValue::Artboard(x) => Box::new(x),
-			TaggedValue::Optional2IVec2(x) => Box::new(x),
+			TaggedValue::IVec2(x) => Box::new(x),
+			TaggedValue::SurfaceFrame(x) => Box::new(x),
 		}
 	}
 
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
-			TaggedValue::String(x) => x.clone(),
-			TaggedValue::U32(x) => x.to_string(),
-			TaggedValue::F32(x) => x.to_string(),
-			TaggedValue::F64(x) => x.to_string(),
+			TaggedValue::String(x) => format!("\"{}\"", x),
+			TaggedValue::U32(x) => x.to_string() + "_u32",
+			TaggedValue::F32(x) => x.to_string() + "_f32",
+			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
+			TaggedValue::BlendMode(blend_mode) => "BlendMode::".to_string() + to_primtive_string(blend_mode),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
@@ -238,13 +235,66 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
-			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
+			TaggedValue::BrushStrokes(_) => concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
-			TaggedValue::EditorApi(_) => concrete!(graphene_core::EditorApi),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
 			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
-			TaggedValue::Optional2IVec2(_) => concrete!(Option<[glam::IVec2; 2]>),
+			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
+			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
+		}
+	}
+
+	pub fn try_from_any(input: Box<dyn DynAny<'a> + 'a>) -> Option<Self> {
+		use dyn_any::downcast;
+		use std::any::TypeId;
+
+		match DynAny::type_id(input.as_ref()) {
+			x if x == TypeId::of::<()>() => Some(TaggedValue::None),
+			x if x == TypeId::of::<String>() => Some(TaggedValue::String(*downcast(input).unwrap())),
+			x if x == TypeId::of::<u32>() => Some(TaggedValue::U32(*downcast(input).unwrap())),
+			x if x == TypeId::of::<f32>() => Some(TaggedValue::F32(*downcast(input).unwrap())),
+			x if x == TypeId::of::<f64>() => Some(TaggedValue::F64(*downcast(input).unwrap())),
+			x if x == TypeId::of::<bool>() => Some(TaggedValue::Bool(*downcast(input).unwrap())),
+			x if x == TypeId::of::<DVec2>() => Some(TaggedValue::DVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<DVec2>>() => Some(TaggedValue::OptionalDVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::Image<Color>>() => Some(TaggedValue::Image(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<Arc<graphene_core::raster::Image<Color>>>>() => Some(TaggedValue::RcImage(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::ImageFrame<Color>>() => Some(TaggedValue::ImageFrame(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::Color>() => Some(TaggedValue::Color(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => Some(TaggedValue::Subpaths(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => Some(TaggedValue::RcSubpath(*downcast(input).unwrap())),
+			x if x == TypeId::of::<BlendMode>() => Some(TaggedValue::BlendMode(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateSamplingMethod>() => Some(TaggedValue::ImaginateSamplingMethod(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateMaskStartingFill>() => Some(TaggedValue::ImaginateMaskStartingFill(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateStatus>() => Some(TaggedValue::ImaginateStatus(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<Vec<u64>>>() => Some(TaggedValue::LayerPath(*downcast(input).unwrap())),
+			x if x == TypeId::of::<DAffine2>() => Some(TaggedValue::DAffine2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<LuminanceCalculation>() => Some(TaggedValue::LuminanceCalculation(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::VectorData>() => Some(TaggedValue::VectorData(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::Fill>() => Some(TaggedValue::Fill(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::Stroke>() => Some(TaggedValue::Stroke(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<f32>>() => Some(TaggedValue::VecF32(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::RedGreenBlue>() => Some(TaggedValue::RedGreenBlue(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::RelativeAbsolute>() => Some(TaggedValue::RelativeAbsolute(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::SelectiveColorChoice>() => Some(TaggedValue::SelectiveColorChoice(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::LineCap>() => Some(TaggedValue::LineCap(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::LineJoin>() => Some(TaggedValue::LineJoin(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::FillType>() => Some(TaggedValue::FillType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::GradientType>() => Some(TaggedValue::GradientType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<(f64, Option<graphene_core::Color>)>>() => Some(TaggedValue::GradientPositions(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::quantization::QuantizationChannels>() => Some(TaggedValue::Quantization(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Option<graphene_core::Color>>() => Some(TaggedValue::OptionalColor(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Some(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::text::Font>() => Some(TaggedValue::Font(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Some(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Some(TaggedValue::Segments(*downcast(input).unwrap())),
+			x if x == TypeId::of::<crate::document::DocumentNode>() => Some(TaggedValue::DocumentNode(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Some(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::Artboard>() => Some(TaggedValue::Artboard(*downcast(input).unwrap())),
+			x if x == TypeId::of::<glam::IVec2>() => Some(TaggedValue::IVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Some(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
+			_ => None,
 		}
 	}
 }
@@ -252,11 +302,11 @@ impl<'a> TaggedValue {
 pub struct UpcastNode {
 	value: TaggedValue,
 }
-impl<'input> Node<'input, Box<dyn DynAny<'input> + 'input>> for UpcastNode {
-	type Output = Box<dyn DynAny<'input> + 'input>;
+impl<'input> Node<'input, DAny<'input>> for UpcastNode {
+	type Output = FutureAny<'input>;
 
-	fn eval(&'input self, _: Box<dyn DynAny<'input> + 'input>) -> Self::Output {
-		self.value.clone().to_any()
+	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
+		Box::pin(async move { self.value.clone().to_any() })
 	}
 }
 impl UpcastNode {

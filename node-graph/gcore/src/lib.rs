@@ -33,6 +33,8 @@ pub use graphic_element::*;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
+pub mod application_io;
+
 pub mod quantization;
 
 use core::any::TypeId;
@@ -60,6 +62,10 @@ where
 	Self::Output: 'i + StaticTypeSized,
 	Input: 'i + StaticTypeSized,
 {
+	fn node_name(&self) -> &'static str {
+		core::any::type_name::<Self>()
+	}
+
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
 	}
@@ -103,6 +109,15 @@ impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N
 		(**self).eval(input)
 	}
 }
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for Box<N> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+
 impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
 	type Output = O;
 
@@ -121,6 +136,14 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = 
 		(**self).eval(input)
 	}
 }
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
+	type Output = O;
 
-#[cfg(feature = "alloc")]
-pub use crate::raster::image::{EditorApi, ExtractImageFrame};
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+
+pub use crate::application_io::{ExtractImageFrame, SurfaceFrame, SurfaceId};
+#[cfg(feature = "wasm")]
+pub use application_io::{wasm_application_io, wasm_application_io::WasmEditorApi as EditorApi};

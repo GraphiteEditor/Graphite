@@ -1,25 +1,29 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
 
-use crate::document::value;
 use crate::document::NodeId;
+use crate::document::{value, InlineRust};
 use dyn_any::DynAny;
 use graphene_core::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
+pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync)>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync>>;
+pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n)>;
+pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'static>;
+pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> DynFuture<'static, TypeErasedPinned<'static>>;
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
 pub struct ProtoNetwork {
 	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
@@ -62,6 +66,10 @@ impl core::fmt::Display for ProtoNetwork {
 						write_node(f, network, id.0, indent + 1)?;
 					}
 				}
+				ConstructionArgs::Inline(inline) => {
+					f.write_str(&"\t".repeat(indent + 1))?;
+					f.write_fmt(format_args!("Inline construction argument: {inline:?}"))?
+				}
 			}
 			f.write_str(&"\t".repeat(indent))?;
 			f.write_str("}\n")?;
@@ -79,14 +87,26 @@ pub enum ConstructionArgs {
 	Value(value::TaggedValue),
 	// the bool indicates whether to treat the node as lambda node
 	Nodes(Vec<(NodeId, bool)>),
+	Inline(InlineRust),
 }
+
+impl Eq for ConstructionArgs {}
 
 impl PartialEq for ConstructionArgs {
 	fn eq(&self, other: &Self) -> bool {
 		match (&self, &other) {
 			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
 			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+			_ => {
+				use std::hash::Hasher;
+				use xxhash_rust::xxh3::Xxh3;
+				let hash = |input: &Self| {
+					let mut hasher = Xxh3::new();
+					input.hash(&mut hasher);
+					hasher.finish()
+				};
+				hash(self) == hash(other)
+			}
 		}
 	}
 }
@@ -101,6 +121,7 @@ impl Hash for ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.hash(state),
+			Self::Inline(inline) => inline.hash(state),
 		}
 	}
 }
@@ -110,12 +131,13 @@ impl ConstructionArgs {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
+			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -126,7 +148,7 @@ pub struct ProtoNode {
 /// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
 /// For documentation on the meaning of the variants, see the documentation of the `NodeInput` enum
 /// in the `document` module
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProtoNodeInput {
 	None,
@@ -449,6 +471,7 @@ impl TypingContext {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, String>>()?,
+			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
 		// Get the node input type from the proto node declaration

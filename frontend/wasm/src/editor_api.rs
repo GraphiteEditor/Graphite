@@ -18,6 +18,7 @@ use graphene_core::raster::color::Color;
 
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
+use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
@@ -51,6 +52,51 @@ pub fn wasm_memory() -> JsValue {
 pub struct JsEditorHandle {
 	editor_id: u64,
 	frontend_message_handler_callback: js_sys::Function,
+}
+
+fn window() -> web_sys::Window {
+	web_sys::window().expect("no global `window` exists")
+}
+
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+	//window().request_idle_callback(f.as_ref().unchecked_ref()).unwrap();
+	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
+}
+
+// Sends a message to the dispatcher in the Editor Backend
+async fn poll_node_graph_evaluation() {
+	// Process no further messages after a crash to avoid spamming the console
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+	editor::node_graph_executor::run_node_graph().await;
+
+	// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
+	EDITOR_INSTANCES.with(|instances| {
+		JS_EDITOR_HANDLES.with(|handles| {
+			// Mutably borrow the editors, and if successful, we can access them in the closure
+			instances.try_borrow_mut().map(|mut editors| {
+				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
+				for (id, editor) in editors.iter_mut() {
+					let handles = handles.borrow_mut();
+					let handle = handles.get(id).unwrap();
+					let mut messages = VecDeque::new();
+					editor.poll_node_graph_evaluation(&mut messages);
+					// Send each `FrontendMessage` to the JavaScript frontend
+
+					let mut responses = Vec::new();
+					for message in messages.into_iter() {
+						responses.extend(editor.handle_message(message));
+					}
+
+					for response in responses.into_iter() {
+						handle.send_frontend_message_to_js(response);
+					}
+					// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+				}
+			})
+		})
+	});
 }
 
 #[wasm_bindgen]
@@ -126,8 +172,8 @@ impl JsEditorHandle {
 				}
 				#[cfg(feature = "tauri")]
 				{
-					let identifier = format!("http://localhost:3001/image/{:?}_{}", image.path, document_id);
-					fetchImage(image.path, image.node_id, image.mime, document_id, identifier);
+					let identifier = format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id);
+					fetchImage(image.path.clone(), image.node_id, image.mime, document_id, identifier);
 				}
 			}
 			return;
@@ -168,6 +214,18 @@ impl JsEditorHandle {
 
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
+
+		let f = std::rc::Rc::new(RefCell::new(None));
+		let g = f.clone();
+
+		*g.borrow_mut() = Some(Closure::new(move || {
+			wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+
+			// Schedule ourself for another requestAnimationFrame callback.
+			request_animation_frame(f.borrow().as_ref().unwrap());
+		}));
+
+		request_animation_frame(g.borrow().as_ref().unwrap());
 	}
 
 	#[wasm_bindgen(js_name = tauriResponse)]
@@ -731,7 +789,7 @@ impl JsEditorHandle {
 				Some(message_data)
 			})
 		});
-		frontend_messages.unwrap().unwrap_or_default().into()
+		frontend_messages.unwrap().unwrap_or_default()
 	}
 }
 

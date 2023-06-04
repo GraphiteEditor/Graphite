@@ -1,8 +1,9 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Channel, Image, ImageFrame, Luminance, Pixel, RasterMut, Sample};
+use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
 use graphene_core::transform::Transform;
 
+use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::value::CopiedNode;
 use graphene_core::{Color, Node};
 
@@ -85,7 +86,7 @@ pub struct MapImageNode<P, MapFn> {
 }
 
 #[node_macro::node_fn(MapImageNode<_P>)]
-fn map_image<MapFn, _P, Img: RasterMut<Pixel = _P>>(image: Img, map_fn: &'any_input MapFn) -> Img
+fn map_image<MapFn, _P, Img: RasterMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
 where
 	MapFn: for<'any_input> Node<'any_input, _P, Output = _P> + 'input,
 {
@@ -95,83 +96,52 @@ where
 	image
 }
 
-#[derive(Debug, Clone, DynAny)]
-pub struct AxisAlignedBbox {
-	start: DVec2,
-	end: DVec2,
+#[derive(Debug, Clone, Copy)]
+pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
+	insertion: Insertion,
+	target_channel: TargetChannel,
+	_p: PhantomData<P>,
+	_s: PhantomData<S>,
 }
 
-impl AxisAlignedBbox {
-	pub fn size(&self) -> DVec2 {
-		self.end - self.start
+#[node_macro::node_fn(InsertChannelNode<_P, _S>)]
+fn insert_channel_node<
+	// _P is the color of the input image.
+	_P: RGBMut,
+	_S: Pixel + Luminance,
+	// Input image
+	Input: RasterMut<Pixel = _P>,
+	Insertion: Raster<Pixel = _S>,
+>(
+	mut image: Input,
+	insertion: Insertion,
+	target_channel: RedGreenBlue,
+) -> Input
+where
+	_P::ColorChannel: Linear,
+{
+	if insertion.width() == 0 {
+		return image;
 	}
 
-	pub fn to_transform(&self) -> DAffine2 {
-		DAffine2::from_translation(self.start) * DAffine2::from_scale(self.size())
+	if insertion.width() != image.width() || insertion.height() != image.height() {
+		log::warn!("Stencil and image have different sizes. This is not supported.");
+		return image;
 	}
 
-	pub fn contains(&self, point: DVec2) -> bool {
-		point.x >= self.start.x && point.x <= self.end.x && point.y >= self.start.y && point.y <= self.end.y
-	}
-
-	pub fn intersects(&self, other: &AxisAlignedBbox) -> bool {
-		other.start.x <= self.end.x && other.end.x >= self.start.x && other.start.y <= self.end.y && other.end.y >= self.start.y
-	}
-
-	pub fn union(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
-		AxisAlignedBbox {
-			start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
-			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+			let insertion_pixel = insertion.get_pixel(x, y).unwrap();
+			match target_channel {
+				RedGreenBlue::Red => image_pixel.set_red(insertion_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Green => image_pixel.set_green(insertion_pixel.l().cast_linear_channel()),
+				RedGreenBlue::Blue => image_pixel.set_blue(insertion_pixel.l().cast_linear_channel()),
+			}
 		}
 	}
-	pub fn union_non_empty(&self, other: &AxisAlignedBbox) -> Option<AxisAlignedBbox> {
-		match (self.size() == DVec2::ZERO, other.size() == DVec2::ZERO) {
-			(true, true) => None,
-			(true, _) => Some(other.clone()),
-			(_, true) => Some(self.clone()),
-			_ => Some(AxisAlignedBbox {
-				start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
-				end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
-			}),
-		}
-	}
-}
 
-#[derive(Debug, Clone)]
-struct Bbox {
-	top_left: DVec2,
-	top_right: DVec2,
-	bottom_left: DVec2,
-	bottom_right: DVec2,
-}
-
-impl Bbox {
-	fn axis_aligned_bbox(&self) -> AxisAlignedBbox {
-		let start_x = self.top_left.x.min(self.top_right.x).min(self.bottom_left.x).min(self.bottom_right.x);
-		let start_y = self.top_left.y.min(self.top_right.y).min(self.bottom_left.y).min(self.bottom_right.y);
-		let end_x = self.top_left.x.max(self.top_right.x).max(self.bottom_left.x).max(self.bottom_right.x);
-		let end_y = self.top_left.y.max(self.top_right.y).max(self.bottom_left.y).max(self.bottom_right.y);
-
-		AxisAlignedBbox {
-			start: DVec2::new(start_x, start_y),
-			end: DVec2::new(end_x, end_y),
-		}
-	}
-}
-
-fn compute_transformed_bounding_box(transform: DAffine2) -> Bbox {
-	let top_left = DVec2::new(0., 1.);
-	let top_right = DVec2::new(1., 1.);
-	let bottom_left = DVec2::new(0., 0.);
-	let bottom_right = DVec2::new(1., 0.);
-	let transform = |p| transform.transform_point2(p);
-
-	Bbox {
-		top_left: transform(top_left),
-		top_right: transform(top_right),
-		bottom_left: transform(bottom_left),
-		bottom_right: transform(bottom_right),
-	}
+	image
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -182,7 +152,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 }
 
 #[node_macro::node_fn(MaskImageNode<_P, _S>)]
-fn mask_image<
+fn mask_imge<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
 	_P: Copy + Alpha,
@@ -206,18 +176,19 @@ fn mask_image<
 
 	// Transforms a point from the background image to the forground image
 	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
+	let stencil_transform_inverse = stencil.transform().inverse();
 
-	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
+	let area = bg_to_fg.transform_vector2(DVec2::ONE);
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_point = DVec2::new(x as f64, y as f64);
 			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = stencil.transform().inverse().transform_point2(mask_point);
+			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
 			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
 			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
-				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().to_channel());
+				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 			}
 		}
 	}
@@ -233,7 +204,7 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'any_input MapFn) -> ImageFrame<_P>
+fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
 {
@@ -250,7 +221,7 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform>(foreground: Forground, background: ImageFrame<_P>, map_fn: &'any_input MapFn) -> ImageFrame<_P>
+async fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform>(foreground: Forground, background: ImageFrame<_P>, map_fn: &'input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
@@ -265,7 +236,7 @@ pub struct BlendReverseImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendReverseImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Background: Transform + Sample<Pixel = _P>>(foreground: ImageFrame<_P>, background: Background, map_fn: &'any_input MapFn) -> ImageFrame<_P>
+fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Background: Transform + Sample<Pixel = _P>>(foreground: ImageFrame<_P>, background: Background, map_fn: &'input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
 {
@@ -276,8 +247,8 @@ fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> +
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
-	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
-	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
 
 	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {return ImageFrame::empty()};
 
@@ -314,7 +285,7 @@ where
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0,0) (1, 1) in the background image space
-	let bg_aabb = compute_transformed_bounding_box(background.transform().inverse() * foreground.transform()).axis_aligned_bbox();
+	let bg_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
 	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
@@ -344,8 +315,8 @@ pub struct ExtendImageNode<Background> {
 
 #[node_macro::node_fn(ExtendImageNode)]
 fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color>) -> ImageFrame<Color> {
-	let foreground_aabb = compute_transformed_bounding_box(foreground.transform()).axis_aligned_bbox();
-	let background_aabb = compute_transformed_bounding_box(background.transform()).axis_aligned_bbox();
+	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
 
 	if foreground_aabb.contains(background_aabb.start) && foreground_aabb.contains(background_aabb.end) {
 		return foreground;
@@ -363,7 +334,7 @@ pub struct MergeBoundingBoxNode<Data> {
 fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _Data)) -> Option<AxisAlignedBbox> {
 	let (initial_aabb, data) = input;
 
-	let snd_aabb = compute_transformed_bounding_box(data.transform()).axis_aligned_bbox();
+	let snd_aabb = Bbox::unit().affine_transform(data.transform()).to_axis_aligned_bbox();
 
 	if let Some(fst_aabb) = initial_aabb {
 		fst_aabb.union_non_empty(&snd_aabb)

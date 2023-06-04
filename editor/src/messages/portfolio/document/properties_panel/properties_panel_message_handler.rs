@@ -1,4 +1,4 @@
-use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties};
+use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties, register_document_graph_properties};
 use super::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
@@ -141,6 +141,17 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
 						TargetDocument::Artwork => register_artwork_layer_properties(document, path, layer, responses, persistent_data, node_graph_message_handler, executor),
 					}
+				} else {
+					let context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
+						persistent_data,
+						document: artwork_document,
+						responses,
+						nested_path: &node_graph_message_handler.nested_path,
+						layer_path: &[],
+						executor,
+						network: &artwork_document.document_network,
+					};
+					register_document_graph_properties(context, node_graph_message_handler);
 				}
 			}
 			UpdateSelectedDocumentProperties => responses.add(PropertiesPanelMessage::SetActiveLayers {
