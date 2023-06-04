@@ -207,20 +207,22 @@ impl WasmBezier {
 		);
 		wrap_svg_tag(content)
 	}
-	pub fn tangent_line(&self, raw_x: f64, raw_x: f64) -> String {
+	pub fn tangent_line(&self, raw_t: f64, raw_t2: f64, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
 		// let t = parse_t_variant(&t_variant, raw_t);
 
-		let tangent_point = self.0.tangent(t);
-		let intersection_point = self.0.evaluate(t);
-		let tangent_end = intersection_point + tangent_point * SCALE_UNIT_VECTOR_FACTOR;
+		let t_values = self.0.tangent_line(DVec2::new(raw_t, raw_t2));
 
-		let content = format!(
-			"{bezier}{}{}{}",
-			draw_circle(intersection_point, 3., RED, 1., WHITE),
-			draw_line(intersection_point.x, intersection_point.y, tangent_end.x, tangent_end.y, RED, 1.),
-			draw_circle(tangent_end, 3., RED, 1., WHITE),
-		);
+		let lines: String = t_values
+			.iter()
+			.map(|&t_value| {
+				let t = parse_t_variant(&t_variant, t_value);
+				let intersection_point = self.0.evaluate(t);
+				draw_line(raw_t * 25., raw_t2 * 25., intersection_point.x, intersection_point.y, RED, 1.)
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
+
+		let content = format!("{bezier}{lines}",);
 		wrap_svg_tag(content)
 	}
 

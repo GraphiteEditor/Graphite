@@ -128,16 +128,33 @@ const bezierFeatures = {
 	},
 	tangent_line: {
 		name: "Tangent from Point",
-		callback: (bezier: WasmBezierInstance, options: Record<number, number>, _: undefined): string => bezier.tangent_line(options.raw_g,options.raw_y ),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined): string => bezier.tangent_line(options.t1,options.t2, BEZIER_T_VALUE_VARIANTS[options.TVariant]),
 		demoOptions: {
 			Linear: {
 				disabled: true,
 			},
-			Q: {
+			Quadratic: {
 				disabled: true,
 			},
 			Cubic: {
-				inputOptions: [xSliderOptions, ySliderOptions],
+				inputOptions: [
+					bezierTValueVariantOptions,
+					{
+						variable: "X",
+						min: 0,
+						max: 10,
+						step: 0.25,
+						default: 10,
+					},
+					{
+						variable: "Y",
+						min: 0,
+						max: 10,
+						step: 0.25,
+						default: 10,
+					},
+					
+				],
 			},
 		},
 	},
