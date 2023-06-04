@@ -1,5 +1,4 @@
 use crate::document::value::TaggedValue;
-use crate::imaginate_input::ImaginatePreferences;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use graphene_core::{NodeIdentifier, Type};
 
@@ -649,12 +648,12 @@ impl NodeNetwork {
 		are_inputs_used
 	}
 
-	pub fn flatten(&mut self, node: NodeId, imaginate_preferences: &ImaginatePreferences) {
-		self.flatten_with_fns(node, merge_ids, generate_uuid, imaginate_preferences)
+	pub fn flatten(&mut self, node: NodeId) {
+		self.flatten_with_fns(node, merge_ids, generate_uuid)
 	}
 
 	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
-	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy, imaginate_preferences: &ImaginatePreferences) {
+	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		let (id, mut node) = self
 			.nodes
 			.remove_entry(&node)
@@ -685,13 +684,6 @@ impl NodeNetwork {
 				} else {
 					None
 				};
-
-				match &mut tagged_value {
-					TaggedValue::ImaginatePreferences(preferences @ ImaginatePreferences { .. }) => {
-						*preferences = imaginate_preferences.clone();
-					}
-					_ => (),
-				}
 
 				self.nodes.insert(
 					merged_node_id,
@@ -761,7 +753,7 @@ impl NodeNetwork {
 			}
 
 			for node_id in new_nodes {
-				self.flatten_with_fns(node_id, map_ids, gen_id, imaginate_preferences);
+				self.flatten_with_fns(node_id, map_ids, gen_id);
 			}
 		} else {
 			// If the node is not a network, it is a primitive node and can be inserted into the network as is.
@@ -1029,7 +1021,7 @@ mod test {
 			..Default::default()
 		};
 		network.generate_node_paths(&[]);
-		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id, &Default::default());
+		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		let flat_network = flat_network();
 		println!("{:#?}", flat_network);
 		println!("{:#?}", network);
@@ -1197,8 +1189,8 @@ mod test {
 			..Default::default()
 		};
 		let _new_ids = 101..;
-		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000, &Default::default());
-		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001, &Default::default());
+		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000);
+		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001);
 		network.remove_dead_nodes();
 		network
 	}

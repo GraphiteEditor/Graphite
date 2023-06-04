@@ -1674,7 +1674,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	name: "Imaginate",
 	category: "Image Synthesis",
 	identifier: NodeImplementation::DocumentNode(NodeNetwork {
-		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
 			(
@@ -1692,7 +1692,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 						NodeInput::node(0, 0),
 						NodeInput::Network(concrete!(WasmEditorApi)),
 						NodeInput::Network(concrete!(ImaginateOutputStatus)),
-						NodeInput::Network(concrete!(ImaginatePreferences)),
 						NodeInput::Network(concrete!(f64)),
 						NodeInput::Network(concrete!(Option<DVec2>)),
 						NodeInput::Network(concrete!(u32)),
@@ -1708,8 +1707,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 						NodeInput::Network(concrete!(ImaginateMaskStartingFill)),
 						NodeInput::Network(concrete!(bool)),
 						NodeInput::Network(concrete!(bool)),
-						NodeInput::Network(concrete!(f64)),
-						NodeInput::Network(concrete!(ImaginateStatus)),
 					],
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 					..Default::default()
@@ -1727,7 +1724,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 			default: NodeInput::Network(concrete!(WasmEditorApi)),
 		},
 		DocumentInputType::value("Output Status", TaggedValue::ImaginateOutputStatus(Default::default()), false),
-		DocumentInputType::value("Preferences", TaggedValue::ImaginatePreferences(Default::default()), false),
 		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::value("Samples", TaggedValue::U32(30), false),
@@ -1743,8 +1739,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::value("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Tiling", TaggedValue::Bool(false), false),
-		DocumentInputType::value("Percent Complete", TaggedValue::F64(0.), false),
-		DocumentInputType::value("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
 	],
 	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 	properties: node_properties::imaginate_properties,
@@ -1831,12 +1825,12 @@ impl DocumentNodeType {
 	}
 }
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, imaginate_preferences: &ImaginatePreferences) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 
 	network.generate_node_paths(&[]);
 	for id in node_ids {
-		network.flatten(id, imaginate_preferences);
+		network.flatten(id);
 	}
 
 	let mut network_inputs = Vec::new();

@@ -118,7 +118,7 @@ impl NodeRuntime {
 					path,
 					..
 				}) => {
-					let (network, monitor_nodes) = Self::wrap_network(graph, &self.imaginate_preferences);
+					let (network, monitor_nodes) = Self::wrap_network(graph);
 
 					let result = self.execute_network(&path, network, image_frame).await;
 					let mut responses = VecDeque::new();
@@ -136,8 +136,8 @@ impl NodeRuntime {
 	}
 
 	/// Wraps a network in a scope and returns the new network and the paths to the monitor nodes.
-	fn wrap_network(network: NodeNetwork, imaginate_preferences: &ImaginatePreferences) -> (NodeNetwork, Vec<Vec<NodeId>>) {
-		let scoped_network = wrap_network_in_scope(network, imaginate_preferences);
+	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
+		let scoped_network = wrap_network_in_scope(network);
 
 		//scoped_network.generate_node_paths(&[]);
 		let monitor_nodes = scoped_network
@@ -159,12 +159,13 @@ impl NodeRuntime {
 			image_frame,
 			application_io: &self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
+			imaginate_preferences: &self.imaginate_preferences,
 		};
 
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile_single(scoped_network, &self.imaginate_preferences, true)?;
+		let proto_network = c.compile_single(scoped_network, true)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network).await {

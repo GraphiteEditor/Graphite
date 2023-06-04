@@ -236,6 +236,12 @@ pub struct ImaginatePreferences {
 	pub host_name: String,
 }
 
+impl graphene_core::application_io::GetImaginatePreferences for ImaginatePreferences {
+	fn get_host_name(&self) -> &str {
+		&self.host_name
+	}
+}
+
 impl Default for ImaginatePreferences {
 	fn default() -> Self {
 		Self {

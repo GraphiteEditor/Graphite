@@ -4,7 +4,6 @@ use crate::messages::prelude::*;
 
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
-use graph_craft::imaginate_input::ImaginateStatus;
 use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
@@ -58,13 +57,6 @@ pub enum PortfolioMessage {
 	},
 	ImaginateCheckServerStatus,
 	ImaginatePreferences,
-	ImaginateSetGeneratingStatus {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		node_path: Vec<NodeId>,
-		percent: Option<f64>,
-		status: ImaginateStatus,
-	},
 	ImaginateSetImageData {
 		document_id: u64,
 		layer_path: Vec<LayerId>,

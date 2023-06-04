@@ -3,7 +3,6 @@ use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBuff
 use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
-use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::proto::*;
 use graphene_core::raster::*;
 use graphene_core::*;
@@ -13,18 +12,17 @@ use std::sync::Arc;
 
 use crate::wasm_application_io::WasmApplicationIo;
 
-pub struct GpuCompiler<TypingContext, ShaderIO, Preferences> {
+pub struct GpuCompiler<TypingContext, ShaderIO> {
 	typing_context: TypingContext,
 	io: ShaderIO,
-	imaginate_preferences: Preferences,
 }
 
 // TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
-async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO, imaginate_preferences: ImaginatePreferences) -> compilation_client::Shader {
+async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> compilation_client::Shader {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
-	let proto_networks: Vec<_> = compiler.compile(network.clone(), &imaginate_preferences, true).collect();
+	let proto_networks: Vec<_> = compiler.compile(network.clone(), true).collect();
 
 	for network in proto_networks.iter() {
 		typing_context.update(network).expect("Failed to type check network");
@@ -105,7 +103,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone(), &Default::default(), true).collect();
+	let proto_networks = compiler.compile(network.clone(), true).collect();
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
 		proto_networks,
@@ -323,7 +321,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone(), &Default::default(), true).collect();
+	let proto_networks = compiler.compile(network.clone(), true).collect();
 	log::debug!("compiling shader");
 
 	let shader = compilation_client::compile(

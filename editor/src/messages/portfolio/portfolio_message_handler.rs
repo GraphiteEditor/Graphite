@@ -225,38 +225,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
 			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
-			PortfolioMessage::ImaginateSetGeneratingStatus {
-				document_id,
-				layer_path,
-				node_path,
-				percent,
-				status,
-			} => {
-				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-				if let Some(percentage) = percent {
-					responses.add(PortfolioMessage::DocumentPassMessage {
-						document_id,
-						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
-							input_index: get("Percent Complete"),
-							value: TaggedValue::F64(percentage),
-						}
-						.into(),
-					});
-				}
-
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path,
-						input_index: get("Status"),
-						value: TaggedValue::ImaginateStatus(status),
-					}
-					.into(),
-				});
-			}
 			PortfolioMessage::ImaginateSetImageData {
 				document_id,
 				layer_path,

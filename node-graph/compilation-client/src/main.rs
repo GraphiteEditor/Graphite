@@ -15,7 +15,7 @@ fn main() {
 
 	let network = add_network();
 	let compiler = graph_craft::graphene_compiler::Compiler {};
-	let proto_network = compiler.compile_single(network, &Default::default(), true).unwrap();
+	let proto_network = compiler.compile_single(network, true).unwrap();
 
 	let io = ShaderIO {
 		inputs: vec![

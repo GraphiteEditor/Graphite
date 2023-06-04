@@ -3,8 +3,8 @@ use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
 use glam::DVec2;
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
-use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginateSamplingMethod, ImaginateStatus};
+use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
 use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
 use reqwest::Url;
@@ -142,7 +142,6 @@ pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
 	editor_api: impl Future<Output = WasmEditorApi<'a>>,
 	output_status: impl Future<Output = ImaginateOutputStatus>,
-	preferences: impl Future<Output = ImaginatePreferences>,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
 	samples: impl Future<Output = u32>,
@@ -158,14 +157,11 @@ pub async fn imaginate<'a, P: Pixel>(
 	mask_starting_fill: impl Future<Output = ImaginateMaskStartingFill>,
 	improve_faces: impl Future<Output = bool>,
 	tiling: impl Future<Output = bool>,
-	percent_complete: impl Future<Output = f64>,
-	status: impl Future<Output = ImaginateStatus>,
 ) -> Image<P> {
 	imaginate_maybe_fail(
 		image,
 		editor_api,
 		output_status,
-		preferences,
 		seed,
 		res,
 		samples,
@@ -181,8 +177,6 @@ pub async fn imaginate<'a, P: Pixel>(
 		mask_starting_fill,
 		improve_faces,
 		tiling,
-		percent_complete,
-		status,
 	)
 	.await
 	.unwrap_or_else(|err| {
@@ -196,7 +190,6 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 	image: Image<P>,
 	editor_api: impl Future<Output = WasmEditorApi<'a>>,
 	output_status: impl Future<Output = ImaginateOutputStatus>,
-	preferences: impl Future<Output = ImaginatePreferences>,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
 	samples: impl Future<Output = u32>,
@@ -212,20 +205,16 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 	_mask_starting_fill: impl Future<Output = ImaginateMaskStartingFill>,
 	improve_faces: impl Future<Output = bool>,
 	tiling: impl Future<Output = bool>,
-	_percent_complete: impl Future<Output = f64>,
-	_status: impl Future<Output = ImaginateStatus>,
 ) -> Result<Image<P>, Error> {
-	let preferences = preferences.await;
-
 	let editor_api = editor_api.await;
+	let host_name = editor_api.imaginate_preferences.get_host_name();
 	let output_status = output_status.await;
 	let set_progress = |progress: ImaginateStatus| {
 		output_status.set(progress);
 		editor_api.node_graph_message_sender.send(NodeGraphUpdateMessage::ImaginateStatusUpdate);
 	};
 
-	let base_url: &str = &preferences.host_name;
-	let base_url: Url = base_url.try_into().map_err(|err| Error::UrlParse { text: base_url.into(), err })?;
+	let base_url: Url = host_name.try_into().map_err(|err| Error::UrlParse { text: host_name.into(), err })?;
 
 	let client = reqwest::ClientBuilder::new().build().map_err(Error::ClientBuild)?;
 
@@ -234,7 +223,10 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 
 	let join_url = |path: &str| base_url.join(path).map_err(|err| Error::UrlParse { text: base_url.as_str().into(), err });
 
-	let res = res.await.unwrap_or_else(|| DVec2::new(image.width as _, image.height as _));
+	let res = res.await.unwrap_or_else(|| {
+		let (width, height) = pick_safe_imaginate_resolution((image.width as _, image.height as _));
+		DVec2::new(width as _, height as _)
+	});
 	let common_request_data = ImaginateCommonImageRequest {
 		prompt: prompt.await,
 		seed: seed.await,
@@ -350,4 +342,35 @@ fn base64_to_image<D: AsRef<[u8]>, P: Pixel>(base64_data: D) -> Result<Image<P>,
 	};
 
 	Ok(Image { data: result_data, width, height })
+}
+
+pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
+	const MAX_RESOLUTION: u64 = 1000 * 1000;
+
+	// this is the maximum width/height that can be obtained
+	const MAX_DIMENSION: u64 = (MAX_RESOLUTION / 64) & !63;
+
+	// round the resolution to the nearest multiple of 64
+	let [width, height] = [width, height].map(|c| (c.round().clamp(0., MAX_DIMENSION as _) as u64 + 32).max(64) & !63);
+	let resolution = width * height;
+
+	if resolution > MAX_RESOLUTION {
+		// scale down the image, so it is smaller than MAX_RESOLUTION
+		let scale = (MAX_RESOLUTION as f64 / resolution as f64).sqrt();
+		let [width, height] = [width, height].map(|c| c as f64 * scale);
+
+		if width < 64.0 {
+			// the image is extremely wide
+			(64, MAX_DIMENSION)
+		} else if height < 64.0 {
+			// the image is extremely high
+			(MAX_DIMENSION, 64)
+		} else {
+			// round down to a multiple of 64, so that the resolution still is smaller than MAX_RESOLUTION
+			let [width, height] = [width, height].map(|c| c as u64 & !63);
+			(width, height)
+		}
+	} else {
+		(width, height)
+	}
 }

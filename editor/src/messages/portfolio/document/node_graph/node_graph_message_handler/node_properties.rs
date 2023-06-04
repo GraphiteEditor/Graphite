@@ -1010,7 +1010,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
 
-	let complete_value = &document_node.inputs[resolve_input("Percent Complete")];
 	let output_status = &document_node.inputs[resolve_input("Output Status")];
 
 	let server_status = {
@@ -1055,9 +1054,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::F64(percent_complete),..} = complete_value else {
-		panic!("Invalid percent complete input")
-	};
 	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateOutputStatus(ref output_status),..} = output_status else {
 		panic!("Invalid output status input")
 	};
@@ -1082,7 +1078,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			ImaginateStatus::Uploading => format!("Uploading Input Image"),
 			ImaginateStatus::Generating(percent) => format!("Generating: {percent:.0}%"),
 			ImaginateStatus::Terminating => "Terminating...".into(),
-			ImaginateStatus::Terminated => format!("{percent_complete:.0}% (Terminated)"),
+			ImaginateStatus::Terminated => "Terminated".into(),
 		};
 		let widgets = vec![
 			WidgetHolder::text_widget("Progress"),
@@ -1171,7 +1167,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::related_separator(),
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
-					.disabled(percent_complete < 100.0)
 					.on_update({
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
@@ -1236,7 +1231,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		.unwrap_or_default();
 
 	let resolution = {
-		use document_legacy::document::pick_safe_imaginate_resolution;
+		use graphene_std::imaginate::pick_safe_imaginate_resolution;
 
 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector, false);
 

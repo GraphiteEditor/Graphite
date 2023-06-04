@@ -457,7 +457,6 @@ macro_rules! generate_imaginate_node {
 
 generate_imaginate_node! {
 	output_status: OutputStatus: ImaginateOutputStatus,
-	preferences: Preferences: ImaginatePreferences,
 	seed: Seed: f64,
 	res: Res: Option<DVec2>,
 	samples: Samples: u32,
@@ -473,8 +472,6 @@ generate_imaginate_node! {
 	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
 	improve_faces: ImproveFaces: bool,
 	tiling: Tiling: bool,
-	percent_complete: PercentComplete: f64,
-	status: Status: ImaginateStatus,
 }
 
 #[derive(Debug, Clone, Copy)]

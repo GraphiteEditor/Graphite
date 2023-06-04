@@ -1,4 +1,4 @@
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginatePreferences, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
 use graphene_core::quantization::QuantizationChannels;
@@ -466,8 +466,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						macro_rules! instanciate_imaginate_node {
 							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)*) };
 						}
-						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> =
-							instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,);
+						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
 						let any = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
 						any.into_type_erased()
 					})
@@ -478,7 +477,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					vec![
 						fn_type!(WasmEditorApi),
 						fn_type!(ImaginateOutputStatus),
-						fn_type!(ImaginatePreferences),
 						fn_type!(f64),
 						fn_type!(Option<DVec2>),
 						fn_type!(u32),
@@ -494,8 +492,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						fn_type!(ImaginateMaskStartingFill),
 						fn_type!(bool),
 						fn_type!(bool),
-						fn_type!(f64),
-						fn_type!(ImaginateStatus),
 					],
 				),
 			),

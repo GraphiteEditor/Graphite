@@ -3,7 +3,6 @@ pub mod node_registry;
 
 #[cfg(test)]
 mod tests {
-
 	use graph_craft::document::value::TaggedValue;
 	use graphene_core::*;
 	use std::borrow::Cow;
@@ -73,7 +72,7 @@ mod tests {
 		use graph_craft::graphene_compiler::{Compiler, Executor};
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile_single(network, &Default::default(), true).expect("Graph should be generated");
+		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
 		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
 
@@ -121,7 +120,7 @@ mod tests {
 		use graph_craft::graphene_compiler::Compiler;
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile_single(network, &Default::default(), true).expect("Graph should be generated");
+		let protograph = compiler.compile_single(network, true).expect("Graph should be generated");
 
 		let _exec = block_on(DynamicExecutor::new(protograph)).map(|_e| panic!("The network should not type check ")).unwrap_err();
 	}
