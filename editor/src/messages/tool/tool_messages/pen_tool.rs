@@ -796,8 +796,8 @@ fn get_subpaths<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler
 		if node.name == "Path Generator" {
 			let subpaths_input = node.inputs.get(0)?;
 			let NodeInput::Value { tagged_value: TaggedValue::Subpaths(subpaths), .. } = subpaths_input else {
-					continue;
-				};
+				continue;
+			};
 
 			return Some(subpaths);
 		}
