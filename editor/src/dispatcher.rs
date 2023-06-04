@@ -205,6 +205,10 @@ impl Dispatcher {
 		list
 	}
 
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
+		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses);
+	}
+
 	/// Create the tree structure for logging the messages as a tree
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
@@ -319,6 +323,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select shape
 	/// - copy
@@ -358,6 +363,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	fn copy_paste_folder() {
 		let mut editor = create_editor_with_three_layers();
 
@@ -446,6 +452,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
 	/// - copy

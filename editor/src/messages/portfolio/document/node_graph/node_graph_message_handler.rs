@@ -1,12 +1,10 @@
 pub use self::document_node_types::*;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document;
-use document_legacy::layers::layer_layer::LayerLayer;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
@@ -33,6 +31,7 @@ pub enum FrontendGraphDataType {
 	Number,
 	#[serde(rename = "number")]
 	Boolean,
+	/// Refers to the mathematical vector, with direction and magnitude.
 	#[serde(rename = "vec2")]
 	Vector,
 	#[serde(rename = "graphic")]
@@ -46,7 +45,7 @@ impl FrontendGraphDataType {
 			TaggedValue::String(_) => Self::Text,
 			TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::U32(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
-			TaggedValue::DVec2(_) => Self::Vector,
+			TaggedValue::DVec2(_) | TaggedValue::IVec2(_) => Self::Vector,
 			TaggedValue::Image(_) => Self::Raster,
 			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
@@ -118,33 +117,43 @@ impl FrontendNodeType {
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphMessageHandler {
-	pub layer_path: Option<Vec<document_legacy::LayerId>>,
-	pub nested_path: Vec<graph_craft::document::NodeId>,
-	pub selected_nodes: Vec<graph_craft::document::NodeId>,
+	pub layer_path: Option<Vec<LayerId>>,
+	pub nested_path: Vec<NodeId>,
+	pub selected_nodes: Vec<NodeId>,
 	#[serde(skip)]
 	pub widgets: [LayoutGroup; 2],
 }
 
 impl NodeGraphMessageHandler {
-	fn get_root_network<'a>(&self, document: &'a Document) -> Option<&'a graph_craft::document::NodeNetwork> {
-		self.layer_path.as_ref().and_then(|path| document.layer(path).ok()).and_then(|layer| layer.as_layer_network().ok())
+	pub fn update_layer_path(&mut self, layer_path: Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
+		self.layer_path = layer_path;
+		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 
-	fn get_root_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
+	fn get_root_network<'a>(&self, document: &'a Document) -> &'a graph_craft::document::NodeNetwork {
 		self.layer_path
 			.as_ref()
-			.and_then(|path| document.layer_mut(path).ok())
+			.and_then(|path| document.root.child(path))
+			.and_then(|layer| layer.as_layer_network().ok())
+			.unwrap_or(&document.document_network)
+	}
+
+	fn get_root_network_mut<'a>(&self, document: &'a mut Document) -> &'a mut graph_craft::document::NodeNetwork {
+		self.layer_path
+			.as_ref()
+			.and_then(|path| document.root.child_mut(path))
 			.and_then(|layer| layer.as_layer_network_mut().ok())
+			.unwrap_or(&mut document.document_network)
 	}
 
 	/// Get the active graph_craft NodeNetwork struct
 	fn get_active_network<'a>(&self, document: &'a Document) -> Option<&'a graph_craft::document::NodeNetwork> {
-		self.get_root_network(document).and_then(|network| network.nested_network(&self.nested_path))
+		self.get_root_network(document).nested_network(&self.nested_path)
 	}
 
 	/// Get the active graph_craft NodeNetwork struct
 	fn get_active_network_mut<'a>(&self, document: &'a mut Document) -> Option<&'a mut graph_craft::document::NodeNetwork> {
-		self.get_root_network_mut(document).and_then(|network| network.nested_network_mut(&self.nested_path))
+		self.get_root_network_mut(document).nested_network_mut(&self.nested_path)
 	}
 
 	/// Send the cached layout for the bar at the top of the node panel to the frontend
@@ -156,38 +165,41 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collect the addresses of the currently viewed nested node e.g. Root -> MyFunFilter -> Exposure
-	fn collect_nested_addresses(&mut self, _document: &Document, _responses: &mut VecDeque<Message>) {
+	fn collect_nested_addresses(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
 		// // Build path list
-		// let mut path = vec!["Root".to_string()];
-		// let mut network = self.get_root_network(document);
-		// for node_id in &self.nested_path {
-		// 	let node = network.and_then(|network| network.nodes.get(node_id));
-		// 	if let Some(DocumentNode { name, .. }) = node {
-		// 		path.push(name.clone());
-		// 	}
-		// 	network = node.and_then(|node| node.implementation.get_network());
-		// }
-		// let nesting = path.len();
+		let mut path = vec![];
+		if let Some(layer) = self.layer_path.as_ref().and_then(|path| document.layer(&path).ok()) {
+			path.push(format!("Layer: {}", layer.name.as_ref().map(|name| name.as_str()).unwrap_or("Untitled Layer")));
+		} else {
+			path.push("Document Network".to_string());
+		}
+		let mut network = Some(self.get_root_network(document));
+		for node_id in &self.nested_path {
+			let node = network.and_then(|network| network.nodes.get(node_id));
+			if let Some(DocumentNode { name, .. }) = node {
+				path.push(name.clone());
+			}
+			network = node.and_then(|node| node.implementation.get_network());
+		}
+		let nesting = path.len();
 
-		// // Update UI
-		// self.widgets[0] = LayoutGroup::Row {
-		// 	widgets: vec![WidgetHolder::new(Widget::BreadcrumbTrailButtons(BreadcrumbTrailButtons {
-		// 		labels: path.clone(),
-		// 		on_update: WidgetCallback::new(move |input: &u64| {
-		// 			NodeGraphMessage::ExitNestedNetwork {
-		// 				depth_of_nesting: nesting - (*input as usize) - 1,
-		// 			}
-		// 			.into()
-		// 		}),
-		// 		..Default::default()
-		// 	}))],
-		// };
+		// Update UI
+		self.widgets[0] = LayoutGroup::Row {
+			widgets: vec![BreadcrumbTrailButtons::new(path.clone())
+				.on_update(move |input: &u64| {
+					NodeGraphMessage::ExitNestedNetwork {
+						depth_of_nesting: nesting - (*input as usize) - 1,
+					}
+					.into()
+				})
+				.widget_holder()],
+		};
 
-		// self.send_node_bar_layout(responses);
+		self.send_node_bar_layout(responses);
 	}
 
 	/// Updates the buttons for disable and preview
-	fn update_selection_action_buttons(&mut self, document: &mut Document, responses: &mut VecDeque<Message>) {
+	fn update_selection_action_buttons(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
 		if let Some(network) = self.get_active_network(document) {
 			let mut widgets = Vec::new();
 
@@ -235,8 +247,8 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collate the properties panel sections for a node graph
-	pub fn collate_properties(&self, graph: &LayerLayer, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
-		let mut network = &graph.network;
+	pub fn collate_properties(&self, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
+		let mut network = context.network;
 		for segment in &self.nested_path {
 			network = network.nodes.get(segment).and_then(|node| node.implementation.get_network()).unwrap();
 		}
@@ -411,27 +423,15 @@ impl NodeGraphMessageHandler {
 			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
 			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
 	}
-	fn clear_graph(responses: &mut VecDeque<Message>) {
-		let nodes = Vec::new();
-		let links = Vec::new();
-		responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
-		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout::new(Vec::new())),
-			layout_target: crate::messages::layout::utility_types::misc::LayoutTarget::NodeGraphBar,
-		});
-	}
 }
 
-impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for NodeGraphMessageHandler {
+impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, executor): (&mut Document, &NodeGraphExecutor)) {
+	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, executor, document_id): (&mut Document, &NodeGraphExecutor, u64)) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
-				if let Some(_old_layer_path) = self.layer_path.take() {
-					Self::clear_graph(responses);
-					responses.add(PropertiesPanelMessage::ResendActiveProperties);
-				}
+				self.update_layer_path(None, responses);
 			}
 			NodeGraphMessage::ConnectNodesByLink {
 				output_node,
@@ -540,7 +540,13 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for N
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let input = node_type.inputs[input_index].default.clone();
+				let Some((input_index, existing_input)) = node.inputs.iter().enumerate().filter(|(_, input)| input.is_exposed()).nth(input_index) else {
+					return;
+				};
+				let mut input = node_type.inputs[input_index].default.clone();
+				if let NodeInput::Value { exposed, .. } = &mut input {
+					*exposed = existing_input.is_exposed();
+				}
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
 				let should_rerender = network.connected_to_output(node_id, true);
@@ -703,6 +709,13 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for N
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
+			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
+				document_id,
+				layer_path: Vec::new(),
+				input_image_data: vec![],
+				size: (0, 0),
+				imaginate_node_path: None,
+			}),
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
 				self.update_selection_action_buttons(document, responses);
@@ -715,6 +728,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for N
 					if should_rerender {
 						if let Some(layer_path) = self.layer_path.clone() {
 							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+						} else {
+							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
 					}
 				}
@@ -731,6 +746,8 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for N
 						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id, true) {
 							if let Some(layer_path) = self.layer_path.clone() {
 								responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+							} else {
+								responses.add(NodeGraphMessage::RunDocumentGraph);
 							}
 						}
 					}
@@ -754,11 +771,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for N
 					return;
 				};
 
-				let network = document
-					.layer_mut(&layer_path)
-					.ok()
-					.and_then(|layer| layer.as_layer_network_mut().ok())
-					.and_then(|network| network.nested_network_mut(node_path));
+				let network = self.get_root_network_mut(document).nested_network_mut(node_path);
 
 				if let Some(network) = network {
 					if let Some(node) = network.nodes.get_mut(node_id) {
@@ -871,11 +884,23 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor)> for N
 					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 				}
 			}
+			NodeGraphMessage::UpdateNewNodeGraph => {
+				if let Some(network) = self.get_active_network(document) {
+					self.selected_nodes.clear();
+
+					Self::send_graph(network, executor, &self.layer_path, responses);
+
+					let node_types = document_node_types::collect_node_types();
+					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
+				}
+				self.collect_nested_addresses(document, responses);
+				self.update_selected(document, responses);
+			}
 		}
 	}
 
 	fn actions(&self) -> ActionList {
-		if self.layer_path.is_some() && !self.selected_nodes.is_empty() {
+		if !self.selected_nodes.is_empty() {
 			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleHidden)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)

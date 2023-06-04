@@ -59,6 +59,7 @@ pub enum NodeGraphMessage {
 	PasteNodes {
 		serialized_nodes: String,
 	},
+	RunDocumentGraph,
 	SelectNodes {
 		nodes: Vec<NodeId>,
 	},
@@ -92,4 +93,5 @@ pub enum NodeGraphMessage {
 	TogglePreviewImpl {
 		node_id: NodeId,
 	},
+	UpdateNewNodeGraph,
 }

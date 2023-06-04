@@ -106,6 +106,11 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 		self.in_handle = self.in_handle.map(|in_handle| affine_transform.transform_point2(in_handle));
 		self.out_handle = self.out_handle.map(|out_handle| affine_transform.transform_point2(out_handle));
 	}
+
+	/// Are all handles at finite positions
+	pub fn is_finite(&self) -> bool {
+		self.anchor.is_finite() && self.in_handle.map_or(true, |handle| handle.is_finite()) && self.out_handle.map_or(true, |handle| handle.is_finite())
+	}
 }
 
 #[derive(Copy, Clone)]

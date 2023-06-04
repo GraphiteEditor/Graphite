@@ -124,6 +124,17 @@
 	export async function updateDocumentArtwork(svg: string) {
 		artworkSvg = svg;
 		rasterizedCanvas = undefined;
+
+		await tick();
+
+		const placeholders = window.document.querySelectorAll("[data-canvas] [data-canvas-placeholder]");
+		// Replace the placeholders with the actual canvas elements
+		placeholders.forEach((placeholder) => {
+			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
+			// Get the canvas element from the global storage
+			const context = (window as any).imageCanvases[canvasName];
+			placeholder.replaceWith(context.canvas);
+		});
 	}
 
 	export function updateDocumentOverlays(svg: string) {
@@ -577,6 +588,11 @@
 						height: 100%;
 						// Allows dev tools to select the artwork without being blocked by the SVG containers
 						pointer-events: none;
+
+						canvas {
+							width: 100%;
+							height: 100%;
+						}
 
 						// Prevent inheritance from reaching the child elements
 						> * {

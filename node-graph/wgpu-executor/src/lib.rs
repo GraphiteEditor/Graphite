@@ -3,12 +3,13 @@ mod executor;
 
 pub use context::Context;
 pub use executor::GpuExecutor;
-use gpu_executor::{Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
+use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::Type;
 
 use anyhow::{bail, Result};
 use futures::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
 
@@ -42,8 +43,11 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 
 	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self::BufferHandle>> {
 		let bytes = data.to_bytes();
-		let mut usage = wgpu::BufferUsages::STORAGE;
+		let mut usage = wgpu::BufferUsages::empty();
 
+		if options.storage {
+			usage |= wgpu::BufferUsages::STORAGE;
+		}
 		if options.gpu_writable {
 			usage |= wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST;
 		}
@@ -54,15 +58,17 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			usage |= wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC;
 		}
 
+		log::debug!("Creating storage buffer with usage {:?} and len: {}", usage, bytes.len());
 		let buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
 			contents: bytes.as_ref(),
 			usage,
 		});
-		Ok(ShaderInput::StorageBuffer(buffer, Type::new::<T>()))
+		Ok(ShaderInput::StorageBuffer(buffer, data.ty()))
 	}
 
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self::BufferHandle>> {
+		log::debug!("Creating output buffer with len: {}", len);
 		let create_buffer = |usage| {
 			Ok::<_, anyhow::Error>(self.context.device.create_buffer(&BufferDescriptor {
 				label: None,
@@ -72,13 +78,12 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			}))
 		};
 		let buffer = match cpu_readable {
-			true => ShaderInput::ReadBackBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ)?, ty),
+			true => ShaderInput::ReadBackBuffer(create_buffer(wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ)?, ty),
 			false => ShaderInput::OutputBuffer(create_buffer(wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC)?, ty),
 		};
 		Ok(buffer)
 	}
-
-	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<ShaderInput<Self::BufferHandle>>, instances: u32) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: ComputePassDimensions) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
@@ -108,18 +113,22 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 		{
+			let dimensions = instances.get();
 			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
 			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
-			cpass.dispatch_workgroups(instances, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
+			cpass.dispatch_workgroups(dimensions.0, dimensions.1, dimensions.2); // Number of cells to run, the (x,y,z) size of item being processed
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
-		if let Some(ShaderInput::ReadBackBuffer(output, ty)) = read_back {
+		if let Some(buffer) = read_back {
+			let ShaderInput::ReadBackBuffer(output, ty) = buffer.as_ref() else {
+				bail!("Tried to read back from a non read back buffer");
+			};
 			let size = output.size();
 			assert_eq!(size, layout.output_buffer.buffer().unwrap().size());
-			assert_eq!(ty, layout.output_buffer.ty());
+			assert_eq!(ty, &layout.output_buffer.ty());
 			encoder.copy_buffer_to_buffer(
 				layout.output_buffer.buffer().ok_or_else(|| anyhow::anyhow!("Tried to use an non buffer as the shader output"))?,
 				0,
@@ -143,9 +152,9 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(())
 	}
 
-	fn read_output_buffer(&self, buffer: ShaderInput<Self::BufferHandle>) -> Result<Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>> {
-		if let ShaderInput::ReadBackBuffer(buffer, _) = buffer {
-			let future = Box::pin(async move {
+	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self::BufferHandle>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
+		let future = Box::pin(async move {
+			if let ShaderInput::ReadBackBuffer(buffer, _) = buffer.as_ref() {
 				let buffer_slice = buffer.slice(..);
 
 				// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
@@ -175,17 +184,17 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 				} else {
 					bail!("failed to run compute on gpu!")
 				}
-			});
-			Ok(future)
-		} else {
-			bail!("Tried to read a non readback buffer")
-		}
+			} else {
+				bail!("Tried to read a non readback buffer")
+			}
+		});
+		future
 	}
 }
 
 impl NewExecutor {
-	pub fn new() -> Option<Self> {
-		let context = Context::new_sync()?;
+	pub async fn new() -> Option<Self> {
+		let context = Context::new().await?;
 		Some(Self { context })
 	}
 }

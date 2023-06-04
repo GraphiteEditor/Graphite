@@ -12,7 +12,7 @@ pub struct GenerateQuantizationNode<N, M> {
 }
 
 #[node_macro::node_fn(GenerateQuantizationNode)]
-fn generate_quantization_fn(image_frame: ImageFrame, samples: u32, function: u32) -> [Quantization; 4] {
+fn generate_quantization_fn(image_frame: ImageFrame<Color>, samples: u32, function: u32) -> [Quantization; 4] {
 	let image = image_frame.image;
 
 	let len = image.data.len().min(10000);

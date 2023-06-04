@@ -5,6 +5,7 @@ use crate::LayerId;
 
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::vector::VectorData;
+use graphene_core::SurfaceId;
 use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -15,6 +16,7 @@ pub enum CachedOutputData {
 	None,
 	BlobURL(String),
 	VectorPath(Box<VectorData>),
+	SurfaceId(SurfaceId),
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -74,6 +76,19 @@ impl LayerData for LayerLayer {
 					height.abs(),
 					blob_url,
 					matrix
+				);
+			}
+			CachedOutputData::SurfaceId(SurfaceId(id)) => {
+				// Render the image if it exists
+				let _ = write!(
+					svg,
+					r#"
+					<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>
+					"#,
+					width.abs(),
+					height.abs(),
+					matrix,
+					id
 				);
 			}
 			_ => {
