@@ -12,10 +12,7 @@ license = "Apache-2.0"
 
 [features]
 gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu"]
-quantization = [
-	"graphene-std/quantization",
-	"interpreted-executor/quantization",
-]
+quantization = ["graphene-std/quantization", "interpreted-executor/quantization"]
 
 [dependencies]
 log = "0.4"
@@ -41,10 +38,10 @@ image = { version = "0.24", default-features = false, features = [
 ] }
 graph-craft = { path = "../node-graph/graph-craft" }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
-borrow_stack = { path = "../node-graph/borrow_stack" }
 dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }
+num_enum = "0.6.1"
 
 [dependencies.document-legacy]
 path = "../document-legacy"
@@ -53,3 +50,4 @@ package = "graphite-document-legacy"
 [dev-dependencies]
 env_logger = "0.8.4"
 test-case = "2.1"
+futures = "0.3.28"

@@ -20,6 +20,7 @@ pub mod value;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+pub mod memo;
 pub mod storage;
 
 pub mod raster;
@@ -33,6 +34,8 @@ pub use graphic_element::*;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
+pub mod application_io;
+
 pub mod quantization;
 
 use core::any::TypeId;
@@ -42,7 +45,7 @@ pub use raster::Color;
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
-	fn reset(self: Pin<&mut Self>) {}
+	fn reset(&self) {}
 	#[cfg(feature = "std")]
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
@@ -60,6 +63,10 @@ where
 	Self::Output: 'i + StaticTypeSized,
 	Input: 'i + StaticTypeSized,
 {
+	fn node_name(&self) -> &'static str {
+		core::any::type_name::<Self>()
+	}
+
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
 	}
@@ -89,13 +96,6 @@ where
 {
 }
 
-/*impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'n> Node<'n, I, Output = O> {
-	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
-		(**self).eval(input)
-	}
-}*/
 impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N {
 	type Output = O;
 
@@ -103,7 +103,24 @@ impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N
 		(**self).eval(input)
 	}
 }
-impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn for<'a> Node<'a, I, Output = O> {
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for Box<N> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for alloc::sync::Arc<N> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+
+impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn Node<'i, I, Output = O> {
 	type Output = O;
 
 	fn eval(&'i self, input: I) -> Self::Output {
@@ -114,7 +131,14 @@ use core::pin::Pin;
 
 use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = O> + 'i>> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
+	type Output = O;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		(**self).eval(input)
+	}
+}
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
 	type Output = O;
 
 	fn eval(&'i self, input: I) -> Self::Output {
@@ -122,5 +146,6 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn for<'a> Node<'a, I, Output = 
 	}
 }
 
-#[cfg(feature = "alloc")]
-pub use crate::raster::image::{EditorApi, ExtractImageFrame};
+pub use crate::application_io::{ExtractImageFrame, SurfaceFrame, SurfaceId};
+#[cfg(feature = "wasm")]
+pub use application_io::{wasm_application_io, wasm_application_io::WasmEditorApi as EditorApi};

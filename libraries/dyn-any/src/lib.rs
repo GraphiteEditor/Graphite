@@ -56,13 +56,13 @@ impl<'a, T: DynAny<'a> + 'a> UpcastFrom<T> for dyn DynAny<'a> + 'a {
 	}
 }
 
-pub trait DynAny<'a> {
+pub trait DynAny<'a>: 'a {
 	fn type_id(&self) -> TypeId;
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str;
 }
 
-impl<'a, T: StaticType> DynAny<'a> for T {
+impl<'a, T: StaticType + 'a> DynAny<'a> for T {
 	fn type_id(&self) -> core::any::TypeId {
 		core::any::TypeId::of::<T::Static>()
 	}
@@ -71,7 +71,7 @@ impl<'a, T: StaticType> DynAny<'a> for T {
 		core::any::type_name::<T>()
 	}
 }
-pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
+pub fn downcast_ref<'a, V: StaticType + 'a>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 	if i.type_id() == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
 		let ptr = i as *const dyn DynAny<'a> as *const V;
@@ -82,7 +82,7 @@ pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 }
 
 #[cfg(feature = "alloc")]
-pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>, String> {
+pub fn downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>, String> {
 	let type_id = DynAny::type_id(i.as_ref());
 	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
@@ -193,8 +193,17 @@ unsafe impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
 	type Static = [<T as StaticTypeSized>::Static; N];
 }
 
-unsafe impl<'a> StaticType for dyn DynAny<'a> + '_ {
+unsafe impl StaticType for dyn for<'i> DynAny<'_> + '_ {
 	type Static = dyn DynAny<'static>;
+}
+unsafe impl StaticType for dyn for<'i> DynAny<'_> + Send + Sync + '_ {
+	type Static = dyn DynAny<'static> + Send + Sync;
+}
+unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + Send + Sync + '_ {
+	type Static = dyn core::future::Future<Output = T::Static> + Send + Sync;
+}
+unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + '_ {
+	type Static = dyn core::future::Future<Output = T::Static>;
 }
 #[cfg(feature = "alloc")]
 pub trait IntoDynAny<'n>: Sized + StaticType + 'n {
@@ -228,13 +237,14 @@ use core::{
 	mem::{ManuallyDrop, MaybeUninit},
 	num::Wrapping,
 	ops::Range,
+	pin::Pin,
 	time::Duration,
 };
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
 	 ManuallyDrop<T>, PhantomData<T>, PhantomPinned, Empty<T>, Range<T>,
-	Wrapping<T>, Duration, bool, f32, f64, char,
+	Wrapping<T>, Pin<T>, Duration, bool, f32, f64, char,
 	u8, AtomicU8, u16, AtomicU16, u32, AtomicU32, u64,  usize, AtomicUsize,
 	i8, AtomicI8, i16, AtomicI16, i32, AtomicI32, i64,  isize, AtomicIsize,
 	i128, u128, AtomicBool, AtomicPtr<T>

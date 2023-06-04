@@ -5,10 +5,9 @@ extern crate log;
 //pub mod value;
 //#![feature(const_type_name)]
 
-#[cfg(feature = "memoization")]
-pub mod memo;
-
 pub mod raster;
+
+pub mod http;
 
 pub mod any;
 

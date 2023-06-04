@@ -637,7 +637,7 @@ mod tests {
 
 		let outline = subpath.outline(10., crate::Join::Round, crate::Cap::Round).0;
 		assert!(outline.manipulator_groups.windows(2).all(|pair| !pair[0].anchor.abs_diff_eq(pair[1].anchor, MAX_ABSOLUTE_DIFFERENCE)));
-		assert_eq!(outline.closed(), true);
+		assert!(outline.closed());
 	}
 
 	#[test]

@@ -253,6 +253,24 @@ impl Layer {
 		}
 	}
 
+	/// Gets a child layer of this layer, by a path. If the layer with id 1 is inside a folder with id 0, the path will be [0, 1].
+	pub fn child(&self, path: &[LayerId]) -> Option<&Layer> {
+		let mut layer = self;
+		for id in path {
+			layer = layer.as_folder().ok()?.layer(*id)?;
+		}
+		Some(layer)
+	}
+
+	/// Gets a child layer of this layer, by a path. If the layer with id 1 is inside a folder with id 0, the path will be [0, 1].
+	pub fn child_mut(&mut self, path: &[LayerId]) -> Option<&mut Layer> {
+		let mut layer = self;
+		for id in path {
+			layer = layer.as_folder_mut().ok()?.layer_mut(*id)?;
+		}
+		Some(layer)
+	}
+
 	/// Iterate over the layers encapsulated by this layer.
 	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
 	/// If the [Layer type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.

@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 tauri = ["ron"]
 gpu = ["editor/gpu"]
-default = []
+default = ["gpu"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -23,14 +23,27 @@ editor = { path = "../../editor", package = "graphite-editor" }
 document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
 graph-craft = { path = "../../node-graph/graph-craft" }
 log = "0.4"
-graphene-core = { path = "../../node-graph/gcore", features = ["async", "std", "alloc"] }
+graphene-core = { path = "../../node-graph/gcore", features = [
+	"async",
+	"std",
+	"alloc",
+] }
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.84" }
 serde-wasm-bindgen = "0.4.1"
 js-sys = "0.3.55"
 wasm-bindgen-futures = "0.4.33"
-ron = {version = "0.8", optional = true}
+ron = { version = "0.8", optional = true }
 bezier-rs = { path = "../../libraries/bezier-rs" }
+
+[dependencies.web-sys]
+version = "0.3.4"
+features = [
+	"Window",
+	"CanvasRenderingContext2d",
+	"Document",
+	"HtmlCanvasElement",
+]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.22"
@@ -50,3 +63,11 @@ wasm-opt = ["-Os"]
 debug-js-glue = false
 demangle-name-section = false
 dwarf-debug-info = false
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ["-Os", "-g"]
+
+[package.metadata.wasm-pack.profile.profiling.wasm-bindgen]
+debug-js-glue = true
+demangle-name-section = true
+dwarf-debug-info = true

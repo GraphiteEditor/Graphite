@@ -9,7 +9,6 @@ members = [
 	"node-graph/gstd",
 	"node-graph/graph-craft",
 	"node-graph/interpreted-executor",
-	"node-graph/borrow_stack",
 	"node-graph/node-macro",
 	"node-graph/compilation-server",
 	"node-graph/compilation-client",
@@ -53,11 +52,15 @@ opt-level = 3
 [profile.dev.package.image]
 opt-level = 3
 
-[profile.dev.package.png]
-opt-level = 3
-
 [profile.dev.package.xxhash-rust]
 opt-level = 3
 
 [profile.dev]
 opt-level = 1
+
+[profile.release]
+lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+debug = true
