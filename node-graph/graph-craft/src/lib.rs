@@ -8,5 +8,5 @@ pub use graphene_core::{concrete, generic, NodeIdentifier, Type, TypeDescriptor}
 pub mod document;
 pub mod proto;
 
-pub mod executor;
+pub mod graphene_compiler;
 pub mod imaginate_input;

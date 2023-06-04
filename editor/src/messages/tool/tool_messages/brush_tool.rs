@@ -14,13 +14,51 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
-use graphene_core::raster::ImageFrame;
+use graph_craft::document::{NodeInput, NodeNetwork};
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
+
+const EXPOSED_BLEND_MODES: &'static [&'static [BlendMode]] = {
+	use BlendMode::*;
+	&[
+		// Basic group
+		&[Normal],
+		// Darken group
+		&[Darken, Multiply, ColorBurn, LinearBurn, DarkerColor],
+		// Lighten group
+		&[Lighten, Screen, ColorDodge, LinearDodge, LighterColor],
+		// Contrast group
+		&[Overlay, SoftLight, HardLight, VividLight, LinearLight, PinLight, HardMix],
+		// Inversion group
+		&[Difference, Exclusion, Subtract, Divide],
+		// Component group
+		&[Hue, Saturation, Color, Luminosity],
+	]
+};
+
+fn blend_mode_dropdown_idx(target_blend_mode: BlendMode) -> Option<u32> {
+	let mut i = 0;
+	for group in EXPOSED_BLEND_MODES {
+		for &blend_mode in group.iter() {
+			if blend_mode == target_blend_mode {
+				return Some(i);
+			}
+			i += 1;
+		}
+	}
+	None
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
+pub enum DrawMode {
+	Draw = 0,
+	Erase,
+	Restore,
+}
 
 #[derive(Default)]
 pub struct BrushTool {
@@ -35,6 +73,8 @@ pub struct BrushOptions {
 	flow: f64,
 	spacing: f64,
 	color: ToolColorOptions,
+	blend_mode: BlendMode,
+	draw_mode: DrawMode,
 }
 
 impl Default for BrushOptions {
@@ -45,6 +85,8 @@ impl Default for BrushOptions {
 			flow: 100.,
 			spacing: 20.,
 			color: ToolColorOptions::default(),
+			blend_mode: BlendMode::Normal,
+			draw_mode: DrawMode::Draw,
 		}
 	}
 }
@@ -69,10 +111,12 @@ pub enum BrushToolMessage {
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
+	BlendMode(BlendMode),
 	ChangeDiameter(f64),
 	Color(Option<Color>),
 	ColorType(ToolColorType),
 	Diameter(f64),
+	DrawMode(DrawMode),
 	Flow(f64),
 	Hardness(f64),
 	Spacing(f64),
@@ -135,6 +179,14 @@ impl PropertyHolder for BrushTool {
 
 		widgets.push(WidgetHolder::section_separator());
 
+		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
+			.into_iter()
+			.map(|draw_mode| RadioEntryData::new(format!("{draw_mode:?}")).on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into()))
+			.collect();
+		widgets.push(RadioInput::new(draw_mode_entries).selected_index(self.options.draw_mode as u32).widget_holder());
+
+		widgets.push(WidgetHolder::section_separator());
+
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
 			false,
@@ -142,6 +194,29 @@ impl PropertyHolder for BrushTool {
 			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
 			WidgetCallback::new(|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into()),
 		));
+
+		widgets.push(WidgetHolder::related_separator());
+
+		let blend_mode_entries: Vec<Vec<_>> = EXPOSED_BLEND_MODES
+			.iter()
+			.map(|group| {
+				group
+					.iter()
+					.map(|blend_mode| {
+						DropdownEntryData::new(format!("{blend_mode}"))
+							.value(format!("{blend_mode:?}"))
+							.on_update(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
+					})
+					.collect()
+			})
+			.collect();
+		widgets.push(
+			DropdownInput::new(blend_mode_entries)
+				.selected_index(blend_mode_dropdown_idx(self.options.blend_mode))
+				.tooltip("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
+				.disabled(self.options.draw_mode != DrawMode::Draw)
+				.widget_holder(),
+		);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -151,6 +226,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message {
 			match action {
+				BrushToolMessageOptionsUpdate::BlendMode(blend_mode) => self.options.blend_mode = blend_mode,
 				BrushToolMessageOptionsUpdate::ChangeDiameter(change) => {
 					let needs_rounding = ((self.options.diameter + change.abs() / 2.) % change.abs() - change.abs() / 2.).abs() > 0.5;
 					if needs_rounding && change > 0. {
@@ -164,6 +240,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 					self.register_properties(responses, LayoutTarget::ToolOptions);
 				}
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
+				BrushToolMessageOptionsUpdate::DrawMode(draw_mode) => self.options.draw_mode = draw_mode,
 				BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 				BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
 				BrushToolMessageOptionsUpdate::Spacing(spacing) => self.options.spacing = spacing,
@@ -223,7 +300,6 @@ impl ToolTransition for BrushTool {
 struct BrushToolData {
 	strokes: Vec<BrushStroke>,
 	layer_path: Vec<LayerId>,
-	node_path: Vec<NodeId>,
 	transform: DAffine2,
 }
 
@@ -238,7 +314,7 @@ impl BrushToolData {
 		let network = &layer.network;
 		for (node, _node_id) in network.primary_flow() {
 			if node.name == "Brush" {
-				let points_input = node.inputs.get(3)?;
+				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value { tagged_value: TaggedValue::BrushStrokes(strokes), .. } = points_input else {
 					continue;
 				};
@@ -255,7 +331,7 @@ impl BrushToolData {
 		matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)).then_some(&self.layer_path)
 	}
 
-	fn update_strokes(&self, brush_options: &BrushOptions, responses: &mut VecDeque<Message>) {
+	fn update_strokes(&self, responses: &mut VecDeque<Message>) {
 		let layer = self.layer_path.clone();
 		let strokes = self.strokes.clone();
 		responses.add(GraphOperationMessage::Brush { layer, strokes });
@@ -297,6 +373,11 @@ impl Fsm for BrushToolFsmState {
 						.max((tool_data.transform.matrix2 * glam::DVec2::Y).length());
 
 					// Start a new stroke with a single sample
+					let blend_mode = match tool_options.draw_mode {
+						DrawMode::Draw => tool_options.blend_mode,
+						DrawMode::Erase => BlendMode::Erase,
+						DrawMode::Restore => BlendMode::Restore,
+					};
 					tool_data.strokes.push(BrushStroke {
 						trace: vec![BrushInputSample { position: layer_position }],
 						style: BrushStyle {
@@ -305,13 +386,14 @@ impl Fsm for BrushToolFsmState {
 							hardness: tool_options.hardness,
 							flow: tool_options.flow,
 							spacing: tool_options.spacing,
+							blend_mode,
 						},
 					});
 
 					if new_layer {
 						add_brush_render(tool_options, tool_data, responses);
 					}
-					tool_data.update_strokes(tool_options, responses);
+					tool_data.update_strokes(responses);
 
 					BrushToolFsmState::Drawing
 				}
@@ -320,7 +402,7 @@ impl Fsm for BrushToolFsmState {
 					if let Some(stroke) = tool_data.strokes.last_mut() {
 						stroke.trace.push(BrushInputSample { position: layer_position })
 					}
-					tool_data.update_strokes(tool_options, responses);
+					tool_data.update_strokes(responses);
 
 					BrushToolFsmState::Drawing
 				}
@@ -365,7 +447,7 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn add_brush_render(tool_options: &BrushOptions, data: &BrushToolData, responses: &mut VecDeque<Message>) {
+fn add_brush_render(_tool_options: &BrushOptions, data: &BrushToolData, responses: &mut VecDeque<Message>) {
 	let mut network = NodeNetwork::default();
 	let output_node = network.push_output_node();
 	if let Some(node) = network.nodes.get_mut(&output_node) {

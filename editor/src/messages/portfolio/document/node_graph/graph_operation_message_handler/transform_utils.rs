@@ -276,6 +276,7 @@ impl<'a> VectorModificationState<'a> {
 	}
 
 	fn set_position(&mut self, point: ManipulatorPointId, position: DVec2) {
+		assert!(position.is_finite(), "Point position should be finite");
 		for subpath in self.subpaths.iter_mut() {
 			if let Some(manipulator) = subpath.manipulator_mut_from_id(point.group) {
 				match point.manipulator_type {

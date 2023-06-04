@@ -56,13 +56,13 @@ impl<'a, T: DynAny<'a> + 'a> UpcastFrom<T> for dyn DynAny<'a> + 'a {
 	}
 }
 
-pub trait DynAny<'a> {
+pub trait DynAny<'a>: 'a {
 	fn type_id(&self) -> TypeId;
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str;
 }
 
-impl<'a, T: StaticType> DynAny<'a> for T {
+impl<'a, T: StaticType + 'a> DynAny<'a> for T {
 	fn type_id(&self) -> core::any::TypeId {
 		core::any::TypeId::of::<T::Static>()
 	}
@@ -71,7 +71,7 @@ impl<'a, T: StaticType> DynAny<'a> for T {
 		core::any::type_name::<T>()
 	}
 }
-pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
+pub fn downcast_ref<'a, V: StaticType + 'a>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 	if i.type_id() == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
 		let ptr = i as *const dyn DynAny<'a> as *const V;
@@ -82,7 +82,7 @@ pub fn downcast_ref<'a, V: StaticType>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
 }
 
 #[cfg(feature = "alloc")]
-pub fn downcast<'a, V: StaticType>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>, String> {
+pub fn downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>, String> {
 	let type_id = DynAny::type_id(i.as_ref());
 	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
