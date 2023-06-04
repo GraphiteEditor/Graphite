@@ -192,6 +192,9 @@ impl ShapeState {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
 
 					let position = previous_position + delta;
+					debug!("prev pos: {:?}", previous_position);
+					debug!("del: {:?}", delta);
+					debug!("pos: {:?}", position);
 					responses.add(GraphOperationMessage::Vector {
 						layer: layer_path.clone(),
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
