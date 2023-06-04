@@ -401,6 +401,7 @@ impl Fsm for PathToolFsmState {
 
 										// For non-bezier, we have to translate the manipulation points from Local to Document space
 										let mut docspace_anchor = anchor_subpath.anchor;
+
 										if !is_bezier {
 											let viewspace_anchor = viewspace.transform_point2(docspace_anchor);
 											docspace_anchor = doc_transform.inverse().transform_point2(viewspace_anchor);
@@ -547,9 +548,13 @@ impl Fsm for PathToolFsmState {
 															if is_bezier {
 																let mut new_delta = intersection - docspace_anchor;
 																new_delta = viewspace.transform_vector2(new_delta);
+																debug!("next new: {:?}", new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															} else if !is_bezier {
-																let new_delta = intersection - docspace_anchor;
+																let mut new_delta = intersection - docspace_anchor;
+																debug!("ne new: {:?}", new_delta);
+																// new_delta = viewspace.transform_vector2(new_delta);
+																debug!("after next new: {:?}", new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															}
 														}
@@ -579,12 +584,17 @@ impl Fsm for PathToolFsmState {
 																x: intersection_x + docspace_start_position.x,
 																y: intersection_y + docspace_start_position.y,
 															};
+															debug!("int: {:?}", intersection);
 															if is_bezier {
 																let mut new_delta = intersection - docspace_anchor;
 																new_delta = viewspace.transform_vector2(new_delta);
+																debug!("prev new: {:?}", new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															} else if !is_bezier {
-																let new_delta = intersection - docspace_anchor;
+																let mut new_delta = intersection - docspace_anchor;
+																debug!("prev new: {:?}", new_delta);
+																// new_delta = viewspace.inverse().transform_vector2(new_delta);
+																debug!("after prev new: {:?}", new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses);
 															}
 														}
