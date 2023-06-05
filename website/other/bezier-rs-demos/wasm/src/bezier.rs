@@ -213,23 +213,23 @@ impl WasmBezier {
 		let point = DVec2::new(raw_x, raw_y);
 
 		let t_values = self.0.tangent_line(point);
-		if t_values.is_empty() {
-			let circle = draw_circle(DVec2::new(1., 1.), 3., RED, 1., RED);
-			let content = format!("{bezier}{circle}",);
-			return wrap_svg_tag(content);
-		} else {
-			let lines: String = t_values
-				.iter()
-				.map(|&t_value| {
-					let t = parse_t_variant(&"Parametric".to_owned(), t_value);
-					let intersection_point = self.0.evaluate(t);
-					draw_line(raw_x, raw_y, intersection_point.x, intersection_point.y, RED, 1.)
-				})
-				.fold("".to_string(), |acc, circle| acc + &circle);
+		// if t_values.is_empty() {
+		// 	let circle = draw_circle(DVec2::new(raw_x, raw_y), 3., RED, 1., WHITE);
+		// 	let content = format!("{bezier}{circle}",);
+		// 	return wrap_svg_tag(content);
+		// } else { 
+		let lines: String = t_values
+			.iter()
+			.map(|&t_value| {
+				let t = parse_t_variant(&"Parametric".to_owned(), t_value);
+				let intersection_point = self.0.evaluate(t);
+				draw_line(raw_x, raw_y, intersection_point.x, intersection_point.y, RED, 1.)
+			})
+			.fold("".to_string(), |acc, circle| acc + &circle);
 
-			let content = format!("{bezier}{lines}",);
-			wrap_svg_tag(content)
-		}
+		let content = format!("{bezier}{lines}",);
+		wrap_svg_tag(content)
+		// }
 	}
 
 	pub fn normal(&self, raw_t: f64, t_variant: String) -> String {

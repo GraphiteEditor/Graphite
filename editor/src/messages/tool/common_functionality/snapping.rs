@@ -5,13 +5,18 @@ use crate::consts::{
 	SNAP_POINT_UNSNAPPED_OPACITY,
 };
 use crate::messages::prelude::*;
-
 use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
+use bezier_rs::BezierHandles;
+use bezier_rs::BezierHandles::Cubic;
+use bezier_rs::BezierHandles::Quadratic;
+use bezier_rs::{Bezier, TValue};
+
 use glam::{DAffine2, DVec2};
+use kurbo::BezPath;
 use std::f64::consts::PI;
 
 // Handles snap overlays
@@ -217,6 +222,7 @@ impl SnapManager {
 		snap_y: bool,
 	) {
 		if document_message_handler.snapping_enabled {
+			debug!("Start Snap");
 			self.snap_x = snap_x;
 			self.snap_y = snap_y;
 
@@ -227,7 +233,60 @@ impl SnapManager {
 					.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y)
 					.collect(),
 			);
-			self.point_targets = None;
+
+			//TODO: Ollie- Set point targets to be all candidates
+			// let all_layer_ids = document_message_handler.all_layers();
+			// let test: Vec<&u64> = all_layer_ids.collect();
+			let all: Vec<Vec<u64>> = document_message_handler.all_layers().map(|path| path.to_vec()).collect();
+			debug!("all {:?}", all);
+			let mut all_t_vals = vec![];
+			for id in all {
+				debug!("ID {:?}", id);
+				let layer_res = document_message_handler.document_legacy.layer(id.as_slice()).ok();
+				debug!("Here");
+				let Some(layer) = layer_res else {
+						warn!("No Layer Found");
+						continue;
+					};
+				match &layer.data {
+					document_legacy::layers::layer_info::LayerDataType::Shape(shape) => (),
+					document_legacy::layers::layer_info::LayerDataType::Folder(_) => {
+						debug!("Folder");
+						()
+					}
+					document_legacy::layers::layer_info::LayerDataType::Layer(layer) => {
+						debug!("Layer");
+						let subpaths = layer.as_vector_data().unwrap().subpaths.first().unwrap();
+						let mut subpathIter = subpaths.iter();
+						for bezier in subpathIter {
+							debug!("x {:?}", bezier);
+							let handles = bezier.handles;
+							let cubicHandles = match handles {
+								BezierHandles::Linear => vec![],
+								BezierHandles::Quadratic { handle } => vec![handle],
+								BezierHandles::Cubic { handle_start, handle_end } => vec![handle_start, handle_end],
+							};
+
+							let doc_transform = document_message_handler.document_legacy.root.transform;
+							let doc_mouse_pos = doc_transform.inverse().transform_point2(input.mouse.position);
+							debug!("doc_mouse_pos {:?}", doc_mouse_pos);
+							if cubicHandles.len() > 1 {
+								debug!("cubicHandles {:?}", cubicHandles);
+								debug!("input.mouse.position {:?}", input.mouse.position);
+								let t_values = bezier.tangent_line(doc_mouse_pos);
+								debug!("t_values snapping {:?}", t_values);
+								for t_val in t_values {
+									let t = TValue::Parametric(t_val);
+									let intersection_point = bezier.evaluate(t);
+									all_t_vals.push(intersection_point);
+									debug!("intersection_point {:?}", intersection_point);
+								}
+							}
+						}
+					}
+				};
+			}
+			self.point_targets = Some(all_t_vals);
 		}
 	}
 
