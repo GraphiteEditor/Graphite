@@ -70,6 +70,5 @@ fn add_network() -> NodeNetwork {
 		.enumerate()
 		.map(|(i, n)| (i as u64, n))
 		.collect(),
-		..Default::default()
 	}
 }

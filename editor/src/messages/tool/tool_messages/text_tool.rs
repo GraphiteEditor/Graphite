@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -209,7 +211,6 @@ impl ToolTransition for TextTool {
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
-			..Default::default()
 		}
 	}
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::document_node_types::NodePropertiesContext;
 use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;

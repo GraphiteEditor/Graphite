@@ -1,7 +1,7 @@
 #![doc(html_root_url = "http://docs.rs/const-default/1.0.0")]
 #![cfg_attr(feature = "unstable-docs", feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
-
+#![allow(clippy::missing_safety_doc)]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 

@@ -1,3 +1,5 @@
+#![allow(clippy::match_like_matches_macro)]
+
 use std::borrow::Cow;
 
 use std::collections::{HashMap, HashSet};
