@@ -150,7 +150,7 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&mut self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&mut self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>, delta_transform: bool) {
 		let points: Vec<ManipulatorPointInfo> = self
 			.selected_shape_state
 			.iter()
@@ -179,7 +179,10 @@ impl ShapeState {
 			let Some(vector_data) = layer.as_vector_data() else { continue };
 
 			let transform = document.multiply_transforms(layer_path).unwrap_or_default();
-			let delta = transform.inverse().transform_vector2(delta);
+			let mut new_delta = transform.inverse().transform_vector2(delta);
+			if !delta_transform {
+				new_delta = delta
+			}
 
 			for &point in state.selected_points.iter() {
 				if point.manipulator_type.is_handle() && state.is_selected(ManipulatorPointId::new(point.group, SelectedType::Anchor)) {
@@ -191,10 +194,7 @@ impl ShapeState {
 				let mut move_point = |point: ManipulatorPointId| {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
 
-					let position = previous_position + delta;
-					debug!("prev pos: {:?}", previous_position);
-					debug!("del: {:?}", delta);
-					debug!("pos: {:?}", position);
+					let position = previous_position + new_delta;
 					responses.add(GraphOperationMessage::Vector {
 						layer: layer_path.clone(),
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
