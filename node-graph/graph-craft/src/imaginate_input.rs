@@ -1,32 +1,72 @@
 use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
+use graphene_core::Color;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+	atomic::{AtomicBool, Ordering},
+	Arc, Mutex,
+};
 
 #[derive(Default, Debug, Clone, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateOutputStatus(pub Arc<Mutex<ImaginateStatus>>);
+pub struct ImaginateCache(Arc<Mutex<graphene_core::raster::Image<Color>>>);
 
-impl ImaginateOutputStatus {
-	pub fn get(&self) -> ImaginateStatus {
-		*self.0.lock().unwrap()
-	}
-
-	pub fn set(&self, status: ImaginateStatus) {
-		*self.0.lock().unwrap() = status
+impl ImaginateCache {
+	pub fn into_inner(self) -> Arc<Mutex<graphene_core::raster::Image<Color>>> {
+		self.0
 	}
 }
 
-impl std::cmp::PartialEq for ImaginateOutputStatus {
+impl std::cmp::PartialEq for ImaginateCache {
 	fn eq(&self, other: &Self) -> bool {
 		Arc::ptr_eq(&self.0, &other.0)
 	}
 }
 
-impl core::hash::Hash for ImaginateOutputStatus {
+impl core::hash::Hash for ImaginateCache {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		use std::ops::Deref;
-		self.0.lock().unwrap().deref().hash(state)
+		self.0.lock().unwrap().hash(state);
+	}
+}
+
+#[derive(Default, Debug, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+struct LocalImaginateController {
+	status: Mutex<ImaginateStatus>,
+	trigger_regenerate: AtomicBool,
+}
+
+#[derive(Default, Debug, Clone, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImaginateController(Arc<LocalImaginateController>);
+
+impl ImaginateController {
+	pub fn get_status(&self) -> ImaginateStatus {
+		*self.0.status.lock().unwrap()
+	}
+
+	pub fn set_status(&self, status: ImaginateStatus) {
+		*self.0.status.lock().unwrap() = status
+	}
+
+	pub fn get_trigger(&self) -> bool {
+		self.0.trigger_regenerate.swap(false, Ordering::SeqCst)
+	}
+
+	pub fn set_trigger(&self, trigger: bool) {
+		self.0.trigger_regenerate.store(trigger, Ordering::SeqCst)
+	}
+}
+
+impl std::cmp::PartialEq for ImaginateController {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.0, &other.0)
+	}
+}
+
+impl core::hash::Hash for ImaginateController {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.status.lock().unwrap().hash(state);
 	}
 }
 

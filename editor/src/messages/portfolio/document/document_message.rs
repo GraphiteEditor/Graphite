@@ -94,7 +94,7 @@ pub enum DocumentMessage {
 	ImaginateClear {
 		layer_path: Vec<LayerId>,
 		node_id: NodeId,
-		cached_index: usize,
+		cache_index: usize,
 	},
 	ImaginateGenerate {
 		layer_path: Vec<LayerId>,

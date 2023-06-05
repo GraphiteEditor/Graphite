@@ -321,7 +321,9 @@ impl NodeGraphExecutor {
 	}
 
 	pub fn update_imaginate_preferences(&self, imaginate_preferences: ImaginatePreferences) {
-		self.sender.send(NodeRuntimeMessage::ImaginatePreferencesUpdate(imaginate_preferences));
+		self.sender
+			.send(NodeRuntimeMessage::ImaginatePreferencesUpdate(imaginate_preferences))
+			.expect("Failed to send imaginate preferences");
 	}
 
 	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {

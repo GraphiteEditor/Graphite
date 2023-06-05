@@ -3,7 +3,7 @@ use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
 use glam::DVec2;
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
 use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
@@ -141,7 +141,7 @@ struct ImaginateCommonImageRequest<'a> {
 pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
 	editor_api: impl Future<Output = WasmEditorApi<'a>>,
-	output_status: impl Future<Output = ImaginateOutputStatus>,
+	controller: ImaginateController,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
 	samples: impl Future<Output = u32>,
@@ -161,7 +161,7 @@ pub async fn imaginate<'a, P: Pixel>(
 	imaginate_maybe_fail(
 		image,
 		editor_api,
-		output_status,
+		controller,
 		seed,
 		res,
 		samples,
@@ -189,7 +189,7 @@ pub async fn imaginate<'a, P: Pixel>(
 async fn imaginate_maybe_fail<'a, P: Pixel>(
 	image: Image<P>,
 	editor_api: impl Future<Output = WasmEditorApi<'a>>,
-	output_status: impl Future<Output = ImaginateOutputStatus>,
+	controller: ImaginateController,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
 	samples: impl Future<Output = u32>,
@@ -208,9 +208,8 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 ) -> Result<Image<P>, Error> {
 	let editor_api = editor_api.await;
 	let host_name = editor_api.imaginate_preferences.get_host_name();
-	let output_status = output_status.await;
 	let set_progress = |progress: ImaginateStatus| {
-		output_status.set(progress);
+		controller.set_status(progress);
 		editor_api.node_graph_message_sender.send(NodeGraphUpdateMessage::ImaginateStatusUpdate);
 	};
 

@@ -10,7 +10,7 @@ use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateOutputStatus, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -1009,8 +1009,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let mask_fill_index = resolve_input("Mask Starting Fill");
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
+	let cache_index = resolve_input("Cache");
 
-	let output_status = &document_node.inputs[resolve_input("Output Status")];
+	let controller = &document_node.inputs[resolve_input("Controller")];
 
 	let server_status = {
 		let status = match &context.persistent_data.imaginate_server_status {
@@ -1054,10 +1055,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateOutputStatus(ref output_status),..} = output_status else {
+	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateController(ref controller),..} = controller else {
 		panic!("Invalid output status input")
 	};
-	let imaginate_status = output_status.get();
+	let imaginate_status = controller.get_status();
 
 	let use_base_image = if let &NodeInput::Value {
 		tagged_value: TaggedValue::Bool(use_base_image),
@@ -1139,7 +1140,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
+						let controller = controller.clone();
 						move |_| {
+							controller.set_trigger(true);
 							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
@@ -1155,7 +1158,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
+						let controller = controller.clone();
 						move |_| {
+							controller.set_trigger(true);
 							DocumentMessage::ImaginateGenerate {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
@@ -1170,14 +1175,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.on_update({
 						let layer_path = context.layer_path.to_vec();
 						move |_| {
-							todo!("clear button")
-							/*
 							DocumentMessage::ImaginateClear {
 								node_id,
 								layer_path: layer_path.clone(),
-								cached_index,
+								cache_index,
 							}
-							.into()*/
+							.into()
 						}
 					})
 					.widget_holder(),

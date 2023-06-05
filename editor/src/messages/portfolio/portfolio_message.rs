@@ -57,17 +57,6 @@ pub enum PortfolioMessage {
 	},
 	ImaginateCheckServerStatus,
 	ImaginatePreferences,
-	ImaginateSetImageData {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		node_path: Vec<NodeId>,
-		image_data: Vec<u8>,
-		width: u32,
-		height: u32,
-	},
-	ImaginateSetServerStatus {
-		status: ImaginateServerStatus,
-	},
 	Import,
 	LoadDocumentResources {
 		document_id: u64,

@@ -225,32 +225,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
 			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
-			PortfolioMessage::ImaginateSetImageData {
-				document_id,
-				layer_path,
-				node_path,
-				image_data,
-				width,
-				height,
-			} => {
-				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-
-				let image = Image::from_image_data(&image_data, width, height);
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path,
-						input_index: get("Cached Data"),
-						value: TaggedValue::RcImage(Some(std::sync::Arc::new(image))),
-					}
-					.into(),
-				});
-			}
-			PortfolioMessage::ImaginateSetServerStatus { status } => {
-				self.persistent_data.imaginate_server_status = status;
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
-			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				if self.active_document().is_some() {

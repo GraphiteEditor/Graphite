@@ -468,10 +468,14 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			ImaginateClear {
 				layer_path,
 				node_id,
-				cached_index: input_index,
+				cache_index: input_index,
 			} => {
-				let value = graph_craft::document::value::TaggedValue::RcImage(None);
-				responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
+				responses.add(NodeGraphMessage::SetInputValue {
+					node_id,
+					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
+					input_index: 18,
+					value: graph_craft::document::value::TaggedValue::ImaginateCache(Default::default()),
+				});
 				responses.add(InputFrameRasterizeRegionBelowLayer { layer_path });
 			}
 			ImaginateGenerate { layer_path, imaginate_node } => {
@@ -492,7 +496,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(NodeGraphMessage::SetInputValue {
 					node_id: *imaginate_node.last().unwrap(),
 					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-					input_index: 2,
+					input_index: 3,
 					value: graph_craft::document::value::TaggedValue::F64(random_value),
 				});
 
