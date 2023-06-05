@@ -369,6 +369,7 @@ impl Fsm for PathToolFsmState {
 											&& anchor_subpath.out_handle != None && anchor_subpath.anchor - anchor_subpath.in_handle.unwrap_or_default() == DVec2::new(0.0, 0.0)
 											&& anchor_subpath.anchor - anchor_subpath.out_handle.unwrap_or_default() == DVec2::new(0.0, 0.0))
 									{
+										debug!("LOL: {:?}", anchor_subpath);
 										let anchor_subpath_index = subpaths.manipulator_groups().iter().position(|&manu_group| manu_group == *anchor_subpath).unwrap_or_default();
 
 										// Determine if the anchor is Bezier to determine if we need to translate the position from local to document space
@@ -437,7 +438,6 @@ impl Fsm for PathToolFsmState {
 													index_next = Some(anchor_subpath_index + 1);
 												}
 											}
-
 											if !subpaths.closed() {
 												if let (Some(prev_index), Some(next_index)) = (index_prev, index_next) {
 													let mut prev_anchor_subpath = subpaths[prev_index];
@@ -844,6 +844,9 @@ impl Fsm for PathToolFsmState {
 																	x: intersection_x + docspace_start_position.x,
 																	y: intersection_y + docspace_start_position.y,
 																};
+															} else {
+																shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
+																tool_data.previous_mouse_position = snapped_position;
 															}
 														}
 													} else if dist_from_line_prev < dist_from_line_next {
@@ -881,12 +884,18 @@ impl Fsm for PathToolFsmState {
 																	x: intersection_x + docspace_start_position.x,
 																	y: intersection_y + docspace_start_position.y,
 																};
+															} else {
+																shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
+																tool_data.previous_mouse_position = snapped_position;
 															}
 														}
 													}
 												}
 											}
 										}
+									} else {
+										shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
+										tool_data.previous_mouse_position = snapped_position;
 									}
 								}
 							}
