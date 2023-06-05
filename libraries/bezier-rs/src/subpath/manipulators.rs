@@ -31,11 +31,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Insert a manipulator group at an index.
 	pub fn insert_manipulator_group(&mut self, index: usize, group: ManipulatorGroup<ManipulatorGroupId>) {
+		assert!(group.is_finite(), "Inserting non finite manipulator group");
 		self.manipulator_groups.insert(index, group)
 	}
 
 	/// Push a manipulator group to the end.
 	pub fn push_manipulator_group(&mut self, group: ManipulatorGroup<ManipulatorGroupId>) {
+		assert!(group.is_finite(), "Pushing non finite manipulator group");
 		self.manipulator_groups.push(group)
 	}
 
