@@ -207,23 +207,29 @@ impl WasmBezier {
 		);
 		wrap_svg_tag(content)
 	}
-	pub fn tangent_line(&self, raw_t: f64, raw_t2: f64, t_variant: String) -> String {
+
+	pub fn tangent_line(&self, raw_x: f64, raw_y: f64) -> String {
 		let bezier = self.get_bezier_path();
-		// let t = parse_t_variant(&t_variant, raw_t);
+		let point = DVec2::new(raw_x, raw_y);
 
-		let t_values = self.0.tangent_line(DVec2::new(raw_t, raw_t2));
+		let t_values = self.0.tangent_line(point);
+		if t_values.is_empty() {
+			let circle = draw_circle(DVec2::new(1., 1.), 3., RED, 1., RED);
+			let content = format!("{bezier}{circle}",);
+			return wrap_svg_tag(content);
+		} else {
+			let lines: String = t_values
+				.iter()
+				.map(|&t_value| {
+					let t = parse_t_variant(&"Parametric".to_owned(), t_value);
+					let intersection_point = self.0.evaluate(t);
+					draw_line(raw_x, raw_y, intersection_point.x, intersection_point.y, RED, 1.)
+				})
+				.fold("".to_string(), |acc, circle| acc + &circle);
 
-		let lines: String = t_values
-			.iter()
-			.map(|&t_value| {
-				let t = parse_t_variant(&t_variant, t_value);
-				let intersection_point = self.0.evaluate(t);
-				draw_line(raw_t * 25., raw_t2 * 25., intersection_point.x, intersection_point.y, RED, 1.)
-			})
-			.fold("".to_string(), |acc, circle| acc + &circle);
-
-		let content = format!("{bezier}{lines}",);
-		wrap_svg_tag(content)
+			let content = format!("{bezier}{lines}",);
+			wrap_svg_tag(content)
+		}
 	}
 
 	pub fn normal(&self, raw_t: f64, t_variant: String) -> String {
@@ -684,4 +690,32 @@ impl WasmBezier {
 		let bezier_svg = self.get_bezier_path();
 		wrap_svg_tag(format!("{bezier_svg}{joining_bezier_svg}{other_bezier_svg}"))
 	}
+}
+
+#[test]
+fn test_tangent_line() {
+	// Test tangents at start and end points of each Bezier curve type
+	// let p0 = DVec2::new(0., 0.);
+	// let p1 = DVec2::new(2., 4.);
+	// let p2 = DVec2::new(4., 0.);
+	// let p3 = DVec2::new(6., 4.);
+	let p0 = DVec2::new(55., 30.);
+	let p1 = DVec2::new(85., 140.);
+	let p2 = DVec2::new(175., 30.);
+	let p3 = DVec2::new(185., 160.);
+	// [55, 30],
+	// 		[85, 140],
+	// 		[175, 30],
+	// 		[185, 160]
+	let point = DVec2::new(0., 0.);
+	let expected = vec![0.5000000048392939, 0.4999999951607057, 0.25000000000000033];
+
+	// let controls = vec![p0, p1, p2, p3];
+	// let js_points = to_js_value(controls);
+	// let wasm = WasmBezier::new_cubic(js_points);
+	// let res = wasm.tangent_line(0., 0., "Parametric".to_owned());
+
+	let cubic = Bezier::from_cubic_dvec2(p0, p1, p2, p3);
+	println!("res {:?}", cubic.tangent_line(point));
+	assert_eq!(cubic.tangent_line(point), [0.5]);
 }

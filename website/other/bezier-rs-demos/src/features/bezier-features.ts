@@ -126,9 +126,12 @@ const bezierFeatures = {
 			},
 		},
 	},
+	
 	tangent_line: {
 		name: "Tangent from Point",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined): string => bezier.tangent_line(options.t1,options.t2, BEZIER_T_VALUE_VARIANTS[options.TVariant]),
+		callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation?: [number, number]): string => 
+			mouseLocation ? bezier.tangent_line(mouseLocation[0], mouseLocation[1]): bezier.to_svg(),
+			triggerOnMouseMove: true,
 		demoOptions: {
 			Linear: {
 				disabled: true,
@@ -137,27 +140,43 @@ const bezierFeatures = {
 				disabled: true,
 			},
 			Cubic: {
-				inputOptions: [
-					bezierTValueVariantOptions,
-					{
-						variable: "X",
-						min: 0,
-						max: 10,
-						step: 0.25,
-						default: 10,
-					},
-					{
-						variable: "Y",
-						min: 0,
-						max: 10,
-						step: 0.25,
-						default: 10,
-					},
-					
-				],
+				disabled: false,
 			},
 		},
 	},
+	
+	// tangent_line: {
+	// 	name: "Tangent from Point",
+	// 	callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined): string => bezier.tangent_line(options., options.Y, BEZIER_T_VALUE_VARIANTS[options.TVariant]),
+	// 	demoOptions: {
+	// 		Linear: {
+	// 			disabled: true,
+	// 		},
+	// 		Quadratic: {
+	// 			disabled: true,
+	// 		},
+	// 		Cubic: {
+	// 			inputOptions: [
+	// 				bezierTValueVariantOptions,
+	// 				{
+	// 					variable: "X",
+	// 					min: 0,
+	// 					max: 10,
+	// 					step: 0.1,
+	// 					default: 0,
+	// 				},
+	// 				{
+	// 					variable: "Y",
+	// 					min: 0,
+	// 					max: 10,
+	// 					step: 0.1,
+	// 					default: 0,
+	// 				},
+					
+	// 			],
+	// 		},
+	// 	},
+	// },
 	normal: {
 		name: "Normal",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined): string => bezier.normal(options.t, BEZIER_T_VALUE_VARIANTS[options.TVariant]),

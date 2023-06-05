@@ -81,12 +81,6 @@ impl Bezier {
 			BezierHandles::Quadratic { handle } => vec![handle],
 			BezierHandles::Cubic { handle_start, handle_end } => vec![handle_start, handle_end],
 		};
-		// for cubics
-		// let a = self.start;
-
-		// let b = handles[0];
-		// let c = handles[1];
-		// let d_orig = self.end;
 
 		let a = Point::new(self.start.x, self.start.y);
 		let b = Point::new(handles[0].x, handles[0].y);
@@ -96,11 +90,12 @@ impl Bezier {
 		let cubicbez = CubicBez::new(a, b, c, d_orig);
 		let point = Point::new(p.x, p.y);
 		let res = cubicbez.tangents_to_point(point);
-		let mut vec = vec![];
+		let mut t_vals = vec![];
 		for t in res {
-			vec.push(t);
+			t_vals.push(t);
 		}
-		vec
+		println!("t_vals {:?}", t_vals);
+		t_vals
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -620,7 +615,6 @@ mod tests {
 		let cubic = Bezier::from_cubic_dvec2(p0, p1, p2, p3);
 		println!("res {:?}", cubic.tangent_line(point));
 		assert_eq!(cubic.tangent_line(point), res);
-		
 	}
 
 	#[test]
