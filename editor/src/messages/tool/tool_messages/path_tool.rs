@@ -50,6 +50,7 @@ pub enum PathToolMessage {
 	PointerMove {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
+		line_extend: Key,
 	},
 }
 
@@ -180,7 +181,7 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, PathToolMessage::LineExtension) => {
-					tool_data.line_extension = !tool_data.line_extension;
+					// tool_data.line_extension = !tool_data.line_extension;
 					self
 				}
 				// Mouse down
@@ -222,46 +223,7 @@ impl Fsm for PathToolFsmState {
 
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 
-						if let Some(nearest_anchor) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
-							// Unwrapping should not error based on the fact that the function shape_editor.find_nearest_point_indices() in shape_editor.rs returns a existing anchor point
-							let anchors_layer = document.document_legacy.layer(nearest_anchor.0.as_slice()).unwrap();
-							let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
-							let anchor_subpath = subpaths.manipulator_from_id(nearest_anchor.1.group).unwrap();
-
-							// Determine next and previous indices based on closed or non-closed
-							let anchor_subpath_index = subpaths.manipulator_groups().iter().position(|&manu_group| manu_group == *anchor_subpath).unwrap_or_default();
-							let mut index_prev: Option<usize> = Some(anchor_subpath_index);
-							let mut index_next: Option<usize> = Some(anchor_subpath_index);
-							if subpaths.closed() {
-								if anchor_subpath_index == 0 {
-									index_prev = Some(subpaths.len() - 1);
-								} else {
-									index_prev = Some(anchor_subpath_index - 1);
-								}
-
-								if anchor_subpath_index == (subpaths.len() - 1) {
-									index_next = Some(0);
-								} else {
-									index_next = Some(anchor_subpath_index + 1);
-								}
-							} else if !subpaths.closed() {
-								if anchor_subpath_index == 0 {
-									index_prev = None;
-									index_next = Some(anchor_subpath_index + 1);
-								} else if anchor_subpath_index == subpaths.len() - 1 {
-									index_prev = Some(anchor_subpath_index - 1);
-									index_next = None;
-								} else {
-									index_prev = Some(anchor_subpath_index - 1);
-									index_next = Some(anchor_subpath_index + 1);
-								}
-							}
-
-							let prev_anchor_position = subpaths[index_prev.unwrap_or_default()].anchor;
-							let next_anchor_position = subpaths[index_next.unwrap_or_default()].anchor;
-							tool_data.nearby_anchors = (anchor_subpath.anchor, prev_anchor_position, next_anchor_position);
-							tool_data.dragged_manipulation = Some(nearest_anchor);
-						}
+						tool_data.line_extension = false;
 
 						PathToolFsmState::Dragging
 					}
@@ -304,6 +266,7 @@ impl Fsm for PathToolFsmState {
 					PathToolMessage::PointerMove {
 						alt_mirror_angle,
 						shift_mirror_distance,
+						line_extend,
 					},
 				) => {
 					// Determine when alt state changes
@@ -331,6 +294,10 @@ impl Fsm for PathToolFsmState {
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					let mut delta = snapped_position - tool_data.previous_mouse_position;
+					// figure out what to set tooldata prev to get delta to jump back to mouse position on release
+					debug!("snapped: {:?}", snapped_position);
+					// debug!("prev m: {:?}", tool_data.previous_mouse_position);
+					// debug!("delta: {:?}", delta);
 
 					let doc_transform = document.document_legacy.root.transform;
 
@@ -346,7 +313,54 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
+					tool_data.line_extension = input.keyboard.get(line_extend as usize);
+
+					if !tool_data.line_extension {
+						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
+						tool_data.previous_mouse_position = snapped_position;
+					}
+
 					if tool_data.line_extension {
+						if let Some(nearest_anchor) = shape_editor.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD) {
+							// Unwrapping should not error based on the fact that the function shape_editor.find_nearest_point_indices() in shape_editor.rs returns a existing anchor point
+							let anchors_layer = document.document_legacy.layer(nearest_anchor.0.as_slice()).unwrap();
+							let subpaths = anchors_layer.as_vector_data().unwrap().subpaths.first().unwrap();
+							let anchor_subpath = subpaths.manipulator_from_id(nearest_anchor.1.group).unwrap();
+
+							// Determine next and previous indices based on closed or non-closed
+							let anchor_subpath_index = subpaths.manipulator_groups().iter().position(|&manu_group| manu_group == *anchor_subpath).unwrap_or_default();
+							let mut index_prev: Option<usize> = Some(anchor_subpath_index);
+							let mut index_next: Option<usize> = Some(anchor_subpath_index);
+							if subpaths.closed() {
+								if anchor_subpath_index == 0 {
+									index_prev = Some(subpaths.len() - 1);
+								} else {
+									index_prev = Some(anchor_subpath_index - 1);
+								}
+
+								if anchor_subpath_index == (subpaths.len() - 1) {
+									index_next = Some(0);
+								} else {
+									index_next = Some(anchor_subpath_index + 1);
+								}
+							} else if !subpaths.closed() {
+								if anchor_subpath_index == 0 {
+									index_prev = None;
+									index_next = Some(anchor_subpath_index + 1);
+								} else if anchor_subpath_index == subpaths.len() - 1 {
+									index_prev = Some(anchor_subpath_index - 1);
+									index_next = None;
+								} else {
+									index_prev = Some(anchor_subpath_index - 1);
+									index_next = Some(anchor_subpath_index + 1);
+								}
+							}
+
+							let prev_anchor_position = subpaths[index_prev.unwrap_or_default()].anchor;
+							let next_anchor_position = subpaths[index_next.unwrap_or_default()].anchor;
+							tool_data.nearby_anchors = (anchor_subpath.anchor, prev_anchor_position, next_anchor_position);
+							tool_data.dragged_manipulation = Some(nearest_anchor);
+						}
 						match &tool_data.dragged_manipulation {
 							Some((anchor_point_id, anchor_point_manipulator)) => {
 								let anchor_start_position = tool_data.nearby_anchors.0;
@@ -545,6 +559,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
+															let v = viewspace.transform_vector2(input.mouse.position);
+															tool_data.previous_mouse_position = v;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -585,6 +601,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
+															let v = viewspace.transform_vector2(input.mouse.position);
+															tool_data.previous_mouse_position = v;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -606,6 +624,7 @@ impl Fsm for PathToolFsmState {
 														}
 													}
 												} else if let (Some(prev_index), None) = (index_prev, index_next) {
+													debug!("prev line");
 													let mut prev_anchor_subpath = subpaths[prev_index];
 
 													// For non-bezier, we have to translate the manipulation points from Local to Document space
@@ -664,11 +683,16 @@ impl Fsm for PathToolFsmState {
 															new_delta = viewspace.inverse().transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 														}
+														let v = doc_transform.transform_vector2(intersection);
+														debug!("inter: {:?}", intersection);
+														debug!("v: {:?}", v);
+														tool_data.previous_mouse_position = intersection;
 													} else {
 														shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
 														tool_data.previous_mouse_position = snapped_position;
 													}
 												} else if let (None, Some(next_index)) = (index_prev, index_next) {
+													// debug!("next");
 													let mut next_anchor_subpath = subpaths[next_index];
 
 													// For non-bezier, we have to translate the manipulation points from Local to Document space
@@ -721,12 +745,16 @@ impl Fsm for PathToolFsmState {
 															let mut new_delta = intersection - docspace_anchor;
 															new_delta = viewspace.transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, true);
-														} else if !is_bezier {
+														} else if is_bezier {
 															let mut new_delta = intersection - docspace_anchor;
 															new_delta = doc_transform.transform_vector2(new_delta);
 															new_delta = viewspace.inverse().transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 														}
+													// debug!("V: {:?}", intersection);
+													// let v = doc_transform.transform_vector2(intersection);
+													// debug!("V: {:?}", v);
+													// tool_data.previous_mouse_position = v;
 													} else {
 														shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
 														tool_data.previous_mouse_position = snapped_position;
@@ -735,6 +763,7 @@ impl Fsm for PathToolFsmState {
 											}
 											// Dragging a closed-shape
 											else if subpaths.closed() {
+												debug!("closed");
 												if let (Some(prev_index), Some(next_index)) = (index_prev, index_next) {
 													let mut prev_anchor_subpath = subpaths[prev_index];
 													let mut next_anchor_subpath = subpaths[next_index];
@@ -841,6 +870,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
+															let v = viewspace.transform_vector2(input.mouse.position);
+															tool_data.previous_mouse_position = v;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -881,6 +912,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
+															let v = viewspace.transform_vector2(input.mouse.position);
+															tool_data.previous_mouse_position = v;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -912,11 +945,6 @@ impl Fsm for PathToolFsmState {
 							}
 							None => {}
 						}
-					}
-
-					if !tool_data.line_extension {
-						shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
-						tool_data.previous_mouse_position = snapped_position;
 					}
 
 					PathToolFsmState::Dragging
@@ -975,6 +1003,7 @@ impl Fsm for PathToolFsmState {
 					PathToolMessage::PointerMove {
 						alt_mirror_angle: _,
 						shift_mirror_distance: _,
+						line_extend: _,
 					},
 				) => self,
 				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
@@ -998,6 +1027,7 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
 				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
+				HintInfo::keys([Key::KeyV], "Line Extend"),
 			])]),
 		};
 

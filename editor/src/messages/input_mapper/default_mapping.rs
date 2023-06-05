@@ -175,7 +175,7 @@ pub fn default_mapping() -> Mapping {
 		//
 		// PathToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, KeyV], action_dispatch=PathToolMessage::PointerMove { alt_mirror_angle: Alt, shift_mirror_distance: Shift, line_extend: KeyV }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
@@ -204,7 +204,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowDown); modifiers=[ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowLeft], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: -BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
-		entry!(KeyDown(KeyK); action_dispatch=PathToolMessage::LineExtension),
+		entry!(KeyDown(KeyV); action_dispatch=PathToolMessage::LineExtension),
 		//
 		// PenToolMessage
 		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
