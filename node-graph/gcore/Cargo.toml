@@ -83,4 +83,5 @@ features = [
 	"ImageData",
 	"Document",
 	"HtmlCanvasElement",
+	"ImageBitmapRenderingContext",
 ]

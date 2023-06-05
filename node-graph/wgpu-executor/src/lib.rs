@@ -3,7 +3,7 @@ mod executor;
 
 pub use context::Context;
 pub use executor::GpuExecutor;
-use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, ToStorageBuffer, ToUniformBuffer};
+use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::Type;
 
 use anyhow::{bail, Result};
@@ -11,16 +11,20 @@ use futures::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, CreateSurfaceError, ShaderModule, Texture, TextureView};
 
 #[derive(Debug, Clone)]
 pub struct NewExecutor {
 	context: Context,
 }
 
+type WgpuShaderInput = ShaderInput<NewExecutor>;
+
 impl gpu_executor::GpuExecutor for NewExecutor {
 	type ShaderHandle = ShaderModule;
 	type BufferHandle = Buffer;
+	type TextureHandle = Texture;
+	type TextureView = TextureView;
 	type CommandBuffer = CommandBuffer;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
@@ -31,7 +35,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(shader_module)
 	}
 
-	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>> {
+	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<WgpuShaderInput> {
 		let bytes = data.to_bytes();
 		let buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
@@ -41,7 +45,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(ShaderInput::UniformBuffer(buffer, Type::new::<T>()))
 	}
 
-	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self::BufferHandle>> {
+	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<WgpuShaderInput> {
 		let bytes = data.to_bytes();
 		let mut usage = wgpu::BufferUsages::empty();
 
@@ -66,8 +70,45 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		});
 		Ok(ShaderInput::StorageBuffer(buffer, data.ty()))
 	}
+	fn create_texture_buffer<T: gpu_executor::ToTextureBuffer>(&self, data: T, options: TextureBufferOptions) -> Result<WgpuShaderInput> {
+		let bytes = data.to_bytes();
+		let usage = match options {
+			TextureBufferOptions::Storage => wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+			TextureBufferOptions::Texture => wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+			TextureBufferOptions::Surface => wgpu::TextureUsages::RENDER_ATTACHMENT,
+		};
+		let format = match T::format() {
+			TextureBufferType::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+		};
 
-	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self::BufferHandle>> {
+		log::debug!("Creating storage buffer with usage {:?} and len: {}", usage, bytes.len());
+		let buffer = self.context.device.create_texture_with_data(
+			self.context.queue.as_ref(),
+			&wgpu::TextureDescriptor {
+				label: None,
+				size: wgpu::Extent3d {
+					width: data.size().0,
+					height: data.size().1,
+					depth_or_array_layers: 1,
+				},
+				mip_level_count: 1,
+				sample_count: 1,
+				dimension: wgpu::TextureDimension::D2,
+				format,
+				usage,
+				view_formats: &[format],
+			},
+			bytes.as_ref(),
+		);
+		match options {
+			TextureBufferOptions::Storage => Ok(ShaderInput::StorageTextureBuffer(buffer, T::ty())),
+			TextureBufferOptions::Texture => Ok(ShaderInput::TextureBuffer(buffer, T::ty())),
+			TextureBufferOptions::Surface => Ok(ShaderInput::TextureBuffer(buffer, T::ty())),
+		}
+	}
+
+	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<WgpuShaderInput> {
 		log::debug!("Creating output buffer with len: {}", len);
 		let create_buffer = |usage| {
 			Ok::<_, anyhow::Error>(self.context.device.create_buffer(&BufferDescriptor {
@@ -83,7 +124,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		};
 		Ok(buffer)
 	}
-	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: ComputePassDimensions) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<WgpuShaderInput>>, instances: ComputePassDimensions) -> Result<CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
@@ -101,7 +142,11 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			.enumerate()
 			.map(|(i, buffer)| wgpu::BindGroupEntry {
 				binding: i as u32,
-				resource: buffer.as_entire_binding(),
+				resource: match buffer {
+					gpu_executor::BindingType::UniformBuffer(buf) => buf.as_entire_binding(),
+					gpu_executor::BindingType::StorageBuffer(buf) => buf.as_entire_binding(),
+					gpu_executor::BindingType::TextureView(buf) => wgpu::BindingResource::TextureView(buf),
+				},
 			})
 			.collect::<Vec<_>>();
 
@@ -127,19 +172,26 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 				bail!("Tried to read back from a non read back buffer");
 			};
 			let size = output.size();
-			assert_eq!(size, layout.output_buffer.buffer().unwrap().size());
+			let ShaderInput::OutputBuffer(output_buffer, ty) = layout.output_buffer.as_ref() else {
+				bail!("Tried to read back from a non output buffer");
+			};
+			assert_eq!(size, output_buffer.size());
 			assert_eq!(ty, &layout.output_buffer.ty());
-			encoder.copy_buffer_to_buffer(
-				layout.output_buffer.buffer().ok_or_else(|| anyhow::anyhow!("Tried to use an non buffer as the shader output"))?,
-				0,
-				output,
-				0,
-				size,
-			);
+			encoder.copy_buffer_to_buffer(output_buffer, 0, output, 0, size);
 		}
 
 		// Submits command encoder for processing
 		Ok(encoder.finish())
+	}
+
+	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: ShaderInput<Self>) -> Result<CommandBuffer> {
+		let ShaderInput::StorageTextureBuffer(texture, _) = &texture else {
+			bail!("Tried to render to a non texture buffer");
+		};
+		let ShaderInput::TextureBuffer(canvas, _) = &canvas else {
+			bail!("Tried to render to a non surface");
+		};
+		todo!()
 	}
 
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()> {
@@ -187,7 +239,16 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			} else {
 				bail!("Tried to read a non readback buffer")
 			}
-		}) as _
+		})
+	}
+
+	fn create_texture_view(&self, texture: ShaderInput<Self>) -> Result<ShaderInput<Self>> {
+		//Ok(ShaderInput::TextureView(texture.create_view(&wgpu::TextureViewDescriptor::default()), ) )
+		let ShaderInput::TextureBuffer(texture, ty) = &texture else {
+			bail!("Tried to create a texture view from a non texture");
+		};
+		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+		Ok(ShaderInput::TextureView(view, ty.clone()))
 	}
 }
 
@@ -195,5 +256,29 @@ impl NewExecutor {
 	pub async fn new() -> Option<Self> {
 		let context = Context::new().await?;
 		Some(Self { context })
+	}
+
+	pub unsafe fn create_surface(&self, window: &web_sys::ImageBitmapRenderingContext) -> std::result::Result<wgpu::Surface, CreateSurfaceError> {
+		let builder = winit::window::WindowBuilder::new();
+		let event_loop = winit::event_loop::EventLoop::new();
+		let window = builder.build(&event_loop).unwrap();
+		let surface = self.context.instance.create_surface(&window)?;
+
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		// Shader code in this tutorial assumes an sRGB surface texture. Using a different
+		// one will result all the colors coming out darker. If you want to support non
+		// sRGB surfaces, you'll need to account for that when drawing to the frame.
+		let surface_format = wgpu::TextureFormat::Rgba32Float;
+		let config = wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: surface_format,
+			width: 1920,
+			height: 1080,
+			present_mode: surface_caps.present_modes[0],
+			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+			view_formats: vec![],
+		};
+		surface.configure(&self.context.device, &config);
+		Ok(surface)
 	}
 }

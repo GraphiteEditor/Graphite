@@ -15,6 +15,7 @@ graphene-core = { path = "../gcore", features = [
 	"std",
 	"alloc",
 	"gpu",
+	"wasm",
 ] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 node-macro = { path = "../node-macro" }
@@ -34,3 +35,4 @@ anyhow = "1.0.66"
 spirv = "0.2.0"
 futures-intrusive = "0.5.0"
 futures = "0.3.25"
+web-sys = { version = "0.3.63", features = ["HtmlCanvasElement", "ImageBitmapRenderingContext"] }

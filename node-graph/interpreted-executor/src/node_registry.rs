@@ -258,7 +258,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
 					//let document_node = ClonedNode::new(document_node.eval(()));
-					let node = graphene_std::executor::MapGpuNode::new(document_node);
+					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					any.into_type_erased()
 				})
@@ -273,7 +273,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let background: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0].clone());
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1].clone());
 					let opacity: DowncastBothNode<(), f32> = DowncastBothNode::new(args[2].clone());
-					let node = graphene_std::executor::BlendGpuImageNode::new(background, blend_mode, opacity);
+					let node = graphene_std::gpu_nodes::BlendGpuImageNode::new(background, blend_mode, opacity);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 
 					any.into_type_erased()

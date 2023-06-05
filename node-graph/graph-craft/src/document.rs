@@ -394,9 +394,9 @@ impl NodeNetwork {
 					(
 						0,
 						DocumentNode {
-							name: "CacheNode".to_string(),
+							name: "MemoNode".to_string(),
 							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(ty)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode")),
 							..Default::default()
 						},
 					),

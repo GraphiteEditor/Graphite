@@ -6,6 +6,7 @@ use anyhow::Result;
 use dyn_any::{StaticType, StaticTypeSized};
 use futures::Future;
 use glam::UVec3;
+use graphene_core::raster::{Image, Pixel, SRGBA8};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::pin::Pin;
@@ -29,20 +30,30 @@ impl ComputePassDimensions {
 	}
 }
 
+pub trait Texture {
+	fn width(&self) -> u32;
+	fn height(&self) -> u32;
+	fn format(&self) -> TextureBufferType;
+	fn view<TextureView>(&self) -> TextureView;
+}
+
 pub trait GpuExecutor {
 	type ShaderHandle;
 	type BufferHandle;
 	type TextureHandle;
+	type TextureView;
 	type CommandBuffer;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle>;
-	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>>;
-	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self::BufferHandle>>;
-	fn create_texture_buffer<T: ToTextureBuffer>(&self, data: T) -> Result<ShaderInput<Self::BufferHandle>>;
-	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self::BufferHandle>>;
-	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self::BufferHandle>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
+	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<ShaderInput<Self>>;
+	fn create_storage_buffer<T: ToStorageBuffer>(&self, data: T, options: StorageBufferOptions) -> Result<ShaderInput<Self>>;
+	fn create_texture_buffer<T: ToTextureBuffer>(&self, data: T, options: TextureBufferOptions) -> Result<ShaderInput<Self>>;
+	fn create_texture_view(&self, texture: ShaderInput<Self>) -> Result<ShaderInput<Self>>;
+	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self>>;
+	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
+	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: ShaderInput<Self>) -> Result<Self::CommandBuffer>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
-	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self::BufferHandle>>) -> ReadBackFuture;
+	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self>>) -> ReadBackFuture;
 }
 
 pub trait SpirVCompiler {
@@ -86,33 +97,91 @@ impl GPUConstant {
 		}
 	}
 }
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DummyExecutor;
 
-type AbstractShaderInput = ShaderInput<(), ()>;
+impl GpuExecutor for DummyExecutor {
+	type ShaderHandle = ();
+	type BufferHandle = ();
+	type TextureHandle = ();
+	type TextureView = ();
+	type CommandBuffer = ();
+
+	fn load_shader(&self, _shader: Shader) -> Result<Self::ShaderHandle> {
+		todo!()
+	}
+
+	fn create_uniform_buffer<T: ToUniformBuffer>(&self, _data: T) -> Result<ShaderInput<Self>> {
+		todo!()
+	}
+
+	fn create_storage_buffer<T: ToStorageBuffer>(&self, _data: T, _options: StorageBufferOptions) -> Result<ShaderInput<Self>> {
+		todo!()
+	}
+
+	fn create_texture_buffer<T: ToTextureBuffer>(&self, _data: T, _options: TextureBufferOptions) -> Result<ShaderInput<Self>> {
+		todo!()
+	}
+
+	fn create_output_buffer(&self, _len: usize, _ty: Type, _cpu_readable: bool) -> Result<ShaderInput<Self>> {
+		todo!()
+	}
+
+	fn create_compute_pass(&self, _layout: &PipelineLayout<Self>, _read_back: Option<Arc<ShaderInput<Self>>>, _instances: ComputePassDimensions) -> Result<Self::CommandBuffer> {
+		todo!()
+	}
+
+	fn execute_compute_pipeline(&self, _encoder: Self::CommandBuffer) -> Result<()> {
+		todo!()
+	}
+
+	fn create_render_pass(&self, _texture: ShaderInput<Self>, _canvas: ShaderInput<Self>) -> Result<Self::CommandBuffer> {
+		todo!()
+	}
+
+	fn read_output_buffer(&self, _buffer: Arc<ShaderInput<Self>>) -> ReadBackFuture {
+		todo!()
+	}
+
+	fn create_texture_view(&self, _texture: ShaderInput<Self>) -> Result<ShaderInput<Self>> {
+		todo!()
+	}
+}
+
+type AbstractShaderInput = ShaderInput<DummyExecutor>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// All the possible inputs to a shader.
-pub enum ShaderInput<BufferHandle, TextureHandle> {
-	UniformBuffer(BufferHandle, Type),
-	StorageBuffer(BufferHandle, Type),
-	TextureBuffer(TextureHandle, Type),
+pub enum ShaderInput<E: GpuExecutor + ?Sized> {
+	UniformBuffer(E::BufferHandle, Type),
+	StorageBuffer(E::BufferHandle, Type),
+	TextureBuffer(E::TextureHandle, Type),
+	StorageTextureBuffer(E::TextureHandle, Type),
 	/// A struct representing a work group memory buffer. This cannot be accessed by the CPU.
 	WorkGroupMemory(usize, Type),
 	Constant(GPUConstant),
-	OutputBuffer(BufferHandle, Type),
-	ReadBackBuffer(BufferHandle, Type),
+	OutputBuffer(E::BufferHandle, Type),
+	ReadBackBuffer(E::BufferHandle, Type),
+}
+
+pub enum BindingType<'a, E: GpuExecutor> {
+	UniformBuffer(&'a E::BufferHandle),
+	StorageBuffer(&'a E::BufferHandle),
+	Texture(&'a E::TextureHandle),
 }
 
 /// Extract the buffer handle from a shader input.
-impl<BufferHandle, TextureHandle> ShaderInput<BufferHandle, TextureHandle> {
-	pub fn buffer(&self) -> Option<&BufferHandle> {
+impl<E: GpuExecutor> ShaderInput<E> {
+	pub fn buffer(&self) -> Option<BindingType<E>> {
 		match self {
-			ShaderInput::UniformBuffer(buffer, _) => Some(buffer),
-			ShaderInput::StorageBuffer(buffer, _) => Some(buffer),
+			ShaderInput::UniformBuffer(buffer, _) => Some(BindingType::UniformBuffer(buffer)),
+			ShaderInput::StorageBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
 			ShaderInput::WorkGroupMemory(_, _) => None,
 			ShaderInput::Constant(_) => None,
-			ShaderInput::TextureBuffer(_, _) => None,
-			ShaderInput::OutputBuffer(buffer, _) => Some(buffer),
-			ShaderInput::ReadBackBuffer(buffer, _) => Some(buffer),
+			ShaderInput::TextureBuffer(tex, _) => Some(BindingType::Texture(tex)),
+			ShaderInput::StorageTextureBuffer(_, _) => None,
+			ShaderInput::OutputBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
+			ShaderInput::ReadBackBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
 		}
 	}
 	pub fn ty(&self) -> Type {
@@ -122,6 +191,8 @@ impl<BufferHandle, TextureHandle> ShaderInput<BufferHandle, TextureHandle> {
 			ShaderInput::WorkGroupMemory(_, ty) => ty.clone(),
 			ShaderInput::Constant(c) => c.ty(),
 			ShaderInput::TextureBuffer(_, ty) => ty.clone(),
+			ShaderInput::StorageTextureBuffer(_, ty) => ty.clone(),
+			ShaderInput::TextureView(_, ty) => ty.clone(),
 			ShaderInput::OutputBuffer(_, ty) => ty.clone(),
 			ShaderInput::ReadBackBuffer(_, ty) => ty.clone(),
 		}
@@ -151,6 +222,12 @@ pub struct StorageBufferOptions {
 	pub storage: bool,
 }
 
+pub enum TextureBufferOptions {
+	Storage,
+	Texture,
+	Surface,
+}
+
 pub trait ToUniformBuffer: StaticType {
 	fn to_bytes(&self) -> Cow<[u8]>;
 }
@@ -175,9 +252,54 @@ impl<T: Pod + Zeroable + StaticTypeSized> ToStorageBuffer for Vec<T> {
 	}
 }
 
+pub trait TextureFormat {
+	fn format() -> TextureBufferType;
+}
+
+impl TextureFormat for Color {
+	fn format() -> TextureBufferType {
+		TextureBufferType::Rgba32Float
+	}
+}
+impl TextureFormat for SRGBA8 {
+	fn format() -> TextureBufferType {
+		TextureBufferType::Rgba8Srgb
+	}
+}
+
+pub enum TextureBufferType {
+	Rgba32Float,
+	Rgba8Srgb,
+}
+
+pub trait ToTextureBuffer: StaticType {
+	fn to_bytes(&self) -> Cow<[u8]>;
+	fn ty() -> Type;
+	fn format() -> TextureBufferType;
+	fn size(&self) -> (u32, u32);
+}
+
+impl<T: Pod + Zeroable + StaticTypeSized + Pixel + TextureFormat> ToTextureBuffer for Image<T>
+where
+	T::Static: Pixel,
+{
+	fn to_bytes(&self) -> Cow<[u8]> {
+		Cow::Borrowed(bytemuck::cast_slice(self.data.as_slice()))
+	}
+	fn ty() -> Type {
+		concrete!(T)
+	}
+	fn format() -> TextureBufferType {
+		T::format()
+	}
+	fn size(&self) -> (u32, u32) {
+		(self.width, self.height)
+	}
+}
+
 /// Collection of all arguments that are passed to the shader.
 pub struct Bindgroup<E: GpuExecutor + ?Sized> {
-	pub buffers: Vec<Arc<ShaderInput<E::BufferHandle, E::TextureHandle>>>,
+	pub buffers: Vec<Arc<ShaderInput<E>>>,
 }
 
 /// A struct representing a compute pipeline.
@@ -185,7 +307,7 @@ pub struct PipelineLayout<E: GpuExecutor + ?Sized> {
 	pub shader: E::ShaderHandle,
 	pub entry_point: String,
 	pub bind_group: Bindgroup<E>,
-	pub output_buffer: Arc<ShaderInput<E::BufferHandle, E::TextureHandle>>,
+	pub output_buffer: Arc<ShaderInput<E>>,
 }
 
 /// Extracts arguments from the function arguments and wraps them in a node.
@@ -212,7 +334,7 @@ pub struct UniformNode<Executor> {
 }
 
 #[node_macro::node_fn(UniformNode)]
-fn uniform_node<T: ToUniformBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E::BufferHandle> {
+fn uniform_node<T: ToUniformBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E> {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
@@ -221,7 +343,7 @@ pub struct StorageNode<Executor> {
 }
 
 #[node_macro::node_fn(StorageNode)]
-fn storage_node<T: ToStorageBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E::BufferHandle> {
+fn storage_node<T: ToStorageBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E> {
 	executor
 		.create_storage_buffer(
 			data,
@@ -250,7 +372,7 @@ pub struct CreateOutputBufferNode<Executor, Ty> {
 }
 
 #[node_macro::node_fn(CreateOutputBufferNode)]
-fn create_output_buffer_node<E: GpuExecutor>(size: usize, executor: &'input E, ty: Type) -> ShaderInput<E::BufferHandle> {
+fn create_output_buffer_node<E: GpuExecutor>(size: usize, executor: &'input E, ty: Type) -> ShaderInput<E> {
 	executor.create_output_buffer(size, ty, true).unwrap()
 }
 
@@ -261,12 +383,7 @@ pub struct CreateComputePassNode<Executor, Output, Instances> {
 }
 
 #[node_macro::node_fn(CreateComputePassNode)]
-fn create_compute_pass_node<'any_input, E: 'any_input + GpuExecutor>(
-	layout: PipelineLayout<E>,
-	executor: &'any_input E,
-	output: ShaderInput<E::BufferHandle>,
-	instances: ComputePassDimensions,
-) -> E::CommandBuffer {
+fn create_compute_pass_node<'any_input, E: 'any_input + GpuExecutor>(layout: PipelineLayout<E>, executor: &'any_input E, output: ShaderInput<E>, instances: ComputePassDimensions) -> E::CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
@@ -278,7 +395,7 @@ pub struct CreatePipelineLayoutNode<_E, EntryPoint, Bindgroup, OutputBuffer> {
 }
 
 #[node_macro::node_fn(CreatePipelineLayoutNode<_E>)]
-fn create_pipeline_layout_node<_E: GpuExecutor>(shader: _E::ShaderHandle, entry_point: String, bind_group: Bindgroup<_E>, output_buffer: Arc<ShaderInput<_E::BufferHandle>>) -> PipelineLayout<_E> {
+fn create_pipeline_layout_node<_E: GpuExecutor>(shader: _E::ShaderHandle, entry_point: String, bind_group: Bindgroup<_E>, output_buffer: Arc<ShaderInput<_E>>) -> PipelineLayout<_E> {
 	PipelineLayout {
 		shader,
 		entry_point,
@@ -296,11 +413,10 @@ fn execute_compute_pipeline_node<E: GpuExecutor>(encoder: E::CommandBuffer, exec
 	executor.execute_compute_pipeline(encoder).unwrap();
 }
 
-// TODO
-// pub struct ReadOutputBufferNode<Executor> {
-// 	executor: Executor,
-// }
-// #[node_macro::node_fn(ReadOutputBufferNode)]
-// fn read_output_buffer_node<E: GpuExecutor>(buffer: E::BufferHandle, executor: &'input mut E) -> Vec<u8> {
-// 	executor.read_output_buffer(buffer).await.unwrap()
-// }
+pub struct ReadOutputBufferNode<Executor> {
+	executor: Executor,
+}
+#[node_macro::node_fn(ReadOutputBufferNode)]
+async fn read_output_buffer_node<E: GpuExecutor>(buffer: Arc<ShaderInput<E>>, executor: &'input E) -> Vec<u8> {
+	executor.read_output_buffer(buffer).await.unwrap()
+}

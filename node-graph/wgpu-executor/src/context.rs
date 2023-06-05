@@ -6,6 +6,7 @@ pub struct Context {
 	pub device: Arc<Device>,
 	pub queue: Arc<Queue>,
 	pub instance: Arc<Instance>,
+	pub adapter: Arc<wgpu::Adapter>,
 }
 
 impl Context {
@@ -42,6 +43,7 @@ impl Context {
 		Some(Self {
 			device: Arc::new(device),
 			queue: Arc::new(queue),
+			adapter: Arc::new(adapter),
 			instance: Arc::new(instance),
 		})
 	}

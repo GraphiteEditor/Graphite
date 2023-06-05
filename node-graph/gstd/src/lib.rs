@@ -12,7 +12,7 @@ pub mod http;
 pub mod any;
 
 #[cfg(feature = "gpu")]
-pub mod executor;
+pub mod gpu_nodes;
 
 #[cfg(feature = "quantization")]
 pub mod quantization;
