@@ -45,7 +45,7 @@ impl<S> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SurfaceHandle<Surface> {
 	pub surface_id: SurfaceId,
 	pub surface: Surface,
@@ -55,7 +55,7 @@ unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SurfaceHandleFrame<Surface> {
 	pub surface_handle: Arc<SurfaceHandle<Surface>>,
 	pub transform: DAffine2,

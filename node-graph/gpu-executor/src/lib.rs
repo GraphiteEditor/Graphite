@@ -6,6 +6,7 @@ use anyhow::Result;
 use dyn_any::{StaticType, StaticTypeSized};
 use futures::Future;
 use glam::UVec3;
+use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::{Image, Pixel, SRGBA8};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -42,6 +43,7 @@ pub trait GpuExecutor {
 	type BufferHandle;
 	type TextureHandle;
 	type TextureView;
+	type Surface;
 	type CommandBuffer;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle>;
@@ -51,7 +53,7 @@ pub trait GpuExecutor {
 	fn create_texture_view(&self, texture: ShaderInput<Self>) -> Result<ShaderInput<Self>>;
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self>>;
 	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
-	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: ShaderInput<Self>) -> Result<Self::CommandBuffer>;
+	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: SurfaceHandle<Self::Surface>) -> Result<()>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
 	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self>>) -> ReadBackFuture;
 }
@@ -105,6 +107,7 @@ impl GpuExecutor for DummyExecutor {
 	type BufferHandle = ();
 	type TextureHandle = ();
 	type TextureView = ();
+	type Surface = ();
 	type CommandBuffer = ();
 
 	fn load_shader(&self, _shader: Shader) -> Result<Self::ShaderHandle> {
@@ -135,7 +138,7 @@ impl GpuExecutor for DummyExecutor {
 		todo!()
 	}
 
-	fn create_render_pass(&self, _texture: ShaderInput<Self>, _canvas: ShaderInput<Self>) -> Result<Self::CommandBuffer> {
+	fn create_render_pass(&self, _texture: ShaderInput<Self>, _canvas: SurfaceHandle<Self::Surface>) -> Result<()> {
 		todo!()
 	}
 
@@ -157,6 +160,7 @@ pub enum ShaderInput<E: GpuExecutor + ?Sized> {
 	StorageBuffer(E::BufferHandle, Type),
 	TextureBuffer(E::TextureHandle, Type),
 	StorageTextureBuffer(E::TextureHandle, Type),
+	TextureView(E::TextureView, Type),
 	/// A struct representing a work group memory buffer. This cannot be accessed by the CPU.
 	WorkGroupMemory(usize, Type),
 	Constant(GPUConstant),
@@ -167,7 +171,7 @@ pub enum ShaderInput<E: GpuExecutor + ?Sized> {
 pub enum BindingType<'a, E: GpuExecutor> {
 	UniformBuffer(&'a E::BufferHandle),
 	StorageBuffer(&'a E::BufferHandle),
-	Texture(&'a E::TextureHandle),
+	TextureView(&'a E::TextureView),
 }
 
 /// Extract the buffer handle from a shader input.
@@ -178,8 +182,9 @@ impl<E: GpuExecutor> ShaderInput<E> {
 			ShaderInput::StorageBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
 			ShaderInput::WorkGroupMemory(_, _) => None,
 			ShaderInput::Constant(_) => None,
-			ShaderInput::TextureBuffer(tex, _) => Some(BindingType::Texture(tex)),
+			ShaderInput::TextureBuffer(_, _) => None,
 			ShaderInput::StorageTextureBuffer(_, _) => None,
+			ShaderInput::TextureView(tex, _) => Some(BindingType::TextureView(tex)),
 			ShaderInput::OutputBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
 			ShaderInput::ReadBackBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
 		}

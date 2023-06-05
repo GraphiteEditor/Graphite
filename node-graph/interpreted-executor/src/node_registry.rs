@@ -9,7 +9,7 @@ use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::VectorData;
 use graphene_core::wasm_application_io::WasmSurfaceHandle;
-use graphene_core::wasm_application_io::*;
+use graphene_core::{wasm_application_io::*, SurfaceFrame};
 use graphene_core::{concrete, generic};
 use graphene_core::{fn_type, raster::*};
 use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
@@ -257,13 +257,18 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			|args| {
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
+					let editor_api: DowncastBothNode<(), graphene_core::EditorApi> = DowncastBothNode::new(args[1].clone());
 					//let document_node = ClonedNode::new(document_node.eval(()));
-					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node);
+					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node, editor_api);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
 					any.into_type_erased()
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(graph_craft::document::DocumentNode)]),
+			NodeIOTypes::new(
+				concrete!(ImageFrame<Color>),
+				concrete!(SurfaceFrame),
+				vec![fn_type!(graph_craft::document::DocumentNode), fn_type!(graphene_core::EditorApi)],
+			),
 		)],
 		#[cfg(feature = "gpu")]
 		vec![(
@@ -399,6 +404,12 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			input: graphene_core::EditorApi,
 			output: WasmSurfaceHandleFrame,
 			params: [WasmSurfaceHandleFrame]
+		),
+		async_node!(
+			graphene_core::memo::EndLetNode<_>,
+			input: graphene_core::EditorApi,
+			output: SurfaceFrame,
+			params: [SurfaceFrame]
 		),
 		vec![(
 			NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),

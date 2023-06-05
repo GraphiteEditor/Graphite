@@ -1,9 +1,10 @@
 use glam::{DAffine2, DVec2, Mat2, Vec2};
-use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
+use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions, TextureBufferOptions};
 use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
+use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::NewExecutor;
@@ -37,12 +38,13 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 	compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap()
 }
 
-pub struct MapGpuNode<Node> {
+pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
+	editor_api: EditorApi,
 }
 
 #[node_macro::node_fn(MapGpuNode)]
-async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Color> {
+async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::EditorApi<'a>) -> SurfaceFrame {
 	log::debug!("Executing gpu node");
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -122,6 +124,23 @@ async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Col
 	let len: usize = image.image.data.len();
 
 	let executor = NewExecutor::new().await.unwrap();
+
+	let canvas = editor_api.application_io.create_surface();
+
+	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
+	log::debug!("id: {:?}", surface);
+	let surface_id = surface.surface_id;
+
+	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
+
+	executor.create_render_pass(texture, surface);
+
+	let frame = SurfaceFrame {
+		surface_id,
+		transform: image.transform,
+	};
+	return frame;
+	/*
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
 	let storage_buffer = executor
@@ -152,7 +171,6 @@ async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Col
 		io: shader.io,
 	};
 	log::debug!("loading shader");
-	log::debug!("shader: {:?}", shader.source);
 	let shader = executor.load_shader(shader).unwrap();
 	log::debug!("loaded shader");
 	let pipeline = PipelineLayout {
@@ -177,7 +195,7 @@ async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Col
 			height: image.image.height,
 		},
 		transform: image.transform,
-	}
+	}*/
 
 	/*
 	let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();

@@ -8,6 +8,8 @@ use graph_craft::Type;
 
 use anyhow::{bail, Result};
 use futures::Future;
+use graphene_core::application_io::{ApplicationIo, SurfaceHandle};
+use graphene_core::wasm_application_io::{WasmApplicationIo, WasmSurfaceHandle};
 use std::pin::Pin;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -18,6 +20,56 @@ pub struct NewExecutor {
 	context: Context,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+	position: [f32; 3],
+	tex_coords: [f32; 2],
+}
+
+impl Vertex {
+	fn desc() -> wgpu::VertexBufferLayout<'static> {
+		use std::mem;
+		wgpu::VertexBufferLayout {
+			array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
+			step_mode: wgpu::VertexStepMode::Vertex,
+			attributes: &[
+				wgpu::VertexAttribute {
+					offset: 0,
+					shader_location: 0,
+					format: wgpu::VertexFormat::Float32x3,
+				},
+				wgpu::VertexAttribute {
+					offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+					shader_location: 1,
+					format: wgpu::VertexFormat::Float32x2,
+				},
+			],
+		}
+	}
+}
+
+const VERTICES: &[Vertex] = &[
+	Vertex {
+		position: [-1., 1., 0.0],
+		tex_coords: [0., 0.],
+	}, // A
+	Vertex {
+		position: [-1., -1., 0.0],
+		tex_coords: [0., 1.],
+	}, // B
+	Vertex {
+		position: [1., 1., 0.0],
+		tex_coords: [1., 0.],
+	}, // C
+	Vertex {
+		position: [-1., -1., 0.0],
+		tex_coords: [1., 1.],
+	}, // D
+];
+
+const INDICES: &[u16] = &[0, 1, 2, 2, 1, 3];
+
 type WgpuShaderInput = ShaderInput<NewExecutor>;
 
 impl gpu_executor::GpuExecutor for NewExecutor {
@@ -26,6 +78,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	type TextureHandle = Texture;
 	type TextureView = TextureView;
 	type CommandBuffer = CommandBuffer;
+	type Surface = wgpu::Surface;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -184,14 +237,155 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(encoder.finish())
 	}
 
-	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: ShaderInput<Self>) -> Result<CommandBuffer> {
+	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: SurfaceHandle<wgpu::Surface>) -> Result<()> {
 		let ShaderInput::StorageTextureBuffer(texture, _) = &texture else {
 			bail!("Tried to render to a non texture buffer");
 		};
-		let ShaderInput::TextureBuffer(canvas, _) = &canvas else {
-			bail!("Tried to render to a non surface");
-		};
-		todo!()
+		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let output = canvas.surface.get_current_texture()?;
+		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+		let texture_bind_group_layout = self.context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+					count: None,
+				},
+			],
+			label: Some("texture_bind_group_layout"),
+		});
+
+		let sampler = self.context.device.create_sampler(&wgpu::SamplerDescriptor {
+			address_mode_u: wgpu::AddressMode::ClampToEdge,
+			address_mode_v: wgpu::AddressMode::ClampToEdge,
+			address_mode_w: wgpu::AddressMode::ClampToEdge,
+			mag_filter: wgpu::FilterMode::Linear,
+			min_filter: wgpu::FilterMode::Nearest,
+			mipmap_filter: wgpu::FilterMode::Nearest,
+			..Default::default()
+		});
+
+		let diffuse_bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			layout: &texture_bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&texture_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(&sampler),
+				},
+			],
+			label: Some("diffuse_bind_group"),
+		});
+
+		let shader = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("Shader"),
+			source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+		});
+
+		let render_pipeline_layout = self.context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: Some("Render Pipeline Layout"),
+			bind_group_layouts: &[&texture_bind_group_layout],
+			push_constant_ranges: &[],
+		});
+
+		let render_pipeline = self.context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+			label: Some("Render Pipeline"),
+			layout: Some(&render_pipeline_layout),
+			vertex: wgpu::VertexState {
+				module: &shader,
+				entry_point: "vs_main",
+				buffers: &[Vertex::desc()],
+			},
+			fragment: Some(wgpu::FragmentState {
+				module: &shader,
+				entry_point: "fs_main",
+				targets: &[Some(wgpu::ColorTargetState {
+					format: wgpu::TextureFormat::Rgba32Float,
+					blend: Some(wgpu::BlendState {
+						color: wgpu::BlendComponent::REPLACE,
+						alpha: wgpu::BlendComponent::REPLACE,
+					}),
+					write_mask: wgpu::ColorWrites::ALL,
+				})],
+			}),
+			primitive: wgpu::PrimitiveState {
+				topology: wgpu::PrimitiveTopology::TriangleList,
+				strip_index_format: None,
+				front_face: wgpu::FrontFace::Ccw,
+				cull_mode: Some(wgpu::Face::Back),
+				// Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
+				// or Features::POLYGON_MODE_POINT
+				polygon_mode: wgpu::PolygonMode::Fill,
+				// Requires Features::DEPTH_CLIP_CONTROL
+				unclipped_depth: false,
+				// Requires Features::CONSERVATIVE_RASTERIZATION
+				conservative: false,
+			},
+			depth_stencil: None,
+			multisample: wgpu::MultisampleState {
+				count: 1,
+				mask: !0,
+				alpha_to_coverage_enabled: false,
+			},
+			// If the pipeline will be used with a multiview render pass, this
+			// indicates how many array layers the attachments will have.
+			multiview: None,
+		});
+
+		let vertex_buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("Vertex Buffer"),
+			contents: bytemuck::cast_slice(VERTICES),
+			usage: wgpu::BufferUsages::VERTEX,
+		});
+		let index_buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("Index Buffer"),
+			contents: bytemuck::cast_slice(INDICES),
+			usage: wgpu::BufferUsages::INDEX,
+		});
+		let num_indices = INDICES.len() as u32;
+
+		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+
+		{
+			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: Some("Render Pass"),
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &view,
+					resolve_target: None,
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+						store: true,
+					},
+				})],
+				depth_stencil_attachment: None,
+			});
+
+			render_pass.set_pipeline(&render_pipeline);
+			render_pass.set_bind_group(0, &diffuse_bind_group, &[]);
+			render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+			render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+			render_pass.draw_indexed(0..num_indices, 0, 0..1);
+		}
+
+		self.context.queue.submit(core::iter::once(encoder.finish()));
+		output.present();
+
+		Ok(())
 	}
 
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()> {
@@ -258,17 +452,15 @@ impl NewExecutor {
 		Some(Self { context })
 	}
 
-	pub unsafe fn create_surface(&self, window: &web_sys::ImageBitmapRenderingContext) -> std::result::Result<wgpu::Surface, CreateSurfaceError> {
-		let builder = winit::window::WindowBuilder::new();
-		let event_loop = winit::event_loop::EventLoop::new();
-		let window = builder.build(&event_loop).unwrap();
-		let surface = self.context.instance.create_surface(&window)?;
+	pub unsafe fn create_surface(&self, canvas: WasmSurfaceHandle) -> std::result::Result<SurfaceHandle<wgpu::Surface>, CreateSurfaceError> {
+		let surface = self.context.instance.create_surface_from_canvas(canvas.surface)?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		// Shader code in this tutorial assumes an sRGB surface texture. Using a different
 		// one will result all the colors coming out darker. If you want to support non
 		// sRGB surfaces, you'll need to account for that when drawing to the frame.
-		let surface_format = wgpu::TextureFormat::Rgba32Float;
+		let surface_format = wgpu::TextureFormat::Rgba16Float;
+		log::debug!("{:?}", surface_caps.formats);
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
@@ -279,6 +471,9 @@ impl NewExecutor {
 			view_formats: vec![],
 		};
 		surface.configure(&self.context.device, &config);
-		Ok(surface)
+		Ok(SurfaceHandle {
+			surface_id: canvas.surface_id,
+			surface,
+		})
 	}
 }
