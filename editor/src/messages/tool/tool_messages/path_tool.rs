@@ -295,7 +295,7 @@ impl Fsm for PathToolFsmState {
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					let mut delta = snapped_position - tool_data.previous_mouse_position;
 					// figure out what to set tooldata prev to get delta to jump back to mouse position on release
-					debug!("snapped: {:?}", snapped_position);
+					// debug!("snapped: {:?}", snapped_position);
 					// debug!("prev m: {:?}", tool_data.previous_mouse_position);
 					// debug!("delta: {:?}", delta);
 
@@ -624,7 +624,7 @@ impl Fsm for PathToolFsmState {
 														}
 													}
 												} else if let (Some(prev_index), None) = (index_prev, index_next) {
-													debug!("prev line");
+													// debug!("prev line");
 													let mut prev_anchor_subpath = subpaths[prev_index];
 
 													// For non-bezier, we have to translate the manipulation points from Local to Document space
@@ -683,10 +683,14 @@ impl Fsm for PathToolFsmState {
 															new_delta = viewspace.inverse().transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 														}
-														let v = doc_transform.transform_vector2(intersection);
-														debug!("inter: {:?}", intersection);
-														debug!("v: {:?}", v);
-														tool_data.previous_mouse_position = intersection;
+														// TODO: CHRIS CHECKPOINT
+														// let mut test = intersection;
+														// test.x +=
+														// debug!("before inter: {:?}", intersection - docspace_start_position);
+														let viewspace_inter = doc_transform.transform_vector2(intersection);
+														debug!("inter: {:?} -> {:?}", intersection, viewspace_inter);
+														// debug!("view inter: {:?}", viewspace_inter);
+														tool_data.previous_mouse_position = viewspace_inter;
 													} else {
 														shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
 														tool_data.previous_mouse_position = snapped_position;
