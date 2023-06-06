@@ -1808,6 +1808,7 @@ dependencies = [
  "graph-craft",
  "graphene-core",
  "image",
+ "js-sys",
  "kurbo",
  "log",
  "node-macro",
@@ -1816,7 +1817,11 @@ dependencies = [
  "serde_json",
  "tempfile",
  "vulkan-executor",
+ "wasm-bindgen",
+ "web-sys",
+ "wgpu",
  "wgpu-executor",
+ "wgpu-types",
  "xxhash-rust",
 ]
 

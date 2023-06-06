@@ -4,12 +4,14 @@ use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
-use graphene_core::application_io::ApplicationIo;
+use graphene_core::application_io::{ApplicationIo, SurfaceHandle};
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::NewExecutor;
 
 use std::sync::Arc;
+
+use crate::wasm_application_io::WasmApplicationIo;
 
 pub struct GpuCompiler<TypingContext, ShaderIO> {
 	typing_context: TypingContext,
@@ -37,6 +39,40 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 
 	compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap()
 }
+pub struct CreateSurfacNode<EditorApi> {
+	editor_api: EditorApi,
+}
+
+#[node_macro::node_fn(CreateSurfacNode)]
+fn create_surface<'a: 'input>(canvas: graphene_core::WasmSurfaceHandle, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> SurfaceHandle<wgpu::Surface> {
+	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
+	unsafe { executor.create_surface(canvas).unwrap() }
+}
+
+pub struct RenderTextureNode<Surface, EditorApi> {
+	surface: Surface,
+	editor_api: EditorApi,
+}
+
+struct ShaderInputFrame {
+	shader_input: Arc<ShaderInput<NewExecutor>>,
+	transform: DAffine2,
+}
+
+#[node_macro::node_fn(RenderTextureNode)]
+async fn map_gpu<'a: 'input>(image: ShaderInputFrame, surface: Arc<SurfaceHandle<wgpu::Surface>>, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> SurfaceFrame {
+	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
+
+	let surface_id = surface.surface_id;
+
+	executor.create_render_pass(image.shader_input, surface).unwrap();
+
+	let frame = SurfaceFrame {
+		surface_id,
+		transform: image.transform,
+	};
+	return frame;
+}
 
 pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
@@ -44,8 +80,7 @@ pub struct MapGpuNode<Node, EditorApi> {
 }
 
 #[node_macro::node_fn(MapGpuNode)]
-async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::EditorApi<'a>) -> SurfaceFrame {
-	/*
+async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -122,10 +157,11 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	.await
 	.unwrap();
 	//return ImageFrame::empty();
-	let len: usize = image.image.data.len();*/
+	let len: usize = image.image.data.len();
 
-	let executor = NewExecutor::new().await.unwrap();
+	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
 
+	/*
 	let canvas = editor_api.application_io.create_surface();
 
 	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
@@ -134,14 +170,13 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 
 	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
 
-	executor.create_render_pass(texture, surface).unwrap();
+	//executor.create_render_pass(texture, surface).unwrap();
 
 	let frame = SurfaceFrame {
 		surface_id,
 		transform: image.transform,
 	};
-	return frame;
-	/*
+	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
 	let storage_buffer = executor
@@ -196,7 +231,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 			height: image.image.height,
 		},
 		transform: image.transform,
-	}*/
+	}
 
 	/*
 	let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();

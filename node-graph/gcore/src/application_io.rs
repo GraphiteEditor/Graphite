@@ -162,6 +162,3 @@ impl ExtractImageFrame {
 		Self
 	}
 }
-
-#[cfg(feature = "wasm")]
-pub mod wasm_application_io;

@@ -1,26 +1,31 @@
 use std::{cell::RefCell, collections::HashMap};
 
-use super::{ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
-use crate::{
+use dyn_any::StaticType;
+use graphene_core::application_io::{ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
 };
-use alloc::sync::Arc;
-use dyn_any::StaticType;
 use js_sys::{Object, Reflect};
+use std::sync::Arc;
 use wasm_bindgen::{Clamped, JsCast, JsValue};
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
+use wgpu_executor::NewExecutor;
 
 pub struct Canvas(CanvasRenderingContext2d);
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
 	ids: RefCell<u64>,
+	pub(crate) gpu_executor: Option<NewExecutor>,
 }
 
 impl WasmApplicationIo {
-	pub fn new() -> Self {
-		Self::default()
+	pub async fn new() -> Self {
+		Self {
+			ids: RefCell::new(0),
+			gpu_executor: NewExecutor::new().await,
+		}
 	}
 }
 
@@ -28,7 +33,7 @@ unsafe impl StaticType for WasmApplicationIo {
 	type Static = WasmApplicationIo;
 }
 
-pub type WasmEditorApi<'a> = super::EditorApi<'a, WasmApplicationIo>;
+pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
 	type Surface = HtmlCanvasElement;

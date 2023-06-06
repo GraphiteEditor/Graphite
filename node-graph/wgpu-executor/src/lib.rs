@@ -9,7 +9,7 @@ use graph_craft::Type;
 use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, SurfaceHandle};
-use graphene_core::wasm_application_io::{WasmApplicationIo, WasmSurfaceHandle};
+use graphene_core::WasmSurfaceHandle;
 use std::pin::Pin;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -191,7 +191,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			.buffers
 			.iter()
 			.chain(std::iter::once(&layout.output_buffer))
-			.flat_map(|input| input.buffer())
+			.flat_map(|input| input.binding())
 			.enumerate()
 			.map(|(i, buffer)| wgpu::BindGroupEntry {
 				binding: i as u32,
@@ -237,16 +237,10 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		Ok(encoder.finish())
 	}
 
-	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: SurfaceHandle<wgpu::Surface>) -> Result<()> {
-		let texture = match &texture {
-			ShaderInput::TextureBuffer(texture, _) => texture,
-			ShaderInput::StorageTextureBuffer(texture, _) => texture,
-			_ => {
-				bail!("Tried to render to a non texture buffer");
-			}
-		};
+	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<wgpu::Surface>>) -> Result<()> {
+		let texture = texture.texture().expect("Expected texture input");
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let output = canvas.surface.get_current_texture()?;
+		let output = canvas.as_ref().surface.get_current_texture()?;
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
 			format: Some(wgpu::TextureFormat::Rgba8Unorm),
 			..Default::default()
@@ -468,13 +462,10 @@ impl NewExecutor {
 		Some(Self { context, render_configuration })
 	}
 
-	pub unsafe fn create_surface(&self, canvas: WasmSurfaceHandle) -> std::result::Result<SurfaceHandle<wgpu::Surface>, CreateSurfaceError> {
+	pub unsafe fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> std::result::Result<SurfaceHandle<wgpu::Surface>, CreateSurfaceError> {
 		let surface = self.context.instance.create_surface_from_canvas(canvas.surface)?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		// Shader code in this tutorial assumes an sRGB surface texture. Using a different
-		// one will result all the colors coming out darker. If you want to support non
-		// sRGB surfaces, you'll need to account for that when drawing to the frame.
 		let surface_format = wgpu::TextureFormat::Rgba8Unorm;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

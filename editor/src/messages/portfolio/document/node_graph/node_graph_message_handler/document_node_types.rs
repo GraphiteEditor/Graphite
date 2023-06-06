@@ -14,6 +14,7 @@ use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
+use graphene_std::wasm_application_io::WasmEditorApi;
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 
@@ -239,7 +240,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::Network(concrete!(EditorApi)),
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
 			}],
 			outputs: vec![DocumentOutputType {
 				name: "Image Frame",
@@ -256,7 +257,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
 						..Default::default()
 					},
@@ -276,7 +277,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::Network(concrete!(EditorApi)),
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
 			}],
 			outputs: vec![DocumentOutputType {
 				name: "Canvas",
@@ -299,7 +300,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
 						..Default::default()
 					},
@@ -331,7 +332,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(EditorApi)),
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
 				},
 			],
 			outputs: vec![DocumentOutputType {
@@ -349,7 +350,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(EditorApi))],
+						inputs: vec![NodeInput::ShortCircut(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						..Default::default()
 					},
@@ -376,7 +377,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::Network(concrete!(EditorApi)),
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
 			}],
 			outputs: vec![
 				DocumentOutputType {
@@ -741,7 +742,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(EditorApi)),
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -1379,7 +1380,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	network.push_node(
 		text_generator.to_document_node(
 			[
-				NodeInput::Network(concrete!(graphene_core::EditorApi)),
+				NodeInput::Network(concrete!(WasmEditorApi)),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),

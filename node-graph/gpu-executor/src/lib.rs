@@ -53,7 +53,7 @@ pub trait GpuExecutor {
 	fn create_texture_view(&self, texture: ShaderInput<Self>) -> Result<ShaderInput<Self>>;
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self>>;
 	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
-	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: SurfaceHandle<Self::Surface>) -> Result<()>;
+	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<Self::Surface>>) -> Result<()>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
 	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self>>) -> ReadBackFuture;
 }
@@ -138,7 +138,7 @@ impl GpuExecutor for DummyExecutor {
 		todo!()
 	}
 
-	fn create_render_pass(&self, _texture: ShaderInput<Self>, _canvas: SurfaceHandle<Self::Surface>) -> Result<()> {
+	fn create_render_pass(&self, _texture: Arc<ShaderInput<Self>>, _canvas: Arc<SurfaceHandle<Self::Surface>>) -> Result<()> {
 		todo!()
 	}
 
@@ -176,7 +176,7 @@ pub enum BindingType<'a, E: GpuExecutor> {
 
 /// Extract the buffer handle from a shader input.
 impl<E: GpuExecutor> ShaderInput<E> {
-	pub fn buffer(&self) -> Option<BindingType<E>> {
+	pub fn binding(&self) -> Option<BindingType<E>> {
 		match self {
 			ShaderInput::UniformBuffer(buffer, _) => Some(BindingType::UniformBuffer(buffer)),
 			ShaderInput::StorageBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
@@ -187,6 +187,32 @@ impl<E: GpuExecutor> ShaderInput<E> {
 			ShaderInput::TextureView(tex, _) => Some(BindingType::TextureView(tex)),
 			ShaderInput::OutputBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
 			ShaderInput::ReadBackBuffer(buffer, _) => Some(BindingType::StorageBuffer(buffer)),
+		}
+	}
+	pub fn buffer(&self) -> Option<&E::BufferHandle> {
+		match self {
+			ShaderInput::UniformBuffer(buffer, _) => Some(buffer),
+			ShaderInput::StorageBuffer(buffer, _) => Some(buffer),
+			ShaderInput::WorkGroupMemory(_, _) => None,
+			ShaderInput::Constant(_) => None,
+			ShaderInput::TextureBuffer(_, _) => None,
+			ShaderInput::StorageTextureBuffer(_, _) => None,
+			ShaderInput::TextureView(tex, _) => None,
+			ShaderInput::OutputBuffer(buffer, _) => Some(buffer),
+			ShaderInput::ReadBackBuffer(buffer, _) => Some(buffer),
+		}
+	}
+	pub fn texture(&self) -> Option<&E::TextureHandle> {
+		match self {
+			ShaderInput::UniformBuffer(_, _) => None,
+			ShaderInput::StorageBuffer(_, _) => None,
+			ShaderInput::WorkGroupMemory(_, _) => None,
+			ShaderInput::Constant(_) => None,
+			ShaderInput::TextureBuffer(tex, _) => Some(tex),
+			ShaderInput::StorageTextureBuffer(tex, _) => Some(tex),
+			ShaderInput::TextureView(_, _) => None,
+			ShaderInput::OutputBuffer(_, _) => None,
+			ShaderInput::ReadBackBuffer(_, _) => None,
 		}
 	}
 	pub fn ty(&self) -> Type {
