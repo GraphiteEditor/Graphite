@@ -294,10 +294,6 @@ impl Fsm for PathToolFsmState {
 					// Move the selected points by the mouse position
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					let mut delta = snapped_position - tool_data.previous_mouse_position;
-					// figure out what to set tooldata prev to get delta to jump back to mouse position on release
-					// debug!("snapped: {:?}", snapped_position);
-					// debug!("prev m: {:?}", tool_data.previous_mouse_position);
-					// debug!("delta: {:?}", delta);
 
 					let doc_transform = document.document_legacy.root.transform;
 
@@ -559,8 +555,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
-															let v = viewspace.transform_vector2(input.mouse.position);
-															tool_data.previous_mouse_position = v;
+															let mut viewspace_intersection = doc_transform.transform_point2(intersection);
+															tool_data.previous_mouse_position = viewspace_intersection;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -601,8 +597,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
-															let v = viewspace.transform_vector2(input.mouse.position);
-															tool_data.previous_mouse_position = v;
+															let mut viewspace_intersection = doc_transform.transform_point2(intersection);
+															tool_data.previous_mouse_position = viewspace_intersection;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -624,7 +620,6 @@ impl Fsm for PathToolFsmState {
 														}
 													}
 												} else if let (Some(prev_index), None) = (index_prev, index_next) {
-													// debug!("prev line");
 													let mut prev_anchor_subpath = subpaths[prev_index];
 
 													// For non-bezier, we have to translate the manipulation points from Local to Document space
@@ -662,10 +657,10 @@ impl Fsm for PathToolFsmState {
 														slope_prev = 0.0000000000000000000000000001;
 													}
 
-													let mut intersection = docspace_start_position;
 													if prev_anchor_subpath.anchor == prev_anchor_subpath.in_handle.unwrap_or_default()
 														&& prev_anchor_subpath.anchor == prev_anchor_subpath.out_handle.unwrap_or_default()
 													{
+														debug!("if");
 														let b = -(input_pos_doc_space.y - docspace_start_position.y) - ((-1.0 / slope_prev) * (input_pos_doc_space.x - docspace_start_position.x));
 														let intersection_x = (b - 0.0) / ((slope_prev) - (-1.0 / slope_prev));
 														let intersection_y = -(slope_prev * (intersection_x)) + 0.0;
@@ -683,20 +678,14 @@ impl Fsm for PathToolFsmState {
 															new_delta = viewspace.inverse().transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 														}
-														// TODO: CHRIS CHECKPOINT
-														// let mut test = intersection;
-														// test.x +=
-														// debug!("before inter: {:?}", intersection - docspace_start_position);
-														let viewspace_inter = doc_transform.transform_vector2(intersection);
-														debug!("inter: {:?} -> {:?}", intersection, viewspace_inter);
-														// debug!("view inter: {:?}", viewspace_inter);
-														tool_data.previous_mouse_position = viewspace_inter;
-													} else {
-														shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
-														tool_data.previous_mouse_position = snapped_position;
+														let mut viewspace_intersection = doc_transform.transform_point2(intersection);
+														tool_data.previous_mouse_position = viewspace_intersection;
 													}
+												// else {
+												// 	shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
+												// 	tool_data.previous_mouse_position = snapped_position;
+												// }
 												} else if let (None, Some(next_index)) = (index_prev, index_next) {
-													// debug!("next");
 													let mut next_anchor_subpath = subpaths[next_index];
 
 													// For non-bezier, we have to translate the manipulation points from Local to Document space
@@ -734,7 +723,6 @@ impl Fsm for PathToolFsmState {
 														slope_next = 0.0000000000000000000000000001;
 													}
 
-													let mut intersection = docspace_start_position;
 													if next_anchor_subpath.anchor == next_anchor_subpath.in_handle.unwrap_or_default()
 														&& next_anchor_subpath.anchor == next_anchor_subpath.out_handle.unwrap_or_default()
 													{
@@ -749,16 +737,14 @@ impl Fsm for PathToolFsmState {
 															let mut new_delta = intersection - docspace_anchor;
 															new_delta = viewspace.transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, true);
-														} else if is_bezier {
+														} else if !is_bezier {
 															let mut new_delta = intersection - docspace_anchor;
 															new_delta = doc_transform.transform_vector2(new_delta);
 															new_delta = viewspace.inverse().transform_vector2(new_delta);
 															shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 														}
-													// debug!("V: {:?}", intersection);
-													// let v = doc_transform.transform_vector2(intersection);
-													// debug!("V: {:?}", v);
-													// tool_data.previous_mouse_position = v;
+														let mut viewspace_intersection = doc_transform.transform_point2(intersection);
+														tool_data.previous_mouse_position = viewspace_intersection;
 													} else {
 														shape_editor.move_selected_points(&document.document_legacy, delta, shift_pressed, responses, true);
 														tool_data.previous_mouse_position = snapped_position;
@@ -874,8 +860,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
-															let v = viewspace.transform_vector2(input.mouse.position);
-															tool_data.previous_mouse_position = v;
+														// let v = viewspace.transform_vector2(input.mouse.position);
+														// tool_data.previous_mouse_position = v;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
@@ -916,8 +902,8 @@ impl Fsm for PathToolFsmState {
 																new_delta = viewspace.inverse().transform_vector2(new_delta);
 																shape_editor.move_selected_points(&document.document_legacy, new_delta, shift_pressed, responses, false);
 															}
-															let v = viewspace.transform_vector2(input.mouse.position);
-															tool_data.previous_mouse_position = v;
+														// let v = viewspace.transform_vector2(input.mouse.position);
+														// tool_data.previous_mouse_position = v;
 														}
 														// Prevent stalling, where the other infinite line is closer to the cursor when the next anchor is curved
 														else {
