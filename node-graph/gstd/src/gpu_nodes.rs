@@ -45,6 +45,7 @@ pub struct MapGpuNode<Node, EditorApi> {
 
 #[node_macro::node_fn(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::EditorApi<'a>) -> SurfaceFrame {
+	/*
 	log::debug!("Executing gpu node");
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -121,14 +122,14 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	.await
 	.unwrap();
 	//return ImageFrame::empty();
-	let len: usize = image.image.data.len();
+	let len: usize = image.image.data.len();*/
 
 	let executor = NewExecutor::new().await.unwrap();
 
 	let canvas = editor_api.application_io.create_surface();
 
 	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
-	log::debug!("id: {:?}", surface);
+	//log::debug!("id: {:?}", surface);
 	let surface_id = surface.surface_id;
 
 	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
