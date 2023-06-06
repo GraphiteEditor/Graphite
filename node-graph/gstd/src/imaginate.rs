@@ -3,7 +3,7 @@ use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
 use glam::DVec2;
-use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus, ImaginateTerminationHandle};
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
 use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
@@ -13,6 +13,16 @@ const PROGRESS_EVERY_N_STEPS: u32 = 5;
 const SDAPI_TEXT_TO_IMAGE: &str = "sdapi/v1/txt2img";
 const SDAPI_IMAGE_TO_IMAGE: &str = "sdapi/v1/img2img";
 const SDAPI_PROGRESS: &str = "sdapi/v1/progress?skip_current_image=true";
+const SDAPI_TERMINATE: &str = "sdapi/v1/interrupt";
+
+#[derive(Debug)]
+struct ImaginateFutureAbortHandle(futures::future::AbortHandle);
+
+impl ImaginateTerminationHandle for ImaginateFutureAbortHandle {
+	fn terminate(&self) {
+		self.0.abort()
+	}
+}
 
 #[derive(Debug)]
 enum Error {
@@ -27,6 +37,8 @@ enum Error {
 	ImageEncode(image::error::ImageError),
 	UnsupportedPixelType(&'static str),
 	InconsistentImageSize,
+	Terminated,
+	TerminationFailed(reqwest::Error),
 }
 
 impl core::fmt::Display for Error {
@@ -43,6 +55,8 @@ impl core::fmt::Display for Error {
 			Self::ImageEncode(err) => write!(f, "failed to encode png image ({err})"),
 			Self::UnsupportedPixelType(ty) => write!(f, "pixel type `{ty}` not supported for imaginate images"),
 			Self::InconsistentImageSize => write!(f, "image width and height do not match the image byte size"),
+			Self::Terminated => write!(f, "imaginate request was terminated by the user"),
+			Self::TerminationFailed(err) => write!(f, "termination failed ({err})"),
 		}
 	}
 }
@@ -158,10 +172,21 @@ pub async fn imaginate<'a, P: Pixel>(
 	improve_faces: impl Future<Output = bool>,
 	tiling: impl Future<Output = bool>,
 ) -> Image<P> {
+	let WasmEditorApi {
+		node_graph_message_sender,
+		imaginate_preferences,
+		..
+	} = editor_api.await;
+	let set_progress = |progress: ImaginateStatus| {
+		controller.set_status(progress);
+		node_graph_message_sender.send(NodeGraphUpdateMessage::ImaginateStatusUpdate);
+	};
+	let host_name = imaginate_preferences.get_host_name();
 	imaginate_maybe_fail(
 		image,
-		editor_api,
-		controller,
+		host_name,
+		set_progress,
+		&controller,
 		seed,
 		res,
 		samples,
@@ -180,16 +205,25 @@ pub async fn imaginate<'a, P: Pixel>(
 	)
 	.await
 	.unwrap_or_else(|err| {
-		error!("{err}");
+		match err {
+			Error::Terminated => {
+				set_progress(ImaginateStatus::Terminated);
+			}
+			err => {
+				error!("{err}");
+				set_progress(ImaginateStatus::Failed(err.to_string()));
+			}
+		};
 		Image::empty()
 	})
 }
 
 #[cfg(feature = "imaginate")]
-async fn imaginate_maybe_fail<'a, P: Pixel>(
+async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 	image: Image<P>,
-	editor_api: impl Future<Output = WasmEditorApi<'a>>,
-	controller: ImaginateController,
+	host_name: &str,
+	set_progress: F,
+	controller: &ImaginateController,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
 	samples: impl Future<Output = u32>,
@@ -206,12 +240,7 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 	improve_faces: impl Future<Output = bool>,
 	tiling: impl Future<Output = bool>,
 ) -> Result<Image<P>, Error> {
-	let editor_api = editor_api.await;
-	let host_name = editor_api.imaginate_preferences.get_host_name();
-	let set_progress = |progress: ImaginateStatus| {
-		controller.set_status(progress);
-		editor_api.node_graph_message_sender.send(NodeGraphUpdateMessage::ImaginateStatusUpdate);
-	};
+	set_progress(ImaginateStatus::Beginning);
 
 	let base_url: Url = host_name.try_into().map_err(|err| Error::UrlParse { text: host_name.into(), err })?;
 
@@ -261,7 +290,8 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 
 	let request = request_builder.header("Accept", "*/*").build().map_err(Error::RequestBuild)?;
 
-	let response_future = client.execute(request);
+	let (response_future, abort_handle) = futures::future::abortable(client.execute(request));
+	controller.set_termination_handle(Box::new(ImaginateFutureAbortHandle(abort_handle)));
 
 	let progress_url = join_url(SDAPI_PROGRESS)?;
 
@@ -270,32 +300,42 @@ async fn imaginate_maybe_fail<'a, P: Pixel>(
 	let response = loop {
 		let progress_request = client.get(progress_url.clone()).header("Accept", "*/*").build().map_err(Error::RequestBuild)?;
 		let progress_response_future = client.execute(progress_request).and_then(|response| response.json());
-		let (progress_response_future, abort_handle) = futures::future::abortable(progress_response_future);
 
 		futures::pin_mut!(progress_response_future);
 
 		response_future = match futures::future::select(response_future, progress_response_future).await {
-			Either::Left((response, _)) => {
-				abort_handle.abort();
-				break response;
-			}
+			Either::Left((response, _)) => break response,
 			Either::Right((progress, response_future)) => {
-				if let Ok(Ok(ProgressResponse { progress })) = progress {
+				if let Ok(ProgressResponse { progress }) = progress {
 					set_progress(ImaginateStatus::Generating(progress * 100.));
 				}
 				response_future
 			}
 		};
 	};
-	let response = response.and_then(reqwest::Response::error_for_status).map_err(Error::Request)?;
+
+	let response = match response {
+		Ok(response) => response.and_then(reqwest::Response::error_for_status).map_err(Error::Request)?,
+		Err(_aborted) => {
+			set_progress(ImaginateStatus::Terminating);
+			let url = join_url(SDAPI_TERMINATE)?;
+			let request = client.post(url).build().map_err(Error::RequestBuild)?;
+			// The user probably doesn't really care if the server side was really aborted or if there was an network error.
+			// So we fool them that the request was terminated if the termination request in reality failed.
+			let _ = client.execute(request).await.and_then(reqwest::Response::error_for_status).map_err(Error::TerminationFailed)?;
+			return Err(Error::Terminated);
+		}
+	};
 
 	set_progress(ImaginateStatus::Uploading);
 
 	let ImageResponse { images } = response.json().await.map_err(Error::ResponseFormat)?;
 
-	set_progress(ImaginateStatus::Idle);
+	let result = images.into_iter().next().ok_or(Error::NoImage).and_then(base64_to_image)?;
 
-	images.into_iter().next().ok_or(Error::NoImage).and_then(|base64_data| base64_to_image(base64_data))
+	set_progress(ImaginateStatus::ReadyDone);
+
+	Ok(result)
 }
 
 fn image_to_base64<P: Pixel>(image: Image<P>) -> Result<String, Error> {

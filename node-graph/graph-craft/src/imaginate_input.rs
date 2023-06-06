@@ -1,6 +1,7 @@
 use dyn_any::{DynAny, StaticType};
 use glam::DVec2;
 use graphene_core::Color;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::{
 	atomic::{AtomicBool, Ordering},
@@ -29,32 +30,52 @@ impl core::hash::Hash for ImaginateCache {
 	}
 }
 
-#[derive(Default, Debug, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct LocalImaginateController {
-	status: Mutex<ImaginateStatus>,
-	trigger_regenerate: AtomicBool,
+pub trait ImaginateTerminationHandle: Debug + Send + Sync + 'static {
+	fn terminate(&self);
 }
 
-#[derive(Default, Debug, Clone, DynAny, specta::Type)]
+#[derive(Default, Debug, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateController(Arc<LocalImaginateController>);
+struct InternalImaginateControl {
+	status: Mutex<ImaginateStatus>,
+	trigger_regenerate: AtomicBool,
+	#[serde(skip)]
+	termination_sender: Mutex<Option<Box<dyn ImaginateTerminationHandle>>>,
+}
+
+#[derive(Debug, Default, Clone, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImaginateController(Arc<InternalImaginateControl>);
 
 impl ImaginateController {
 	pub fn get_status(&self) -> ImaginateStatus {
-		*self.0.status.lock().unwrap()
+		self.0.status.lock().as_deref().cloned().unwrap_or_default()
 	}
 
 	pub fn set_status(&self, status: ImaginateStatus) {
-		*self.0.status.lock().unwrap() = status
+		if let Ok(mut lock) = self.0.status.lock() {
+			*lock = status
+		}
 	}
 
-	pub fn get_trigger(&self) -> bool {
+	pub fn take_regenerate_trigger(&self) -> bool {
 		self.0.trigger_regenerate.swap(false, Ordering::SeqCst)
 	}
 
-	pub fn set_trigger(&self, trigger: bool) {
-		self.0.trigger_regenerate.store(trigger, Ordering::SeqCst)
+	pub fn trigger_regenerate(&self) {
+		self.0.trigger_regenerate.store(true, Ordering::SeqCst)
+	}
+
+	pub fn request_termination(&self) {
+		if let Some(handle) = self.0.termination_sender.lock().ok().and_then(|mut lock| lock.take()) {
+			handle.terminate()
+		}
+	}
+
+	pub fn set_termination_handle<H: ImaginateTerminationHandle>(&self, handle: Box<H>) {
+		if let Ok(mut lock) = self.0.termination_sender.lock() {
+			*lock = Some(handle)
+		}
 	}
 }
 
@@ -66,35 +87,46 @@ impl std::cmp::PartialEq for ImaginateController {
 
 impl core::hash::Hash for ImaginateController {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.0.status.lock().unwrap().hash(state);
+		core::ptr::hash(Arc::as_ptr(&self.0), state)
 	}
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateStatus {
 	#[default]
-	Idle,
+	Ready,
+	ReadyDone,
 	Beginning,
 	Uploading,
 	Generating(f64),
 	Terminating,
 	Terminated,
+	Failed(String),
+}
+
+impl ImaginateStatus {
+	pub fn to_text(&self) -> Cow<'static, str> {
+		match self {
+			Self::Ready | Self::ReadyDone => Cow::Borrowed("Nothing to do"),
+			Self::Beginning => Cow::Borrowed("Beginning…"),
+			Self::Uploading => Cow::Borrowed("Uploading Input Image"),
+			Self::Generating(percent) => Cow::Owned(format!("Generating {percent:.0}%")),
+			Self::Terminating => Cow::Owned(format!("Terminating...")),
+			Self::Terminated => Cow::Owned(format!("Terminated")),
+			Self::Failed(err) => Cow::Owned(format!("Failed: {err}")),
+		}
+	}
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl core::hash::Hash for ImaginateStatus {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::mem::discriminant(self).hash(state);
 		match self {
-			Self::Idle => 0.hash(state),
-			Self::Beginning => 1.hash(state),
-			Self::Uploading => 2.hash(state),
-			Self::Generating(f) => {
-				3.hash(state);
-				f.to_bits().hash(state);
-			}
-			Self::Terminating => 4.hash(state),
-			Self::Terminated => 5.hash(state),
+			Self::Ready | Self::ReadyDone | Self::Beginning | Self::Uploading | Self::Terminating | Self::Terminated => (),
+			Self::Generating(f) => f.to_bits().hash(state),
+			Self::Failed(err) => err.hash(state),
 		}
 	}
 }

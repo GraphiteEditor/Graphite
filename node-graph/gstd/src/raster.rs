@@ -449,7 +449,7 @@ macro_rules! generate_imaginate_node {
 				Box::pin(async move {
 					let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController>>> = controller;
 					let controller: ImaginateController = controller.await;
-					if controller.get_trigger() {
+					if controller.take_regenerate_trigger() {
 						let editor_api = self.editor_api.eval(());
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 						self.cache.lock().unwrap().clone_from(&image);

@@ -10,7 +10,7 @@ use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -1073,14 +1073,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let transform_not_connected = false;
 
 	let progress = {
-		let status = match imaginate_status {
-			ImaginateStatus::Idle => "Idle".into(),
-			ImaginateStatus::Beginning => "Beginning...".into(),
-			ImaginateStatus::Uploading => format!("Uploading Input Image"),
-			ImaginateStatus::Generating(percent) => format!("Generating: {percent:.0}%"),
-			ImaginateStatus::Terminating => "Terminating...".into(),
-			ImaginateStatus::Terminated => "Terminated".into(),
-		};
+		let status = imaginate_status.to_text();
 		let widgets = vec![
 			WidgetHolder::text_widget("Progress"),
 			WidgetHolder::unrelated_separator(),
@@ -1088,21 +1081,24 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status),
+			WidgetHolder::bold_text(status.as_ref()),
 		];
-		LayoutGroup::Row { widgets }.with_tooltip("When generating, the percentage represents how many sampling steps have so far been processed out of the target number")
+		LayoutGroup::Row { widgets }.with_tooltip(match imaginate_status {
+			ImaginateStatus::Failed(_) => status.as_ref(),
+			_ => "When generating, the percentage represents how many sampling steps have so far been processed out of the target number",
+		})
 	};
 
 	let image_controls = {
 		let mut widgets = vec![WidgetHolder::text_widget("Image"), WidgetHolder::unrelated_separator()];
-		let assist_separators = vec![
+		let assist_separators = [
 			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 			WidgetHolder::unrelated_separator(),
 		];
 
-		match imaginate_status {
+		match &imaginate_status {
 			ImaginateStatus::Beginning | ImaginateStatus::Uploading => {
 				widgets.extend_from_slice(&assist_separators);
 				widgets.push(TextButton::new("Beginning...").tooltip("Sending image generation request to the server").disabled(true).widget_holder());
@@ -1114,7 +1110,9 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
 						.on_update({
 							let imaginate_node = imaginate_node.clone();
+							let controller = controller.clone();
 							move |_| {
+								controller.request_termination();
 								DocumentMessage::ImaginateTerminate {
 									layer_path: layer_path.clone(),
 									node_path: imaginate_node.clone(),
@@ -1134,7 +1132,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						.widget_holder(),
 				);
 			}
-			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
+			ImaginateStatus::Ready | ImaginateStatus::ReadyDone | ImaginateStatus::Terminated | ImaginateStatus::Failed(_) => widgets.extend_from_slice(&[
 				IconButton::new("Random", 24)
 					.tooltip("Generate with a new random seed")
 					.on_update({
@@ -1142,7 +1140,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let layer_path = context.layer_path.to_vec();
 						let controller = controller.clone();
 						move |_| {
-							controller.set_trigger(true);
+							controller.trigger_regenerate();
 							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
@@ -1160,7 +1158,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let layer_path = context.layer_path.to_vec();
 						let controller = controller.clone();
 						move |_| {
-							controller.set_trigger(true);
+							controller.trigger_regenerate();
 							DocumentMessage::ImaginateGenerate {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
@@ -1172,9 +1170,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				WidgetHolder::related_separator(),
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
+					.disabled(!matches!(imaginate_status, ImaginateStatus::ReadyDone))
 					.on_update({
 						let layer_path = context.layer_path.to_vec();
+						let controller = controller.clone();
 						move |_| {
+							controller.set_status(ImaginateStatus::Ready);
 							DocumentMessage::ImaginateClear {
 								node_id,
 								layer_path: layer_path.clone(),
