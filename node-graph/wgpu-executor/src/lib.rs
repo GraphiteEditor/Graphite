@@ -243,7 +243,10 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		};
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let output = canvas.surface.get_current_texture()?;
-		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+			format: Some(wgpu::TextureFormat::Rgba8Unorm),
+			..Default::default()
+		});
 		let texture_bind_group_layout = self.context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
@@ -361,26 +364,6 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		log::debug!("view {:?}", view);
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
-		/*
-		{
-			let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-				label: Some("Render Pass"),
-				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-					view: &view,
-					resolve_target: None,
-					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.2, b: 0.3, a: 1.0 }),
-						store: true,
-					},
-				})],
-				depth_stencil_attachment: None,
-			});
-		}
-
-		// submit will accept anything that implements IntoIter
-		self.context.queue.submit(std::iter::once(encoder.finish()));
-		output.present();*/
-
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				label: Some("Render Pass"),
@@ -489,7 +472,7 @@ impl NewExecutor {
 			height: 1080,
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
-			view_formats: vec![],
+			view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
 		};
 		surface.configure(&self.context.device, &config);
 		Ok(SurfaceHandle {
