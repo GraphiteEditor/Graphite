@@ -133,7 +133,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 
 	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
 
-	executor.create_render_pass(texture, surface);
+	executor.create_render_pass(texture, surface).unwrap();
 
 	let frame = SurfaceFrame {
 		surface_id,

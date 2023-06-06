@@ -17,9 +17,9 @@ impl Context {
 		// `request_adapter` instantiates the general connection to the GPU
 		let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await?;
 
-		let limits = adapter.limits();
+		//let limits = adapter.limits();
 
-		log::trace!("Adapter limits: {:?}", limits);
+		//log::trace!("Adapter limits: {:?}", limits);
 
 		// `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
 		//  `features` being the available features.
@@ -28,7 +28,7 @@ impl Context {
 				&wgpu::DeviceDescriptor {
 					label: None,
 					features: wgpu::Features::empty(),
-					limits,
+					limits: Default::default(),
 				},
 				None,
 			)

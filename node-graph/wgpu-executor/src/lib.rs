@@ -63,7 +63,7 @@ const VERTICES: &[Vertex] = &[
 		tex_coords: [1., 0.],
 	}, // C
 	Vertex {
-		position: [-1., -1., 0.0],
+		position: [1., -1., 0.0],
 		tex_coords: [1., 1.],
 	}, // D
 ];
@@ -238,13 +238,12 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	}
 
 	fn create_render_pass(&self, texture: ShaderInput<Self>, canvas: SurfaceHandle<wgpu::Surface>) -> Result<()> {
-		let ShaderInput::StorageTextureBuffer(texture, _) = &texture else {
+		let ShaderInput::TextureBuffer(texture, _) = &texture else {
 			bail!("Tried to render to a non texture buffer");
 		};
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let output = canvas.surface.get_current_texture()?;
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-
 		let texture_bind_group_layout = self.context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
@@ -253,14 +252,14 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 					ty: wgpu::BindingType::Texture {
 						multisampled: false,
 						view_dimension: wgpu::TextureViewDimension::D2,
-						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
 					},
 					count: None,
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
 					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
 					count: None,
 				},
 			],
@@ -271,7 +270,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			address_mode_u: wgpu::AddressMode::ClampToEdge,
 			address_mode_v: wgpu::AddressMode::ClampToEdge,
 			address_mode_w: wgpu::AddressMode::ClampToEdge,
-			mag_filter: wgpu::FilterMode::Linear,
+			mag_filter: wgpu::FilterMode::Nearest,
 			min_filter: wgpu::FilterMode::Nearest,
 			mipmap_filter: wgpu::FilterMode::Nearest,
 			..Default::default()
@@ -315,7 +314,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 				module: &shader,
 				entry_point: "fs_main",
 				targets: &[Some(wgpu::ColorTargetState {
-					format: wgpu::TextureFormat::Rgba32Float,
+					format: wgpu::TextureFormat::Rgba8Unorm,
 					blend: Some(wgpu::BlendState {
 						color: wgpu::BlendComponent::REPLACE,
 						alpha: wgpu::BlendComponent::REPLACE,
@@ -327,7 +326,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 				topology: wgpu::PrimitiveTopology::TriangleList,
 				strip_index_format: None,
 				front_face: wgpu::FrontFace::Ccw,
-				cull_mode: Some(wgpu::Face::Back),
+				cull_mode: None,
 				// Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
 				// or Features::POLYGON_MODE_POINT
 				polygon_mode: wgpu::PolygonMode::Fill,
@@ -359,7 +358,28 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		});
 		let num_indices = INDICES.len() as u32;
 
+		log::debug!("view {:?}", view);
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+
+		/*
+		{
+			let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: Some("Render Pass"),
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &view,
+					resolve_target: None,
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.2, b: 0.3, a: 1.0 }),
+						store: true,
+					},
+				})],
+				depth_stencil_attachment: None,
+			});
+		}
+
+		// submit will accept anything that implements IntoIter
+		self.context.queue.submit(std::iter::once(encoder.finish()));
+		output.present();*/
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -382,7 +402,8 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			render_pass.draw_indexed(0..num_indices, 0, 0..1);
 		}
 
-		self.context.queue.submit(core::iter::once(encoder.finish()));
+		let encoder = encoder.finish();
+		self.context.queue.submit(Some(encoder));
 		output.present();
 
 		Ok(())
@@ -459,7 +480,7 @@ impl NewExecutor {
 		// Shader code in this tutorial assumes an sRGB surface texture. Using a different
 		// one will result all the colors coming out darker. If you want to support non
 		// sRGB surfaces, you'll need to account for that when drawing to the frame.
-		let surface_format = wgpu::TextureFormat::Rgba16Float;
+		let surface_format = wgpu::TextureFormat::Rgba8Unorm;
 		log::debug!("{:?}", surface_caps.formats);
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
