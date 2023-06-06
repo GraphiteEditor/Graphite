@@ -115,9 +115,8 @@ impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
 }
 
 impl<T: Clone> DebugClonedNode<T> {
-	#[allow(clippy::new_ret_no_self)]
-	pub const fn new(value: T) -> ClonedNode<T> {
-		ClonedNode(value)
+	pub const fn new(value: T) -> DebugClonedNode<T> {
+		DebugClonedNode(value)
 	}
 }
 

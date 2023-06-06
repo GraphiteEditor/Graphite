@@ -1,5 +1,3 @@
-#![allow(clippy::match_like_matches_macro)]
-
 use std::borrow::Cow;
 
 use std::collections::{HashMap, HashSet};
@@ -546,9 +544,9 @@ impl TypingContext {
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
 		}
-		if parameters.iter().any(|p| match p {
-			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)) => true,
-			_ => false,
+		if parameters.iter().any(|p| {
+			matches!(p,
+			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
 			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}
