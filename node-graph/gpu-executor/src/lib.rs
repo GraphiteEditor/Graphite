@@ -5,16 +5,18 @@ use graphene_core::*;
 use anyhow::Result;
 use dyn_any::{StaticType, StaticTypeSized};
 use futures::Future;
-use glam::UVec3;
-use graphene_core::application_io::SurfaceHandle;
-use graphene_core::raster::{Image, Pixel, SRGBA8};
+use glam::{DAffine2, UVec3};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
+use web_sys::Window;
 
 type ReadBackFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, dyn_any::DynAny)]
 pub enum ComputePassDimensions {
 	X(u32),
 	XY(u32, u32),
@@ -44,6 +46,7 @@ pub trait GpuExecutor {
 	type TextureHandle;
 	type TextureView;
 	type Surface;
+	type Window;
 	type CommandBuffer;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle>;
@@ -56,6 +59,7 @@ pub trait GpuExecutor {
 	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<Self::Surface>>) -> Result<()>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
 	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self>>) -> ReadBackFuture;
+	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface>>;
 }
 
 pub trait SpirVCompiler {
@@ -108,6 +112,7 @@ impl GpuExecutor for DummyExecutor {
 	type TextureHandle = ();
 	type TextureView = ();
 	type Surface = ();
+	type Window = ();
 	type CommandBuffer = ();
 
 	fn load_shader(&self, _shader: Shader) -> Result<Self::ShaderHandle> {
@@ -149,6 +154,10 @@ impl GpuExecutor for DummyExecutor {
 	fn create_texture_view(&self, _texture: ShaderInput<Self>) -> Result<ShaderInput<Self>> {
 		todo!()
 	}
+
+	fn create_surface(&self, _window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface>> {
+		todo!()
+	}
 }
 
 type AbstractShaderInput = ShaderInput<DummyExecutor>;
@@ -166,6 +175,13 @@ pub enum ShaderInput<E: GpuExecutor + ?Sized> {
 	Constant(GPUConstant),
 	OutputBuffer(E::BufferHandle, Type),
 	ReadBackBuffer(E::BufferHandle, Type),
+}
+
+unsafe impl<E: 'static> StaticType for ShaderInput<E>
+where
+	E: GpuExecutor,
+{
+	type Static = Self;
 }
 
 pub enum BindingType<'a, E: GpuExecutor> {
@@ -333,12 +349,26 @@ pub struct Bindgroup<E: GpuExecutor + ?Sized> {
 	pub buffers: Vec<Arc<ShaderInput<E>>>,
 }
 
+unsafe impl<E: GpuExecutor + ?Sized + StaticType> StaticType for Bindgroup<E>
+where
+	E::Static: GpuExecutor,
+{
+	type Static = Bindgroup<E::Static>;
+}
+
 /// A struct representing a compute pipeline.
 pub struct PipelineLayout<E: GpuExecutor + ?Sized> {
 	pub shader: E::ShaderHandle,
 	pub entry_point: String,
 	pub bind_group: Bindgroup<E>,
 	pub output_buffer: Arc<ShaderInput<E>>,
+}
+
+unsafe impl<E: GpuExecutor + ?Sized + StaticType> StaticType for PipelineLayout<E>
+where
+	E::Static: GpuExecutor,
+{
+	type Static = PipelineLayout<E::Static>;
 }
 
 /// Extracts arguments from the function arguments and wraps them in a node.
@@ -365,7 +395,7 @@ pub struct UniformNode<Executor> {
 }
 
 #[node_macro::node_fn(UniformNode)]
-fn uniform_node<T: ToUniformBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E> {
+async fn uniform_node<'a: 'input, T: ToUniformBuffer, E: GpuExecutor + 'a>(data: T, executor: &'a E) -> ShaderInput<E> {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
@@ -374,7 +404,7 @@ pub struct StorageNode<Executor> {
 }
 
 #[node_macro::node_fn(StorageNode)]
-fn storage_node<T: ToStorageBuffer, E: GpuExecutor>(data: T, executor: &'input E) -> ShaderInput<E> {
+async fn storage_node<'a: 'input, T: ToStorageBuffer, E: GpuExecutor + 'a>(data: T, executor: &'a E) -> ShaderInput<E> {
 	executor
 		.create_storage_buffer(
 			data,
@@ -393,7 +423,7 @@ pub struct PushNode<Value> {
 }
 
 #[node_macro::node_fn(PushNode)]
-fn push_node<T>(mut vec: Vec<T>, value: T) {
+async fn push_node<T>(mut vec: Vec<T>, value: T) {
 	vec.push(value);
 }
 
@@ -403,8 +433,8 @@ pub struct CreateOutputBufferNode<Executor, Ty> {
 }
 
 #[node_macro::node_fn(CreateOutputBufferNode)]
-fn create_output_buffer_node<E: GpuExecutor>(size: usize, executor: &'input E, ty: Type) -> ShaderInput<E> {
-	executor.create_output_buffer(size, ty, true).unwrap()
+async fn create_output_buffer_node<'a: 'input, E: GpuExecutor + 'a>(size: usize, executor: &'a E, ty: Type) -> Arc<ShaderInput<E>> {
+	Arc::new(executor.create_output_buffer(size, ty, true).unwrap())
 }
 
 pub struct CreateComputePassNode<Executor, Output, Instances> {
@@ -414,7 +444,7 @@ pub struct CreateComputePassNode<Executor, Output, Instances> {
 }
 
 #[node_macro::node_fn(CreateComputePassNode)]
-fn create_compute_pass_node<'any_input, E: 'any_input + GpuExecutor>(layout: PipelineLayout<E>, executor: &'any_input E, output: ShaderInput<E>, instances: ComputePassDimensions) -> E::CommandBuffer {
+async fn create_compute_pass_node<'a: 'input, E: 'a + GpuExecutor>(layout: PipelineLayout<E>, executor: &'a E, output: ShaderInput<E>, instances: ComputePassDimensions) -> E::CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
@@ -426,7 +456,7 @@ pub struct CreatePipelineLayoutNode<_E, EntryPoint, Bindgroup, OutputBuffer> {
 }
 
 #[node_macro::node_fn(CreatePipelineLayoutNode<_E>)]
-fn create_pipeline_layout_node<_E: GpuExecutor>(shader: _E::ShaderHandle, entry_point: String, bind_group: Bindgroup<_E>, output_buffer: Arc<ShaderInput<_E>>) -> PipelineLayout<_E> {
+async fn create_pipeline_layout_node<_E: GpuExecutor>(shader: _E::ShaderHandle, entry_point: String, bind_group: Bindgroup<_E>, output_buffer: Arc<ShaderInput<_E>>) -> PipelineLayout<_E> {
 	PipelineLayout {
 		shader,
 		entry_point,
@@ -440,14 +470,68 @@ pub struct ExecuteComputePipelineNode<Executor> {
 }
 
 #[node_macro::node_fn(ExecuteComputePipelineNode)]
-fn execute_compute_pipeline_node<E: GpuExecutor>(encoder: E::CommandBuffer, executor: &'input mut E) {
+async fn execute_compute_pipeline_node<'a: 'input, E: 'a + GpuExecutor>(encoder: E::CommandBuffer, executor: &'a E) {
 	executor.execute_compute_pipeline(encoder).unwrap();
 }
 
-pub struct ReadOutputBufferNode<Executor> {
+pub struct ReadOutputBufferNode<Executor, ComputePass> {
 	executor: Executor,
+	_compute_pass: ComputePass,
 }
 #[node_macro::node_fn(ReadOutputBufferNode)]
-async fn read_output_buffer_node<E: GpuExecutor>(buffer: Arc<ShaderInput<E>>, executor: &'input E) -> Vec<u8> {
+async fn read_output_buffer_node<'a: 'input, E: 'a + GpuExecutor>(buffer: Arc<ShaderInput<E>>, executor: &'a E, _compute_pass: ()) -> Vec<u8> {
 	executor.read_output_buffer(buffer).await.unwrap()
+}
+
+pub struct CreateGpuSurfaceNode {}
+
+#[node_macro::node_fn(CreateGpuSurfaceNode)]
+async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> SurfaceHandle<E::Surface> {
+	let canvas = editor_api.application_io.create_surface();
+	let executor = editor_api.application_io.gpu_executor().unwrap();
+	executor.create_surface(canvas).unwrap()
+}
+
+pub struct RenderTextureNode<Surface, EditorApi> {
+	surface: Surface,
+	executor: EditorApi,
+}
+
+#[derive(Clone)]
+pub struct ShaderInputFrame<E: GpuExecutor + ?Sized> {
+	shader_input: Arc<ShaderInput<E>>,
+	transform: DAffine2,
+}
+
+unsafe impl<E: GpuExecutor + ?Sized + StaticType> StaticType for ShaderInputFrame<E>
+where
+	E::Static: GpuExecutor,
+{
+	type Static = ShaderInputFrame<E::Static>;
+}
+
+#[node_macro::node_fn(RenderTextureNode)]
+async fn render_texture_node<'a: 'input, E: 'a + GpuExecutor>(image: ShaderInputFrame<E>, surface: Arc<SurfaceHandle<E::Surface>>, executor: &'a E) -> SurfaceFrame {
+	let surface_id = surface.surface_id;
+
+	executor.create_render_pass(image.shader_input, surface).unwrap();
+
+	SurfaceFrame {
+		surface_id,
+		transform: image.transform,
+	}
+}
+
+pub struct UploadTextureNode<E> {
+	executor: E,
+}
+
+#[node_macro::node_fn(UploadTextureNode)]
+async fn upload_texture<'a: 'input, E: 'a + GpuExecutor>(input: ImageFrame<Color>, executor: &'a E) -> ShaderInputFrame<E> {
+	let shader_input = executor.create_texture_buffer(input.image, TextureBufferOptions::Texture).unwrap();
+
+	ShaderInputFrame {
+		shader_input: Arc::new(shader_input),
+		transform: input.transform,
+	}
 }

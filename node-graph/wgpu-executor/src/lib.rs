@@ -2,23 +2,31 @@ mod context;
 mod executor;
 
 pub use context::Context;
+use dyn_any::{DynAny, StaticType};
 pub use executor::GpuExecutor;
 use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::Type;
 
 use anyhow::{bail, Result};
 use futures::Future;
-use graphene_core::application_io::{ApplicationIo, SurfaceHandle};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::WasmSurfaceHandle;
 use std::pin::Pin;
 use std::sync::Arc;
+use web_sys::HtmlCanvasElement;
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferDescriptor, CommandBuffer, CreateSurfaceError, ShaderModule, Texture, TextureView};
 
-#[derive(Debug)]
-pub struct NewExecutor {
+#[derive(Debug, dyn_any::DynAny)]
+pub struct WgpuExecutor {
 	context: Context,
 	render_configuration: RenderConfiguration,
+}
+
+impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &'a WgpuExecutor {
+	fn from(editor_api: EditorApi<'a, T>) -> Self {
+		editor_api.application_io.gpu_executor().unwrap()
+	}
 }
 
 #[repr(C)]
@@ -71,22 +79,31 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[0, 1, 2, 2, 1, 3];
 
-type WgpuShaderInput = ShaderInput<NewExecutor>;
+type WgpuShaderInput = ShaderInput<WgpuExecutor>;
 
-impl gpu_executor::GpuExecutor for NewExecutor {
-	type ShaderHandle = ShaderModule;
+#[derive(Debug, DynAny)]
+#[repr(transparent)]
+pub struct CommandBufferWrapper(CommandBuffer);
+
+#[derive(Debug, DynAny)]
+#[repr(transparent)]
+pub struct ShaderModuleWrapper(ShaderModule);
+
+impl gpu_executor::GpuExecutor for WgpuExecutor {
+	type ShaderHandle = ShaderModuleWrapper;
 	type BufferHandle = Buffer;
 	type TextureHandle = Texture;
 	type TextureView = TextureView;
-	type CommandBuffer = CommandBuffer;
+	type CommandBuffer = CommandBufferWrapper;
 	type Surface = wgpu::Surface;
+	type Window = HtmlCanvasElement;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
 		});
-		Ok(shader_module)
+		Ok(ShaderModuleWrapper(shader_module))
 	}
 
 	fn create_uniform_buffer<T: ToUniformBuffer>(&self, data: T) -> Result<WgpuShaderInput> {
@@ -177,11 +194,11 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		};
 		Ok(buffer)
 	}
-	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<WgpuShaderInput>>, instances: ComputePassDimensions) -> Result<CommandBuffer> {
+	fn create_compute_pass(&self, layout: &gpu_executor::PipelineLayout<Self>, read_back: Option<Arc<WgpuShaderInput>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer> {
 		let compute_pipeline = self.context.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 			label: None,
 			layout: None,
-			module: &layout.shader,
+			module: &layout.shader.0,
 			entry_point: layout.entry_point.as_str(),
 		});
 		let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
@@ -234,7 +251,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		}
 
 		// Submits command encoder for processing
-		Ok(encoder.finish())
+		Ok(CommandBufferWrapper(encoder.finish()))
 	}
 
 	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<wgpu::Surface>>) -> Result<()> {
@@ -291,7 +308,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	}
 
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()> {
-		self.context.queue.submit(Some(encoder));
+		self.context.queue.submit(Some(encoder.0));
 
 		// Poll the device in a blocking manner so that our future resolves.
 		// In an actual application, `device.poll(...)` should
@@ -346,9 +363,30 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 		Ok(ShaderInput::TextureView(view, ty.clone()))
 	}
+
+	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<wgpu::Surface>> {
+		let surface = unsafe { self.context.instance.create_surface_from_canvas(canvas.surface) }?;
+
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		let surface_format = wgpu::TextureFormat::Rgba8Unorm;
+		let config = wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: surface_format,
+			width: 1920,
+			height: 1080,
+			present_mode: surface_caps.present_modes[0],
+			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+			view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
+		};
+		surface.configure(&self.context.device, &config);
+		Ok(SurfaceHandle {
+			surface_id: canvas.surface_id,
+			surface,
+		})
+	}
 }
 
-impl NewExecutor {
+impl WgpuExecutor {
 	pub async fn new() -> Option<Self> {
 		let context = Context::new().await?;
 
@@ -460,27 +498,6 @@ impl NewExecutor {
 		};
 
 		Some(Self { context, render_configuration })
-	}
-
-	pub unsafe fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> std::result::Result<SurfaceHandle<wgpu::Surface>, CreateSurfaceError> {
-		let surface = self.context.instance.create_surface_from_canvas(canvas.surface)?;
-
-		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		let surface_format = wgpu::TextureFormat::Rgba8Unorm;
-		let config = wgpu::SurfaceConfiguration {
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-			format: surface_format,
-			width: 1920,
-			height: 1080,
-			present_mode: surface_caps.present_modes[0],
-			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
-			view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
-		};
-		surface.configure(&self.context.device, &config);
-		Ok(SurfaceHandle {
-			surface_id: canvas.surface_id,
-			surface,
-		})
 	}
 }
 

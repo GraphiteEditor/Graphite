@@ -87,18 +87,28 @@ impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
 
 pub trait ApplicationIo {
 	type Surface;
+	type Executor;
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface>;
 	fn destroy_surface(&self, surface_id: SurfaceId);
+	fn gpu_executor(&self) -> Option<&Self::Executor> {
+		None
+	}
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
 	type Surface = T::Surface;
+	type Executor = T::Executor;
+
 	fn create_surface(&self) -> SurfaceHandle<T::Surface> {
 		(**self).create_surface()
 	}
 
 	fn destroy_surface(&self, surface_id: SurfaceId) {
 		(**self).destroy_surface(surface_id)
+	}
+
+	fn gpu_executor(&self) -> Option<&T::Executor> {
+		(**self).gpu_executor()
 	}
 }
 

@@ -10,21 +10,21 @@ use js_sys::{Object, Reflect};
 use std::sync::Arc;
 use wasm_bindgen::{Clamped, JsCast, JsValue};
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
-use wgpu_executor::NewExecutor;
+use wgpu_executor::WgpuExecutor;
 
 pub struct Canvas(CanvasRenderingContext2d);
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
 	ids: RefCell<u64>,
-	pub(crate) gpu_executor: Option<NewExecutor>,
+	pub(crate) gpu_executor: Option<WgpuExecutor>,
 }
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
 		Self {
 			ids: RefCell::new(0),
-			gpu_executor: NewExecutor::new().await,
+			gpu_executor: WgpuExecutor::new().await,
 		}
 	}
 }
@@ -33,10 +33,22 @@ unsafe impl StaticType for WasmApplicationIo {
 	type Static = WasmApplicationIo;
 }
 
+impl<'a> From<WasmEditorApi<'a>> for &'a WasmApplicationIo {
+	fn from(editor_api: WasmEditorApi<'a>) -> Self {
+		editor_api.application_io
+	}
+}
+impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
+	fn from(app_io: &'a WasmApplicationIo) -> Self {
+		app_io.gpu_executor.as_ref().unwrap()
+	}
+}
+
 pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
 	type Surface = HtmlCanvasElement;
+	type Executor = WgpuExecutor;
 
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
 		let wrapper = || {

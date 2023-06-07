@@ -2311,6 +2311,7 @@ dependencies = [
  "dyn-clone",
  "futures",
  "glam",
+ "gpu-executor",
  "graph-craft",
  "graphene-core",
  "graphene-std",
@@ -2319,6 +2320,7 @@ dependencies = [
  "once_cell",
  "serde",
  "typed-arena",
+ "wgpu-executor",
 ]
 
 [[package]]

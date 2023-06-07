@@ -7,7 +7,7 @@ use graph_craft::proto::*;
 use graphene_core::application_io::{ApplicationIo, SurfaceHandle};
 use graphene_core::raster::*;
 use graphene_core::*;
-use wgpu_executor::NewExecutor;
+use wgpu_executor::WgpuExecutor;
 
 use std::sync::Arc;
 
@@ -38,40 +38,6 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 	let output_types = proto_networks.iter().map(|network| typing_context.type_of(network.output).unwrap().output.clone()).collect();
 
 	compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap()
-}
-pub struct CreateSurfacNode<EditorApi> {
-	editor_api: EditorApi,
-}
-
-#[node_macro::node_fn(CreateSurfacNode)]
-fn create_surface<'a: 'input>(canvas: graphene_core::WasmSurfaceHandle, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> SurfaceHandle<wgpu::Surface> {
-	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
-	unsafe { executor.create_surface(canvas).unwrap() }
-}
-
-pub struct RenderTextureNode<Surface, EditorApi> {
-	surface: Surface,
-	editor_api: EditorApi,
-}
-
-struct ShaderInputFrame {
-	shader_input: Arc<ShaderInput<NewExecutor>>,
-	transform: DAffine2,
-}
-
-#[node_macro::node_fn(RenderTextureNode)]
-async fn map_gpu<'a: 'input>(image: ShaderInputFrame, surface: Arc<SurfaceHandle<wgpu::Surface>>, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> SurfaceFrame {
-	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
-
-	let surface_id = surface.surface_id;
-
-	executor.create_render_pass(image.shader_input, surface).unwrap();
-
-	let frame = SurfaceFrame {
-		surface_id,
-		transform: image.transform,
-	};
-	return frame;
 }
 
 pub struct MapGpuNode<Node, EditorApi> {
@@ -387,7 +353,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	.unwrap();
 	let len = background.image.data.len();
 
-	let executor = NewExecutor::new()
+	let executor = WgpuExecutor::new()
 		.await
 		.expect("Failed to create wgpu executor. Please make sure that webgpu is enabled for your browser.");
 	log::debug!("creating buffer");
