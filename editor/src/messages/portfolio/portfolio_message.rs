@@ -1,4 +1,3 @@
-use super::utility_types::ImaginateServerStatus;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
@@ -56,7 +55,9 @@ pub enum PortfolioMessage {
 		is_default: bool,
 	},
 	ImaginateCheckServerStatus,
+	ImaginatePollServerStatus,
 	ImaginatePreferences,
+	ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {
 		document_id: u64,

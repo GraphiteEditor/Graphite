@@ -385,7 +385,7 @@ dependencies = [
  "js-sys",
  "log",
  "serde",
- "serde-wasm-bindgen",
+ "serde-wasm-bindgen 0.4.5",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
@@ -1860,6 +1860,7 @@ dependencies = [
  "graphite-proc-macros",
  "image",
  "interpreted-executor",
+ "js-sys",
  "kurbo",
  "log",
  "num_enum 0.6.1",
@@ -1870,6 +1871,8 @@ dependencies = [
  "specta",
  "test-case",
  "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wgpu-executor",
 ]
 
@@ -1897,7 +1900,7 @@ dependencies = [
  "log",
  "ron",
  "serde",
- "serde-wasm-bindgen",
+ "serde-wasm-bindgen 0.5.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
@@ -4102,6 +4105,17 @@ name = "serde-wasm-bindgen"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3b4c031cd0d9014307d82b8abf653c0290fbdaeb4c02d00c63cf52f728628bf"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3b143e2833c57ab9ad3ea280d21fd34e285a42837aeb0ee301f4f41890fa00e"
 dependencies = [
  "js-sys",
  "serde",

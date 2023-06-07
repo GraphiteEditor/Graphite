@@ -66,6 +66,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				}
 
 				self.imaginate_server_hostname = hostname;
+				responses.add(PortfolioMessage::ImaginateServerHostname);
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 				responses.add(PortfolioMessage::ImaginatePreferences);
 			}

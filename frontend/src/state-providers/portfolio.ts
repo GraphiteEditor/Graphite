@@ -12,8 +12,6 @@ import {
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
 	TriggerImaginateCheckServerStatus,
-	TriggerImaginateGenerate,
-	TriggerImaginateTerminate,
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterizeRegionBelowLayer,
@@ -83,30 +81,6 @@ export function createPortfolioState(editor: Editor) {
 
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerImaginateCheckServerStatus, async (triggerImaginateCheckServerStatus) => {
-		const { hostname } = triggerImaginateCheckServerStatus;
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
-		const { documentId, layerPath, nodePath, hostname, refreshFrequency, baseImage, maskImage, maskPaintMode, maskBlurPx, maskFillContent, parameters } = triggerImaginateGenerate;
-
-		// Handle img2img mode
-		let image: Blob | undefined;
-		if (parameters.denoisingStrength !== undefined && baseImage !== undefined) {
-			const buffer = new Uint8Array(baseImage.imageData.values()).buffer;
-
-			image = new Blob([buffer], { type: baseImage.mime });
-		}
-
-		// Handle layer mask
-		let mask: Blob | undefined;
-		if (maskImage !== undefined) {
-			// Rasterize the SVG to an image file
-			mask = await rasterizeSVG(maskImage.svg, maskImage.size[0], maskImage.size[1], "image/png");
-		}
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
-		const { documentId, layerPath, nodePath, hostname } = triggerImaginateTerminate;
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

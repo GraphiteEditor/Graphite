@@ -3,7 +3,7 @@ use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
 use glam::DVec2;
-use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus, ImaginateTerminationHandle};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
 use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
@@ -14,6 +14,110 @@ const SDAPI_TEXT_TO_IMAGE: &str = "sdapi/v1/txt2img";
 const SDAPI_IMAGE_TO_IMAGE: &str = "sdapi/v1/img2img";
 const SDAPI_PROGRESS: &str = "sdapi/v1/progress?skip_current_image=true";
 const SDAPI_TERMINATE: &str = "sdapi/v1/interrupt";
+
+fn new_client() -> Result<reqwest::Client, Error> {
+	reqwest::ClientBuilder::new().build().map_err(Error::ClientBuild)
+}
+
+fn parse_url(url: &str) -> Result<Url, Error> {
+	url.try_into().map_err(|err| Error::UrlParse { text: url.into(), err })
+}
+
+fn join_url(base_url: &Url, path: &str) -> Result<Url, Error> {
+	base_url.join(path).map_err(|err| Error::UrlParse { text: base_url.to_string(), err })
+}
+
+fn new_get_request<U: reqwest::IntoUrl>(client: &reqwest::Client, url: U) -> Result<reqwest::Request, Error> {
+	client.get(url).header("Accept", "*/*").build().map_err(Error::RequestBuild)
+}
+
+pub struct ImaginatePersistentData {
+	pending_server_check: Option<futures::channel::oneshot::Receiver<reqwest::Result<reqwest::Response>>>,
+	host_name: Url,
+	client: Option<reqwest::Client>,
+	server_status: ImaginateServerStatus,
+}
+
+impl core::fmt::Debug for ImaginatePersistentData {
+	fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+		f.debug_struct(core::any::type_name::<Self>())
+			.field("pending_server_check", &self.pending_server_check.is_some())
+			.field("host_name", &self.host_name)
+			.field("status", &self.server_status)
+			.finish()
+	}
+}
+
+impl Default for ImaginatePersistentData {
+	fn default() -> Self {
+		let mut status = ImaginateServerStatus::default();
+		let client = new_client().map_err(|err| status = ImaginateServerStatus::Failed(err.to_string())).ok();
+		let ImaginatePreferences { host_name } = Default::default();
+		Self {
+			pending_server_check: None,
+			host_name: parse_url(&host_name).unwrap(),
+			client,
+			server_status: status,
+		}
+	}
+}
+
+impl ImaginatePersistentData {
+	pub fn set_host_name(&mut self, name: &str) {
+		match parse_url(name) {
+			Ok(url) => self.host_name = url,
+			Err(err) => self.server_status = ImaginateServerStatus::Failed(err.to_string()),
+		}
+	}
+
+	fn initiate_server_check_maybe_fail(&mut self) -> Result<Option<core::pin::Pin<Box<dyn Future<Output = ()> + 'static>>>, Error> {
+		use futures::future::FutureExt;
+		let Some(client) = &self.client else { return Ok(None); };
+		if self.pending_server_check.is_some() {
+			return Ok(None);
+		}
+		self.server_status = ImaginateServerStatus::Checking;
+		let url = join_url(&self.host_name, SDAPI_PROGRESS)?;
+		let request = new_get_request(client, url)?;
+		let (send, recv) = futures::channel::oneshot::channel();
+		let response_future = client.execute(request).map(move |r| {
+			let _ = send.send(r);
+		});
+		self.pending_server_check = Some(recv);
+		Ok(Some(Box::pin(response_future)))
+	}
+
+	pub fn initiate_server_check(&mut self) -> Option<core::pin::Pin<Box<dyn Future<Output = ()> + 'static>>> {
+		match self.initiate_server_check_maybe_fail() {
+			Ok(f) => f,
+			Err(err) => {
+				self.server_status = ImaginateServerStatus::Failed(err.to_string());
+				None
+			}
+		}
+	}
+
+	pub fn poll_server_check(&mut self) {
+		if let Some(mut check) = self.pending_server_check.take() {
+			self.server_status = match check.try_recv().map(|r| r.map(|r| r.and_then(reqwest::Response::error_for_status))) {
+				Ok(Some(Ok(_response))) => ImaginateServerStatus::Connected,
+				Ok(Some(Err(_))) | Err(_) => ImaginateServerStatus::Unavailable,
+				Ok(None) => {
+					self.pending_server_check = Some(check);
+					ImaginateServerStatus::Checking
+				}
+			}
+		}
+	}
+
+	pub fn server_status(&self) -> &ImaginateServerStatus {
+		&self.server_status
+	}
+
+	pub fn is_checking(&self) -> bool {
+		matches!(self.server_status, ImaginateServerStatus::Checking)
+	}
+}
 
 #[derive(Debug)]
 struct ImaginateFutureAbortHandle(futures::future::AbortHandle);
@@ -242,14 +346,12 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 ) -> Result<Image<P>, Error> {
 	set_progress(ImaginateStatus::Beginning);
 
-	let base_url: Url = host_name.try_into().map_err(|err| Error::UrlParse { text: host_name.into(), err })?;
+	let base_url: Url = parse_url(host_name)?;
 
-	let client = reqwest::ClientBuilder::new().build().map_err(Error::ClientBuild)?;
+	let client = new_client()?;
 
 	let sampler_index = sampling_method.await;
 	let sampler_index = sampler_index.api_value();
-
-	let join_url = |path: &str| base_url.join(path).map_err(|err| Error::UrlParse { text: base_url.as_str().into(), err });
 
 	let res = res.await.unwrap_or_else(|| {
 		let (width, height) = pick_safe_imaginate_resolution((image.width as _, image.height as _));
@@ -277,14 +379,14 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 			denoising_strength: image_creativity.await * 0.01,
 			mask: None,
 		};
-		let url = join_url(SDAPI_IMAGE_TO_IMAGE)?;
+		let url = join_url(&base_url, SDAPI_IMAGE_TO_IMAGE)?;
 		client.post(url).json(&request_data)
 	} else {
 		let request_data = ImaginateTextToImageRequest {
 			common: common_request_data,
 			override_settings: Default::default(),
 		};
-		let url = join_url(SDAPI_TEXT_TO_IMAGE)?;
+		let url = join_url(&base_url, SDAPI_TEXT_TO_IMAGE)?;
 		client.post(url).json(&request_data)
 	};
 
@@ -293,12 +395,12 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 	let (response_future, abort_handle) = futures::future::abortable(client.execute(request));
 	controller.set_termination_handle(Box::new(ImaginateFutureAbortHandle(abort_handle)));
 
-	let progress_url = join_url(SDAPI_PROGRESS)?;
+	let progress_url = join_url(&base_url, SDAPI_PROGRESS)?;
 
 	futures::pin_mut!(response_future);
 
 	let response = loop {
-		let progress_request = client.get(progress_url.clone()).header("Accept", "*/*").build().map_err(Error::RequestBuild)?;
+		let progress_request = new_get_request(&client, progress_url.clone())?;
 		let progress_response_future = client.execute(progress_request).and_then(|response| response.json());
 
 		futures::pin_mut!(progress_response_future);
@@ -318,7 +420,7 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 		Ok(response) => response.and_then(reqwest::Response::error_for_status).map_err(Error::Request)?,
 		Err(_aborted) => {
 			set_progress(ImaginateStatus::Terminating);
-			let url = join_url(SDAPI_TERMINATE)?;
+			let url = join_url(&base_url, SDAPI_TERMINATE)?;
 			let request = client.post(url).build().map_err(Error::RequestBuild)?;
 			// The user probably doesn't really care if the server side was really aborted or if there was an network error.
 			// So we fool them that the request was terminated if the termination request in reality failed.

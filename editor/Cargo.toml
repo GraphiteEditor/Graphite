@@ -48,6 +48,10 @@ graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd", features = ["wasm"] }
 num_enum = "0.6.1"
 
+wasm-bindgen-futures = "0.4.36"
+wasm-bindgen = "0.2.86"
+js-sys = "0.3.63"
+
 [dependencies.document-legacy]
 path = "../document-legacy"
 package = "graphite-document-legacy"

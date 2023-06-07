@@ -1,5 +1,4 @@
 use dyn_any::{DynAny, StaticType};
-use glam::DVec2;
 use graphene_core::Color;
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -131,20 +130,25 @@ impl core::hash::Hash for ImaginateStatus {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateBaseImage {
-	pub mime: String,
-	#[cfg_attr(feature = "serde", serde(rename = "imageData"))]
-	pub image_data: Vec<u8>,
-	pub size: DVec2,
+#[derive(PartialEq, Eq, Clone, Default, Debug)]
+pub enum ImaginateServerStatus {
+	#[default]
+	Unknown,
+	Checking,
+	Connected,
+	Failed(String),
+	Unavailable,
 }
 
-#[derive(Debug, Clone, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateMaskImage {
-	pub svg: String,
-	pub size: DVec2,
+impl ImaginateServerStatus {
+	pub fn to_text(&self) -> Cow<'static, str> {
+		match self {
+			Self::Unknown | Self::Checking => Cow::Borrowed("Checking..."),
+			Self::Connected => Cow::Borrowed("Connected"),
+			Self::Failed(err) => Cow::Owned(err.clone()),
+			Self::Unavailable => Cow::Borrowed("Unavailable"),
+		}
+	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -280,30 +284,8 @@ impl std::fmt::Display for ImaginateSamplingMethod {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateGenerationParameters {
-	pub seed: u64,
-	pub samples: u32,
-	/// Use `ImaginateSamplingMethod::api_value()` to generate this string
-	#[cfg_attr(feature = "serde", serde(rename = "samplingMethod"))]
-	pub sampling_method: String,
-	#[cfg_attr(feature = "serde", serde(rename = "denoisingStrength"))]
-	pub image_creativity: Option<f64>,
-	#[cfg_attr(feature = "serde", serde(rename = "cfgScale"))]
-	pub text_guidance: f64,
-	#[cfg_attr(feature = "serde", serde(rename = "prompt"))]
-	pub text_prompt: String,
-	#[cfg_attr(feature = "serde", serde(rename = "negativePrompt"))]
-	pub negative_prompt: String,
-	pub resolution: (u32, u32),
-	#[cfg_attr(feature = "serde", serde(rename = "restoreFaces"))]
-	pub restore_faces: bool,
-	pub tiling: bool,
-}
-
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImaginatePreferences {
 	pub host_name: String,
 }

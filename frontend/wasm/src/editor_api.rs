@@ -11,7 +11,7 @@ use editor::application::Editor;
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
-use editor::messages::portfolio::utility_types::{ImaginateServerStatus, Platform};
+use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
@@ -735,6 +735,11 @@ impl JsEditorHandle {
 			})
 		});
 		frontend_messages.unwrap().unwrap_or_default()
+	}
+
+	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+	pub fn inject_imaginate_poll_server_status(&self) {
+		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
 	}
 }
 

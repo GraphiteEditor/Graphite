@@ -3,14 +3,13 @@
 use super::document_node_types::NodePropertiesContext;
 use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 
 use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -1009,20 +1008,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let mask_fill_index = resolve_input("Mask Starting Fill");
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
-	let cache_index = resolve_input("Cache");
 
 	let controller = &document_node.inputs[resolve_input("Controller")];
 
 	let server_status = {
-		let status = match &context.persistent_data.imaginate_server_status {
-			ImaginateServerStatus::Unknown => {
-				context.responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-				"Checking..."
-			}
-			ImaginateServerStatus::Checking => "Checking...",
-			ImaginateServerStatus::Unavailable => "Unavailable",
-			ImaginateServerStatus::Connected => "Connected",
-		};
+		let server_status = context.persistent_data.imaginate.server_status();
+		let status_text = server_status.to_text();
 		let mut widgets = vec![
 			WidgetHolder::text_widget("Server"),
 			WidgetHolder::unrelated_separator(),
@@ -1031,14 +1022,14 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
 				.widget_holder(),
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status),
+			WidgetHolder::bold_text(status_text),
 			WidgetHolder::related_separator(),
 			IconButton::new("Reload", 24)
 				.tooltip("Refresh connection status")
 				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
 				.widget_holder(),
 		];
-		if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
+		if let ImaginateServerStatus::Unavailable | ImaginateServerStatus::Failed(_) = server_status {
 			widgets.extend([
 				WidgetHolder::unrelated_separator(),
 				TextButton::new("Server Help")
@@ -1089,7 +1080,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		})
 	};
 
-	let image_controls = {
+	let image_controls: _ = {
 		let mut widgets = vec![WidgetHolder::text_widget("Image"), WidgetHolder::unrelated_separator()];
 		let assist_separators = [
 			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
@@ -1109,15 +1100,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					TextButton::new("Terminate")
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
 						.on_update({
-							let imaginate_node = imaginate_node.clone();
 							let controller = controller.clone();
 							move |_| {
 								controller.request_termination();
-								DocumentMessage::ImaginateTerminate {
-									layer_path: layer_path.clone(),
-									node_path: imaginate_node.clone(),
-								}
-								.into()
+								Message::NoOp
 							}
 						})
 						.widget_holder(),
@@ -1176,12 +1162,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let controller = controller.clone();
 						move |_| {
 							controller.set_status(ImaginateStatus::Ready);
-							DocumentMessage::ImaginateClear {
-								node_id,
-								layer_path: layer_path.clone(),
-								cache_index,
-							}
-							.into()
+							DocumentMessage::ImaginateClear { layer_path: layer_path.clone() }.into()
 						}
 					})
 					.widget_holder(),

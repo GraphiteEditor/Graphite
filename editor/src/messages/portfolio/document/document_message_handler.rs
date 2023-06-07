@@ -465,19 +465,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					replacement_selected_layers: vec![new_folder_path],
 				});
 			}
-			ImaginateClear {
-				layer_path,
-				node_id,
-				cache_index: input_index,
-			} => {
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id,
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-					input_index: 18,
-					value: graph_craft::document::value::TaggedValue::ImaginateCache(Default::default()),
-				});
-				responses.add(InputFrameRasterizeRegionBelowLayer { layer_path });
-			}
+			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
 			ImaginateGenerate { layer_path, imaginate_node } => {
 				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
 					responses.add(message);
@@ -504,14 +492,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				if then_generate {
 					responses.add(DocumentMessage::ImaginateGenerate { layer_path, imaginate_node });
 				}
-			}
-			ImaginateTerminate { layer_path, node_path } => {
-				responses.add(FrontendMessage::TriggerImaginateTerminate {
-					document_id,
-					layer_path,
-					node_path,
-					hostname: preferences.imaginate_server_hostname.clone(),
-				});
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => {
 				if layer_path.is_empty() {
