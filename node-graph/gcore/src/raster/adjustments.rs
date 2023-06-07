@@ -261,7 +261,7 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 
 	// Input levels (Range: 0-1)
 	let highlights_minus_shadows = (input_highlights - input_shadows).max(f32::EPSILON).min(1.);
-	let color = color.map_rgb(|c| (c - input_shadows).max(0.) / highlights_minus_shadows);
+	let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
 
 	// Midtones (Range: 0-1)
 	let color = color.gamma(gamma);
