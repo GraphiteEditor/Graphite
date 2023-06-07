@@ -132,7 +132,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			encoder.copy_buffer_to_buffer(
 				layout.output_buffer.buffer().ok_or_else(|| anyhow::anyhow!("Tried to use an non buffer as the shader output"))?,
 				0,
-				&output,
+				output,
 				0,
 				size,
 			);
@@ -153,7 +153,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 	}
 
 	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self::BufferHandle>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
-		let future = Box::pin(async move {
+		Box::pin(async move {
 			if let ShaderInput::ReadBackBuffer(buffer, _) = buffer.as_ref() {
 				let buffer_slice = buffer.slice(..);
 
@@ -187,8 +187,7 @@ impl gpu_executor::GpuExecutor for NewExecutor {
 			} else {
 				bail!("Tried to read a non readback buffer")
 			}
-		});
-		future
+		}) as _
 	}
 }
 

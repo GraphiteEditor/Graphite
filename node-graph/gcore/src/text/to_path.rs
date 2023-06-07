@@ -26,23 +26,24 @@ impl OutlineBuilder for Builder {
 		if !self.current_subpath.is_empty() {
 			self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 		}
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next()));
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next()));
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
 	}
 
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
 		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
 		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(anchor, self.id.next()));
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(anchor, self.id.next_id()));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
 		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
 		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle1);
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, Some(handle2), None, self.id.next()));
+		self.current_subpath
+			.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, Some(handle2), None, self.id.next_id()));
 	}
 
 	fn close(&mut self) {

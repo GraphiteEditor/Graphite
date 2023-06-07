@@ -1,6 +1,6 @@
+#![allow(clippy::too_many_arguments)]
 use super::Color;
 use crate::Node;
-
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
@@ -195,7 +195,7 @@ fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
 		RedGreenBlue::Green => color.g(),
 		RedGreenBlue::Blue => color.b(),
 	};
-	return color.map_rgb(|_| extracted_value);
+	color.map_rgb(|_| extracted_value)
 }
 
 #[derive(Debug, Clone, Copy, Default)]

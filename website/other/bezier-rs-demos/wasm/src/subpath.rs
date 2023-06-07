@@ -460,10 +460,8 @@ impl WasmSubpath {
 		outline_piece1.to_svg(&mut outline_piece1_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 
 		let mut outline_piece2_svg = String::new();
-		if outline_piece2.is_some() {
-			outline_piece2
-				.unwrap()
-				.to_svg(&mut outline_piece2_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
+		if let Some(outline) = outline_piece2 {
+			outline.to_svg(&mut outline_piece2_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new());
 		}
 
 		wrap_svg_tag(format!("{}{outline_piece1_svg}{outline_piece2_svg}", self.to_default_svg()))
