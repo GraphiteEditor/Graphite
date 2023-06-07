@@ -3,6 +3,7 @@ use crate::graphene_compiler::Any;
 pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
 use crate::proto::{Any as DAny, FutureAny};
 
+use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
 
@@ -54,6 +55,7 @@ pub enum TaggedValue {
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	BrushCache(BrushCache),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
@@ -115,6 +117,7 @@ impl Hash for TaggedValue {
 			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
 			Self::Font(font) => font.hash(state),
 			Self::BrushStrokes(brush_strokes) => brush_strokes.hash(state),
+			Self::BrushCache(brush_cache) => brush_cache.hash(state),
 			Self::Segments(segments) => {
 				for segment in segments {
 					segment.hash(state)
@@ -171,6 +174,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::Font(x) => Box::new(x),
 			TaggedValue::BrushStrokes(x) => Box::new(x),
+			TaggedValue::BrushCache(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
@@ -235,6 +239,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
 			TaggedValue::BrushStrokes(_) => concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+			TaggedValue::BrushCache(_) => concrete!(BrushCache),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
@@ -287,6 +292,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Ok(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::text::Font>() => Ok(TaggedValue::Font(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<BrushCache>>() => Ok(TaggedValue::BrushCache(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Ok(TaggedValue::Segments(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Ok(TaggedValue::DocumentNode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Ok(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
