@@ -729,6 +729,57 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
+			name: "Uniform",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Uniform".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(f32))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu-executor::UniformNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::F32(0.), true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Uniform",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::input_properties,
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
 			name: "GpuImage",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode<_>"),

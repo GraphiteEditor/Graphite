@@ -195,9 +195,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
 		register_node!(graphene_core::ops::SomeNode, input: WasmEditorApi, params: []),
-		register_node!(graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>, input: ImageFrame<Color>, params: []),
-		register_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, params: []),
-		register_node!(graphene_core::ops::IntoNode<_, &WgpuExecutor>, input: WasmEditorApi, params: []),
+		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>, input: ImageFrame<Color>, output: ImageFrame<SRGBA8>, params: []),
+		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, output: ImageFrame<Color>, params: []),
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::ops::IntoNode<_, &WgpuExecutor>, input: WasmEditorApi, output: &WgpuExecutor, params: []),
 		register_node!(graphene_std::raster::DownresNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
