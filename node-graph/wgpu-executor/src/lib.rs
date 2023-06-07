@@ -323,7 +323,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		Ok(())
 	}
 
-	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self::BufferHandle>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
+	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self>>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
 		Box::pin(async move {
 			if let ShaderInput::ReadBackBuffer(buffer, _) = buffer.as_ref() {
 				let buffer_slice = buffer.slice(..);

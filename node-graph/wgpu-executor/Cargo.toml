@@ -36,5 +36,5 @@ wgpu = { version = "0.16", features = ["spirv"] }
 spirv = "0.2.0"
 futures-intrusive = "0.5.0"
 futures = "0.3.25"
-web-sys = { version = "0.3.63", features = ["ImageBitmapRenderingContext"] }
+web-sys = { version = "0.3.4", features = ["HtmlCanvasElement"] }
 winit = "0.28.6"
