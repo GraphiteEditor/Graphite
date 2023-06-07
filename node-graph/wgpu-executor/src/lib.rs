@@ -10,12 +10,15 @@ use graph_craft::Type;
 use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
-use graphene_core::WasmSurfaceHandle;
+
 use std::pin::Pin;
 use std::sync::Arc;
-use web_sys::HtmlCanvasElement;
+
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, CreateSurfaceError, ShaderModule, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, Texture, TextureView};
+
+#[cfg(target_arch = "wasm32")]
+use web_sys::HtmlCanvasElement;
 
 #[derive(Debug, dyn_any::DynAny)]
 pub struct WgpuExecutor {
@@ -96,7 +99,10 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	type TextureView = TextureView;
 	type CommandBuffer = CommandBufferWrapper;
 	type Surface = wgpu::Surface;
+	#[cfg(target_arch = "wasm32")]
 	type Window = HtmlCanvasElement;
+	#[cfg(not(target_arch = "wasm32"))]
+	type Window = winit::window::Window;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -238,7 +244,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
 		if let Some(buffer) = read_back {
-			let ShaderInput::ReadBackBuffer(output, ty) = buffer.as_ref() else {
+			let ShaderInput::ReadBackBuffer(output, _ty) = buffer.as_ref() else {
 				bail!("Tried to read back from a non read back buffer");
 			};
 			let size = output.size();
@@ -364,6 +370,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		Ok(ShaderInput::TextureView(view, ty.clone()))
 	}
 
+	#[cfg(target_arch = "wasm32")]
 	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<wgpu::Surface>> {
 		let surface = unsafe { self.context.instance.create_surface_from_canvas(canvas.surface) }?;
 
@@ -383,6 +390,12 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			surface_id: canvas.surface_id,
 			surface,
 		})
+	}
+	#[cfg(not(target_arch = "wasm32"))]
+	fn create_surface(&self, window: SurfaceHandle<winit::window::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
+		let surface = unsafe { self.context.instance.create_surface(&window.surface) }?;
+		let surface_id = window.surface_id;
+		Ok(SurfaceHandle { surface_id, surface })
 	}
 }
 

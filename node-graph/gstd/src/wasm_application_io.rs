@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell};
 
 use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
@@ -10,6 +10,7 @@ use js_sys::{Object, Reflect};
 use std::sync::Arc;
 use wasm_bindgen::{Clamped, JsCast, JsValue};
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
+#[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
 pub struct Canvas(CanvasRenderingContext2d);
@@ -17,6 +18,7 @@ pub struct Canvas(CanvasRenderingContext2d);
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
 	ids: RefCell<u64>,
+	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
 }
 
@@ -24,6 +26,7 @@ impl WasmApplicationIo {
 	pub async fn new() -> Self {
 		Self {
 			ids: RefCell::new(0),
+			#[cfg(feature = "wgpu")]
 			gpu_executor: WgpuExecutor::new().await,
 		}
 	}
@@ -38,6 +41,7 @@ impl<'a> From<WasmEditorApi<'a>> for &'a WasmApplicationIo {
 		editor_api.application_io
 	}
 }
+#[cfg(feature = "wgpu")]
 impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 	fn from(app_io: &'a WasmApplicationIo) -> Self {
 		app_io.gpu_executor.as_ref().unwrap()
@@ -48,7 +52,10 @@ pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmAp
 
 impl ApplicationIo for WasmApplicationIo {
 	type Surface = HtmlCanvasElement;
+	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
+	#[cfg(not(feature = "wgpu"))]
+	type Executor = ();
 
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
 		let wrapper = || {
@@ -103,6 +110,11 @@ impl ApplicationIo for WasmApplicationIo {
 
 		wrapper().expect("should be able to set canvas in global scope")
 	}
+
+	#[cfg(feature = "wgpu")]
+	fn gpu_executor(&self) -> Option<&Self::Executor> {
+		self.gpu_executor.as_ref()
+	}
 }
 
 pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
@@ -111,7 +123,7 @@ pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<HtmlCanvasElement>> {
+async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<HtmlCanvasElement>> {
 	editor.application_io.create_surface().into()
 }
 

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
-use web_sys::Window;
+
 
 type ReadBackFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>;
 
@@ -213,7 +213,7 @@ impl<E: GpuExecutor> ShaderInput<E> {
 			ShaderInput::Constant(_) => None,
 			ShaderInput::TextureBuffer(_, _) => None,
 			ShaderInput::StorageTextureBuffer(_, _) => None,
-			ShaderInput::TextureView(tex, _) => None,
+			ShaderInput::TextureView(_tex, _) => None,
 			ShaderInput::OutputBuffer(buffer, _) => Some(buffer),
 			ShaderInput::ReadBackBuffer(buffer, _) => Some(buffer),
 		}

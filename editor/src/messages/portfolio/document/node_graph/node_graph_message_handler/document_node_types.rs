@@ -258,7 +258,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -301,7 +301,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -313,7 +313,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Draw Canvas".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::node(2, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::DrawImageFrameNode<_>")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::DrawImageFrameNode<_>")),
 						..Default::default()
 					},
 				]
