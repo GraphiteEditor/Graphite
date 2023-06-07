@@ -372,7 +372,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 
 	#[cfg(target_arch = "wasm32")]
 	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<wgpu::Surface>> {
-		let surface = unsafe { self.context.instance.create_surface_from_canvas(canvas.surface) }?;
+		let surface = self.context.instance.create_surface_from_canvas(canvas.surface)?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		let surface_format = wgpu::TextureFormat::Rgba8Unorm;
