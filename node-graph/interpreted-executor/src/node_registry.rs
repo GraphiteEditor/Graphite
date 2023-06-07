@@ -2,6 +2,7 @@ use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
 use graphene_core::quantization::QuantizationChannels;
 
+use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::Then;
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
@@ -299,7 +300,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 		)],
 		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<BrushStroke>, params: []),
-		async_node!(graphene_std::brush::BrushNode<_, _>, input: ImageFrame<Color>, output: ImageFrame<Color>, params: [ImageFrame<Color>, Vec<BrushStroke>]),
+		async_node!(graphene_std::brush::BrushNode<_, _, _>, input: ImageFrame<Color>, output: ImageFrame<Color>, params: [ImageFrame<Color>, Vec<BrushStroke>, BrushCache]),
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
 		raster_node!(graphene_core::raster::ExtractChannelNode<_>, params: [RedGreenBlue]),
