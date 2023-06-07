@@ -170,7 +170,7 @@ fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFram
 where
 	BlendFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
 {
-	if positions.len() == 0 {
+	if positions.is_empty() {
 		return target;
 	}
 

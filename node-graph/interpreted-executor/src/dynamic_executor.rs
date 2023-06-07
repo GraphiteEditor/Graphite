@@ -156,7 +156,7 @@ impl BorrowTree {
 				let upcasted = UpcastNode::new(value);
 				let node = Box::new(upcasted) as TypeErasedBox<'_>;
 				let node = NodeContainer::new(node);
-				self.store_node(node.into(), id);
+				self.store_node(node, id);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
@@ -165,7 +165,7 @@ impl BorrowTree {
 				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {:?}", identifier))?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
-				self.store_node(node.into(), id);
+				self.store_node(node, id);
 			}
 		};
 		Ok(())

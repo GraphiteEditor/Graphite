@@ -614,7 +614,7 @@ impl NodeNetwork {
 	fn replace_network_outputs(&mut self, old_output: NodeOutput, new_output: NodeOutput) {
 		for output in self.outputs.iter_mut() {
 			if *output == old_output {
-				*output = new_output.clone();
+				*output = new_output;
 			}
 		}
 	}

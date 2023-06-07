@@ -244,7 +244,7 @@ impl Fsm for ShapeToolFsmState {
 					let fill_color = tool_options.fill.active_color();
 					responses.add(GraphOperationMessage::FillSet {
 						layer: layer_path.clone(),
-						fill: if fill_color.is_some() { Fill::Solid(fill_color.unwrap()) } else { Fill::None },
+						fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 					});
 
 					responses.add(GraphOperationMessage::StrokeSet {

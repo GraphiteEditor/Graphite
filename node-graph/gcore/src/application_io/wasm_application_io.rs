@@ -53,7 +53,7 @@ impl ApplicationIo for WasmApplicationIo {
 			let image_canvases_key = JsValue::from_str("imageCanvases");
 
 			let mut canvases = Reflect::get(&window, &image_canvases_key);
-			if let Err(_) = canvases {
+			if canvases.is_err() {
 				Reflect::set(&JsValue::from(web_sys::window().unwrap()), &image_canvases_key, &Object::new()).unwrap();
 				canvases = Reflect::get(&window, &image_canvases_key);
 			}
@@ -117,11 +117,11 @@ async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_ha
 		let canvas = surface_handle.surface.canvas().expect("Failed to get canvas");
 		canvas.set_width(image.image.width);
 		canvas.set_height(image.image.height);
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width as u32, image.image.height as u32).expect("Failed to construct ImageData");
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
 		surface_handle.surface.put_image_data(&image_data, 0.0, 0.0).unwrap();
 	}
 	SurfaceHandleFrame {
-		surface_handle: surface_handle.into(),
+		surface_handle,
 		transform: image.transform,
 	}
 }

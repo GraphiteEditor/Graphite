@@ -402,11 +402,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	};
 	log::debug!("created pipeline");
 	let compute_pass = executor
-		.create_compute_pass(
-			&pipeline,
-			Some(readback_buffer.clone()),
-			ComputePassDimensions::XY(background.image.width as u32, background.image.height as u32),
-		)
+		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(background.image.width, background.image.height))
 		.unwrap();
 	executor.execute_compute_pipeline(compute_pass).unwrap();
 	log::debug!("executed pipeline");

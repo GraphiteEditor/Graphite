@@ -13,7 +13,7 @@ mod base64_serde {
 	use super::super::Pixel;
 	use serde::{Deserialize, Deserializer, Serializer};
 
-	pub fn as_base64<S, P: Pixel>(key: &Vec<P>, serializer: S) -> Result<S::Ok, S::Error>
+	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
@@ -27,7 +27,7 @@ mod base64_serde {
 	{
 		use serde::de::Error;
 
-		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk.try_into().unwrap());
+		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk);
 
 		let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(P::byte_size()).map(color_from_chunk).collect();
 

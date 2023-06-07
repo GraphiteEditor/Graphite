@@ -117,7 +117,7 @@ where
 	}
 }
 
-impl<'i, N> FutureWrapperNode<N> {
+impl<N> FutureWrapperNode<N> {
 	pub const fn new(node: N) -> Self {
 		Self { node }
 	}
