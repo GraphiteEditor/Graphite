@@ -28,7 +28,6 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-
 macro_rules! construct_node {
 	($args: ident, $path:ty, [$($type:ty),*]) => { async move {
 		let mut args = $args.clone();

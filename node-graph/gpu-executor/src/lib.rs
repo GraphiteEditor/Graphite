@@ -13,7 +13,6 @@ use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
 
-
 type ReadBackFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, dyn_any::DynAny)]

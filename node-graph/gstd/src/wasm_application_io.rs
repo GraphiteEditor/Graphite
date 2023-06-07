@@ -1,4 +1,4 @@
-use std::{cell::RefCell};
+use std::cell::RefCell;
 
 use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
