@@ -16,6 +16,8 @@ quantization = ["graphene-std/quantization"]
 graphene-core = { path = "../gcore", features = ["async", "std"] }
 graphene-std = { path = "../gstd" }
 graph-craft = { path = "../graph-craft" }
+gpu-executor = { path = "../gpu-executor" }
+wgpu-executor = { path = "../wgpu-executor" }
 dyn-any = { path = "../../libraries/dyn-any", features = [
 	"log-bad-types",
 	"glam",
