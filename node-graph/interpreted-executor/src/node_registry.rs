@@ -260,6 +260,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		async_node!(gpu_executor::UniformNode<_>, input: f32, output: ShaderInput<WgpuExecutor>, params: [&WgpuExecutor]),
 		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::StorageNode<_>, input: Vec<u8>, output: ShaderInput<WgpuExecutor>, params: [&WgpuExecutor]),
+		#[cfg(feature = "gpu")]
 		async_node!(
 			gpu_executor::PushNode<_>,
 			input: Vec<ShaderInput<WgpuExecutor>>,
