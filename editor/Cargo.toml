@@ -12,7 +12,10 @@ license = "Apache-2.0"
 
 [features]
 gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu"]
-quantization = ["graphene-std/quantization", "interpreted-executor/quantization"]
+quantization = [
+	"graphene-std/quantization",
+	"interpreted-executor/quantization",
+]
 
 [dependencies]
 log = "0.4"
@@ -40,7 +43,7 @@ graph-craft = { path = "../node-graph/graph-craft" }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
 dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
-graphene-std = { path = "../node-graph/gstd" }
+graphene-std = { path = "../node-graph/gstd", features = ["wasm"] }
 num_enum = "0.6.1"
 
 [dependencies.document-legacy]

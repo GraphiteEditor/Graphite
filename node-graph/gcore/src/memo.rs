@@ -4,8 +4,8 @@ use core::future::Future;
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
 use core::cell::Cell;
+use core::marker::PhantomData;
 use core::pin::Pin;
-use std::marker::PhantomData;
 
 // Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
@@ -102,8 +102,6 @@ impl<'i, T: 'i + Clone> Node<'i, Option<T>> for LetNode<T> {
 		self.cache.set(None);
 	}
 }
-
-impl<T> std::marker::Unpin for LetNode<T> {}
 
 impl<T> LetNode<T> {
 	pub fn new() -> LetNode<T> {

@@ -88,7 +88,7 @@ impl BrushCacheImpl {
 
 impl Hash for BrushCacheImpl {
 	// Zero hash.
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {}
+	fn hash<H: core::hash::Hasher>(&self, _state: &mut H) {}
 }
 
 #[derive(Clone, Debug, Default)]

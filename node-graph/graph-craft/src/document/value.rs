@@ -299,8 +299,8 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::Artboard>() => Ok(TaggedValue::Artboard(*downcast(input).unwrap())),
 			x if x == TypeId::of::<glam::IVec2>() => Ok(TaggedValue::IVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
-			x if x == TypeId::of::<graphene_core::wasm_application_io::WasmSurfaceHandleFrame>() => {
-				let frame = *downcast::<graphene_core::wasm_application_io::WasmSurfaceHandleFrame>(input).unwrap();
+			x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
+				let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
 			}
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
