@@ -32,6 +32,8 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &
 	}
 }
 
+pub type WgpuSurface = Arc<SurfaceHandle<wgpu::Surface>>;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
@@ -292,7 +294,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 					view: &view,
 					resolve_target: None,
 					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+						load: wgpu::LoadOp::Load,
 						store: true,
 					},
 				})],
