@@ -1,6 +1,6 @@
+#![allow(clippy::too_many_arguments)]
 use super::Color;
 use crate::Node;
-
 use core::fmt::Debug;
 use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
@@ -195,7 +195,7 @@ fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
 		RedGreenBlue::Green => color.g(),
 		RedGreenBlue::Blue => color.b(),
 	};
-	return color.map_rgb(|_| extracted_value);
+	color.map_rgb(|_| extracted_value)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -205,6 +205,17 @@ pub struct ExtractAlphaNode;
 fn extract_alpha_node(color: Color) -> Color {
 	let alpha = color.a();
 	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractOpaqueNode;
+
+#[node_macro::node_fn(ExtractOpaqueNode)]
+fn extract_opaque_node(color: Color) -> Color {
+	if color.a() == 0. {
+		return color.with_alpha(1.);
+	}
+	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.0).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -250,7 +261,7 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 
 	// Input levels (Range: 0-1)
 	let highlights_minus_shadows = (input_highlights - input_shadows).max(f32::EPSILON).min(1.);
-	let color = color.map_rgb(|c| (c - input_shadows).max(0.) / highlights_minus_shadows);
+	let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
 
 	// Midtones (Range: 0-1)
 	let color = color.gamma(gamma);

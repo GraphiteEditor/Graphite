@@ -17,8 +17,9 @@ use graphene_core::renderer::{SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::vector::style::ViewMode;
 
-use graphene_core::wasm_application_io::WasmApplicationIo;
-use graphene_core::{Color, EditorApi, SurfaceFrame, SurfaceId};
+use graphene_core::{Color, SurfaceFrame, SurfaceId};
+use graphene_std::wasm_application_io::WasmApplicationIo;
+use graphene_std::wasm_application_io::WasmEditorApi;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
@@ -33,14 +34,9 @@ pub struct NodeRuntime {
 	font_cache: FontCache,
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: Sender<GenerationResponse>,
-	wasm_io: WasmApplicationIo,
+	wasm_io: Option<WasmApplicationIo>,
 	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
-}
-
-fn get_imaginate_index(name: &str) -> usize {
-	use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
-	IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"))
 }
 
 enum NodeRuntimeMessage {
@@ -74,7 +70,7 @@ impl NodeRuntime {
 			sender,
 			font_cache: FontCache::default(),
 			thumbnails: Default::default(),
-			wasm_io: WasmApplicationIo::default(),
+			wasm_io: None,
 			canvas_cache: Default::default(),
 		}
 	}
@@ -130,10 +126,14 @@ impl NodeRuntime {
 	}
 
 	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
-		let editor_api = EditorApi {
+		if self.wasm_io.is_none() {
+			self.wasm_io = Some(WasmApplicationIo::new().await);
+		}
+
+		let editor_api = WasmEditorApi {
 			font_cache: &self.font_cache,
 			image_frame,
-			application_io: &self.wasm_io,
+			application_io: &self.wasm_io.as_ref().unwrap(),
 		};
 
 		// We assume only one output
@@ -150,7 +150,7 @@ impl NodeRuntime {
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(EditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			_ => Err("Invalid input type".to_string()),
 		}?;
@@ -159,7 +159,7 @@ impl NodeRuntime {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
 			if let Some(old_id) = old_id {
 				if old_id != surface_id {
-					self.wasm_io.destroy_surface(old_id);
+					self.wasm_io.as_ref().map(|io| io.destroy_surface(old_id));
 				}
 			}
 		}
@@ -296,49 +296,6 @@ impl NodeGraphExecutor {
 
 	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {
 		self.last_output_type.get(path).cloned().flatten()
-	}
-
-	/// Computes an input for a node in the graph
-	pub fn compute_input<T: dyn_any::StaticType>(&mut self, _old_network: &NodeNetwork, _node_path: &[NodeId], _input_index: usize, _editor_api: Cow<EditorApi<'_>>) -> Result<u64, String> {
-		todo!()
-		/*
-		let mut network = old_network.clone();
-		// Adjust the output of the graph so we find the relevant output
-		'outer: for end in (0..node_path.len()).rev() {
-			let mut inner_network = &mut network;
-			for &node_id in &node_path[..end] {
-				inner_network.outputs[0] = NodeOutput::new(node_id, 0);
-
-				let Some(new_inner) = inner_network.nodes.get_mut(&node_id).and_then(|node| node.implementation.get_network_mut()) else {
-					return Err("Failed to find network".to_string());
-				};
-				inner_network = new_inner;
-			}
-			match &inner_network.nodes.get(&node_path[end]).unwrap().inputs[input_index] {
-				// If the input is from a parent network then adjust the input index and continue iteration
-				NodeInput::Network(_) => {
-					input_index = inner_network
-						.inputs
-						.iter()
-						.enumerate()
-						.filter(|&(_index, &id)| id == node_path[end])
-						.nth(input_index)
-						.ok_or_else(|| "Invalid network input".to_string())?
-						.0;
-				}
-				// If the input is just a value, return that value
-				NodeInput::Value { tagged_value, .. } => return Some(dyn_any::downcast::<T>(tagged_value.clone().to_any()).map(|v| *v)),
-				// If the input is from a node, set the node to be the output (so that is what is evaluated)
-				NodeInput::Node { node_id, output_index, .. } => {
-					inner_network.outputs[0] = NodeOutput::new(*node_id, *output_index);
-					break 'outer;
-				}
-				NodeInput::ShortCircut(_) => (),
-			}
-		}
-
-		self.queue_execution(network, editor_api.into_owned())?
-		*/
 	}
 
 	/// Encodes an image into a format using the image crate

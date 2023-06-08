@@ -27,10 +27,10 @@ pub fn new_custom_layer(network: NodeNetwork, layer_path: Vec<LayerId>, response
 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 }
 
-pub fn set_manipulator_mirror_angle(manipulator_groups: &Vec<ManipulatorGroup<ManipulatorGroupId>>, layer_path: &Vec<u64>, mirror_angle: bool, responses: &mut VecDeque<Message>) {
+pub fn set_manipulator_mirror_angle(manipulator_groups: &Vec<ManipulatorGroup<ManipulatorGroupId>>, layer_path: &[u64], mirror_angle: bool, responses: &mut VecDeque<Message>) {
 	for manipulator_group in manipulator_groups {
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.clone(),
+			layer: layer_path.to_owned(),
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: manipulator_group.id,
 				mirror_angle,

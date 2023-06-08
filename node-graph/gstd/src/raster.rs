@@ -336,6 +336,51 @@ fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color
 	blend_image(foreground, background, &BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.)))
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExtendImageToBoundsNode<Bounds> {
+	bounds: Bounds,
+}
+
+#[node_macro::node_fn(ExtendImageToBoundsNode)]
+fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
+	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
+	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
+	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
+		return image;
+	}
+
+	if image.image.width == 0 || image.image.height == 0 {
+		return EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(bounds);
+	}
+
+	let orig_image_scale = DVec2::new(image.image.width as f64, image.image.height as f64);
+	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image.transform.inverse();
+	let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
+
+	let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
+	let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
+	let new_scale = new_end - new_start;
+
+	// Copy over original image into embiggened image.
+	let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
+	let offset_in_new_image = (-new_start).as_uvec2();
+	for y in 0..image.image.height {
+		let old_start = y * image.image.width;
+		let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
+		let old_row = &image.image.data[old_start as usize..(old_start + image.image.width) as usize];
+		let new_row = &mut new_img.data[new_start as usize..(new_start + image.image.width) as usize];
+		new_row.copy_from_slice(old_row);
+	}
+
+	// Compute new transform.
+	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
+	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1.0 / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+	ImageFrame {
+		image: new_img,
+		transform: new_texture_to_layer_space,
+	}
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MergeBoundingBoxNode<Data> {
 	_data: PhantomData<Data>,

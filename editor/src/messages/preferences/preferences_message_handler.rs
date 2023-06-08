@@ -35,6 +35,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::ResetToDefaults => {
 				refresh_dialog(responses);
+				responses.add(KeyMappingMessage::ModifyMapping(MappingVariant::Default));
 
 				*self = Self::default()
 			}

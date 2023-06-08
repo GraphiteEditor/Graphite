@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use super::common_functionality::overlay_renderer::OverlayRenderer;
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;

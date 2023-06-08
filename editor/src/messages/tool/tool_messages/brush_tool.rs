@@ -22,7 +22,7 @@ use graphene_core::Color;
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
-const EXPOSED_BLEND_MODES: &'static [&'static [BlendMode]] = {
+const EXPOSED_BLEND_MODES: &[&[BlendMode]] = {
 	use BlendMode::*;
 	&[
 		// Basic group

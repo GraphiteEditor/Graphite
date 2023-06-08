@@ -168,8 +168,8 @@ impl NodeGraphMessageHandler {
 	fn collect_nested_addresses(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
 		// // Build path list
 		let mut path = vec![];
-		if let Some(layer) = self.layer_path.as_ref().and_then(|path| document.layer(&path).ok()) {
-			path.push(format!("Layer: {}", layer.name.as_ref().map(|name| name.as_str()).unwrap_or("Untitled Layer")));
+		if let Some(layer) = self.layer_path.as_ref().and_then(|path| document.layer(path).ok()) {
+			path.push(format!("Layer: {}", layer.name.as_deref().unwrap_or("Untitled Layer")));
 		} else {
 			path.push("Document Network".to_string());
 		}

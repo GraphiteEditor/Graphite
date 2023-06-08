@@ -384,25 +384,25 @@ impl ProtoNetwork {
 	pub fn topological_sort(&self) -> Vec<NodeId> {
 		let mut sorted = Vec::new();
 		let inwards_edges = self.collect_inwards_edges();
-		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>) {
+		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) {
 			if sorted.contains(&node_id) {
 				return;
 			};
 			if temp_marks.contains(&node_id) {
-				panic!("Cycle detected");
+				panic!("Cycle detected {:#?}, {:#?}", &inwards_edges, &network);
 			}
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
 				temp_marks.insert(node_id);
 				for &dependant in dependencies {
-					visit(dependant, temp_marks, sorted, inwards_edges);
+					visit(dependant, temp_marks, sorted, inwards_edges, network);
 				}
 				temp_marks.remove(&node_id);
 			}
 			sorted.push(node_id);
 		}
 		assert!(self.nodes.iter().any(|(id, _)| *id == self.output), "Output id {} does not exist", self.output);
-		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges);
+		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self);
 
 		sorted
 	}
@@ -544,9 +544,9 @@ impl TypingContext {
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
 		}
-		if parameters.iter().any(|p| match p {
-			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)) => true,
-			_ => false,
+		if parameters.iter().any(|p| {
+			matches!(p,
+			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
 			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}
