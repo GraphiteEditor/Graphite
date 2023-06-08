@@ -16,10 +16,12 @@ use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
+#[cfg(feature = "gpu")]
 use gpu_executor::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
+#[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
