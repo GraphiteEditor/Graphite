@@ -32,6 +32,8 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &
 	}
 }
 
+pub type WgpuSurface = Arc<SurfaceHandle<wgpu::Surface>>;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {

@@ -1872,6 +1872,7 @@ dependencies = [
  "env_logger",
  "futures",
  "glam",
+ "gpu-executor",
  "graph-craft",
  "graphene-core",
  "graphene-std",
@@ -1889,6 +1890,7 @@ dependencies = [
  "specta",
  "test-case",
  "thiserror",
+ "wgpu-executor",
 ]
 
 [[package]]

@@ -485,10 +485,10 @@ async fn read_output_buffer_node<'a: 'input, E: 'a + GpuExecutor>(buffer: Arc<Sh
 pub struct CreateGpuSurfaceNode {}
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> SurfaceHandle<E::Surface> {
+async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> Arc<SurfaceHandle<E::Surface>> {
 	let canvas = editor_api.application_io.create_surface();
 	let executor = editor_api.application_io.gpu_executor().unwrap();
-	executor.create_surface(canvas).unwrap()
+	Arc::new(executor.create_surface(canvas).unwrap())
 }
 
 pub struct RenderTextureNode<Surface, EditorApi> {
@@ -496,10 +496,15 @@ pub struct RenderTextureNode<Surface, EditorApi> {
 	executor: EditorApi,
 }
 
-#[derive(Clone)]
 pub struct ShaderInputFrame<E: GpuExecutor + ?Sized> {
 	shader_input: Arc<ShaderInput<E>>,
 	transform: DAffine2,
+}
+
+impl<E: GpuExecutor + ?Sized> Clone for ShaderInputFrame<E> {
+    fn clone(&self) -> Self {
+        Self { shader_input: self.shader_input.clone(), transform: self.transform }
+    }
 }
 
 unsafe impl<E: GpuExecutor + ?Sized + StaticType> StaticType for ShaderInputFrame<E>
