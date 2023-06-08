@@ -211,13 +211,8 @@ impl WasmBezier {
 	pub fn tangent_line(&self, raw_x: f64, raw_y: f64) -> String {
 		let bezier = self.get_bezier_path();
 		let point = DVec2::new(raw_x, raw_y);
-
 		let t_values = self.0.tangent_line(point);
-		// if t_values.is_empty() {
-		// 	let circle = draw_circle(DVec2::new(raw_x, raw_y), 3., RED, 1., WHITE);
-		// 	let content = format!("{bezier}{circle}",);
-		// 	return wrap_svg_tag(content);
-		// } else { 
+
 		let lines: String = t_values
 			.iter()
 			.map(|&t_value| {
@@ -229,7 +224,6 @@ impl WasmBezier {
 
 		let content = format!("{bezier}{lines}",);
 		wrap_svg_tag(content)
-		// }
 	}
 
 	pub fn normal(&self, raw_t: f64, t_variant: String) -> String {

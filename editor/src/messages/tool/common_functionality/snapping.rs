@@ -10,7 +10,7 @@ use document_legacy::layers::style::{self, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
-use bezier_rs::{BezierHandles, TValue};
+use bezier_rs::TValue;
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
@@ -233,7 +233,7 @@ impl SnapManager {
 			for id in all {
 				let layer_res = document_message_handler.document_legacy.layer(id.as_slice()).ok();
 				let Some(layer) = layer_res else {
-						warn!("No Layer Found");
+						warn!("No Layer Found at path {:?}", id );
 						continue;
 					};
 				match &layer.data {
@@ -246,8 +246,6 @@ impl SnapManager {
 							let doc_transform = document_message_handler.document_legacy.root.transform;
 							let doc_mouse_pos = doc_transform.inverse().transform_point2(input.mouse.position);
 							let t_values = bezier.tangent_line(doc_mouse_pos);
-							//TODO: filter out non cubic shapes
-							let test: Vec<DVec2> = bezier.get_points().collect();
 							for t_val in t_values {
 								let t = TValue::Parametric(t_val);
 								let intersection_point = bezier.evaluate(t);

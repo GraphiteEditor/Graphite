@@ -16,7 +16,7 @@ use std::fmt::{Debug, Formatter, Result};
 /// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum BezierHandles {
+enum BezierHandles {
 	Linear,
 	/// Handles for a quadratic curve.
 	Quadratic {
@@ -46,7 +46,7 @@ pub struct Bezier {
 	/// Start point of the bezier curve.
 	end: DVec2,
 	/// Handles of the bezier curve.
-	pub handles: BezierHandles,
+	handles: BezierHandles,
 }
 
 impl Debug for Bezier {

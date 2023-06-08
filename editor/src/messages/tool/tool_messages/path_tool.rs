@@ -13,7 +13,7 @@ use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
- 
+
 #[derive(Default)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,

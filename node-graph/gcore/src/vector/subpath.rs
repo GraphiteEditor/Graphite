@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 pub struct Subpath(IdBackedVec<ManipulatorGroup>);
 
 impl Subpath {
-	// ** INITIALIZATION ** 
+	// ** INITIALIZATION **
 
 	/// Create a new [Subpath] with no [ManipulatorGroup]s.
 	pub const fn new() -> Self {
