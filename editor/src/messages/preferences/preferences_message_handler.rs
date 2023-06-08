@@ -38,9 +38,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
 
-					if self.imaginate_server_hostname != Self::default().imaginate_server_hostname {
-						responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-					}
+					responses.add(PortfolioMessage::ImaginateServerHostname);
+					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+					responses.add(PortfolioMessage::ImaginatePreferences);
 				}
 			}
 			PreferencesMessage::ResetToDefaults => {
