@@ -294,7 +294,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 					view: &view,
 					resolve_target: None,
 					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+						load: wgpu::LoadOp::Load,
 						store: true,
 					},
 				})],

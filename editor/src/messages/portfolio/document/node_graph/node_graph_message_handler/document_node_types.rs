@@ -8,13 +8,13 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
+#[cfg(feature = "gpu")]
+use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
-#[cfg(feature = "gpu")]
-use graphene_core::application_io::SurfaceHandle;
 
 use gpu_executor::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
@@ -849,7 +849,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Create Output Buffer".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(usize)), NodeInput::node(0,0), NodeInput::Network(concrete!(Type))],
+						inputs: vec![NodeInput::Network(concrete!(usize)), NodeInput::node(0, 0), NodeInput::Network(concrete!(Type))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::CreateOutputBufferNode<_, _>")),
 						..Default::default()
 					},
@@ -1144,7 +1144,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Render Texture".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ShaderInputFrame<WgpuExecutor>)), NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>)), NodeInput::node(0,0)],
+						inputs: vec![
+							NodeInput::Network(concrete!(ShaderInputFrame<WgpuExecutor>)),
+							NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>)),
+							NodeInput::node(0, 0),
+						],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),
 						..Default::default()
 					},

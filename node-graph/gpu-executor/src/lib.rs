@@ -502,9 +502,12 @@ pub struct ShaderInputFrame<E: GpuExecutor + ?Sized> {
 }
 
 impl<E: GpuExecutor + ?Sized> Clone for ShaderInputFrame<E> {
-    fn clone(&self) -> Self {
-        Self { shader_input: self.shader_input.clone(), transform: self.transform }
-    }
+	fn clone(&self) -> Self {
+		Self {
+			shader_input: self.shader_input.clone(),
+			transform: self.transform,
+		}
+	}
 }
 
 unsafe impl<E: GpuExecutor + ?Sized + StaticType> StaticType for ShaderInputFrame<E>
