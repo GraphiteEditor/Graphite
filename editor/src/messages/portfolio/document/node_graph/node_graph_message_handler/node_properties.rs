@@ -1203,6 +1203,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.min(-((1u64 << f64::MANTISSA_DIGITS) as f64))
 					.max((1u64 << f64::MANTISSA_DIGITS) as f64)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index))
+					.mode(NumberInputMode::Increment)
 					.widget_holder(),
 			])
 		}

@@ -1275,6 +1275,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "log",
+ "wasm-bindgen-futures",
  "wasm-rs-async-executor",
 ]
 
@@ -1850,6 +1851,7 @@ dependencies = [
  "derivative",
  "dyn-any",
  "env_logger",
+ "future-executor",
  "futures",
  "glam",
  "gpu-executor",
@@ -1860,7 +1862,6 @@ dependencies = [
  "graphite-proc-macros",
  "image",
  "interpreted-executor",
- "js-sys",
  "kurbo",
  "log",
  "num_enum 0.6.1",
@@ -1872,7 +1873,6 @@ dependencies = [
  "test-case",
  "thiserror",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "wgpu-executor",
 ]
 

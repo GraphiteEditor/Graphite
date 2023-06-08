@@ -33,7 +33,6 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
-		self.persistent_data.imaginate.poll_server_check();
 		#[remain::sorted]
 		match message {
 			// Sub-messages
@@ -218,9 +217,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				let server_status = self.persistent_data.imaginate.server_status().clone();
 				self.persistent_data.imaginate.poll_server_check();
-				#[cfg(not(test))]
+				#[cfg(target_arch = "wasm32")]
 				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
-					wasm_bindgen_futures::spawn_local(async move {
+					future_executor::spawn(async move {
 						let () = fut.await;
 						use wasm_bindgen::prelude::*;
 

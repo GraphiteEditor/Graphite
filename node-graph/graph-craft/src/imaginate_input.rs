@@ -107,9 +107,10 @@ pub enum ImaginateStatus {
 impl ImaginateStatus {
 	pub fn to_text(&self) -> Cow<'static, str> {
 		match self {
-			Self::Ready | Self::ReadyDone => Cow::Borrowed("Nothing to do"),
+			Self::Ready => Cow::Borrowed("Ready"),
+			Self::ReadyDone => Cow::Borrowed("Done"),
 			Self::Beginning => Cow::Borrowed("Beginning…"),
-			Self::Uploading => Cow::Borrowed("Uploading Input Image"),
+			Self::Uploading => Cow::Borrowed("Uploading Image"),
 			Self::Generating(percent) => Cow::Owned(format!("Generating {percent:.0}%")),
 			Self::Terminating => Cow::Owned(format!("Terminating...")),
 			Self::Terminated => Cow::Owned(format!("Terminated")),
