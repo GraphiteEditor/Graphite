@@ -984,7 +984,6 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
-	let layer_path = context.layer_path.to_vec();
 
 	let resolve_input = |name: &str| {
 		super::IMAGINATE_NODE
@@ -1140,16 +1139,11 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
-						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
 						let controller = controller.clone();
 						move |_| {
 							controller.trigger_regenerate();
-							DocumentMessage::ImaginateGenerate {
-								layer_path: layer_path.clone(),
-								imaginate_node: imaginate_node.clone(),
-							}
-							.into()
+							DocumentMessage::ImaginateGenerate { layer_path: layer_path.clone() }.into()
 						}
 					})
 					.widget_holder(),
