@@ -100,7 +100,6 @@ pub enum PortfolioMessage {
 		layer_path: Vec<LayerId>,
 		input_image_data: Vec<u8>,
 		size: (u32, u32),
-		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	SelectDocument {
 		document_id: u64,

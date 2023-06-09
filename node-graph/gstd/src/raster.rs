@@ -224,11 +224,12 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-async fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform>(foreground: Forground, background: ImageFrame<_P>, map_fn: &'input MapFn) -> ImageFrame<_P>
-where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
-{
-	blend_new_image(foreground, background, map_fn)
+async fn blend_image_node<_P: Alpha + Pixel + Debug, Forground: Sample<Pixel = _P> + Transform>(
+	foreground: Forground,
+	background: ImageFrame<_P>,
+	map_fn: impl Node<(_P, _P), Output = _P>,
+) -> ImageFrame<_P> {
+	blend_new_image(foreground, background, &self.map_fn)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -246,9 +247,9 @@ where
 	blend_new_image(background, foreground, map_fn)
 }
 
-fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &MapFn) -> ImageFrame<_P>
+fn blend_new_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &'input MapFn) -> ImageFrame<_P>
 where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+	MapFn: Node<'input, (_P, _P), Output = _P>,
 {
 	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
 	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
@@ -275,13 +276,13 @@ where
 	blend_image(foreground, new_background, map_fn)
 }
 
-fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+fn blend_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
 	foreground: Frame,
 	background: Background,
-	map_fn: &MapFn,
+	map_fn: &'input MapFn,
 ) -> Background
 where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+	MapFn: Node<'input, (_P, _P), Output = _P>,
 {
 	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
 }

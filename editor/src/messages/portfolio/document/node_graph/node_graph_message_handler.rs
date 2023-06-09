@@ -714,7 +714,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				layer_path: Vec::new(),
 				input_image_data: vec![],
 				size: (0, 0),
-				imaginate_node_path: None,
 			}),
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;

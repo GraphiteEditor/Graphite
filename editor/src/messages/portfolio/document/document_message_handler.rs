@@ -31,7 +31,7 @@ use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
 
@@ -466,8 +466,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				});
 			}
 			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
-			ImaginateGenerate { layer_path, imaginate_node } => {
-				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
+			ImaginateGenerate { layer_path } => {
+				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data) {
 					responses.add(message);
 				}
 			}
@@ -490,13 +490,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				// Generate the image
 				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { layer_path, imaginate_node });
+					responses.add(DocumentMessage::ImaginateGenerate { layer_path });
 				}
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => {
 				if layer_path.is_empty() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-				} else if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
+				} else if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data) {
 					responses.add(message);
 				}
 			}
@@ -967,14 +967,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn rasterize_region_below_layer(
-		&mut self,
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		_preferences: &PreferencesMessageHandler,
-		persistent_data: &PersistentData,
-		imaginate_node_path: Option<Vec<NodeId>>,
-	) -> Option<Message> {
+	pub fn rasterize_region_below_layer(&mut self, document_id: u64, layer_path: Vec<LayerId>, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		// Prepare the node graph input image
 
 		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_layer_network().ok()) else {
@@ -998,14 +991,7 @@ impl DocumentMessageHandler {
 			self.restore_document_transform(old_transforms);
 
 			// Once JS asynchronously rasterizes the SVG, it will call the `PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer` message with the rasterized image data
-			FrontendMessage::TriggerRasterizeRegionBelowLayer {
-				document_id,
-				layer_path,
-				svg,
-				size,
-				imaginate_node_path,
-			}
-			.into()
+			FrontendMessage::TriggerRasterizeRegionBelowLayer { document_id, layer_path, svg, size }.into()
 		}
 		// Skip taking a round trip through JS since there's nothing to rasterize, and instead directly call the message which would otherwise be called asynchronously from JS
 		else {
@@ -1014,7 +1000,6 @@ impl DocumentMessageHandler {
 				layer_path,
 				input_image_data: vec![],
 				size: (0, 0),
-				imaginate_node_path,
 			}
 			.into()
 		};

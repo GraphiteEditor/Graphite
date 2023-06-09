@@ -675,7 +675,7 @@ impl NodeNetwork {
 
 			let mut dummy_input = NodeInput::ShortCircut(concrete!(()));
 			std::mem::swap(&mut dummy_input, input);
-			if let NodeInput::Value { mut tagged_value, exposed } = dummy_input {
+			if let NodeInput::Value { tagged_value, exposed } = dummy_input {
 				let value_node_id = gen_id();
 				let merged_node_id = map_ids(id, value_node_id);
 				let path = if let Some(mut new_path) = node.path.clone() {
