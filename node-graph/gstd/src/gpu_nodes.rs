@@ -6,9 +6,11 @@ use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::raster::*;
 use graphene_core::*;
-use wgpu_executor::NewExecutor;
+use wgpu_executor::WgpuExecutor;
 
 use std::sync::Arc;
+
+use crate::wasm_application_io::WasmApplicationIo;
 
 pub struct GpuCompiler<TypingContext, ShaderIO> {
 	typing_context: TypingContext,
@@ -37,12 +39,13 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 	compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap()
 }
 
-pub struct MapGpuNode<Node> {
+pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
+	editor_api: EditorApi,
 }
 
 #[node_macro::node_fn(MapGpuNode)]
-async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Color> {
+async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -121,7 +124,24 @@ async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Col
 	//return ImageFrame::empty();
 	let len: usize = image.image.data.len();
 
-	let executor = NewExecutor::new().await.unwrap();
+	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
+
+	/*
+	let canvas = editor_api.application_io.create_surface();
+
+	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
+	//log::debug!("id: {:?}", surface);
+	let surface_id = surface.surface_id;
+
+	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
+
+	//executor.create_render_pass(texture, surface).unwrap();
+
+	let frame = SurfaceFrame {
+		surface_id,
+		transform: image.transform,
+	};
+	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
 	let storage_buffer = executor
@@ -152,7 +172,6 @@ async fn map_gpu(image: ImageFrame<Color>, node: DocumentNode) -> ImageFrame<Col
 		io: shader.io,
 	};
 	log::debug!("loading shader");
-	log::debug!("shader: {:?}", shader.source);
 	let shader = executor.load_shader(shader).unwrap();
 	log::debug!("loaded shader");
 	let pipeline = PipelineLayout {
@@ -333,7 +352,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	.unwrap();
 	let len = background.image.data.len();
 
-	let executor = NewExecutor::new()
+	let executor = WgpuExecutor::new()
 		.await
 		.expect("Failed to create wgpu executor. Please make sure that webgpu is enabled for your browser.");
 	log::debug!("creating buffer");
@@ -402,11 +421,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	};
 	log::debug!("created pipeline");
 	let compute_pass = executor
-		.create_compute_pass(
-			&pipeline,
-			Some(readback_buffer.clone()),
-			ComputePassDimensions::XY(background.image.width as u32, background.image.height as u32),
-		)
+		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(background.image.width, background.image.height))
 		.unwrap();
 	executor.execute_compute_pipeline(compute_pass).unwrap();
 	log::debug!("executed pipeline");

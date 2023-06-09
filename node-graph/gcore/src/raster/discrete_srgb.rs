@@ -1,3 +1,4 @@
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 //! Fast conversions between u8 sRGB and linear float.
 
 // Inspired by https://gist.github.com/rygorous/2203834, but with a slightly

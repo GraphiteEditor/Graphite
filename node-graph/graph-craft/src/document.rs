@@ -394,9 +394,9 @@ impl NodeNetwork {
 					(
 						0,
 						DocumentNode {
-							name: "CacheNode".to_string(),
+							name: "MemoNode".to_string(),
 							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(ty)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode")),
 							..Default::default()
 						},
 					),
@@ -614,7 +614,7 @@ impl NodeNetwork {
 	fn replace_network_outputs(&mut self, old_output: NodeOutput, new_output: NodeOutput) {
 		for output in self.outputs.iter_mut() {
 			if *output == old_output {
-				*output = new_output.clone();
+				*output = new_output;
 			}
 		}
 	}

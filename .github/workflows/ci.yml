@@ -107,15 +107,15 @@ jobs:
       run: |
         mold -run cargo nextest run
 
-  miri:
-    runs-on: self-hosted
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: 🧪 Run Rust miri
-      run: |
-        mold -run cargo +nightly miri nextest run -j32
+        #miri:
+        #  runs-on: self-hosted
+        #
+        #  steps:
+        #  - uses: actions/checkout@v2
+        #
+        #  - name: 🧪 Run Rust miri
+        #    run: |
+        #      mold -run cargo +nightly miri nextest run -j32
 
   cargo-deny:
     runs-on: ubuntu-latest

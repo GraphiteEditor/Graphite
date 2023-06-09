@@ -84,7 +84,7 @@ impl bezier_rs::Identifier for ManipulatorGroupId {
 impl ManipulatorGroupId {
 	pub const ZERO: ManipulatorGroupId = ManipulatorGroupId(0);
 
-	pub fn next(&mut self) -> Self {
+	pub fn next_id(&mut self) -> Self {
 		let old = self.0;
 		self.0 += 1;
 		Self(old)

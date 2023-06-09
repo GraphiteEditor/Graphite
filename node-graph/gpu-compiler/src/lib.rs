@@ -67,7 +67,7 @@ fn constant_attribute(constant: &GPUConstant) -> &'static str {
 	}
 }
 
-pub fn construct_argument(input: &ShaderInput<()>, position: u32, binding_offset: u32) -> String {
+pub fn construct_argument<T: gpu_executor::GpuExecutor>(input: &ShaderInput<T>, position: u32, binding_offset: u32) -> String {
 	let line = match input {
 		ShaderInput::Constant(constant) => format!("#[spirv({})] i{}: {}", constant_attribute(constant), position, constant.ty()),
 		ShaderInput::UniformBuffer(_, ty) => {
@@ -75,6 +75,19 @@ pub fn construct_argument(input: &ShaderInput<()>, position: u32, binding_offset
 		}
 		ShaderInput::StorageBuffer(_, ty) | ShaderInput::ReadBackBuffer(_, ty) => {
 			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &[{}]", position + binding_offset, position, ty,)
+		}
+		ShaderInput::StorageTextureBuffer(_, ty) => {
+			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] i{}: &mut [{}]]", position + binding_offset, position, ty,)
+		}
+		ShaderInput::TextureView(_, _) => {
+			format!(
+				"#[spirv(texture, descriptor_set = 0, binding = {})] i{}: spirv_std::image::Image2d",
+				position + binding_offset,
+				position,
+			)
+		}
+		ShaderInput::TextureBuffer(_, _) => {
+			panic!("Texture Buffers cannot be used as inputs use TextureView instead")
 		}
 		ShaderInput::OutputBuffer(_, ty) => {
 			format!("#[spirv(storage_buffer, descriptor_set = 0, binding = {})] o{}: &mut[{}]", position + binding_offset, position, ty,)

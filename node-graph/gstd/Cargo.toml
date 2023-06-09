@@ -9,16 +9,12 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["wgpu"]
-gpu = [
-	"graphene-core/gpu",
-	"gpu-compiler-bin-wrapper",
-	"compilation-client",
-	"gpu-executor",
-]
+default = ["wasm"]
+gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client", "gpu-executor"]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
+wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 
 
 [dependencies]
@@ -29,6 +25,7 @@ graphene-core = { path = "../gcore", features = [
 	"async",
 	"std",
 	"serde",
+	"alloc",
 ], default-features = false }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft" }
@@ -53,8 +50,25 @@ xxhash-rust = { workspace = true }
 serde_json = "1.0.96"
 reqwest = { version = "0.11.17", features = ["rustls", "rustls-tls"] }
 futures = "0.3.28"
+wasm-bindgen = { version = "0.2.84", optional = true }
+js-sys = { version = "0.3.55", optional = true }
+wgpu-types = "0.16.0"
+wgpu = "0.16.1"
 
 [dependencies.serde]
 version = "1.0"
 optional = true
 features = ["derive"]
+
+
+[dependencies.web-sys]
+version = "0.3.4"
+optional = true
+features = [
+	"Window",
+	"CanvasRenderingContext2d",
+	"ImageData",
+	"Document",
+	"HtmlCanvasElement",
+	"ImageBitmapRenderingContext",
+]
