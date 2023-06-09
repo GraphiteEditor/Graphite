@@ -1673,12 +1673,63 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeType {
 	name: "Imaginate",
 	category: "Image Synthesis",
-	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>"),
+	identifier: NodeImplementation::DocumentNode(NodeNetwork {
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		outputs: vec![NodeOutput::new(1, 0)],
+		nodes: [
+			(
+				0,
+				DocumentNode {
+					name: "Frame Monitor".into(),
+					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+					..Default::default()
+				},
+			),
+			(
+				1,
+				DocumentNode {
+					name: "Imaginate".into(),
+					inputs: vec![
+						NodeInput::node(0, 0),
+						NodeInput::Network(concrete!(WasmEditorApi)),
+						NodeInput::Network(concrete!(ImaginateController)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(Option<DVec2>)),
+						NodeInput::Network(concrete!(u32)),
+						NodeInput::Network(concrete!(ImaginateSamplingMethod)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(String)),
+						NodeInput::Network(concrete!(String)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(Option<Vec<u64>>)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(ImaginateMaskStartingFill)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(ImaginateCache)),
+					],
+					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+					..Default::default()
+				},
+			),
+		]
+		.into(),
+		..Default::default()
+	}),
 	inputs: vec![
 		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+		DocumentInputType {
+			name: "Editor Api",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::Network(concrete!(WasmEditorApi)),
+		},
+		DocumentInputType::value("Controller", TaggedValue::ImaginateController(Default::default()), false),
 		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
-		DocumentInputType::value("Samples", TaggedValue::F64(30.), false),
+		DocumentInputType::value("Samples", TaggedValue::U32(30), false),
 		DocumentInputType::value("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
 		DocumentInputType::value("Prompt Guidance", TaggedValue::F64(7.5), false),
 		DocumentInputType::value("Prompt", TaggedValue::String(String::new()), false),
@@ -1691,10 +1742,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::value("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Tiling", TaggedValue::Bool(false), false),
-		// Non-user status (is document input the right way to do this?)
-		DocumentInputType::value("Cached Data", TaggedValue::RcImage(None), false),
-		DocumentInputType::value("Percent Complete", TaggedValue::F64(0.), false),
-		DocumentInputType::value("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
+		DocumentInputType::value("Cache", TaggedValue::ImaginateCache(Default::default()), false),
 	],
 	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 	properties: node_properties::imaginate_properties,

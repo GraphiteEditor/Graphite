@@ -3,7 +3,6 @@ pub mod node_registry;
 
 #[cfg(test)]
 mod tests {
-
 	use graph_craft::document::value::TaggedValue;
 	use graphene_core::*;
 	use std::borrow::Cow;

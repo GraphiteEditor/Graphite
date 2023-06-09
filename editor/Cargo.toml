@@ -11,11 +11,13 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
+default = ["wasm"]
 gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu", "wgpu-executor", "gpu-executor"]
 quantization = [
 	"graphene-std/quantization",
 	"interpreted-executor/quantization",
 ]
+wasm = ["wasm-bindgen", "future-executor", "graphene-std/wasm"]
 
 [dependencies]
 log = "0.4"
@@ -45,8 +47,11 @@ gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
 dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
-graphene-std = { path = "../node-graph/gstd", features = ["wasm"] }
+graphene-std = { path = "../node-graph/gstd" }
+future-executor = { path = "../node-graph/future-executor", optional = true }
 num_enum = "0.6.1"
+
+wasm-bindgen = { version = "0.2.86", optional = true }
 
 [dependencies.document-legacy]
 path = "../document-legacy"

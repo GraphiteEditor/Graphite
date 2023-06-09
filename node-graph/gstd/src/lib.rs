@@ -25,3 +25,5 @@ pub mod brush;
 
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
+
+pub mod imaginate;

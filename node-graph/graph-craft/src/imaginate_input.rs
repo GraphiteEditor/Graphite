@@ -1,50 +1,155 @@
 use dyn_any::{DynAny, StaticType};
-use glam::DVec2;
+use graphene_core::Color;
+use std::borrow::Cow;
 use std::fmt::Debug;
+use std::sync::{
+	atomic::{AtomicBool, Ordering},
+	Arc, Mutex,
+};
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImaginateCache(Arc<Mutex<graphene_core::raster::Image<Color>>>);
+
+impl ImaginateCache {
+	pub fn into_inner(self) -> Arc<Mutex<graphene_core::raster::Image<Color>>> {
+		self.0
+	}
+}
+
+impl std::cmp::PartialEq for ImaginateCache {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.0, &other.0)
+	}
+}
+
+impl core::hash::Hash for ImaginateCache {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.lock().unwrap().hash(state);
+	}
+}
+
+pub trait ImaginateTerminationHandle: Debug + Send + Sync + 'static {
+	fn terminate(&self);
+}
+
+#[derive(Default, Debug, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+struct InternalImaginateControl {
+	status: Mutex<ImaginateStatus>,
+	trigger_regenerate: AtomicBool,
+	#[serde(skip)]
+	termination_sender: Mutex<Option<Box<dyn ImaginateTerminationHandle>>>,
+}
+
+#[derive(Debug, Default, Clone, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImaginateController(Arc<InternalImaginateControl>);
+
+impl ImaginateController {
+	pub fn get_status(&self) -> ImaginateStatus {
+		self.0.status.lock().as_deref().cloned().unwrap_or_default()
+	}
+
+	pub fn set_status(&self, status: ImaginateStatus) {
+		if let Ok(mut lock) = self.0.status.lock() {
+			*lock = status
+		}
+	}
+
+	pub fn take_regenerate_trigger(&self) -> bool {
+		self.0.trigger_regenerate.swap(false, Ordering::SeqCst)
+	}
+
+	pub fn trigger_regenerate(&self) {
+		self.0.trigger_regenerate.store(true, Ordering::SeqCst)
+	}
+
+	pub fn request_termination(&self) {
+		if let Some(handle) = self.0.termination_sender.lock().ok().and_then(|mut lock| lock.take()) {
+			handle.terminate()
+		}
+	}
+
+	pub fn set_termination_handle<H: ImaginateTerminationHandle>(&self, handle: Box<H>) {
+		if let Ok(mut lock) = self.0.termination_sender.lock() {
+			*lock = Some(handle)
+		}
+	}
+}
+
+impl std::cmp::PartialEq for ImaginateController {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.0, &other.0)
+	}
+}
+
+impl core::hash::Hash for ImaginateController {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::ptr::hash(Arc::as_ptr(&self.0), state)
+	}
+}
+
+#[derive(Default, Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImaginateStatus {
 	#[default]
-	Idle,
+	Ready,
+	ReadyDone,
 	Beginning,
-	Uploading(f64),
-	Generating,
+	Uploading,
+	Generating(f64),
 	Terminating,
 	Terminated,
+	Failed(String),
+}
+
+impl ImaginateStatus {
+	pub fn to_text(&self) -> Cow<'static, str> {
+		match self {
+			Self::Ready => Cow::Borrowed("Ready"),
+			Self::ReadyDone => Cow::Borrowed("Done"),
+			Self::Beginning => Cow::Borrowed("Beginning…"),
+			Self::Uploading => Cow::Borrowed("Downloading Image…"),
+			Self::Generating(percent) => Cow::Owned(format!("Generating {percent:.0}%")),
+			Self::Terminating => Cow::Owned(format!("Terminating…")),
+			Self::Terminated => Cow::Owned(format!("Terminated")),
+			Self::Failed(err) => Cow::Owned(format!("Failed: {err}")),
+		}
+	}
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl core::hash::Hash for ImaginateStatus {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::mem::discriminant(self).hash(state);
 		match self {
-			Self::Idle => 0.hash(state),
-			Self::Beginning => 1.hash(state),
-			Self::Uploading(f) => {
-				2.hash(state);
-				f.to_bits().hash(state);
-			}
-			Self::Generating => 3.hash(state),
-			Self::Terminating => 4.hash(state),
-			Self::Terminated => 5.hash(state),
+			Self::Ready | Self::ReadyDone | Self::Beginning | Self::Uploading | Self::Terminating | Self::Terminated => (),
+			Self::Generating(f) => f.to_bits().hash(state),
+			Self::Failed(err) => err.hash(state),
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateBaseImage {
-	pub mime: String,
-	#[cfg_attr(feature = "serde", serde(rename = "imageData"))]
-	pub image_data: Vec<u8>,
-	pub size: DVec2,
+#[derive(PartialEq, Eq, Clone, Default, Debug)]
+pub enum ImaginateServerStatus {
+	#[default]
+	Unknown,
+	Checking,
+	Connected,
+	Failed(String),
+	Unavailable,
 }
 
-#[derive(Debug, Clone, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateMaskImage {
-	pub svg: String,
-	pub size: DVec2,
+impl ImaginateServerStatus {
+	pub fn to_text(&self) -> Cow<'static, str> {
+		match self {
+			Self::Unknown | Self::Checking => Cow::Borrowed("Checking..."),
+			Self::Connected => Cow::Borrowed("Connected"),
+			Self::Failed(err) => Cow::Owned(err.clone()),
+			Self::Unavailable => Cow::Borrowed("Unavailable"),
+		}
+	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -180,24 +285,26 @@ impl std::fmt::Display for ImaginateSamplingMethod {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginateGenerationParameters {
-	pub seed: u64,
-	pub samples: u32,
-	/// Use `ImaginateSamplingMethod::api_value()` to generate this string
-	#[cfg_attr(feature = "serde", serde(rename = "samplingMethod"))]
-	pub sampling_method: String,
-	#[cfg_attr(feature = "serde", serde(rename = "denoisingStrength"))]
-	pub image_creativity: Option<f64>,
-	#[cfg_attr(feature = "serde", serde(rename = "cfgScale"))]
-	pub text_guidance: f64,
-	#[cfg_attr(feature = "serde", serde(rename = "prompt"))]
-	pub text_prompt: String,
-	#[cfg_attr(feature = "serde", serde(rename = "negativePrompt"))]
-	pub negative_prompt: String,
-	pub resolution: (u32, u32),
-	#[cfg_attr(feature = "serde", serde(rename = "restoreFaces"))]
-	pub restore_faces: bool,
-	pub tiling: bool,
+pub struct ImaginatePreferences {
+	pub host_name: String,
+}
+
+impl graphene_core::application_io::GetImaginatePreferences for ImaginatePreferences {
+	fn get_host_name(&self) -> &str {
+		&self.host_name
+	}
+}
+
+impl Default for ImaginatePreferences {
+	fn default() -> Self {
+		Self {
+			host_name: "http://localhost:7860/".into(),
+		}
+	}
+}
+
+unsafe impl dyn_any::StaticType for ImaginatePreferences {
+	type Static = ImaginatePreferences;
 }
