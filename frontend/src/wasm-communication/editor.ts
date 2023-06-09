@@ -95,3 +95,7 @@ export function createEditor() {
 		subscriptions,
 	};
 }
+
+export function injectImaginatePollServerStatus() {
+	window["editorInstance"]?.injectImaginatePollServerStatus()
+}

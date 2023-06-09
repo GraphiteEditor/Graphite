@@ -516,7 +516,7 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
-	
+
 	readonly blobUrl!: string;
 }
 
@@ -537,85 +537,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 	readonly name!: string;
 }
 
-export class TriggerImaginateCheckServerStatus extends JsMessage {
-	readonly hostname!: string;
-}
-
-export class TriggerImaginateGenerate extends JsMessage {
-	@Type(() => ImaginateGenerationParameters)
-	readonly parameters!: ImaginateGenerationParameters;
-
-	@Type(() => ImaginateBaseImage)
-	readonly baseImage!: ImaginateBaseImage | undefined;
-
-	@Type(() => ImaginateMaskImage)
-	readonly maskImage: ImaginateMaskImage | undefined;
-
-	readonly maskPaintMode!: string;
-
-	readonly maskBlurPx!: number;
-
-	readonly maskFillContent!: string;
-
-	readonly hostname!: string;
-
-	readonly refreshFrequency!: number;
-
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
-
-	readonly nodePath!: BigUint64Array;
-}
-
-export class ImaginateMaskImage {
-	readonly svg!: string;
-
-	readonly size!: [number, number];
-}
-
-export class ImaginateBaseImage {
-	readonly mime!: string;
-
-	readonly imageData!: Uint8Array;
-
-	@TupleToVec2
-	readonly size!: [number, number];
-}
-
-export class ImaginateGenerationParameters {
-	readonly seed!: number;
-
-	readonly samples!: number;
-
-	readonly samplingMethod!: string;
-
-	readonly denoisingStrength!: number | undefined;
-
-	readonly cfgScale!: number;
-
-	readonly prompt!: string;
-
-	readonly negativePrompt!: string;
-
-	@BigIntTupleToVec2
-	readonly resolution!: XY;
-
-	readonly restoreFaces!: boolean;
-
-	readonly tiling!: boolean;
-}
-
-export class TriggerImaginateTerminate extends JsMessage {
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
-
-	readonly nodePath!: BigUint64Array;
-
-	readonly hostname!: string;
-}
-
 export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly documentId!: bigint;
 
@@ -624,8 +545,6 @@ export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly svg!: string;
 
 	readonly size!: [number, number];
-
-	readonly imaginateNodePath!: BigUint64Array | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage { }
@@ -778,8 +697,8 @@ export class ImaginateImageData {
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;
-	
-	readonly transform!: Float64Array ;
+
+	readonly transform!: Float64Array;
 }
 
 export class DisplayDialogDismiss extends JsMessage { }
@@ -1404,9 +1323,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
 	TriggerFontLoad,
-	TriggerImaginateCheckServerStatus,
-	TriggerImaginateGenerate,
-	TriggerImaginateTerminate,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,

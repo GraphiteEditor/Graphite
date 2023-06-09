@@ -132,8 +132,8 @@
 		placeholders.forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			// Get the canvas element from the global storage
-			const context = (window as any).imageCanvases[canvasName];
-			placeholder.replaceWith(context.canvas);
+			const canvas = (window as any).imageCanvases[canvasName];
+			placeholder.replaceWith(canvas);
 		});
 	}
 

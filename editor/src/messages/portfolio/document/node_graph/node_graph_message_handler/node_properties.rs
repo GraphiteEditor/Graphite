@@ -1,11 +1,15 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::document_node_types::NodePropertiesContext;
 use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
+use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -699,7 +703,7 @@ pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: Nod
 	]
 }
 
-pub fn blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
 	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
 
@@ -869,7 +873,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 }
 
 #[cfg(feature = "gpu")]
-pub fn gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let map = text_widget(document_node, node_id, 1, "Map", true);
 
 	vec![LayoutGroup::Row { widgets: map }]
@@ -978,12 +982,16 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 	result
 }
 
-pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	/*
+pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
-	let layer_path = context.layer_path.to_vec();
 
-	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let resolve_input = |name: &str| {
+		super::IMAGINATE_NODE
+			.inputs
+			.iter()
+			.position(|input| input.name == name)
+			.unwrap_or_else(|| panic!("Input {name} not found"))
+	};
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -999,22 +1007,12 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	let mask_fill_index = resolve_input("Mask Starting Fill");
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
-	let cached_index = resolve_input("Cached Data");
 
-	let cached_value = &document_node.inputs[cached_index];
-	let complete_value = &document_node.inputs[resolve_input("Percent Complete")];
-	let status_value = &document_node.inputs[resolve_input("Status")];
+	let controller = &document_node.inputs[resolve_input("Controller")];
 
 	let server_status = {
-		let status = match &context.persistent_data.imaginate_server_status {
-			ImaginateServerStatus::Unknown => {
-				context.responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-				"Checking..."
-			}
-			ImaginateServerStatus::Checking => "Checking...",
-			ImaginateServerStatus::Unavailable => "Unavailable",
-			ImaginateServerStatus::Connected => "Connected",
-		};
+		let server_status = context.persistent_data.imaginate.server_status();
+		let status_text = server_status.to_text();
 		let mut widgets = vec![
 			WidgetHolder::text_widget("Server"),
 			WidgetHolder::unrelated_separator(),
@@ -1023,14 +1021,14 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
 				.widget_holder(),
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status),
+			WidgetHolder::bold_text(status_text),
 			WidgetHolder::related_separator(),
 			IconButton::new("Reload", 24)
 				.tooltip("Refresh connection status")
 				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
 				.widget_holder(),
 		];
-		if context.persistent_data.imaginate_server_status == ImaginateServerStatus::Unavailable {
+		if let ImaginateServerStatus::Unavailable | ImaginateServerStatus::Failed(_) = server_status {
 			widgets.extend([
 				WidgetHolder::unrelated_separator(),
 				TextButton::new("Server Help")
@@ -1047,15 +1045,11 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateStatus( imaginate_status),..} = status_value else {
-		panic!("Invalid status input")
+	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateController(ref controller),..} = controller else {
+		panic!("Invalid output status input")
 	};
-	let NodeInput::Value {tagged_value: TaggedValue::RcImage( cached_data),..} = cached_value else {
-		panic!("Invalid cached image input, received {:?}, index: {}", cached_value, cached_index)
-	};
-	let &NodeInput::Value {tagged_value: TaggedValue::F64( percent_complete),..} = complete_value else {
-		panic!("Invalid percent complete input")
-	};
+	let imaginate_status = controller.get_status();
+
 	let use_base_image = if let &NodeInput::Value {
 		tagged_value: TaggedValue::Bool(use_base_image),
 		..
@@ -1069,23 +1063,7 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	let transform_not_connected = false;
 
 	let progress = {
-		// Since we don't serialize the status, we need to derive from other state whether the Idle state is actually supposed to be the Terminated state
-		let mut interpreted_status = imaginate_status;
-		if imaginate_status == ImaginateStatus::Idle && cached_data.is_some() && percent_complete > 0. && percent_complete < 100. {
-			interpreted_status = ImaginateStatus::Terminated;
-		}
-
-		let status = match interpreted_status {
-			ImaginateStatus::Idle => match cached_data {
-				Some(_) => "Done".into(),
-				None => "Ready".into(),
-			},
-			ImaginateStatus::Beginning => "Beginning...".into(),
-			ImaginateStatus::Uploading(percent) => format!("Uploading Input Image: {percent:.0}%"),
-			ImaginateStatus::Generating => format!("Generating: {percent_complete:.0}%"),
-			ImaginateStatus::Terminating => "Terminating...".into(),
-			ImaginateStatus::Terminated => format!("{percent_complete:.0}% (Terminated)"),
-		};
+		let status = imaginate_status.to_text();
 		let widgets = vec![
 			WidgetHolder::text_widget("Progress"),
 			WidgetHolder::unrelated_separator(),
@@ -1093,38 +1071,38 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status),
+			WidgetHolder::bold_text(status.as_ref()),
 		];
-		LayoutGroup::Row { widgets }.with_tooltip("When generating, the percentage represents how many sampling steps have so far been processed out of the target number")
+		LayoutGroup::Row { widgets }.with_tooltip(match imaginate_status {
+			ImaginateStatus::Failed(_) => status.as_ref(),
+			_ => "When generating, the percentage represents how many sampling steps have so far been processed out of the target number",
+		})
 	};
 
-	let image_controls = {
+	let image_controls: _ = {
 		let mut widgets = vec![WidgetHolder::text_widget("Image"), WidgetHolder::unrelated_separator()];
-		let assist_separators = vec![
+		let assist_separators = [
 			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 			WidgetHolder::unrelated_separator(),
 		];
 
-		match imaginate_status {
-			ImaginateStatus::Beginning | ImaginateStatus::Uploading(_) => {
+		match &imaginate_status {
+			ImaginateStatus::Beginning | ImaginateStatus::Uploading => {
 				widgets.extend_from_slice(&assist_separators);
 				widgets.push(TextButton::new("Beginning...").tooltip("Sending image generation request to the server").disabled(true).widget_holder());
 			}
-			ImaginateStatus::Generating => {
+			ImaginateStatus::Generating(_) => {
 				widgets.extend_from_slice(&assist_separators);
 				widgets.push(
 					TextButton::new("Terminate")
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
 						.on_update({
-							let imaginate_node = imaginate_node.clone();
+							let controller = controller.clone();
 							move |_| {
-								DocumentMessage::ImaginateTerminate {
-									layer_path: layer_path.clone(),
-									node_path: imaginate_node.clone(),
-								}
-								.into()
+								controller.request_termination();
+								Message::NoOp
 							}
 						})
 						.widget_holder(),
@@ -1139,13 +1117,15 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 						.widget_holder(),
 				);
 			}
-			ImaginateStatus::Idle | ImaginateStatus::Terminated => widgets.extend_from_slice(&[
+			ImaginateStatus::Ready | ImaginateStatus::ReadyDone | ImaginateStatus::Terminated | ImaginateStatus::Failed(_) => widgets.extend_from_slice(&[
 				IconButton::new("Random", 24)
 					.tooltip("Generate with a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
+						let controller = controller.clone();
 						move |_| {
+							controller.trigger_regenerate();
 							DocumentMessage::ImaginateRandom {
 								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
@@ -1159,30 +1139,24 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
-						let imaginate_node = imaginate_node.clone();
 						let layer_path = context.layer_path.to_vec();
+						let controller = controller.clone();
 						move |_| {
-							DocumentMessage::ImaginateGenerate {
-								layer_path: layer_path.clone(),
-								imaginate_node: imaginate_node.clone(),
-							}
-							.into()
+							controller.trigger_regenerate();
+							DocumentMessage::ImaginateGenerate { layer_path: layer_path.clone() }.into()
 						}
 					})
 					.widget_holder(),
 				WidgetHolder::related_separator(),
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
-					.disabled(cached_data.is_none())
+					.disabled(!matches!(imaginate_status, ImaginateStatus::ReadyDone))
 					.on_update({
 						let layer_path = context.layer_path.to_vec();
+						let controller = controller.clone();
 						move |_| {
-							DocumentMessage::ImaginateClear {
-								node_id,
-								layer_path: layer_path.clone(),
-								cached_index,
-							}
-							.into()
+							controller.set_status(ImaginateStatus::Ready);
+							DocumentMessage::ImaginateClear { layer_path: layer_path.clone() }.into()
 						}
 					})
 					.widget_holder(),
@@ -1219,9 +1193,11 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 					.widget_holder(),
 				WidgetHolder::unrelated_separator(),
 				NumberInput::new(Some(seed))
-					.min(0.)
 					.int()
+					.min(-((1u64 << f64::MANTISSA_DIGITS) as f64))
+					.max((1u64 << f64::MANTISSA_DIGITS) as f64)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index))
+					.mode(NumberInputMode::Increment)
 					.widget_holder(),
 			])
 		}
@@ -1229,23 +1205,19 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	// Create the input to the graph using an empty image
-	let editor_api = std::borrow::Cow::Owned(EditorApi {
-		image_frame: None,
-		font_cache: Some(&context.persistent_data.font_cache),
-	});
-	// Compute the transform input to the image frame
-	let image_frame: ImageFrame<Color> = context.executor.compute_input(context.network, &imaginate_node, 0, editor_api).unwrap_or_default();
-	let transform = image_frame.transform;
+	let transform = context
+		.executor
+		.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
+		.unwrap_or_default();
 
 	let resolution = {
-		use document_legacy::document::pick_safe_imaginate_resolution;
+		use graphene_std::imaginate::pick_safe_imaginate_resolution;
 
 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector, false);
 
 		let round = |x: DVec2| {
 			let (x, y) = pick_safe_imaginate_resolution(x.into());
-			Some(DVec2::new(x as f64, y as f64))
+			DVec2::new(x as f64, y as f64)
 		};
 
 		if let &NodeInput::Value {
@@ -1254,14 +1226,7 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 		} = &document_node.inputs[resolution_index]
 		{
 			let dimensions_is_auto = vec2.is_none();
-			let vec2 = vec2.unwrap_or_else(|| {
-				let w = transform.transform_vector2(DVec2::new(1., 0.)).length();
-				let h = transform.transform_vector2(DVec2::new(0., 1.)).length();
-
-				let (x, y) = pick_safe_imaginate_resolution((w, h));
-
-				DVec2::new(x as f64, y as f64)
-			});
+			let vec2 = vec2.unwrap_or_else(|| round([transform.matrix2.x_axis, transform.matrix2.y_axis].map(DVec2::length).into()));
 
 			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
@@ -1306,7 +1271,7 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
-						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(number_input.value.unwrap(), vec2.y))),
+						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(Some(round(DVec2::new(number_input.value.unwrap(), vec2.y)))),
 						node_id,
 						resolution_index,
 					))
@@ -1319,7 +1284,7 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 					.unit(" px")
 					.disabled(dimensions_is_auto && !transform_not_connected)
 					.on_update(update_value(
-						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(round(DVec2::new(vec2.x, number_input.value.unwrap()))),
+						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(Some(round(DVec2::new(vec2.x, number_input.value.unwrap())))),
 						node_id,
 						resolution_index,
 					))
@@ -1536,8 +1501,6 @@ pub fn imaginate_properties(_document_node: &DocumentNode, _node_id: NodeId, _co
 	layout.extend_from_slice(&[improve_faces, tiling]);
 
 	layout
-		*/
-	todo!()
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {

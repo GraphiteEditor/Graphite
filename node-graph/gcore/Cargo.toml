@@ -32,7 +32,7 @@ async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs", "once_cell"]
 type_id_logging = []
-wasm = ["wasm-bindgen", "web-sys", "js-sys", "std"]
+wasm = ["web-sys"]
 
 [dependencies]
 dyn-any = { path = "../../libraries/dyn-any", features = [
@@ -77,10 +77,4 @@ js-sys = { version = "0.3.55", optional = true }
 [dependencies.web-sys]
 version = "0.3.4"
 optional = true
-features = [
-	"Window",
-	"CanvasRenderingContext2d",
-	"ImageData",
-	"Document",
-	"HtmlCanvasElement",
-]
+features = ["HtmlCanvasElement"]

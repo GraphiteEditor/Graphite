@@ -7,9 +7,7 @@ use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -19,7 +17,6 @@ use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::Image;
 use graphene_core::text::Font;
 
 #[derive(Debug, Default)]
@@ -218,69 +215,34 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
-				self.persistent_data.imaginate_server_status = ImaginateServerStatus::Checking;
-				responses.add(FrontendMessage::TriggerImaginateCheckServerStatus {
-					hostname: preferences.imaginate_server_hostname.clone(),
-				});
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
-			}
-			PortfolioMessage::ImaginateSetGeneratingStatus {
-				document_id,
-				layer_path,
-				node_path,
-				percent,
-				status,
-			} => {
-				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-				if let Some(percentage) = percent {
-					responses.add(PortfolioMessage::DocumentPassMessage {
-						document_id,
-						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
-							input_index: get("Percent Complete"),
-							value: TaggedValue::F64(percentage),
+				let server_status = self.persistent_data.imaginate.server_status().clone();
+				self.persistent_data.imaginate.poll_server_check();
+				#[cfg(target_arch = "wasm32")]
+				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
+					future_executor::spawn(async move {
+						let () = fut.await;
+						use wasm_bindgen::prelude::*;
+
+						#[wasm_bindgen(module = "/../frontend/src/wasm-communication/editor.ts")]
+						extern "C" {
+							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+							fn inject();
 						}
-						.into(),
-					});
+						inject();
+					})
 				}
-
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path,
-						input_index: get("Status"),
-						value: TaggedValue::ImaginateStatus(status),
-					}
-					.into(),
-				});
+				if &server_status != self.persistent_data.imaginate.server_status() {
+					responses.add(PropertiesPanelMessage::ResendActiveProperties);
+				}
 			}
-			PortfolioMessage::ImaginateSetImageData {
-				document_id,
-				layer_path,
-				node_path,
-				image_data,
-				width,
-				height,
-			} => {
-				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-
-				let image = Image::from_image_data(&image_data, width, height);
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path,
-						input_index: get("Cached Data"),
-						value: TaggedValue::RcImage(Some(std::sync::Arc::new(image))),
-					}
-					.into(),
-				});
-			}
-			PortfolioMessage::ImaginateSetServerStatus { status } => {
-				self.persistent_data.imaginate_server_status = status;
+			PortfolioMessage::ImaginatePollServerStatus => {
+				self.persistent_data.imaginate.poll_server_check();
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+			}
+			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
+			PortfolioMessage::ImaginateServerHostname => {
+				info!("setting imaginate persistent data");
+				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
@@ -455,13 +417,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				layer_path,
 				input_image_data,
 				size,
-				imaginate_node_path,
 			} => {
 				let result = self.executor.submit_node_graph_evaluation(
 					(document_id, &mut self.documents),
 					layer_path,
 					(input_image_data, size),
-					imaginate_node_path,
 					(preferences, &self.persistent_data),
 					responses,
 				);

@@ -12,4 +12,9 @@ futures = "0.3.25"
 log = "0.4"
 
 [target.wasm32-unknown-unknown.dependencies]
-wasm-rs-async-executor = {version = "0.9.0", features = ["cooperative-browser", "debug", "requestIdleCallback"] }
+wasm-rs-async-executor = { version = "0.9.0", features = [
+	"cooperative-browser",
+	"debug",
+	"requestIdleCallback",
+] }
+wasm-bindgen-futures = "0.4.36"

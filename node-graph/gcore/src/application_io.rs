@@ -45,7 +45,7 @@ impl<S> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SurfaceHandle<Surface> {
 	pub surface_id: SurfaceId,
 	pub surface: Surface,
@@ -55,7 +55,7 @@ unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SurfaceHandleFrame<Surface> {
 	pub surface_handle: Arc<SurfaceHandle<Surface>>,
 	pub transform: DAffine2,
@@ -87,12 +87,18 @@ impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
 
 pub trait ApplicationIo {
 	type Surface;
+	type Executor;
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface>;
 	fn destroy_surface(&self, surface_id: SurfaceId);
+	fn gpu_executor(&self) -> Option<&Self::Executor> {
+		None
+	}
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
 	type Surface = T::Surface;
+	type Executor = T::Executor;
+
 	fn create_surface(&self) -> SurfaceHandle<T::Surface> {
 		(**self).create_surface()
 	}
@@ -100,12 +106,31 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	fn destroy_surface(&self, surface_id: SurfaceId) {
 		(**self).destroy_surface(surface_id)
 	}
+
+	fn gpu_executor(&self) -> Option<&T::Executor> {
+		(**self).gpu_executor()
+	}
+}
+
+#[derive(Debug, Clone)]
+pub enum NodeGraphUpdateMessage {
+	ImaginateStatusUpdate,
+}
+
+pub trait NodeGraphUpdateSender {
+	fn send(&self, message: NodeGraphUpdateMessage);
+}
+
+pub trait GetImaginatePreferences {
+	fn get_host_name(&self) -> &str;
 }
 
 pub struct EditorApi<'a, Io> {
 	pub image_frame: Option<ImageFrame<Color>>,
 	pub font_cache: &'a FontCache,
 	pub application_io: &'a Io,
+	pub node_graph_message_sender: &'a dyn NodeGraphUpdateSender,
+	pub imaginate_preferences: &'a dyn GetImaginatePreferences,
 }
 
 impl<'a, Io> Clone for EditorApi<'a, Io> {
@@ -114,6 +139,8 @@ impl<'a, Io> Clone for EditorApi<'a, Io> {
 			image_frame: self.image_frame.clone(),
 			font_cache: self.font_cache,
 			application_io: self.application_io,
+			node_graph_message_sender: self.node_graph_message_sender,
+			imaginate_preferences: self.imaginate_preferences,
 		}
 	}
 }
@@ -162,6 +189,3 @@ impl ExtractImageFrame {
 		Self
 	}
 }
-
-#[cfg(feature = "wasm")]
-pub mod wasm_application_io;

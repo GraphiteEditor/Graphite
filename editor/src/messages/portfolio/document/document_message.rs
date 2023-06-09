@@ -93,21 +93,14 @@ pub enum DocumentMessage {
 	GroupSelectedLayers,
 	ImaginateClear {
 		layer_path: Vec<LayerId>,
-		node_id: NodeId,
-		cached_index: usize,
 	},
 	ImaginateGenerate {
 		layer_path: Vec<LayerId>,
-		imaginate_node: Vec<NodeId>,
 	},
 	ImaginateRandom {
 		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
-	},
-	ImaginateTerminate {
-		layer_path: Vec<LayerId>,
-		node_path: Vec<NodeId>,
 	},
 	InputFrameRasterizeRegionBelowLayer {
 		layer_path: Vec<LayerId>,

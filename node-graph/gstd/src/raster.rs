@@ -1,8 +1,11 @@
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
+use graph_craft::proto::DynFuture;
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
 use graphene_core::transform::Transform;
 
+use crate::wasm_application_io::WasmEditorApi;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::value::CopiedNode;
 use graphene_core::{Color, Node};
@@ -221,11 +224,12 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-async fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Forground: Sample<Pixel = _P> + Transform>(foreground: Forground, background: ImageFrame<_P>, map_fn: &'input MapFn) -> ImageFrame<_P>
-where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
-{
-	blend_new_image(foreground, background, map_fn)
+async fn blend_image_node<_P: Alpha + Pixel + Debug, Forground: Sample<Pixel = _P> + Transform>(
+	foreground: Forground,
+	background: ImageFrame<_P>,
+	map_fn: impl Node<(_P, _P), Output = _P>,
+) -> ImageFrame<_P> {
+	blend_new_image(foreground, background, &self.map_fn)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -243,9 +247,9 @@ where
 	blend_new_image(background, foreground, map_fn)
 }
 
-fn blend_new_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &MapFn) -> ImageFrame<_P>
+fn blend_new_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &'input MapFn) -> ImageFrame<_P>
 where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+	MapFn: Node<'input, (_P, _P), Output = _P>,
 {
 	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
 	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
@@ -272,13 +276,13 @@ where
 	blend_image(foreground, new_background, map_fn)
 }
 
-fn blend_image<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+fn blend_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
 	foreground: Frame,
 	background: Background,
-	map_fn: &MapFn,
+	map_fn: &'input MapFn,
 ) -> Background
 where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+	MapFn: Node<'input, (_P, _P), Output = _P>,
 {
 	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
 }
@@ -336,6 +340,51 @@ fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color
 	blend_image(foreground, background, &BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.)))
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExtendImageToBoundsNode<Bounds> {
+	bounds: Bounds,
+}
+
+#[node_macro::node_fn(ExtendImageToBoundsNode)]
+fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
+	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
+	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
+	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
+		return image;
+	}
+
+	if image.image.width == 0 || image.image.height == 0 {
+		return EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(bounds);
+	}
+
+	let orig_image_scale = DVec2::new(image.image.width as f64, image.image.height as f64);
+	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image.transform.inverse();
+	let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
+
+	let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
+	let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
+	let new_scale = new_end - new_start;
+
+	// Copy over original image into embiggened image.
+	let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
+	let offset_in_new_image = (-new_start).as_uvec2();
+	for y in 0..image.image.height {
+		let old_start = y * image.image.width;
+		let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
+		let old_row = &image.image.data[old_start as usize..(old_start + image.image.width) as usize];
+		let new_row = &mut new_img.data[new_start as usize..(new_start + image.image.width) as usize];
+		new_row.copy_from_slice(old_row);
+	}
+
+	// Compute new transform.
+	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
+	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1.0 / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+	ImageFrame {
+		image: new_img,
+		transform: new_texture_to_layer_space,
+	}
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MergeBoundingBoxNode<Data> {
 	_data: PhantomData<Data>,
@@ -369,19 +418,74 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 	ImageFrame { image, transform }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ImaginateNode<P, E> {
-	cached: E,
-	_p: PhantomData<P>,
+macro_rules! generate_imaginate_node {
+	($($val:ident: $t:ident: $o:ty,)*) => {
+		pub struct ImaginateNode<P: Pixel, E, C, $($t,)*> {
+			editor_api: E,
+			controller: C,
+			$($val: $t,)*
+			cache: std::sync::Arc<std::sync::Mutex<Image<P>>>,
+		}
+
+		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
+		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
+			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+		{
+			pub fn new(editor_api: E, controller: C, $($val: $t,)* cache: std::sync::Arc<std::sync::Mutex<Image<P>>>) -> Self {
+				Self { editor_api, controller, $($val,)* cache }
+			}
+		}
+
+		impl<'i, 'e: 'i, P: Pixel + 'i, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
+		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
+			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+		{
+			type Output = DynFuture<'i, ImageFrame<P>>;
+
+			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
+				let controller = self.controller.eval(());
+				$(let $val = self.$val.eval(());)*
+				Box::pin(async move {
+					let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController>>> = controller;
+					let controller: ImaginateController = controller.await;
+					if controller.take_regenerate_trigger() {
+						let editor_api = self.editor_api.eval(());
+						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
+						self.cache.lock().unwrap().clone_from(&image);
+						return ImageFrame {
+							image,
+							..frame
+						}
+					}
+					let image = self.cache.lock().unwrap().clone();
+					ImageFrame {
+						image,
+						..frame
+					}
+				})
+			}
+		}
+	}
 }
 
-#[node_macro::node_fn(ImaginateNode<_P>)]
-fn imaginate<_P: Pixel>(image_frame: ImageFrame<_P>, cached: Option<std::sync::Arc<graphene_core::raster::Image<_P>>>) -> ImageFrame<_P> {
-	let cached_image = cached.map(|mut x| std::sync::Arc::make_mut(&mut x).clone()).unwrap_or(image_frame.image);
-	ImageFrame {
-		image: cached_image,
-		transform: image_frame.transform,
-	}
+generate_imaginate_node! {
+	seed: Seed: f64,
+	res: Res: Option<DVec2>,
+	samples: Samples: u32,
+	sampling_method: SamplingMethod: ImaginateSamplingMethod,
+	prompt_guidance: PromptGuidance: f64,
+	prompt: Prompt: String,
+	negative_prompt: NegativePrompt: String,
+	adapt_input_image: AdaptInputImage: bool,
+	image_creativity: ImageCreativity: f64,
+	masking_layer: MaskingLayer: Option<Vec<u64>>,
+	inpaint: Inpaint: bool,
+	mask_blur: MaskBlur: f64,
+	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
+	improve_faces: ImproveFaces: bool,
+	tiling: Tiling: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

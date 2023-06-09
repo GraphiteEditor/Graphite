@@ -1,5 +1,6 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::prelude::*;
+use graph_craft::imaginate_input::ImaginatePreferences;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,10 +11,19 @@ pub struct PreferencesMessageHandler {
 	pub zoom_with_scroll: bool,
 }
 
+impl PreferencesMessageHandler {
+	pub fn get_imaginate_preferences(&self) -> ImaginatePreferences {
+		ImaginatePreferences {
+			host_name: self.imaginate_server_hostname.clone(),
+		}
+	}
+}
+
 impl Default for PreferencesMessageHandler {
 	fn default() -> Self {
+		let ImaginatePreferences { host_name } = Default::default();
 		Self {
-			imaginate_server_hostname: "http://localhost:7860/".into(),
+			imaginate_server_hostname: host_name,
 			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 		}
@@ -28,13 +38,14 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
 
-					if self.imaginate_server_hostname != Self::default().imaginate_server_hostname {
-						responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-					}
+					responses.add(PortfolioMessage::ImaginateServerHostname);
+					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+					responses.add(PortfolioMessage::ImaginatePreferences);
 				}
 			}
 			PreferencesMessage::ResetToDefaults => {
 				refresh_dialog(responses);
+				responses.add(KeyMappingMessage::ModifyMapping(MappingVariant::Default));
 
 				*self = Self::default()
 			}
@@ -42,6 +53,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
 				self.imaginate_refresh_frequency = seconds;
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+				responses.add(PortfolioMessage::ImaginatePreferences);
 			}
 			PreferencesMessage::ImaginateServerHostname { hostname } => {
 				let initial = hostname.clone();
@@ -54,7 +66,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				}
 
 				self.imaginate_server_hostname = hostname;
+				responses.add(PortfolioMessage::ImaginateServerHostname);
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+				responses.add(PortfolioMessage::ImaginatePreferences);
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;

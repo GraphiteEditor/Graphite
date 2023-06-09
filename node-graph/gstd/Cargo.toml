@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["wgpu"]
+default = ["wasm", "imaginate"]
 gpu = [
 	"graphene-core/gpu",
 	"gpu-compiler-bin-wrapper",
@@ -19,6 +19,8 @@ gpu = [
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
+wasm = ["wasm-bindgen", "web-sys", "js-sys"]
+imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 
 
 [dependencies]
@@ -29,6 +31,7 @@ graphene-core = { path = "../gcore", features = [
 	"async",
 	"std",
 	"serde",
+	"alloc",
 ], default-features = false }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft" }
@@ -40,6 +43,7 @@ compilation-client = { path = "../compilation-client", optional = true }
 bytemuck = { version = "1.8" }
 tempfile = "3"
 image = { version = "*", default-features = false }
+base64 = { version = "0.21", optional = true }
 dyn-clone = "1.0"
 
 log = "0.4"
@@ -51,10 +55,28 @@ glam = { version = "0.22", features = ["serde"] }
 node-macro = { path = "../node-macro" }
 xxhash-rust = { workspace = true }
 serde_json = "1.0.96"
-reqwest = { version = "0.11.17", features = ["rustls", "rustls-tls"] }
+reqwest = { version = "0.11.18", features = ["rustls", "rustls-tls", "json"] }
 futures = "0.3.28"
+wasm-bindgen = { version = "0.2.84", optional = true }
+js-sys = { version = "0.3.63", optional = true }
+wgpu-types = "0.16.0"
+wgpu = "0.16.1"
+wasm-bindgen-futures = { version = "0.4.36", optional = true }
 
 [dependencies.serde]
 version = "1.0"
 optional = true
 features = ["derive"]
+
+
+[dependencies.web-sys]
+version = "0.3.63"
+optional = true
+features = [
+	"Window",
+	"CanvasRenderingContext2d",
+	"ImageData",
+	"Document",
+	"HtmlCanvasElement",
+	"ImageBitmapRenderingContext",
+]

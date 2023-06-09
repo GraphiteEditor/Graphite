@@ -1,8 +1,9 @@
 use super::DocumentNode;
 use crate::graphene_compiler::Any;
-pub use crate::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateStatus};
+pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 
+use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
 
@@ -26,7 +27,7 @@ pub enum TaggedValue {
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image<Color>),
-	RcImage(Option<Arc<graphene_core::raster::Image<Color>>>),
+	ImaginateCache(ImaginateCache),
 	ImageFrame(graphene_core::raster::ImageFrame<Color>),
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
@@ -35,7 +36,7 @@ pub enum TaggedValue {
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
-	ImaginateStatus(ImaginateStatus),
+	ImaginateController(ImaginateController),
 	LayerPath(Option<Vec<u64>>),
 	VectorData(graphene_core::vector::VectorData),
 	Fill(graphene_core::vector::style::Fill),
@@ -54,6 +55,7 @@ pub enum TaggedValue {
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	BrushCache(BrushCache),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
@@ -81,7 +83,7 @@ impl Hash for TaggedValue {
 			}
 			Self::DAffine2(m) => m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state)),
 			Self::Image(i) => i.hash(state),
-			Self::RcImage(i) => i.hash(state),
+			Self::ImaginateCache(i) => i.hash(state),
 			Self::Color(c) => c.hash(state),
 			Self::Subpaths(s) => s.iter().for_each(|subpath| subpath.hash(state)),
 			Self::RcSubpath(s) => s.hash(state),
@@ -89,7 +91,7 @@ impl Hash for TaggedValue {
 			Self::LuminanceCalculation(l) => l.hash(state),
 			Self::ImaginateSamplingMethod(m) => m.hash(state),
 			Self::ImaginateMaskStartingFill(f) => f.hash(state),
-			Self::ImaginateStatus(s) => s.hash(state),
+			Self::ImaginateController(s) => s.hash(state),
 			Self::LayerPath(p) => p.hash(state),
 			Self::ImageFrame(i) => i.hash(state),
 			Self::VectorData(vector_data) => vector_data.hash(state),
@@ -115,6 +117,7 @@ impl Hash for TaggedValue {
 			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
 			Self::Font(font) => font.hash(state),
 			Self::BrushStrokes(brush_strokes) => brush_strokes.hash(state),
+			Self::BrushCache(brush_cache) => brush_cache.hash(state),
 			Self::Segments(segments) => {
 				for segment in segments {
 					segment.hash(state)
@@ -143,7 +146,7 @@ impl<'a> TaggedValue {
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
 			TaggedValue::DAffine2(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
-			TaggedValue::RcImage(x) => Box::new(x),
+			TaggedValue::ImaginateCache(x) => Box::new(x),
 			TaggedValue::ImageFrame(x) => Box::new(x),
 			TaggedValue::Color(x) => Box::new(x),
 			TaggedValue::Subpaths(x) => Box::new(x),
@@ -152,7 +155,7 @@ impl<'a> TaggedValue {
 			TaggedValue::LuminanceCalculation(x) => Box::new(x),
 			TaggedValue::ImaginateSamplingMethod(x) => Box::new(x),
 			TaggedValue::ImaginateMaskStartingFill(x) => Box::new(x),
-			TaggedValue::ImaginateStatus(x) => Box::new(x),
+			TaggedValue::ImaginateController(x) => Box::new(x),
 			TaggedValue::LayerPath(x) => Box::new(x),
 			TaggedValue::VectorData(x) => Box::new(x),
 			TaggedValue::Fill(x) => Box::new(x),
@@ -171,6 +174,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
 			TaggedValue::Font(x) => Box::new(x),
 			TaggedValue::BrushStrokes(x) => Box::new(x),
+			TaggedValue::BrushCache(x) => Box::new(x),
 			TaggedValue::Segments(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
@@ -206,7 +210,7 @@ impl<'a> TaggedValue {
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
 			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
-			TaggedValue::RcImage(_) => concrete!(Option<Arc<graphene_core::raster::Image<Color>>>),
+			TaggedValue::ImaginateCache(_) => concrete!(ImaginateCache),
 			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame<Color>),
 			TaggedValue::Color(_) => concrete!(graphene_core::raster::Color),
 			TaggedValue::Subpaths(_) => concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>),
@@ -214,7 +218,7 @@ impl<'a> TaggedValue {
 			TaggedValue::BlendMode(_) => concrete!(BlendMode),
 			TaggedValue::ImaginateSamplingMethod(_) => concrete!(ImaginateSamplingMethod),
 			TaggedValue::ImaginateMaskStartingFill(_) => concrete!(ImaginateMaskStartingFill),
-			TaggedValue::ImaginateStatus(_) => concrete!(ImaginateStatus),
+			TaggedValue::ImaginateController(_) => concrete!(ImaginateController),
 			TaggedValue::LayerPath(_) => concrete!(Option<Vec<u64>>),
 			TaggedValue::DAffine2(_) => concrete!(DAffine2),
 			TaggedValue::LuminanceCalculation(_) => concrete!(LuminanceCalculation),
@@ -235,6 +239,7 @@ impl<'a> TaggedValue {
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
 			TaggedValue::Font(_) => concrete!(graphene_core::text::Font),
 			TaggedValue::BrushStrokes(_) => concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+			TaggedValue::BrushCache(_) => concrete!(BrushCache),
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
@@ -258,7 +263,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<DVec2>() => Ok(TaggedValue::DVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Option<DVec2>>() => Ok(TaggedValue::OptionalDVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::Image<Color>>() => Ok(TaggedValue::Image(*downcast(input).unwrap())),
-			x if x == TypeId::of::<Option<Arc<graphene_core::raster::Image<Color>>>>() => Ok(TaggedValue::RcImage(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateCache>() => Ok(TaggedValue::ImaginateCache(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::ImageFrame<Color>>() => Ok(TaggedValue::ImageFrame(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::Color>() => Ok(TaggedValue::Color(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => Ok(TaggedValue::Subpaths(*downcast(input).unwrap())),
@@ -266,7 +271,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<BlendMode>() => Ok(TaggedValue::BlendMode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<ImaginateSamplingMethod>() => Ok(TaggedValue::ImaginateSamplingMethod(*downcast(input).unwrap())),
 			x if x == TypeId::of::<ImaginateMaskStartingFill>() => Ok(TaggedValue::ImaginateMaskStartingFill(*downcast(input).unwrap())),
-			x if x == TypeId::of::<ImaginateStatus>() => Ok(TaggedValue::ImaginateStatus(*downcast(input).unwrap())),
+			x if x == TypeId::of::<ImaginateController>() => Ok(TaggedValue::ImaginateController(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Option<Vec<u64>>>() => Ok(TaggedValue::LayerPath(*downcast(input).unwrap())),
 			x if x == TypeId::of::<DAffine2>() => Ok(TaggedValue::DAffine2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<LuminanceCalculation>() => Ok(TaggedValue::LuminanceCalculation(*downcast(input).unwrap())),
@@ -287,14 +292,15 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Ok(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::text::Font>() => Ok(TaggedValue::Font(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<BrushCache>>() => Ok(TaggedValue::BrushCache(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Ok(TaggedValue::Segments(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Ok(TaggedValue::DocumentNode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Ok(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::Artboard>() => Ok(TaggedValue::Artboard(*downcast(input).unwrap())),
 			x if x == TypeId::of::<glam::IVec2>() => Ok(TaggedValue::IVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
-			x if x == TypeId::of::<graphene_core::wasm_application_io::WasmSurfaceHandleFrame>() => {
-				let frame = *downcast::<graphene_core::wasm_application_io::WasmSurfaceHandleFrame>(input).unwrap();
+			x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
+				let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
 			}
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),

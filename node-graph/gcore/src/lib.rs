@@ -20,6 +20,7 @@ pub mod value;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+#[cfg(feature = "alloc")]
 pub mod memo;
 pub mod storage;
 
@@ -34,6 +35,7 @@ pub use graphic_element::*;
 #[cfg(feature = "alloc")]
 pub mod vector;
 
+#[cfg(feature = "alloc")]
 pub mod application_io;
 
 pub mod quantization;
@@ -146,6 +148,9 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 
 	}
 }
 
+#[cfg(feature = "alloc")]
 pub use crate::application_io::{ExtractImageFrame, SurfaceFrame, SurfaceId};
 #[cfg(feature = "wasm")]
-pub use application_io::{wasm_application_io, wasm_application_io::WasmEditorApi as EditorApi};
+pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;
+#[cfg(feature = "wasm")]
+pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;

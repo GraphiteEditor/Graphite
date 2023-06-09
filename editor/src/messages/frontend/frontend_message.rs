@@ -9,7 +9,6 @@ use crate::messages::tool::utility_types::HintData;
 
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
-use graph_craft::imaginate_input::*;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
@@ -75,40 +74,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "isDefault")]
 		is_default: bool,
 	},
-	TriggerImaginateCheckServerStatus {
-		hostname: String,
-	},
-	TriggerImaginateGenerate {
-		parameters: Box<ImaginateGenerationParameters>,
-		#[serde(rename = "baseImage")]
-		base_image: Option<Box<ImaginateBaseImage>>,
-		#[serde(rename = "maskImage")]
-		mask_image: Option<Box<ImaginateMaskImage>>,
-		#[serde(rename = "maskPaintMode")]
-		mask_paint_mode: ImaginateMaskPaintMode,
-		#[serde(rename = "maskBlurPx")]
-		mask_blur_px: u32,
-		#[serde(rename = "maskFillContent")]
-		imaginate_mask_starting_fill: ImaginateMaskStartingFill,
-		hostname: String,
-		#[serde(rename = "refreshFrequency")]
-		refresh_frequency: f64,
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		#[serde(rename = "nodePath")]
-		node_path: Vec<NodeId>,
-	},
-	TriggerImaginateTerminate {
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		#[serde(rename = "nodePath")]
-		node_path: Vec<NodeId>,
-		hostname: String,
-	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
@@ -130,8 +95,6 @@ pub enum FrontendMessage {
 		layer_path: Vec<LayerId>,
 		svg: String,
 		size: glam::DVec2,
-		#[serde(rename = "imaginateNodePath")]
-		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {

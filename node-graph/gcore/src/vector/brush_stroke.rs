@@ -7,7 +7,7 @@ use glam::DVec2;
 use std::hash::{Hash, Hasher};
 
 /// The style of a brush.
-#[derive(Clone, Debug, PartialEq, DynAny)]
+#[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushStyle {
 	pub color: Color,
@@ -37,6 +37,20 @@ impl Hash for BrushStyle {
 		self.diameter.to_bits().hash(state);
 		self.hardness.to_bits().hash(state);
 		self.flow.to_bits().hash(state);
+		self.spacing.to_bits().hash(state);
+	}
+}
+
+impl Eq for BrushStyle {}
+
+impl PartialEq for BrushStyle {
+	fn eq(&self, other: &Self) -> bool {
+		self.color == other.color
+			&& self.diameter.to_bits() == other.diameter.to_bits()
+			&& self.hardness.to_bits() == other.hardness.to_bits()
+			&& self.flow.to_bits() == other.flow.to_bits()
+			&& self.spacing.to_bits() == other.spacing.to_bits()
+			&& self.blend_mode == other.blend_mode
 	}
 }
 
