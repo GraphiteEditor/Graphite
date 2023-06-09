@@ -76,6 +76,7 @@ impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 		Self { node, _i: core::marker::PhantomData }
 	}
 }
+
 pub struct DynAnyInRefNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<(I, O)>,
@@ -114,6 +115,10 @@ where
 	}
 	fn reset(&self) {
 		self.node.reset();
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		self.node.serialize()
 	}
 }
 

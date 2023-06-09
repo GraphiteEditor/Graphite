@@ -465,15 +465,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					replacement_selected_layers: vec![new_folder_path],
 				});
 			}
-			ImaginateClear {
-				layer_path,
-				node_id,
-				cached_index: input_index,
-			} => {
-				let value = graph_craft::document::value::TaggedValue::RcImage(None);
-				responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
-				responses.add(InputFrameRasterizeRegionBelowLayer { layer_path });
-			}
+			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
 			ImaginateGenerate { layer_path, imaginate_node } => {
 				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
 					responses.add(message);
@@ -484,26 +476,22 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				imaginate_node,
 				then_generate,
 			} => {
+				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+				// outside of this range can get rounded in f64
+				let random_bits = generate_uuid();
+				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 				// Set a random seed input
 				responses.add(NodeGraphMessage::SetInputValue {
 					node_id: *imaginate_node.last().unwrap(),
 					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-					input_index: 1,
-					value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+					input_index: 3,
+					value: graph_craft::document::value::TaggedValue::F64(random_value),
 				});
 
 				// Generate the image
 				if then_generate {
 					responses.add(DocumentMessage::ImaginateGenerate { layer_path, imaginate_node });
 				}
-			}
-			ImaginateTerminate { layer_path, node_path } => {
-				responses.add(FrontendMessage::TriggerImaginateTerminate {
-					document_id,
-					layer_path,
-					node_path,
-					hostname: preferences.imaginate_server_hostname.clone(),
-				});
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => {
 				if layer_path.is_empty() {
@@ -996,7 +984,7 @@ impl DocumentMessageHandler {
 		// Check if we use the "Input Frame" node.
 		// TODO: Remove once rasterization is moved into a node.
 		let input_frame_node_id = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame").map(|(&id, _)| id);
-		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, imaginate_node_path.is_none()));
+		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id));
 
 		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
 		let response = if input_frame_connected_to_graph_output {
