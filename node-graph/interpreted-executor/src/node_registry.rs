@@ -55,7 +55,7 @@ macro_rules! register_node {
 				Box::pin(async move {
 				let node = construct_node!(args, $path, [$($type),*]).await;
 				let node = graphene_std::any::FutureWrapperNode::new(node);
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
 				Box::new(any) as TypeErasedBox
 				})
 			},
@@ -83,7 +83,7 @@ macro_rules! async_node {
 				Box::pin(async move {
 				args.reverse();
 				let node = <$path>::new($(graphene_std::any::input_node::<$type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
 				Box::new(any) as TypeErasedBox
 				})
 			},
@@ -122,7 +122,7 @@ macro_rules! raster_node {
 					Box::pin(async move {
 						let node = construct_node!(args, $path, [$($type),*]).await;
 						let node = graphene_std::any::FutureWrapperNode::new(node);
-						let any: DynAnyNode<Color, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+						let any: DynAnyNode<Color, _, _> = graphene_std::any::DynAnyNode::new(node);
 						any.into_type_erased()
 					})
 				},
@@ -138,7 +138,7 @@ macro_rules! raster_node {
 						let node = construct_node!(args, $path, [$($type),*]).await;
 						let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
 						let map_node = graphene_std::any::FutureWrapperNode::new(map_node);
-						let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+						let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_node);
 						any.into_type_erased()
 					})
 				},
@@ -154,7 +154,7 @@ macro_rules! raster_node {
 						let node = construct_node!(args, $path, [$($type),*]).await;
 						let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
 						let map_node = graphene_std::any::FutureWrapperNode::new(map_node);
-						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
+						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_node);
 						any.into_type_erased()
 					})
 				},
@@ -238,7 +238,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let final_image = ClonedNode::new(empty_image).then(complete_node);
 					let final_image = FutureWrapperNode::new(final_image);
 
-					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(final_image));
+					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(final_image);
 					any.into_type_erased()
 				})
 			},
@@ -304,7 +304,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let editor_api: DowncastBothNode<(), WasmEditorApi> = DowncastBothNode::new(args[1].clone());
 					//let document_node = ClonedNode::new(document_node.eval(()));
 					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node, editor_api);
-					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 					any.into_type_erased()
 				})
 			},
@@ -323,7 +323,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1].clone());
 					let opacity: DowncastBothNode<(), f32> = DowncastBothNode::new(args[2].clone());
 					let node = graphene_std::gpu_nodes::BlendGpuImageNode::new(background, blend_mode, opacity);
-					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 
 					any.into_type_erased()
 				})
@@ -366,8 +366,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1].clone());
 					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2].clone());
 					let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(blend_mode.eval(()).await), CopiedNode::new(opacity.eval(()).await));
-					let node = graphene_std::raster::BlendImageNode::new(image, FutureWrapperNode::new(ValueNode::new(blend_node)));
-					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+					let node = graphene_std::raster::BlendImageNode::new(image, blend_node);
+					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 					any.into_type_erased()
 				})
 			},
@@ -406,13 +406,13 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						let generate_brightness_contrast_legacy_mapper_node = GenerateBrightnessContrastLegacyMapperNode::new(brightness, contrast);
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_legacy_mapper_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 						any.into_type_erased()
 					} else {
 						let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::new(brightness, contrast);
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(ValueNode::new(map_image_frame_node));
+						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 						any.into_type_erased()
 					}
 				})
@@ -452,7 +452,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					Box::pin(async move {
 						let node: DowncastBothNode<Option<WasmEditorApi>, WasmEditorApi> = graphene_std::any::DowncastBothNode::new(args[0].clone());
 						let node = <graphene_core::memo::RefNode<_, _>>::new(node);
-						let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(node));
+						let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(node);
+
 						any.into_type_erased()
 					})
 				},
@@ -468,7 +469,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* cache.into_inner()) };
 						}
 						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
-						let any = graphene_std::any::DynAnyNode::new(ValueNode::new(node));
+						let any = graphene_std::any::DynAnyNode::new(node);
 						any.into_type_erased()
 					})
 				},

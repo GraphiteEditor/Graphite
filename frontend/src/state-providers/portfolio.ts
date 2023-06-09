@@ -1,6 +1,6 @@
 /* eslint-disable max-classes-per-file */
 
-import {writable} from "svelte/store";
+import { writable } from "svelte/store";
 
 import { downloadFileText, downloadFileBlob, upload, downloadFileURL } from "@graphite/utility-functions/files";
 import { extractPixelData, imageToPNG, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
@@ -98,7 +98,7 @@ export function createPortfolioState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRasterizeRegionBelowLayer, async (triggerRasterizeRegionBelowLayer) => {
-		const { documentId, layerPath, svg, size, imaginateNodePath } = triggerRasterizeRegionBelowLayer;
+		const { documentId, layerPath, svg, size } = triggerRasterizeRegionBelowLayer;
 
 		// Rasterize the SVG to an image file
 		try {
@@ -106,7 +106,7 @@ export function createPortfolioState(editor: Editor) {
 				const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
 				if (!imageData) return;
 
-				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height, imaginateNodePath);
+				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 		}
 		// getImageData may throw an exception if the resolution is too high

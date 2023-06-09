@@ -417,7 +417,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				layer_path,
 				input_image_data,
 				size,
-				imaginate_node_path,
 			} => {
 				let result = self.executor.submit_node_graph_evaluation(
 					(document_id, &mut self.documents),

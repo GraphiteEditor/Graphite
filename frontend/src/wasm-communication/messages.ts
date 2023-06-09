@@ -545,8 +545,6 @@ export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly svg!: string;
 
 	readonly size!: [number, number];
-
-	readonly imaginateNodePath!: BigUint64Array | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage { }
@@ -700,7 +698,7 @@ export class ImaginateImageData {
 
 	readonly imageData!: Uint8Array;
 
-	readonly transform!: Float64Array ;
+	readonly transform!: Float64Array;
 }
 
 export class DisplayDialogDismiss extends JsMessage { }

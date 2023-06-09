@@ -96,7 +96,6 @@ pub enum DocumentMessage {
 	},
 	ImaginateGenerate {
 		layer_path: Vec<LayerId>,
-		imaginate_node: Vec<NodeId>,
 	},
 	ImaginateRandom {
 		layer_path: Vec<LayerId>,

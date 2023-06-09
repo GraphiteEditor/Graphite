@@ -95,8 +95,6 @@ pub enum FrontendMessage {
 		layer_path: Vec<LayerId>,
 		svg: String,
 		size: glam::DVec2,
-		#[serde(rename = "imaginateNodePath")]
-		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
