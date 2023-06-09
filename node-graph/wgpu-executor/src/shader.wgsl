@@ -37,7 +37,7 @@ fn linearToSRGB(color: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color =  textureSample(t_diffuse, s_diffuse, in.tex_coords);
-	var linearColor = color.bgr;
+	var linearColor = color.rgb;
     var srgbColor = linearToSRGB(linearColor);
     return vec4<f32>(srgbColor, color.a);
 }
