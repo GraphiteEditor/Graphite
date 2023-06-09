@@ -158,7 +158,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		};
 		let format = match T::format() {
 			TextureBufferType::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
-			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Bgra8UnormSrgb,
 		};
 
 		let buffer = self.context.device.create_texture_with_data(
@@ -267,7 +267,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let output = canvas.as_ref().surface.get_current_texture()?;
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-			format: Some(wgpu::TextureFormat::Rgba8Unorm),
+			format: Some(wgpu::TextureFormat::Bgra8Unorm),
 			..Default::default()
 		});
 		let output_texture_bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -377,7 +377,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		let surface = self.context.instance.create_surface_from_canvas(canvas.surface)?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		let surface_format = wgpu::TextureFormat::Rgba8Unorm;
+		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
@@ -385,7 +385,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			height: 1080,
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
-			view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
+			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
 		};
 		surface.configure(&self.context.device, &config);
 		Ok(SurfaceHandle {
@@ -460,7 +460,7 @@ impl WgpuExecutor {
 				module: &shader,
 				entry_point: "fs_main",
 				targets: &[Some(wgpu::ColorTargetState {
-					format: wgpu::TextureFormat::Rgba8Unorm,
+					format: wgpu::TextureFormat::Bgra8Unorm,
 					blend: Some(wgpu::BlendState {
 						color: wgpu::BlendComponent::REPLACE,
 						alpha: wgpu::BlendComponent::REPLACE,
