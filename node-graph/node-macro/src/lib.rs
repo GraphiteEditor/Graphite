@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type, TypeParam,
-	TypeParamBound, WhereClause, WherePredicate,
+	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, Binding, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
+	PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
 #[proc_macro_attribute]
@@ -30,7 +30,7 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	let node = &node;
 	let node_name = &node.ident;
-	let mut args = args(node);
+	let mut args = node_args(node);
 
 	let arg_idents = args
 		.iter()
@@ -69,7 +69,7 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	.into()
 }
 
-fn args(node: &syn::PathSegment) -> Vec<Type> {
+fn node_args(node: &syn::PathSegment) -> Vec<Type> {
 	match node.arguments.clone() {
 		PathArguments::AngleBracketed(args) => args
 			.args
@@ -105,7 +105,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	let node = &node;
 	let node_name = &node.ident;
-	let mut args = args(node);
+	let mut args = node_args(node);
 
 	let async_out = match asyncness {
 		Asyncness::Sync => false,
@@ -166,12 +166,12 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	// Bindings for all of the above generics to a node with an input of `()` and an output of the type in the function
 	let node_bounds = if async_in {
-		let mut node_bounds = input_node_bounds(future_types, node_generics, |ty| quote! {Node<'input, (), Output = #ty>});
-		let future_bounds = input_node_bounds(parameter_types, future_generic_params, |ty| quote! { core::future::Future<Output = #ty>});
+		let mut node_bounds = input_node_bounds(future_types, node_generics, |lifetime, in_ty, out_ty| quote! {Node<#lifetime, #in_ty, Output = #out_ty>});
+		let future_bounds = input_node_bounds(parameter_types, future_generic_params, |_, _, out_ty| quote! { core::future::Future<Output = #out_ty>});
 		node_bounds.extend(future_bounds);
 		node_bounds
 	} else {
-		input_node_bounds(parameter_types, node_generics, |ty| quote! {Node<'input, (), Output = #ty>})
+		input_node_bounds(parameter_types, node_generics, |lifetime, in_ty, out_ty| quote! {Node<#lifetime, #in_ty, Output = #out_ty>})
 	};
 	where_clause.predicates.extend(node_bounds);
 
@@ -244,14 +244,43 @@ fn construct_node_generics(struct_generics: &[Ident]) -> Vec<GenericParam> {
 		.collect()
 }
 
-fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericParam>, trait_bound: impl Fn(Type) -> proc_macro2::TokenStream) -> Vec<WherePredicate> {
+fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericParam>, trait_bound: impl Fn(Lifetime, Type, Type) -> proc_macro2::TokenStream) -> Vec<WherePredicate> {
 	parameter_inputs
 		.iter()
 		.zip(&node_generics)
 		.map(|(ty, name)| {
 			let GenericParam::Type(generic_ty) = name else { panic!("Expected type generic."); };
 			let ident = &generic_ty.ident;
-			let bound = trait_bound(ty.clone());
+			let (lifetime, in_ty, out_ty) = match ty.clone() {
+				Type::ImplTrait(TypeImplTrait { bounds, .. }) if bounds.len() == 1 => {
+					let TypeParamBound::Trait(TraitBound { ref path, .. }) = bounds[0] else {panic!("impl Traits other then Node are not supported")};
+					let node_segment = path.segments.last().expect("Found an empty path in the impl Trait arg");
+					assert_eq!(node_segment.ident.to_string(), "Node", "Only impl Node is supported as an argument");
+					let PathArguments::AngleBracketed(AngleBracketedGenericArguments {ref args, .. }) = node_segment.arguments else { panic!("Node must have generic arguments")};
+					let mut args_iter = args.iter();
+					let lifetime = if args.len() == 2 {
+						Lifetime::new("'input", Span::call_site())
+					} else if let Some(GenericArgument::Lifetime(node_lifetime)) = args_iter.next() {
+						node_lifetime.clone()
+					} else {
+						panic!("Invalid arguments for Node trait")
+					};
+
+					let Some(GenericArgument::Type(in_ty)) = args_iter.next() else { panic!("Expected type argument in Node<> declaration")};
+					let Some(GenericArgument::Binding(Binding {ty: out_ty, ..} )) = args_iter.next() else { panic!("Expected Output = in Node declaration")};
+					(lifetime, in_ty.clone(), out_ty.clone())
+				}
+				ty => (
+					Lifetime::new("'input", Span::call_site()),
+					Type::Tuple(TypeTuple {
+						paren_token: syn::token::Paren { span: Span::call_site() },
+						elems: Punctuated::new(),
+					}),
+					ty,
+				),
+			};
+
+			let bound = trait_bound(lifetime, in_ty, out_ty);
 			WherePredicate::Type(PredicateType {
 				lifetimes: None,
 				bounded_ty: Type::Verbatim(ident.to_token_stream()),
