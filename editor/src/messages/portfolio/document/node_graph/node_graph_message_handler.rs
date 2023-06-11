@@ -38,6 +38,8 @@ pub enum FrontendGraphDataType {
 	GraphicGroup,
 	#[serde(rename = "artboard")]
 	Artboard,
+	#[serde(rename = "palette")]
+	Palette,
 }
 impl FrontendGraphDataType {
 	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
@@ -52,6 +54,7 @@ impl FrontendGraphDataType {
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
 			TaggedValue::Artboard(_) => Self::Artboard,
+			TaggedValue::Palette(_) => Self::Palette,
 			_ => Self::General,
 		}
 	}

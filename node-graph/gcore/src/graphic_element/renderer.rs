@@ -617,6 +617,26 @@ impl GraphicElementRendered for Option<Color> {
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
+impl GraphicElementRendered for Vec<Color> {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		for (index, &color) in self.iter().enumerate() {
+			render.leaf_tag("rect", |attributes| {
+				attributes.push("width", "100");
+				attributes.push("height", "100");
+				attributes.push("x", (index * 120).to_string());
+				attributes.push("y", "40");
+				attributes.push("fill", format!("#{}", color.rgba_hex()));
+			});
+		}
+	}
+
+	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
+		None
+	}
+
+	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+}
+
 /// A segment of an svg string to allow for embedding blob urls
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SvgSegment {

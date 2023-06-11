@@ -2323,6 +2323,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::color_overlay_properties,
 			..Default::default()
 		},
+		DocumentNodeDefinition {
+			name: "Image Color Palette",
+			category: "Image Adjustments",
+			implementation: NodeImplementation::proto("graphene_std::image_color_palette::ImageColorPaletteNode"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Colors", FrontendGraphDataType::Color)],
+			properties: node_properties::node_no_properties,
+			..Default::default()
+		},
 	]
 }
 

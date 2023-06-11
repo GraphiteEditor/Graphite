@@ -67,6 +67,7 @@ pub enum TaggedValue {
 	SurfaceFrame(graphene_core::SurfaceFrame),
 	Footprint(graphene_core::transform::Footprint),
 	RenderOutput(RenderOutput),
+	Palette(Vec<Color>),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -138,6 +139,7 @@ impl Hash for TaggedValue {
 			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
 			Self::Footprint(footprint) => footprint.hash(state),
 			Self::RenderOutput(render_output) => render_output.hash(state),
+			Self::Palette(palette) => palette.hash(state),
 		}
 	}
 }
@@ -196,6 +198,7 @@ impl<'a> TaggedValue {
 			TaggedValue::SurfaceFrame(x) => Box::new(x),
 			TaggedValue::Footprint(x) => Box::new(x),
 			TaggedValue::RenderOutput(x) => Box::new(x),
+			TaggedValue::Palette(x) => Box::new(x),
 		}
 	}
 
@@ -265,6 +268,7 @@ impl<'a> TaggedValue {
 			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
 			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
 			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
+			TaggedValue::Palette(_) => concrete!(Vec<Color>),
 		}
 	}
 
@@ -326,6 +330,7 @@ impl<'a> TaggedValue {
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
 			}
 			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
+			x if x == TypeId::of::<Vec<Color>>() => Ok(TaggedValue::Palette(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}
