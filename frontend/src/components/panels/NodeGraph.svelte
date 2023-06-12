@@ -497,18 +497,22 @@
 		}}
 	>
 		{#if nodeListLocation}
-			<LayoutCol class="node-list" data-node-list styles={{ "margin-left": `${nodeListX}px`, "margin-top": `${nodeListY}px` }}>
+			<LayoutCol class="node-list" data-node-list styles={{ left: `${nodeListX}px`, top: `${nodeListY}px` }}>
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				{#each nodeCategories as nodeCategory}
-					<LayoutCol>
-						<TextLabel>{nodeCategory[0]}</TextLabel>
-						{#each nodeCategory[1] as nodeType}
-							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-						{/each}
-					</LayoutCol>
-				{:else}
-					<TextLabel>No search results</TextLabel>
-				{/each}
+				<div style="height: 200px; overflow-y: scroll;" on:wheel|stopPropagation>
+					{#each nodeCategories as nodeCategory}
+						<details style="display: flex; flex-direction: column;">
+							<summary>
+								<TextLabel>{nodeCategory[0]}</TextLabel>
+							</summary>
+							{#each nodeCategory[1] as nodeType}
+								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
+							{/each}
+						</details>
+					{:else}
+						<div style="margin-right: 4px;"><TextLabel>No search results</TextLabel></div>
+					{/each}
+				</div>
 			</LayoutCol>
 		{/if}
 		<div class="nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
@@ -607,10 +611,19 @@
 
 		.node-list {
 			width: max-content;
-			position: fixed;
+			position: absolute;
 			padding: 5px;
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
+
+			.text-button {
+				width: 100%;
+			}
+
+			details {
+				margin-right: 4px;
+				cursor: pointer;
+			}
 
 			.text-button + .text-button {
 				margin-left: 0;
