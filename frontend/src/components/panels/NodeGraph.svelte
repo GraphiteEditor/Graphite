@@ -503,6 +503,7 @@
 					{#each nodeCategories as nodeCategory}
 						<details style="display: flex; flex-direction: column;">
 							<summary>
+								<IconLabel icon="DropdownArrow" />
 								<TextLabel>{nodeCategory[0]}</TextLabel>
 							</summary>
 							{#each nodeCategory[1] as nodeType}
@@ -625,7 +626,23 @@
 				cursor: pointer;
 			}
 
+			summary {
+				list-style-type: none;
+				display: flex;
+				align-items: center;
+				gap: 2px;
+			}
+
+			details summary svg {
+				transform: rotate(-90deg);
+			}
+
+			details[open] summary svg {
+				transform: rotate(0deg);
+			}
+
 			.text-button + .text-button {
+				display: block;
 				margin-left: 0;
 				margin-top: 4px;
 			}
