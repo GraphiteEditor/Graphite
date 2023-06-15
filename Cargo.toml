@@ -8,6 +8,7 @@ members = [
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/graph-craft",
+	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/compilation-server",

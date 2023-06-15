@@ -1,0 +1,40 @@
+[package]
+name = "graphene-cli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+log = "0.4"
+bitflags = "1.2.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+bezier-rs = { path = "../../libraries/bezier-rs" }
+glam = { version = "0.22", features = ["serde"] }
+
+# Node graph
+image = { version = "0.24", default-features = false, features = [
+	"bmp",
+	"png",
+] }
+graph-craft = { path = "../graph-craft" }
+wgpu-executor = { path = "../wgpu-executor", optional = true }
+gpu-executor = { path = "../gpu-executor", optional = true }
+interpreted-executor = { path = "../interpreted-executor" }
+dyn-any = { path = "../../libraries/dyn-any" }
+graphene-core = { path = "../gcore" }
+graphene-std = { path = "../gstd" }
+future-executor = { path = "../future-executor", optional = true }
+
+wasm-bindgen = { version = "0.2.86", optional = true }
+futures = "0.3.28"
+
+[dependencies.document-legacy]
+path = "../../document-legacy"
+package = "graphite-document-legacy"
+
+[dev-dependencies]
+env_logger = "0.8.4"
+test-case = "2.1"
