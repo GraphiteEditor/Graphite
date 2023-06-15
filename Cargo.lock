@@ -1744,6 +1744,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-cli"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "bitflags 1.3.2",
+ "dyn-any",
+ "env_logger",
+ "future-executor",
+ "futures",
+ "glam",
+ "gpu-executor",
+ "graph-craft",
+ "graphene-core",
+ "graphene-std",
+ "graphite-document-legacy",
+ "image",
+ "interpreted-executor",
+ "log",
+ "serde",
+ "serde_json",
+ "test-case",
+ "wasm-bindgen",
+ "wgpu-executor",
+]
+
+[[package]]
 name = "graphene-core"
 version = "0.1.0"
 dependencies = [
