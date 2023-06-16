@@ -26,10 +26,7 @@ impl NodeGraphUpdateSender for UpdateLogger {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-	let colors = ColoredLevelConfig::new()
-		.debug(Color::Magenta)
-		.info(Color::Green)
-		.error(Color::Red);
+	let colors = ColoredLevelConfig::new().debug(Color::Magenta).info(Color::Green).error(Color::Red);
 	fern::Dispatch::new()
 		.chain(std::io::stdout())
 		.level_for("foodcalc", log::LevelFilter::Trace)
@@ -72,9 +69,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
 	};
+	loop {
+		let result = block_on((&executor).execute(editor_api.clone()))?;
+		println!("result: {:?}", result);
+	}
 
-	let result = block_on((&executor).execute(editor_api))?;
-	println!("result: {:?}", result);
 	Ok(())
 }
 
