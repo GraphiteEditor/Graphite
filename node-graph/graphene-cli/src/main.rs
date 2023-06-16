@@ -1,3 +1,4 @@
+use fern::colors::{Color, ColoredLevelConfig};
 use std::{collections::HashMap, error::Error};
 
 use document_legacy::{
@@ -25,6 +26,28 @@ impl NodeGraphUpdateSender for UpdateLogger {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+	let colors = ColoredLevelConfig::new()
+		.debug(Color::Magenta)
+		.info(Color::Green)
+		.error(Color::Red);
+	fern::Dispatch::new()
+		.chain(std::io::stdout())
+		.level_for("foodcalc", log::LevelFilter::Trace)
+		.level_for("sqlx", log::LevelFilter::Trace)
+		.level_for("iced", log::LevelFilter::Trace)
+		.level(log::LevelFilter::Trace)
+		.format(move |out, message, record| {
+			out.finish(format_args!(
+				"[{}]{} {}",
+				// This will color the log level only, not the whole line. Just a touch.
+				colors.color(record.level()),
+				chrono::Utc::now().format("[%Y-%m-%d %H:%M:%S]"),
+				message
+			))
+		})
+		.apply()
+		.unwrap();
+
 	let document_path = std::env::args().nth(1).expect("No document path provided");
 
 	let document_string = std::fs::read_to_string(&document_path).expect("Failed to read document");
@@ -45,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let editor_api = WasmEditorApi {
 		image_frame: None,
 		font_cache: &FontCache::default(),
-		application_io: &WasmApplicationIo::default(),
+		application_io: &block_on(WasmApplicationIo::new()),
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
 	};
@@ -92,7 +115,16 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	};
 
 	// wrap the inner network in a scope
-	let nodes = vec![begin_scope(), inner_network, end_scope()];
+	let nodes = vec![
+		begin_scope(),
+		inner_network,
+		DocumentNode {
+			name: "End Scope".to_string(),
+			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_>"),
+			inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
+			..Default::default()
+		},
+	];
 	NodeNetwork {
 		inputs: vec![0],
 		outputs: vec![NodeOutput::new(2, 0)],
@@ -135,14 +167,6 @@ fn begin_scope() -> DocumentNode {
 			..Default::default()
 		}),
 		inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-		..Default::default()
-	}
-}
-fn end_scope() -> DocumentNode {
-	DocumentNode {
-		name: "End Scope".to_string(),
-		implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_>"),
-		inputs: vec![NodeInput::value(TaggedValue::None, true), NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 		..Default::default()
 	}
 }

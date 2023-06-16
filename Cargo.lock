@@ -1749,8 +1749,10 @@ version = "0.1.0"
 dependencies = [
  "bezier-rs",
  "bitflags 1.3.2",
+ "chrono",
  "dyn-any",
  "env_logger",
+ "fern",
  "future-executor",
  "futures",
  "glam",
@@ -1829,6 +1831,7 @@ dependencies = [
  "wgpu",
  "wgpu-executor",
  "wgpu-types",
+ "winit",
  "xxhash-rust",
 ]
 

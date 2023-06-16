@@ -10,12 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["wasm", "imaginate"]
-gpu = [
-	"graphene-core/gpu",
-	"gpu-compiler-bin-wrapper",
-	"compilation-client",
-	"gpu-executor",
-]
+gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client", "gpu-executor"]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
@@ -62,6 +57,7 @@ js-sys = { version = "0.3.63", optional = true }
 wgpu-types = "0.16.0"
 wgpu = "0.16.1"
 wasm-bindgen-futures = { version = "0.4.36", optional = true }
+winit = "0.28.6"
 
 [dependencies.serde]
 version = "1.0"
