@@ -126,7 +126,12 @@ impl PropertyHolder for SelectTool {
 			})
 			.collect();
 
-		let deactivate_buttons = self.tool_data.selected_layers_count < 2;
+		let selected_layers_count = self.tool_data.selected_layers_count;
+		let deactivate_alignment = selected_layers_count < 2;
+		let deactivate_pivot = selected_layers_count < 1;
+
+		warn!("selected layers atm: {}, disabling pivot? {}", selected_layers_count, deactivate_pivot);
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(vec![layer_selection_behavior_entries])
@@ -136,12 +141,13 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::related_separator(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
+					.disabled(deactivate_pivot)
 					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
 					.widget_holder(),
 				WidgetHolder::section_separator(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
-					.disabled(deactivate_buttons)
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -152,7 +158,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignHorizontalCenter", 24)
 					.tooltip("Align Horizontal Center")
-					.disabled(deactivate_buttons)
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -163,7 +169,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignRight", 24)
 					.tooltip("Align Right")
-					.disabled(deactivate_buttons)
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -175,7 +181,7 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("AlignTop", 24)
 					.tooltip("Align Top")
-					.disabled(deactivate_buttons)
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -186,7 +192,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignVerticalCenter", 24)
 					.tooltip("Align Vertical Center")
-					.disabled(deactivate_buttons)
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -197,7 +203,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignBottom", 24)
 					.tooltip("Align Bottom")
-					.disabled(deactivate_buttons)
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -444,7 +450,8 @@ impl Fsm for SelectToolFsmState {
 				(_, DocumentIsDirty | SelectionChanged) => {
 					let selected_layers_count = document.selected_layers().count();
 					if selected_layers_count != tool_data.selected_layers_count {
-						tool_data.selected_layers_count = selected_layers_count
+						tool_data.selected_layers_count = selected_layers_count;
+						warn!("updating count...");
 					}
 
 					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
