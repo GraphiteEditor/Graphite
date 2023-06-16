@@ -126,6 +126,7 @@ impl PropertyHolder for SelectTool {
 			})
 			.collect();
 
+		let deactivate_buttons = self.tool_data.selected_layers_count < 2;
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(vec![layer_selection_behavior_entries])
@@ -140,6 +141,7 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::section_separator(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
+					.disabled(deactivate_buttons)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -150,6 +152,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignHorizontalCenter", 24)
 					.tooltip("Align Horizontal Center")
+					.disabled(deactivate_buttons)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -160,6 +163,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignRight", 24)
 					.tooltip("Align Right")
+					.disabled(deactivate_buttons)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -171,6 +175,7 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("AlignTop", 24)
 					.tooltip("Align Top")
+					.disabled(deactivate_buttons)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -181,6 +186,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignVerticalCenter", 24)
 					.tooltip("Align Vertical Center")
+					.disabled(deactivate_buttons)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -191,6 +197,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignBottom", 24)
 					.tooltip("Align Bottom")
+					.disabled(deactivate_buttons)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -318,6 +325,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	nested_selection_behavior: NestedSelectionBehavior,
+	selected_layers_count: usize,
 }
 
 impl SelectToolData {
@@ -434,6 +442,11 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
+					let selected_layers_count = document.selected_layers().count();
+					if selected_layers_count != tool_data.selected_layers_count {
+						tool_data.selected_layers_count = selected_layers_count
+					}
+
 					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some(bounds), paths) => {
