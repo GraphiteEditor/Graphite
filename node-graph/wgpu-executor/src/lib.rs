@@ -396,6 +396,20 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_surface(&self, window: SurfaceHandle<winit::window::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
 		let surface = unsafe { self.context.instance.create_surface(&window.surface) }?;
+
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+		let config = wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: surface_format,
+			width: 1920,
+			height: 1080,
+			present_mode: surface_caps.present_modes[0],
+			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
+		};
+		surface.configure(&self.context.device, &config);
+
 		let surface_id = window.surface_id;
 		Ok(SurfaceHandle { surface_id, surface })
 	}
@@ -404,6 +418,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 impl WgpuExecutor {
 	pub async fn new() -> Option<Self> {
 		let context = Context::new().await?;
+		println!("wgpu executor created");
 
 		let texture_bind_group_layout = context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			entries: &[

@@ -51,12 +51,16 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
+	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
+	#[cfg(not(target_arch = "wasm32"))]
+	type Surface = winit::window::Window;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
 	type Executor = ();
 
+	#[cfg(target_arch = "wasm32")]
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
 		let wrapper = || {
 			let document = window().expect("should have a window in this context").document().expect("window should have a document");
@@ -90,7 +94,17 @@ impl ApplicationIo for WasmApplicationIo {
 
 		wrapper().expect("should be able to set canvas in global scope")
 	}
+	#[cfg(not(target_arch = "wasm32"))]
+	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
+		let event_loop = winit::event_loop::EventLoop::new();
+		let window = winit::window::WindowBuilder::new().with_title("Graphite").build(&event_loop).unwrap();
+		SurfaceHandle {
+			surface_id: SurfaceId(window.id().into()),
+			surface: window,
+		}
+	}
 
+	#[cfg(target_arch = "wasm32")]
 	fn destroy_surface(&self, surface_id: SurfaceId) {
 		let window = window().expect("should have a window in this context");
 		let window = Object::from(window);
@@ -111,6 +125,9 @@ impl ApplicationIo for WasmApplicationIo {
 		wrapper().expect("should be able to set canvas in global scope")
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
+	fn destroy_surface(&self, surface_id: SurfaceId) {}
+
 	#[cfg(feature = "wgpu")]
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		self.gpu_executor.as_ref()
@@ -123,7 +140,7 @@ pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<HtmlCanvasElement>> {
+async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
 	editor.application_io.create_surface().into()
 }
 
