@@ -405,7 +405,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			width: 1920,
 			height: 1080,
 			present_mode: surface_caps.present_modes[0],
-			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
 		};
 		surface.configure(&self.context.device, &config);
