@@ -266,7 +266,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() {
+		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.register_properties(responses, LayoutTarget::ToolOptions);
 		}
@@ -332,6 +332,7 @@ struct SelectToolData {
 	pivot: Pivot,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
+	selected_layers_changed: bool,
 }
 
 impl SelectToolData {
@@ -449,9 +450,14 @@ impl Fsm for SelectToolFsmState {
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
 					let selected_layers_count = document.selected_layers().count();
-					if selected_layers_count != tool_data.selected_layers_count {
-						tool_data.selected_layers_count = selected_layers_count;
+					let selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
+
+					if selected_layers_changed {
 						warn!("updating count...");
+						tool_data.selected_layers_count = selected_layers_count;
+						tool_data.selected_layers_changed = true;
+					} else {
+						tool_data.selected_layers_changed = false;
 					}
 
 					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
