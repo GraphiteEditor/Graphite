@@ -450,14 +450,15 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
 		let surface = unsafe { self.context.instance.create_surface(window.surface.as_ref()) }?;
 
+		let size = window.surface.inner_size();
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		println!("{:?}", surface_caps);
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
-			width: 1920,
-			height: 1080,
+			width: size.width,
+			height: size.height,
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],

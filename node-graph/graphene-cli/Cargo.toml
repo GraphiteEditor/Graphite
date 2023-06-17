@@ -15,6 +15,7 @@ gpu = [
 ]
 default = ["wgpu"]
 wgpu = ["wgpu-executor", "gpu"]
+wayland = ["graphene-std/wayland"]
 
 
 [dependencies]
@@ -26,6 +27,7 @@ bezier-rs = { path = "../../libraries/bezier-rs" }
 glam = { version = "0.22", features = ["serde"] }
 
 # Node graph
+graphene-std = { path = "../gstd" }
 image = { version = "0.24", default-features = false, features = [
 	"bmp",
 	"png",
@@ -36,7 +38,6 @@ gpu-executor = { path = "../gpu-executor", optional = true }
 interpreted-executor = { path = "../interpreted-executor" }
 dyn-any = { path = "../../libraries/dyn-any" }
 graphene-core = { path = "../gcore" }
-graphene-std = { path = "../gstd", features = [] }
 future-executor = { path = "../future-executor", optional = true }
 
 wasm-bindgen = { version = "0.2.86", optional = true }
