@@ -310,7 +310,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(
 				concrete!(ImageFrame<Color>),
-				concrete!(SurfaceFrame),
+				concrete!(ImageFrame<Color>),
 				vec![fn_type!(graph_craft::document::DocumentNode), fn_type!(WasmEditorApi)],
 			),
 		)],

@@ -25,7 +25,8 @@ impl NodeGraphUpdateSender for UpdateLogger {
 	}
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
 	init_logging();
 
 	let document_path = std::env::args().nth(1).expect("No document path provided");
@@ -41,9 +42,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
 	};
-	for i in 0..10 {
+	for i in 0..100 {
 		//println!("executing");
-		let result = block_on((&executor).execute(editor_api.clone()))?;
+		let result = (&executor).execute(editor_api.clone()).await?;
 		//println!("result: {:?}", result);
 		std::thread::sleep(std::time::Duration::from_secs(1));
 	}
