@@ -321,13 +321,6 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, gree
 	color.to_linear_srgb()
 }
 
-#[cfg(not(target_arch = "spirv"))]
-pub use hue_shift::HueSaturationNode;
-
-// TODO: Make this work on GPU so it can be removed from the wrapper module that excludes GPU (it doesn't work because of the modulo)
-#[cfg(not(target_arch = "spirv"))]
-mod hue_shift {
-	use super::*;
 
 	#[derive(Debug)]
 	pub struct HueSaturationNode<Hue, Saturation, Lightness> {
@@ -353,7 +346,6 @@ mod hue_shift {
 
 		color.to_linear_srgb()
 	}
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct InvertRGBNode;

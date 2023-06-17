@@ -287,7 +287,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			log::warn!("No surface formats available");
 			//return Ok(());
 		}
-		let config = self.surface_config.take().unwrap();
+		let Some(config) = self.surface_config.take() else {return Ok(())};
 		let new_config = config.clone();
 		self.surface_config.replace(Some(config));
 		let output = match result {

@@ -99,7 +99,7 @@ impl DocumentNode {
 				document_node_path: self.path.unwrap_or(Vec::new()),
 			}
 		} else {
-			unreachable!("tried to resolve not flattened node on resolved node");
+			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
 		}
 	}
 
@@ -665,6 +665,7 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		}
+		log::debug!("Flattening node {:?}", &node);
 
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
@@ -706,6 +707,8 @@ impl NodeNetwork {
 		}
 
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
+			// Resolve all extract nodes in the inner network
+			inner_network.resolve_extract_nodes();
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
@@ -717,8 +720,10 @@ impl NodeNetwork {
 			assert_eq!(
 				node.inputs.len(),
 				inner_network.inputs.len(),
-				"The number of inputs to the node and the inner network must be the same {}",
-				node.name
+				"The number of inputs to the node and the inner network must be the same for {}. The node has {:?} inputs, the network has {:?} inputs.",
+				node.name,
+				node.inputs,
+				inner_network.inputs
 			);
 			// Match the document node input and the inputs of the inner network
 			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
@@ -829,21 +834,27 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
+			log::info!("extraction network: {:#?}", &self);
 			if let DocumentNodeImplementation::Extract = node.implementation {
 				assert_eq!(node.inputs.len(), 1);
+				log::debug!("Resolving extract node {:?}", node);
 				let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
-					panic!("Extract node has no input");
+					panic!("Extract node has no input, inputs: {:?}", node.inputs);
 				};
 				assert_eq!(output_index, 0);
 				// TODO: check if we can readd lambda checking
 				let mut input_node = self.nodes.remove(&node_id).unwrap();
 				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+				if let Some(input) = input_node.inputs.get_mut(0) {
+					*input = NodeInput::Network(input.ty());
+				}
+
 				for input in input_node.inputs.iter_mut() {
-					match input {
-						NodeInput::Node { .. } | NodeInput::Value { .. } => *input = NodeInput::Network(generic!(T)),
-						_ => (),
+					if let NodeInput::Node { .. } = input {
+						*input = NodeInput::Network(generic!(T))
 					}
 				}
+				log::debug!("Extract node {:?} resolved to {:?}", node, input_node);
 				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
 			}
 		}
