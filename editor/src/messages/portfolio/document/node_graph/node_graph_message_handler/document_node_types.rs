@@ -1761,7 +1761,9 @@ impl DocumentNodeType {
 
 		let inner_network = match &self.identifier {
 			NodeImplementation::DocumentNode(network) => network.clone(),
-			NodeImplementation::ProtoNode(ident) => {
+
+			NodeImplementation::ProtoNode(ident) => return DocumentNodeImplementation::Unresolved(ident.clone()),
+			/*
 				NodeNetwork {
 					inputs: (0..num_inputs).map(|_| 0).collect(),
 					outputs: vec![NodeOutput::new(0, 0)],
@@ -1779,23 +1781,10 @@ impl DocumentNodeType {
 					.collect(),
 					..Default::default()
 				}
+
 			}
-			NodeImplementation::Extract => NodeNetwork {
-				inputs: (0..num_inputs).map(|_| 0).collect(),
-				outputs: vec![NodeOutput::new(0, 0)],
-				nodes: [(
-					0,
-					DocumentNode {
-						name: "ExtractNode".to_string(),
-						implementation: DocumentNodeImplementation::Extract,
-						inputs: self.inputs.iter().map(|i| NodeInput::Network(i.default.ty())).collect(),
-						..Default::default()
-					},
-				)]
-				.into_iter()
-				.collect(),
-				..Default::default()
-			},
+			*/
+			NodeImplementation::Extract => return DocumentNodeImplementation::Extract,
 		};
 
 		DocumentNodeImplementation::Network(inner_network)
@@ -1824,9 +1813,11 @@ impl DocumentNodeType {
 }
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
-	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 
 	network.generate_node_paths(&[]);
+	network.resolve_extract_nodes();
+
+	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
 		network.flatten(id);
 	}
