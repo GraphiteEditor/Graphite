@@ -215,9 +215,10 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 		.preserve_bindings(true)
 		.release(true)
 		.spirv_metadata(SpirvMetadata::Full)
-		//.extra_arg("no-early-report-zombies")
-		//.extra_arg("no-infer-storage-classes")
-		//.extra_arg("spirt-passes=qptr")
+		.capability(spirv_builder::Capability::Float64)
+		.extra_arg("no-early-report-zombies")
+		.extra_arg("no-infer-storage-classes")
+		.extra_arg("spirt-passes=qptr")
 		.build()?;
 
 	Ok(result)

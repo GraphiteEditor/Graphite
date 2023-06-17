@@ -670,7 +670,7 @@ impl NodeNetwork {
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
 			// Skip inputs that are already value nodes
-			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()) {
+			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()) {
 				break;
 			}
 
@@ -691,7 +691,7 @@ impl NodeNetwork {
 					DocumentNode {
 						name: "Value".into(),
 						inputs: vec![NodeInput::Value { tagged_value, exposed }],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
 						path,
 						..Default::default()
 					},
@@ -844,7 +844,7 @@ impl NodeNetwork {
 				assert_eq!(output_index, 0);
 				// TODO: check if we can readd lambda checking
 				let mut input_node = self.nodes.remove(&node_id).unwrap();
-				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into());
 				if let Some(input) = input_node.inputs.get_mut(0) {
 					*input = NodeInput::Network(input.ty());
 				}
@@ -1119,7 +1119,7 @@ mod test {
 							tagged_value: TaggedValue::U32(2),
 							exposed: false,
 						}],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
 						path: Some(vec![1, 4]),
 						..Default::default()
 					},
