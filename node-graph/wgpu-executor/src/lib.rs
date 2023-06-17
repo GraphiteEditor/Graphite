@@ -456,7 +456,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			view_formats: vec![],
 		};
 		surface.configure(&self.context.device, &config);
-		self.surface_config.set(Some(config.clone()));
+		self.surface_config.set(Some(config));
 
 		let surface_id = window.surface_id;
 		Ok(SurfaceHandle { surface_id, surface })
