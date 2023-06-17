@@ -20,6 +20,8 @@ pub struct WasmApplicationIo {
 	ids: RefCell<u64>,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
+	#[cfg(not(target_arch = "wasm32"))]
+	windows: RefCell<Vec<Arc<winit::window::Window>>>,
 }
 
 impl WasmApplicationIo {
@@ -28,6 +30,8 @@ impl WasmApplicationIo {
 			ids: RefCell::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: WgpuExecutor::new().await,
+			#[cfg(not(target_arch = "wasm32"))]
+			windows: RefCell::new(Vec::new()),
 		}
 	}
 }
@@ -54,7 +58,7 @@ impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
-	type Surface = winit::window::Window;
+	type Surface = Arc<winit::window::Window>;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
@@ -96,12 +100,20 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
+		#[cfg(feature = "wayland")]
+		use winit::platform::wayland::EventLoopBuilderExtWayland;
+
+		#[cfg(feature = "wayland")]
+		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build();
+		#[cfg(not(feature = "wayland"))]
 		let event_loop = winit::event_loop::EventLoop::new();
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
 			.with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
 			.build(&event_loop)
 			.unwrap();
+		let window = Arc::new(window);
+		self.windows.borrow_mut().push(window.clone());
 		SurfaceHandle {
 			surface_id: SurfaceId(window.id().into()),
 			surface: window,

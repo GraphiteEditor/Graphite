@@ -12,7 +12,9 @@ pub struct Context {
 impl Context {
 	pub async fn new() -> Option<Self> {
 		// Instantiates instance of WebGPU
-		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+		let mut instance_descriptor = wgpu::InstanceDescriptor::default();
+		instance_descriptor.backends = wgpu::Backends::VULKAN | wgpu::Backends::BROWSER_WEBGPU;
+		let instance = wgpu::Instance::new(instance_descriptor);
 
 		// `request_adapter` instantiates the general connection to the GPU
 		let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await?;

@@ -1136,7 +1136,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Gpu",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1152,12 +1152,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 							NodeInput::node(0, 0),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]

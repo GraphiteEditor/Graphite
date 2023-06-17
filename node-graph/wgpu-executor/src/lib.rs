@@ -15,7 +15,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceError, Texture, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
@@ -104,7 +104,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	#[cfg(target_arch = "wasm32")]
 	type Window = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
-	type Window = winit::window::Window;
+	type Window = Arc<winit::window::Window>;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -265,7 +265,59 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<wgpu::Surface>>) -> Result<()> {
 		let texture = texture.texture().expect("Expected texture input");
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let output = canvas.as_ref().surface.get_current_texture()?;
+		let result = canvas.as_ref().surface.get_current_texture();
+		let output = match result {
+			Err(SurfaceError::Timeout) => {
+				log::warn!("Timeout when getting current texture");
+				return Ok(());
+			}
+			Err(SurfaceError::Lost) => {
+				log::warn!("Surface lost");
+
+				let surface = &canvas.as_ref().surface;
+				let surface_caps = surface.get_capabilities(&self.context.adapter);
+				println!("{:?}", surface_caps);
+				if surface_caps.formats.is_empty() {
+					log::warn!("No surface formats available");
+					//return Ok(());
+				}
+				let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+				let config = wgpu::SurfaceConfiguration {
+					usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+					format: surface_format,
+					width: 1920,
+					height: 1080,
+					present_mode: wgpu::PresentMode::Fifo,
+					alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+					view_formats: vec![],
+				};
+				surface.configure(&self.context.device, &config);
+				return Ok(());
+			}
+			Err(SurfaceError::OutOfMemory) => {
+				log::warn!("Out of memory");
+				return Ok(());
+			}
+			Err(SurfaceError::Outdated) => {
+				log::warn!("Surface outdated");
+				let surface = &canvas.as_ref().surface;
+				let surface_caps = surface.get_capabilities(&self.context.adapter);
+				println!("{:?}", surface_caps);
+				let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+				let config = wgpu::SurfaceConfiguration {
+					usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+					format: surface_format,
+					width: 1920,
+					height: 1080,
+					present_mode: surface_caps.present_modes[0],
+					alpha_mode: surface_caps.alpha_modes[0],
+					view_formats: vec![],
+				};
+				surface.configure(&self.context.device, &config);
+				return Ok(());
+			}
+			Ok(surface) => surface,
+		};
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
 			format: Some(wgpu::TextureFormat::Bgra8Unorm),
 			..Default::default()
@@ -310,6 +362,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 
 		let encoder = encoder.finish();
 		self.context.queue.submit(Some(encoder));
+		log::trace!("Submitted render pass");
 		output.present();
 
 		Ok(())
@@ -394,10 +447,11 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
-	fn create_surface(&self, window: SurfaceHandle<winit::window::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
-		let surface = unsafe { self.context.instance.create_surface(&window.surface) }?;
+	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
+		let surface = unsafe { self.context.instance.create_surface(window.surface.as_ref()) }?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		println!("{:?}", surface_caps);
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -406,7 +460,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			height: 1080,
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: surface_caps.alpha_modes[0],
-			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
+			view_formats: vec![],
 		};
 		surface.configure(&self.context.device, &config);
 

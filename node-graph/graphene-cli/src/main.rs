@@ -26,12 +26,37 @@ impl NodeGraphUpdateSender for UpdateLogger {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+	init_logging();
+
+	let document_path = std::env::args().nth(1).expect("No document path provided");
+
+	let document_string = std::fs::read_to_string(&document_path).expect("Failed to read document");
+
+	let executor = create_executor(document_string)?;
+	println!("creating gpu context",);
+	let editor_api = WasmEditorApi {
+		image_frame: None,
+		font_cache: &FontCache::default(),
+		application_io: &block_on(WasmApplicationIo::new()),
+		node_graph_message_sender: &UpdateLogger {},
+		imaginate_preferences: &ImaginatePreferences::default(),
+	};
+	for i in 0..10 {
+		//println!("executing");
+		let result = block_on((&executor).execute(editor_api.clone()))?;
+		//println!("result: {:?}", result);
+		std::thread::sleep(std::time::Duration::from_secs(1));
+	}
+
+	Ok(())
+}
+
+fn init_logging() {
 	let colors = ColoredLevelConfig::new().debug(Color::Magenta).info(Color::Green).error(Color::Red);
 	fern::Dispatch::new()
 		.chain(std::io::stdout())
-		.level_for("foodcalc", log::LevelFilter::Trace)
-		.level_for("sqlx", log::LevelFilter::Trace)
 		.level_for("iced", log::LevelFilter::Trace)
+		.level_for("wgpu", log::LevelFilter::Debug)
 		.level(log::LevelFilter::Trace)
 		.format(move |out, message, record| {
 			out.finish(format_args!(
@@ -44,37 +69,38 @@ fn main() -> Result<(), Box<dyn Error>> {
 		})
 		.apply()
 		.unwrap();
+}
 
-	let document_path = std::env::args().nth(1).expect("No document path provided");
-
-	let document_string = std::fs::read_to_string(&document_path).expect("Failed to read document");
-
+fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
 	let document = serde_json::from_value::<Document>(document["document_legacy"].clone()).expect("Failed to parse document");
-
 	let Some(LayerDataType::Layer(ref node_graph)) = document.root.iter().find(|layer| matches!(layer.data, LayerDataType::Layer(_))).map(|x|&x.data) else { panic!("failed to extract node graph from docmuent") };
 	let network = &node_graph.network;
-
 	let wrapped_network = wrap_network_in_scope(network.clone());
-
 	let compiler = Compiler {};
 	let protograph = compiler.compile_single(wrapped_network, true)?;
-
 	let mut executor = block_on(DynamicExecutor::new(protograph))?;
+	Ok(executor)
+}
 
-	let editor_api = WasmEditorApi {
-		image_frame: None,
-		font_cache: &FontCache::default(),
-		application_io: &block_on(WasmApplicationIo::new()),
-		node_graph_message_sender: &UpdateLogger {},
-		imaginate_preferences: &ImaginatePreferences::default(),
-	};
-	loop {
-		let result = block_on((&executor).execute(editor_api.clone()))?;
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn gpu_surface() {
+		let document_string = include_str!("../test_files/gpu_surface.graphite");
+		let executor = create_executor(document_string.to_string()).unwrap();
+		let editor_api = WasmEditorApi {
+			image_frame: None,
+			font_cache: &FontCache::default(),
+			application_io: &block_on(WasmApplicationIo::new()),
+			node_graph_message_sender: &UpdateLogger {},
+			imaginate_preferences: &ImaginatePreferences::default(),
+		};
+		let result = block_on((&executor).execute(editor_api.clone())).unwrap();
 		println!("result: {:?}", result);
 	}
-
-	Ok(())
 }
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
