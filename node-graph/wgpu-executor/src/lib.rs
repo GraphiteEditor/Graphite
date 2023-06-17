@@ -23,7 +23,7 @@ use web_sys::HtmlCanvasElement;
 
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
-	context: Context,
+	pub context: Context,
 	render_configuration: RenderConfiguration,
 	surface_config: Cell<Option<SurfaceConfiguration>>,
 }
@@ -363,10 +363,6 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()> {
 		self.context.queue.submit(Some(encoder.0));
 
-		// Poll the device in a blocking manner so that our future resolves.
-		// In an actual application, `device.poll(...)` should
-		// be called in an event loop or on another thread.
-		self.context.device.poll(wgpu::Maintain::Wait);
 		Ok(())
 	}
 

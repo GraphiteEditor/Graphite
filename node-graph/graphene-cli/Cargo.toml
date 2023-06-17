@@ -6,9 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu", "wgpu-executor", "gpu-executor"]
+gpu = [
+	"interpreted-executor/gpu",
+	"graphene-std/gpu",
+	"graphene-core/gpu",
+	"wgpu-executor",
+	"gpu-executor",
+]
 default = ["wgpu"]
-wgpu = ["wgpu-executor", "gpu"]
+wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
 wayland = ["graphene-std/wayland"]
 
 
@@ -39,6 +45,7 @@ futures = "0.3.28"
 fern = { version = "0.6.2", features = ["colored"] }
 chrono = "0.4.26"
 tokio = { version = "1.28.2", features = ["macros", "rt"] }
+wgpu = "0.16.1"
 
 [dependencies.document-legacy]
 path = "../../document-legacy"

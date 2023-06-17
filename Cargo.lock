@@ -1769,6 +1769,7 @@ dependencies = [
  "test-case",
  "tokio",
  "wasm-bindgen",
+ "wgpu",
  "wgpu-executor",
 ]
 

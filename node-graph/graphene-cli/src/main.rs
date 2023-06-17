@@ -13,7 +13,12 @@ use graph_craft::{
 	imaginate_input::ImaginatePreferences,
 	NodeIdentifier, Type, TypeDescriptor,
 };
-use graphene_core::{application_io::NodeGraphUpdateSender, raster::ImageFrame, text::FontCache, Cow};
+use graphene_core::{
+	application_io::{self, ApplicationIo, NodeGraphUpdateSender},
+	raster::ImageFrame,
+	text::FontCache,
+	Cow,
+};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
@@ -35,14 +40,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let executor = create_executor(document_string)?;
 	println!("creating gpu context",);
+	let application_io = &block_on(WasmApplicationIo::new());
+
+	let device = application_io.gpu_executor().unwrap().context.device.clone();
+	std::thread::spawn(move || loop {
+		std::thread::sleep(std::time::Duration::from_millis(1));
+		device.poll(wgpu::Maintain::Poll);
+	});
+
 	let editor_api = WasmEditorApi {
 		image_frame: None,
 		font_cache: &FontCache::default(),
-		application_io: &block_on(WasmApplicationIo::new()),
+		application_io,
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
 	};
-	for i in 0..100 {
+
+	loop {
 		//println!("executing");
 		let result = (&executor).execute(editor_api.clone()).await?;
 		//println!("result: {:?}", result);
