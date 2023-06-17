@@ -321,31 +321,30 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, gree
 	color.to_linear_srgb()
 }
 
+#[derive(Debug)]
+pub struct HueSaturationNode<Hue, Saturation, Lightness> {
+	hue_shift: Hue,
+	saturation_shift: Saturation,
+	lightness_shift: Lightness,
+}
 
-	#[derive(Debug)]
-	pub struct HueSaturationNode<Hue, Saturation, Lightness> {
-		hue_shift: Hue,
-		saturation_shift: Saturation,
-		lightness_shift: Lightness,
-	}
+#[node_macro::node_fn(HueSaturationNode)]
+fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
+	let color = color.to_gamma_srgb();
 
-	#[node_macro::node_fn(HueSaturationNode)]
-	fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
-		let color = color.to_gamma_srgb();
+	let [hue, saturation, lightness, alpha] = color.to_hsla();
 
-		let [hue, saturation, lightness, alpha] = color.to_hsla();
+	let color = Color::from_hsla(
+		(hue + hue_shift as f32 / 360.) % 1.,
+		// TODO: Improve the way saturation works (it's slightly off)
+		(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+		// TODO: Fix the way lightness works (it's very off)
+		(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
+		alpha,
+	);
 
-		let color = Color::from_hsla(
-			(hue + hue_shift as f32 / 360.) % 1.,
-			// TODO: Improve the way saturation works (it's slightly off)
-			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
-			// TODO: Fix the way lightness works (it's very off)
-			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
-			alpha,
-		);
-
-		color.to_linear_srgb()
-	}
+	color.to_linear_srgb()
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct InvertRGBNode;
