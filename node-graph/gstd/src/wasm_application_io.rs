@@ -109,7 +109,7 @@ impl ApplicationIo for WasmApplicationIo {
 		let event_loop = winit::event_loop::EventLoop::new();
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
-			.with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
+			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
 			.build(&event_loop)
 			.unwrap();
 		let window = Arc::new(window);
