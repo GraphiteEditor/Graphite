@@ -130,8 +130,6 @@ impl PropertyHolder for SelectTool {
 		let deactivate_alignment = selected_layers_count < 2;
 		let deactivate_pivot = selected_layers_count < 1;
 
-		warn!("selected layers atm: {}, disabling pivot? {}", selected_layers_count, deactivate_pivot);
-
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(vec![layer_selection_behavior_entries])
@@ -269,6 +267,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.tool_data.selected_layers_changed = false;
 		}
 	}
 
@@ -453,7 +452,6 @@ impl Fsm for SelectToolFsmState {
 					let selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 
 					if selected_layers_changed {
-						warn!("updating count...");
 						tool_data.selected_layers_count = selected_layers_count;
 						tool_data.selected_layers_changed = true;
 					} else {
