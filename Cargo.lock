@@ -3116,6 +3116,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nvtx"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "358dc398b07348e7541bf065ee313e8215a7832e07fab385f51683dc3be83ec7"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5987,6 +5996,7 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
+ "nvtx",
  "serde",
  "spirv",
  "web-sys",

@@ -16,6 +16,7 @@ gpu = [
 default = ["wgpu"]
 wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
 wayland = ["graphene-std/wayland"]
+profiling = ["wgpu-executor/profiling"]
 
 
 [dependencies]
