@@ -252,7 +252,9 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
+			cpass.push_debug_group("compute shader");
 			cpass.dispatch_workgroups(dimensions.0, dimensions.1, dimensions.2); // Number of cells to run, the (x,y,z) size of item being processed
+			cpass.pop_debug_group();
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
@@ -350,10 +352,15 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			render_pass.set_vertex_buffer(0, self.render_configuration.vertex_buffer.slice(..));
 			render_pass.set_index_buffer(self.render_configuration.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 			render_pass.draw_indexed(0..self.render_configuration.num_indices, 0, 0..1);
+			render_pass.insert_debug_marker("render node network");
 		}
 
 		let encoder = encoder.finish();
+		#[cfg(feature = "profiling")]
+		nvtx::range_push!("render");
 		self.context.queue.submit(Some(encoder));
+		#[cfg(feature = "profiling")]
+		nvtx::range_pop!();
 		log::trace!("Submitted render pass");
 		output.present();
 
