@@ -520,6 +520,7 @@ where
 #[node_macro::node_fn(RenderTextureNode)]
 async fn render_texture_node<'a: 'input, E: 'a + GpuExecutor>(image: ShaderInputFrame<E>, surface: Arc<SurfaceHandle<E::Surface>>, executor: &'a E) -> SurfaceFrame {
 	let surface_id = surface.surface_id;
+	log::trace!("rendering to surface {:?}", surface_id);
 
 	executor.create_render_pass(image.shader_input, surface).unwrap();
 

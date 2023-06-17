@@ -6,7 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu", "wgpu-executor", "gpu-executor"]
+gpu = [
+	"interpreted-executor/gpu",
+	"graphene-std/gpu",
+	"graphene-core/gpu",
+	"wgpu-executor",
+	"gpu-executor",
+]
 default = ["wgpu"]
 wgpu = ["wgpu-executor", "gpu"]
 
@@ -30,7 +36,7 @@ gpu-executor = { path = "../gpu-executor", optional = true }
 interpreted-executor = { path = "../interpreted-executor" }
 dyn-any = { path = "../../libraries/dyn-any" }
 graphene-core = { path = "../gcore" }
-graphene-std = { path = "../gstd" }
+graphene-std = { path = "../gstd", features = [] }
 future-executor = { path = "../future-executor", optional = true }
 
 wasm-bindgen = { version = "0.2.86", optional = true }
