@@ -597,7 +597,6 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "glam",
- "js-sys",
  "kurbo",
  "log",
  "node-macro",
@@ -610,7 +609,6 @@ dependencies = [
  "specta",
  "spin",
  "spirv-std",
- "wasm-bindgen",
  "web-sys",
 ]
 
