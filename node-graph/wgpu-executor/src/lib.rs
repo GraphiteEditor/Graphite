@@ -11,19 +11,30 @@ use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 
+use std::cell::Cell;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceError, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
 
-#[derive(Debug, dyn_any::DynAny)]
+#[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
 	context: Context,
 	render_configuration: RenderConfiguration,
+	surface_config: Cell<Option<SurfaceConfiguration>>,
+}
+
+impl std::fmt::Debug for WgpuExecutor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("WgpuExecutor")
+			.field("context", &self.context)
+			.field("render_configuration", &self.render_configuration)
+			.finish()
+	}
 }
 
 impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &'a WgpuExecutor {
@@ -266,6 +277,17 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		let texture = texture.texture().expect("Expected texture input");
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let result = canvas.as_ref().surface.get_current_texture();
+
+		let surface = &canvas.as_ref().surface;
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		println!("{:?}", surface_caps);
+		if surface_caps.formats.is_empty() {
+			log::warn!("No surface formats available");
+			//return Ok(());
+		}
+		let config = self.surface_config.take().unwrap();
+		let new_config = config.clone();
+		self.surface_config.replace(Some(config));
 		let output = match result {
 			Err(SurfaceError::Timeout) => {
 				log::warn!("Timeout when getting current texture");
@@ -274,24 +296,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			Err(SurfaceError::Lost) => {
 				log::warn!("Surface lost");
 
-				let surface = &canvas.as_ref().surface;
-				let surface_caps = surface.get_capabilities(&self.context.adapter);
-				println!("{:?}", surface_caps);
-				if surface_caps.formats.is_empty() {
-					log::warn!("No surface formats available");
-					//return Ok(());
-				}
-				let surface_format = wgpu::TextureFormat::Bgra8Unorm;
-				let config = wgpu::SurfaceConfiguration {
-					usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-					format: surface_format,
-					width: 1920,
-					height: 1080,
-					present_mode: wgpu::PresentMode::Fifo,
-					alpha_mode: wgpu::CompositeAlphaMode::Opaque,
-					view_formats: vec![],
-				};
-				surface.configure(&self.context.device, &config);
+				surface.configure(&self.context.device, &new_config);
 				return Ok(());
 			}
 			Err(SurfaceError::OutOfMemory) => {
@@ -300,20 +305,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			}
 			Err(SurfaceError::Outdated) => {
 				log::warn!("Surface outdated");
-				let surface = &canvas.as_ref().surface;
-				let surface_caps = surface.get_capabilities(&self.context.adapter);
-				println!("{:?}", surface_caps);
-				let surface_format = wgpu::TextureFormat::Bgra8Unorm;
-				let config = wgpu::SurfaceConfiguration {
-					usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-					format: surface_format,
-					width: 1920,
-					height: 1080,
-					present_mode: surface_caps.present_modes[0],
-					alpha_mode: surface_caps.alpha_modes[0],
-					view_formats: vec![],
-				};
-				surface.configure(&self.context.device, &config);
+				surface.configure(&self.context.device, &new_config);
 				return Ok(());
 			}
 			Ok(surface) => surface,
@@ -464,6 +456,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			view_formats: vec![],
 		};
 		surface.configure(&self.context.device, &config);
+		self.surface_config.set(Some(config.clone()));
 
 		let surface_id = window.surface_id;
 		Ok(SurfaceHandle { surface_id, surface })
@@ -582,7 +575,11 @@ impl WgpuExecutor {
 			sampler,
 		};
 
-		Some(Self { context, render_configuration })
+		Some(Self {
+			context,
+			render_configuration,
+			surface_config: Cell::new(None),
+		})
 	}
 }
 
