@@ -121,7 +121,7 @@ impl SpirVCompiler for GpuCompiler {
 
 pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result<String> {
 	fn nid(id: &u64) -> String {
-		format!("n{id}")
+		format!("n{id:0x}")
 	}
 
 	dbg!(&io);
@@ -216,9 +216,10 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 		.release(true)
 		.spirv_metadata(SpirvMetadata::Full)
 		.capability(spirv_builder::Capability::Float64)
-		.extra_arg("no-early-report-zombies")
-		.extra_arg("no-infer-storage-classes")
-		.extra_arg("spirt-passes=qptr")
+		//.extra_arg("no-early-report-zombies")
+		//.extra_arg("no-infer-storage-classes")
+		//.extra_arg("spirt-passes=qptr,reduce")
+		.extra_arg("spirt-passes=reduce")
 		.build()?;
 
 	Ok(result)

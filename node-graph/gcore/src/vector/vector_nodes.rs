@@ -53,21 +53,21 @@ pub struct SetStrokeNode<Color, Weight, DashLengths, DashOffset, LineCap, LineJo
 fn set_vector_data_stroke(
 	mut vector_data: VectorData,
 	color: Option<Color>,
-	weight: f64,
+	weight: f32,
 	dash_lengths: Vec<f32>,
-	dash_offset: f64,
+	dash_offset: f32,
 	line_cap: super::style::LineCap,
 	line_join: super::style::LineJoin,
-	miter_limit: f64,
+	miter_limit: f32,
 ) -> VectorData {
 	vector_data.style.set_stroke(Stroke {
 		color,
-		weight,
+		weight: weight as f64,
 		dash_lengths,
-		dash_offset,
+		dash_offset: dash_offset as f64,
 		line_cap,
 		line_join,
-		line_join_miter_limit: miter_limit,
+		line_join_miter_limit: miter_limit as f64,
 	});
 	vector_data
 }

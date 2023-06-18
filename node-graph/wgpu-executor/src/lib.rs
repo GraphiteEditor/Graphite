@@ -118,10 +118,18 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	type Window = Arc<winit::window::Window>;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
+		#[cfg(not(feature = "passthrough"))]
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
 		});
+		#[cfg(feature = "passthrough")]
+		let shader_module = unsafe {
+			self.context.device.create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
+				label: Some(shader.name),
+				source: shader.source,
+			})
+		};
 		Ok(ShaderModuleWrapper(shader_module))
 	}
 
