@@ -35,7 +35,6 @@ async fn main() {
 }
 
 async fn post_compile_spirv(State(state): State<Arc<AppState>>, Json(compile_request): Json<CompileRequest>) -> Result<Vec<u8>, StatusCode> {
-	println!("compile request: {:?}", compile_request);
 	if let Some(result) = state.cache.read().unwrap().get(&compile_request) {
 		return result.clone();
 	}
@@ -45,9 +44,6 @@ async fn post_compile_spirv(State(state): State<Arc<AppState>>, Json(compile_req
 		eprintln!("compilation failed: {}", e);
 		StatusCode::INTERNAL_SERVER_ERROR
 	});
-	if result.is_err() {
-		return result;
-	}
 	state.cache.write().unwrap().insert(compile_request, result.clone());
 	result
 }
