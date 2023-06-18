@@ -654,10 +654,13 @@ impl NodeNetwork {
 
 	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let (id, mut node) = self
+		self.resolve_extract_nodes();
+		let Some((id, mut node)) = self
 			.nodes
-			.remove_entry(&node)
-			.unwrap_or_else(|| panic!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self));
+			.remove_entry(&node) else {
+				warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
+				return;
+			};
 
 		if self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
@@ -665,7 +668,7 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		}
-		log::debug!("Flattening node {:?}", &node);
+		log::debug!("Flattening node {:?}", &node.name);
 
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
@@ -846,7 +849,10 @@ impl NodeNetwork {
 				let mut input_node = self.nodes.remove(&node_id).unwrap();
 				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into());
 				if let Some(input) = input_node.inputs.get_mut(0) {
-					*input = NodeInput::Network(input.ty());
+					*input = match &input {
+						NodeInput::Node { .. } => NodeInput::Network(generic!(T)),
+						ni => NodeInput::Network(ni.ty()),
+					};
 				}
 
 				for input in input_node.inputs.iter_mut() {

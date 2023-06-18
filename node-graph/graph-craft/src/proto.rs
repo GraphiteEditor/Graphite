@@ -181,7 +181,7 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
 			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}

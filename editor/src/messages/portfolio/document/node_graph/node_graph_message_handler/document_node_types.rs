@@ -490,7 +490,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Second", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("BlendMode", TaggedValue::BlendMode(BlendMode::Normal), false),
-				DocumentInputType::value("Opacity", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::blend_properties,
@@ -508,27 +508,27 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "Shadows",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(0.), false),
+					default: NodeInput::value(TaggedValue::F32(0.), false),
 				},
 				DocumentInputType {
 					name: "Midtones",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F32(50.), false),
 				},
 				DocumentInputType {
 					name: "Highlights",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(100.), false),
+					default: NodeInput::value(TaggedValue::F32(100.), false),
 				},
 				DocumentInputType {
 					name: "Output Minimums",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(0.), false),
+					default: NodeInput::value(TaggedValue::F32(0.), false),
 				},
 				DocumentInputType {
 					name: "Output Maximums",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(100.), false),
+					default: NodeInput::value(TaggedValue::F32(100.), false),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -552,32 +552,32 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "Reds",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(40.), false),
+					default: NodeInput::value(TaggedValue::F32(40.), false),
 				},
 				DocumentInputType {
 					name: "Yellows",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(60.), false),
+					default: NodeInput::value(TaggedValue::F32(60.), false),
 				},
 				DocumentInputType {
 					name: "Greens",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(40.), false),
+					default: NodeInput::value(TaggedValue::F32(40.), false),
 				},
 				DocumentInputType {
 					name: "Cyans",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(60.), false),
+					default: NodeInput::value(TaggedValue::F32(60.), false),
 				},
 				DocumentInputType {
 					name: "Blues",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(20.), false),
+					default: NodeInput::value(TaggedValue::F32(20.), false),
 				},
 				DocumentInputType {
 					name: "Magentas",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(80.), false),
+					default: NodeInput::value(TaggedValue::F32(80.), false),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -1361,9 +1361,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::HueSaturationNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Hue Shift", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Saturation Shift", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Lightness Shift", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Hue Shift", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Saturation Shift", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Lightness Shift", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_hsl_properties,
@@ -1374,8 +1374,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Brightness", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Contrast", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Brightness", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Contrast", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Use Legacy", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -1387,8 +1387,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Min Luminance", TaggedValue::F64(50.), false),
-				DocumentInputType::value("Max Luminance", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Min Luminance", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Max Luminance", TaggedValue::F32(100.), false),
 				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -1400,7 +1400,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::VibranceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Vibrance", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Vibrance", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_vibrance_properties,
@@ -1414,25 +1414,25 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				// Monochrome toggle
 				DocumentInputType::value("Monochrome", TaggedValue::Bool(false), false),
 				// Monochrome
-				DocumentInputType::value("Red", TaggedValue::F64(40.), false),
-				DocumentInputType::value("Green", TaggedValue::F64(40.), false),
-				DocumentInputType::value("Blue", TaggedValue::F64(20.), false),
-				DocumentInputType::value("Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Red", TaggedValue::F32(40.), false),
+				DocumentInputType::value("Green", TaggedValue::F32(40.), false),
+				DocumentInputType::value("Blue", TaggedValue::F32(20.), false),
+				DocumentInputType::value("Constant", TaggedValue::F32(0.), false),
 				// Red output channel
-				DocumentInputType::value("(Red) Red", TaggedValue::F64(100.), false),
-				DocumentInputType::value("(Red) Green", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Red) Blue", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Red) Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Red) Red", TaggedValue::F32(100.), false),
+				DocumentInputType::value("(Red) Green", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Red) Blue", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Red) Constant", TaggedValue::F32(0.), false),
 				// Green output channel
-				DocumentInputType::value("(Green) Red", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Green) Green", TaggedValue::F64(100.), false),
-				DocumentInputType::value("(Green) Blue", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Green) Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Green) Red", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Green) Green", TaggedValue::F32(100.), false),
+				DocumentInputType::value("(Green) Blue", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Green) Constant", TaggedValue::F32(0.), false),
 				// Blue output channel
-				DocumentInputType::value("(Blue) Red", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blue) Green", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blue) Blue", TaggedValue::F64(100.), false),
-				DocumentInputType::value("(Blue) Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blue) Red", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blue) Green", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blue) Blue", TaggedValue::F32(100.), false),
+				DocumentInputType::value("(Blue) Constant", TaggedValue::F32(0.), false),
 				// Display-only properties (not used within the node)
 				DocumentInputType::value("Output Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
@@ -1450,50 +1450,50 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				// Mode
 				DocumentInputType::value("Mode", TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), false),
 				// Reds
-				DocumentInputType::value("(Reds) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Reds) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Reds) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Reds) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Reds) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Reds) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Reds) Black", TaggedValue::F32(0.), false),
 				// Yellows
-				DocumentInputType::value("(Yellows) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Yellows) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Yellows) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Yellows) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Yellows) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Yellows) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Yellows) Black", TaggedValue::F32(0.), false),
 				// Greens
-				DocumentInputType::value("(Greens) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Greens) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Greens) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Greens) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Greens) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Greens) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Greens) Black", TaggedValue::F32(0.), false),
 				// Cyans
-				DocumentInputType::value("(Cyans) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Cyans) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Cyans) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Cyans) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Cyans) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Cyans) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Cyans) Black", TaggedValue::F32(0.), false),
 				// Blues
-				DocumentInputType::value("(Blues) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blues) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blues) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blues) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blues) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blues) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blues) Black", TaggedValue::F32(0.), false),
 				// Magentas
-				DocumentInputType::value("(Magentas) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Magentas) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Magentas) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Magentas) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Magentas) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Magentas) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Magentas) Black", TaggedValue::F32(0.), false),
 				// Whites
-				DocumentInputType::value("(Whites) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Whites) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Whites) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Whites) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Whites) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Whites) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Whites) Black", TaggedValue::F32(0.), false),
 				// Neutrals
-				DocumentInputType::value("(Neutrals) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Neutrals) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Neutrals) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Neutrals) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Neutrals) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Neutrals) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Neutrals) Black", TaggedValue::F32(0.), false),
 				// Blacks
-				DocumentInputType::value("(Blacks) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blacks) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blacks) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blacks) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blacks) Black", TaggedValue::F32(0.), false),
 				// Display-only properties (not used within the node)
 				DocumentInputType::value("Colors", TaggedValue::SelectiveColorChoice(SelectiveColorChoice::Reds), false),
 			],
@@ -1506,7 +1506,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Factor", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::multiply_opacity,
@@ -1517,7 +1517,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Value", TaggedValue::F64(4.), false),
+				DocumentInputType::value("Value", TaggedValue::F32(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::posterize_properties,
@@ -1528,9 +1528,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExposureNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Exposure", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Offset", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Gamma Correction", TaggedValue::F64(1.), false),
+				DocumentInputType::value("Exposure", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Offset", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Gamma Correction", TaggedValue::F32(1.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::exposure_properties,
@@ -1540,8 +1540,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("Input", TaggedValue::F64(0.), true),
-				DocumentInputType::value("Addend", TaggedValue::F64(0.), true),
+				DocumentInputType::value("Input", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Addend", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::add_properties,
@@ -1574,7 +1574,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("hello world".to_string()), false),
 				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
-				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
+				DocumentInputType::value("Size", TaggedValue::F32(24.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_section_font,
@@ -1586,7 +1586,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
@@ -1629,12 +1629,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
-				DocumentInputType::value("Weight", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Weight", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Dash Lengths", TaggedValue::VecF32(Vec::new()), false),
-				DocumentInputType::value("Dash Offset", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Dash Offset", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Line Cap", TaggedValue::LineCap(graphene_core::vector::style::LineCap::Butt), false),
 				DocumentInputType::value("Line Join", TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter), false),
-				DocumentInputType::value("Miter Limit", TaggedValue::F64(4.), false),
+				DocumentInputType::value("Miter Limit", TaggedValue::F32(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::stroke_properties,
@@ -1721,18 +1721,18 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 			default: NodeInput::Network(concrete!(WasmEditorApi)),
 		},
 		DocumentInputType::value("Controller", TaggedValue::ImaginateController(Default::default()), false),
-		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
+		DocumentInputType::value("Seed", TaggedValue::F32(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::value("Samples", TaggedValue::U32(30), false),
 		DocumentInputType::value("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-		DocumentInputType::value("Prompt Guidance", TaggedValue::F64(7.5), false),
+		DocumentInputType::value("Prompt Guidance", TaggedValue::F32(7.5), false),
 		DocumentInputType::value("Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::value("Negative Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::value("Adapt Input Image", TaggedValue::Bool(false), false),
-		DocumentInputType::value("Image Creativity", TaggedValue::F64(66.), false),
+		DocumentInputType::value("Image Creativity", TaggedValue::F32(66.), false),
 		DocumentInputType::value("Masking Layer", TaggedValue::LayerPath(None), false),
 		DocumentInputType::value("Inpaint", TaggedValue::Bool(true), false),
-		DocumentInputType::value("Mask Blur", TaggedValue::F64(4.), false),
+		DocumentInputType::value("Mask Blur", TaggedValue::F32(4.), false),
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::value("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Tiling", TaggedValue::Bool(false), false),
@@ -1813,9 +1813,7 @@ impl DocumentNodeType {
 }
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
-
 	network.generate_node_paths(&[]);
-	network.resolve_extract_nodes();
 
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
@@ -1912,7 +1910,7 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network
 }
 
-pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
+pub fn new_text_network(text: String, font: Font, size: f32) -> NodeNetwork {
 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -1929,7 +1927,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 				NodeInput::Network(concrete!(WasmEditorApi)),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F64(size), false),
+				NodeInput::value(TaggedValue::F32(size), false),
 			],
 			DocumentNodeMetadata::position((0, 4)),
 		),

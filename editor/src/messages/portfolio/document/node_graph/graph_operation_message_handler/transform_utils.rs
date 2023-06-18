@@ -36,7 +36,7 @@ pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
 	let (scale, angle, translation, shear) = compute_scale_angle_translation_shear(transform);
 
 	inputs[1] = NodeInput::value(TaggedValue::DVec2(translation), false);
-	inputs[2] = NodeInput::value(TaggedValue::F64(angle), false);
+	inputs[2] = NodeInput::value(TaggedValue::F32(angle as f32), false);
 	inputs[3] = NodeInput::value(TaggedValue::DVec2(scale), false);
 	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
 }
@@ -87,7 +87,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	};
 
 	let angle = if let NodeInput::Value {
-		tagged_value: TaggedValue::F64(angle),
+		tagged_value: TaggedValue::F32(angle),
 		..
 	} = inputs[2]
 	{
@@ -116,7 +116,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 		DVec2::ZERO
 	};
 
-	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
+	DAffine2::from_scale_angle_translation(scale, angle as f64, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
 /// Extract the current normalized pivot from the layer

@@ -319,7 +319,7 @@ impl TextToolData {
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size);
+			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size as f32);
 
 			responses.add(Operation::AddFrame {
 				path: self.layer_path.clone(),

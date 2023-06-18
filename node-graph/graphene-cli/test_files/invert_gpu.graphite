@@ -601,7 +601,7 @@
                                                     {
                                                         "Value": {
                                                             "tagged_value": {
-                                                                "F64": 0.0
+                                                                "F32": 0.0
                                                             },
                                                             "exposed": false
                                                         }

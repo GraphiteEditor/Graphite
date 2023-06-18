@@ -229,7 +229,7 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
-fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
+fn levels_node(color: Color, input_start: f32, input_mid: f32, input_end: f32, output_start: f32, output_end: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
 	// Input Range (Range: 0-1)
@@ -286,7 +286,7 @@ pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
 #[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
+fn grayscale_color_node(color: Color, tint: Color, reds: f32, yellows: f32, greens: f32, cyans: f32, blues: f32, magentas: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let reds = reds as f32 / 100.;
@@ -329,7 +329,7 @@ pub struct HueSaturationNode<Hue, Saturation, Lightness> {
 }
 
 #[node_macro::node_fn(HueSaturationNode)]
-fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
+fn hue_shift_color_node(color: Color, hue_shift: f32, saturation_shift: f32, lightness_shift: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let [hue, saturation, lightness, alpha] = color.to_hsla();
@@ -379,7 +379,7 @@ pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 }
 
 #[node_macro::node_fn(ThresholdNode)]
-fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
+fn threshold_node(color: Color, min_luminance: f32, max_luminance: f32, luminance_calc: LuminanceCalculation) -> Color {
 	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
 	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
 
@@ -405,7 +405,7 @@ pub struct BlendNode<BlendMode, Opacity> {
 }
 
 #[node_macro::node_fn(BlendNode)]
-fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f32) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity as f32 / 100.)
 }
 
@@ -461,7 +461,7 @@ pub struct VibranceNode<Vibrance> {
 // Modified from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
-fn vibrance_node(color: Color, vibrance: f64) -> Color {
+fn vibrance_node(color: Color, vibrance: f32) -> Color {
 	let vibrance = vibrance as f32 / 100.;
 	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 	// So this scales the 0% to -50% range to 0% to -100%.
@@ -553,22 +553,22 @@ pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, M
 fn channel_mixer_node(
 	color: Color,
 	monochrome: bool,
-	monochrome_r: f64,
-	monochrome_g: f64,
-	monochrome_b: f64,
-	monochrome_c: f64,
-	red_r: f64,
-	red_g: f64,
-	red_b: f64,
-	red_c: f64,
-	green_r: f64,
-	green_g: f64,
-	green_b: f64,
-	green_c: f64,
-	blue_r: f64,
-	blue_g: f64,
-	blue_b: f64,
-	blue_c: f64,
+	monochrome_r: f32,
+	monochrome_g: f32,
+	monochrome_b: f32,
+	monochrome_c: f32,
+	red_r: f32,
+	red_g: f32,
+	red_b: f32,
+	red_c: f32,
+	green_r: f32,
+	green_g: f32,
+	green_b: f32,
+	green_c: f32,
+	blue_r: f32,
+	blue_g: f32,
+	blue_b: f32,
+	blue_c: f32,
 ) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -690,42 +690,42 @@ pub struct SelectiveColorNode<Absolute, RC, RM, RY, RK, YC, YM, YY, YK, GC, GM, 
 fn selective_color_node(
 	color: Color,
 	mode: RelativeAbsolute,
-	r_c: f64,
-	r_m: f64,
-	r_y: f64,
-	r_k: f64,
-	y_c: f64,
-	y_m: f64,
-	y_y: f64,
-	y_k: f64,
-	g_c: f64,
-	g_m: f64,
-	g_y: f64,
-	g_k: f64,
-	c_c: f64,
-	c_m: f64,
-	c_y: f64,
-	c_k: f64,
-	b_c: f64,
-	b_m: f64,
-	b_y: f64,
-	b_k: f64,
-	m_c: f64,
-	m_m: f64,
-	m_y: f64,
-	m_k: f64,
-	w_c: f64,
-	w_m: f64,
-	w_y: f64,
-	w_k: f64,
-	n_c: f64,
-	n_m: f64,
-	n_y: f64,
-	n_k: f64,
-	k_c: f64,
-	k_m: f64,
-	k_y: f64,
-	k_k: f64,
+	r_c: f32,
+	r_m: f32,
+	r_y: f32,
+	r_k: f32,
+	y_c: f32,
+	y_m: f32,
+	y_y: f32,
+	y_k: f32,
+	g_c: f32,
+	g_m: f32,
+	g_y: f32,
+	g_k: f32,
+	c_c: f32,
+	c_m: f32,
+	c_y: f32,
+	c_k: f32,
+	b_c: f32,
+	b_m: f32,
+	b_y: f32,
+	b_k: f32,
+	m_c: f32,
+	m_m: f32,
+	m_y: f32,
+	m_k: f32,
+	w_c: f32,
+	w_m: f32,
+	w_y: f32,
+	w_k: f32,
+	n_c: f32,
+	n_m: f32,
+	n_y: f32,
+	n_k: f32,
+	k_c: f32,
+	k_m: f32,
+	k_y: f32,
+	k_k: f32,
 ) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -775,7 +775,7 @@ fn selective_color_node(
 		// Skip this color parameter group...
 		// ...if it's unchanged from the default of zero offset on all CMYK paramters, or...
 		// ...if this pixel's color isn't in the range affected by this color parameter group
-		if (c < f64::EPSILON && m < f64::EPSILON && y < f64::EPSILON && k < f64::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+		if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
 			return acc;
 		}
 
@@ -807,7 +807,7 @@ pub struct OpacityNode<O> {
 }
 
 #[node_macro::node_fn(OpacityNode)]
-fn image_opacity(color: Color, opacity_multiplier: f64) -> Color {
+fn image_opacity(color: Color, opacity_multiplier: f32) -> Color {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
@@ -820,7 +820,7 @@ pub struct PosterizeNode<P> {
 // Based on http://www.axiomx.com/posterize.htm
 // This algorithm is perfectly accurate.
 #[node_macro::node_fn(PosterizeNode)]
-fn posterize(color: Color, posterize_value: f64) -> Color {
+fn posterize(color: Color, posterize_value: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let posterize_value = posterize_value as f32;
@@ -841,7 +841,7 @@ pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node_fn(ExposureNode)]
-fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
+fn exposure(color: Color, exposure: f32, offset: f32, gamma_correction: f32) -> Color {
 	let adjusted = color
 		// Exposure
 		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
