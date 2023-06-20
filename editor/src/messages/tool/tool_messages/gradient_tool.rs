@@ -437,22 +437,6 @@ impl Fsm for GradientToolFsmState {
 					self
 				}
 				(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
-					warn!("len: {}", document.selected_visible_layers().count());
-
-					for path in document.selected_visible_layers() {
-						let is_bitmap = document
-							.document_legacy
-							.layer(path)
-							.ok()
-							.and_then(|layer| layer.as_layer().ok())
-							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
-						if is_bitmap {
-							warn!("{}", document.selected_visible_layers().count());
-							warn!("skipping bitmap path");
-							return self;
-						}
-					}
-
 					let Some(selected_gradient) = &mut tool_data.selected_gradient else {
 						return self;
 					};
@@ -582,7 +566,18 @@ impl Fsm for GradientToolFsmState {
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
 						let intersection = document.document_legacy.intersects_quad_root(quad, render_data).pop();
 
+						// the intersection is the layer where the gradient is being applied
 						if let Some(intersection) = intersection {
+							let is_bitmap = document
+								.document_legacy
+								.layer(&intersection)
+								.ok()
+								.and_then(|layer| layer.as_layer().ok())
+								.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+							if is_bitmap {
+								return self;
+							}
+
 							if !document.selected_layers_contains(&intersection) {
 								let replacement_selected_layers = vec![intersection.clone()];
 
