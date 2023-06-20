@@ -46,6 +46,19 @@
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 	$: nodeListX = ((nodeListLocation?.x || 0) * GRID_SIZE + transform.x) * transform.scale;
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
+
+	let appearAboveMouse = false;
+	let appearRightOfMouse = false;
+
+	$: (() => {
+		const bounds = graph?.div()?.getBoundingClientRect();
+		if (!bounds) return;
+		const { width, height } = bounds;
+
+		appearRightOfMouse = nodeListX > width - 90;
+		appearAboveMouse = nodeListY > height - 100;
+	})();
+
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
 	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
 
@@ -60,16 +73,35 @@
 		return sparse;
 	}
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, FrontendNodeType[]][] {
-		const categories = new Map();
+	type NodeCategoryDetails = {
+		nodes: FrontendNodeType[];
+		shouldBeOpen: boolean;
+	};
+
+	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
+		const categories = new Map<string, NodeCategoryDetails>();
+
 		nodeTypes.forEach((node) => {
-			if (searchTerm.length > 0 && !node.name.toLowerCase().includes(searchTerm.toLowerCase()) && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
+			const nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+
+			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
 				return;
 			}
 
 			const category = categories.get(node.category);
-			if (category) category.push(node);
-			else categories.set(node.category, [node]);
+			let shouldBeOpen = nameIncludesSearchTerm;
+			if (searchTerm.length === 0) {
+				shouldBeOpen = false;
+			}
+
+			if (category) {
+				category.shouldBeOpen = shouldBeOpen;
+				category.nodes.push(node);
+			} else
+				categories.set(node.category, {
+					shouldBeOpen,
+					nodes: [node],
+				});
 		});
 
 		return Array.from(categories);
@@ -497,16 +529,20 @@
 		}}
 	>
 		{#if nodeListLocation}
-			<LayoutCol class="node-list" data-node-list styles={{ left: `${nodeListX}px`, top: `${nodeListY}px` }}>
+			<LayoutCol
+				class="node-list"
+				data-node-list
+				styles={{ left: `${nodeListX}px`, top: `${nodeListY}px`, transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)` }}
+			>
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 				<div style="height: 200px; overflow-y: scroll;" on:wheel|stopPropagation>
 					{#each nodeCategories as nodeCategory}
-						<details style="display: flex; flex-direction: column;">
+						<details style="display: flex; flex-direction: column;" open={nodeCategory[1].shouldBeOpen}>
 							<summary>
 								<IconLabel icon="DropdownArrow" />
 								<TextLabel>{nodeCategory[0]}</TextLabel>
 							</summary>
-							{#each nodeCategory[1] as nodeType}
+							{#each nodeCategory[1].nodes as nodeType}
 								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
 							{/each}
 						</details>
@@ -617,6 +653,8 @@
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 
+			width: 180px;
+
 			.text-button {
 				width: 100%;
 			}
@@ -631,6 +669,10 @@
 				display: flex;
 				align-items: center;
 				gap: 2px;
+
+				span {
+					white-space: break-spaces;
+				}
 			}
 
 			details summary svg {

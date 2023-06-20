@@ -89,6 +89,7 @@ export class NodeGraphOutput {
 }
 
 export class FrontendNode {
+	[x: string]: any;
 	readonly id!: bigint;
 
 	readonly displayName!: string;
@@ -107,6 +108,7 @@ export class FrontendNode {
 	readonly disabled!: boolean;
 
 	readonly thumbnailSvg!: string | undefined;
+	category: any;
 }
 
 export class FrontendNodeLink {
