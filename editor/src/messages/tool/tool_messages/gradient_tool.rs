@@ -421,19 +421,6 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					for path in document.selected_visible_layers() {
-						let is_bitmap = document
-							.document_legacy
-							.layer(path)
-							.ok()
-							.and_then(|layer| layer.as_layer().ok())
-							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
-
-						if is_bitmap || !document.document_legacy.multiply_transforms(path).unwrap().inverse().is_finite() {
-							if is_bitmap {
-								warn!("skipping bitmap path");
-							}
-							continue;
-						}
 						let layer = document.document_legacy.layer(path).unwrap();
 
 						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
@@ -450,6 +437,22 @@ impl Fsm for GradientToolFsmState {
 					self
 				}
 				(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
+					warn!("len: {}", document.selected_visible_layers().count());
+
+					for path in document.selected_visible_layers() {
+						let is_bitmap = document
+							.document_legacy
+							.layer(path)
+							.ok()
+							.and_then(|layer| layer.as_layer().ok())
+							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+						if is_bitmap {
+							warn!("{}", document.selected_visible_layers().count());
+							warn!("skipping bitmap path");
+							return self;
+						}
+					}
+
 					let Some(selected_gradient) = &mut tool_data.selected_gradient else {
 						return self;
 					};
