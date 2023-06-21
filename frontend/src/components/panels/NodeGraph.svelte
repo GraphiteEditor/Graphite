@@ -18,6 +18,8 @@
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
+	const ADD_NODE_MENU_WIDTH = 180;
+	const ADD_NODE_MENU_HEIGHT = 200;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -55,8 +57,8 @@
 		if (!bounds) return;
 		const { width, height } = bounds;
 
-		appearRightOfMouse = nodeListX > width - 90;
-		appearAboveMouse = nodeListY > height - 100;
+		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH / 2;
+		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT / 2;
 	})();
 
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
@@ -75,7 +77,7 @@
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
-		shouldBeOpen: boolean;
+		open: boolean;
 	};
 
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
@@ -89,17 +91,17 @@
 			}
 
 			const category = categories.get(node.category);
-			let shouldBeOpen = nameIncludesSearchTerm;
+			let open = nameIncludesSearchTerm;
 			if (searchTerm.length === 0) {
-				shouldBeOpen = false;
+				open = false;
 			}
 
 			if (category) {
-				category.shouldBeOpen = shouldBeOpen;
+				category.open = open;
 				category.nodes.push(node);
 			} else
 				categories.set(node.category, {
-					shouldBeOpen,
+					open: open,
 					nodes: [node],
 				});
 		});
@@ -532,12 +534,17 @@
 			<LayoutCol
 				class="node-list"
 				data-node-list
-				styles={{ left: `${nodeListX}px`, top: `${nodeListY}px`, transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)` }}
+				styles={{
+					left: `${nodeListX}px`,
+					top: `${nodeListY}px`,
+					transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+					width: `${ADD_NODE_MENU_WIDTH}px`,
+				}}
 			>
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				<div style="height: 200px; overflow-y: scroll;" on:wheel|stopPropagation>
+				<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|stopPropagation>
 					{#each nodeCategories as nodeCategory}
-						<details style="display: flex; flex-direction: column;" open={nodeCategory[1].shouldBeOpen}>
+						<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
 							<summary>
 								<IconLabel icon="DropdownArrow" />
 								<TextLabel>{nodeCategory[0]}</TextLabel>
@@ -653,10 +660,12 @@
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 
-			width: 180px;
-
 			.text-button {
 				width: 100%;
+			}
+
+			.list-nodes {
+				overflow-y: scroll;
 			}
 
 			details {
