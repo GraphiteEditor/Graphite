@@ -6,11 +6,13 @@ use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
 #[derive(Debug, Clone, Default)]
-pub struct MenuBarMessageHandler {}
+pub struct MenuBarMessageHandler {
+	has_active_document: bool,
+}
 
-impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
+impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: bool) {
 		use MenuBarMessage::*;
 
 		#[remain::sorted]
@@ -26,14 +28,18 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 
 impl PropertyHolder for MenuBarMessageHandler {
 	fn properties(&self) -> Layout {
+		let has_active_document = self.has_active_document;
+
 		Layout::MenuLayout(MenuLayout::new(vec![
 			MenuBarEntry {
 				icon: Some("GraphiteLogo".into()),
 				action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into()),
 				..Default::default()
 			},
+			// TODO: ensure that menubar is re-rendered when a document opens
 			MenuBarEntry::new_root(
 				"File".into(),
+				true,
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
@@ -42,6 +48,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::create_action(|_| DialogMessage::RequestNewDocumentDialog.into()),
 							shortcut: action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog),
 							children: MenuBarEntryChildren::empty(),
+							enabled: true,
 						},
 						MenuBarEntry {
 							label: "Open…".into(),
@@ -95,6 +102,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"Edit".into(),
+				has_active_document,
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
@@ -136,6 +144,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"Layer".into(),
+				has_active_document,
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
@@ -213,6 +222,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"Document".into(),
+				has_active_document,
 				MenuBarEntryChildren(vec![vec![MenuBarEntry {
 					label: "Clear Artboards".into(),
 					action: MenuBarEntry::create_action(|_| ArtboardMessage::ClearArtboards.into()),
@@ -221,6 +231,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"View".into(),
+				has_active_document,
 				MenuBarEntryChildren(vec![vec![
 					MenuBarEntry {
 						label: "Zoom to Selected".into(),
@@ -250,6 +261,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),
+				true,
 				MenuBarEntryChildren(vec![
 					vec![MenuBarEntry {
 						label: "About Graphite".into(),

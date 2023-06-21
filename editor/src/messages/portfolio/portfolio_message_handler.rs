@@ -37,7 +37,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, ()),
+			PortfolioMessage::MenuBar(message) => {
+				let has_active_document = self.active_document_id.is_some();
+				self.menu_bar_message_handler.process_message(message, responses, has_active_document)
+			}
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
