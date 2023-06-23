@@ -774,6 +774,7 @@ type MenuEntryCommon = {
 export type MenuBarEntry = MenuEntryCommon & {
 	action: Widget;
 	children?: MenuBarEntry[][];
+    disabled?: boolean,
 };
 
 // An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
@@ -1300,6 +1301,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 			...entry,
 			action: hoistWidgetHolders([entry.action])[0],
 			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
+            disabled: entry.disabled ?? false,
 		}))
 	);
 }
