@@ -33,14 +33,13 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
+		let has_active_document = self.active_document_id.is_some();
+
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => {
-				let has_active_document = self.active_document_id.is_some();
-				self.menu_bar_message_handler.process_message(message, responses, has_active_document)
-			}
+			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, has_active_document),
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -94,6 +93,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.add(DocumentMessage::ClearLayerTree);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
+					self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, false);
 				}
 
 				for document_id in &self.document_ids {
@@ -111,7 +111,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.add(DocumentMessage::ClearLayerTree);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
+
+					self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, false);
+				} else {
+					self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, true);
 				}
+
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
 
@@ -141,6 +146,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 					// Select the document being closed
 					responses.add(PortfolioMessage::SelectDocument { document_id });
+
+					self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, self.document_ids.len() >= 1);
 				}
 			}
 			PortfolioMessage::Copy { clipboard } => {
@@ -272,6 +279,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 
 				self.load_document(new_document, document_id, responses);
+				self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, true);
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -285,6 +293,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::OpenDocument => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerOpenDocument);
+				self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, self.document_ids.len() >= 1);
 			}
 			PortfolioMessage::OpenDocumentFile {
 				document_name,
@@ -297,6 +306,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					document_is_saved: true,
 					document_serialized_content,
 				});
+				self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, true);
 			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
@@ -311,6 +321,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document.set_auto_save_state(document_is_auto_saved);
 						document.set_save_state(document_is_saved);
 						self.load_document(document, document_id, responses);
+
+						self.menu_bar_message_handler.process_message(MenuBarMessage::SendLayout, responses, true);
 					}
 					Err(e) => {
 						if !document_is_auto_saved {

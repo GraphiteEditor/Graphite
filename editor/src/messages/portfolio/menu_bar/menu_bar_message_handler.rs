@@ -14,6 +14,7 @@ impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: bool) {
 		use MenuBarMessage::*;
+		self.has_active_document = _data;
 
 		#[remain::sorted]
 		match message {
@@ -198,7 +199,6 @@ impl PropertyHolder for MenuBarMessageHandler {
 				action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into()),
 				..Default::default()
 			},
-			// TODO: ensure that menubar is re-rendered when a document opens
 			MenuBarEntry::new_root(
 				"File".into(),
 				true,
@@ -210,7 +210,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::create_action(|_| DialogMessage::RequestNewDocumentDialog.into()),
 							shortcut: action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog),
 							children: MenuBarEntryChildren::empty(),
-							enabled: true,
+							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Open…".into(),
@@ -349,7 +349,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 		];
 
 		if has_active_document {
-			menu_bar_entries.splice(1..1, conditional_menu_entries);
+			menu_bar_entries.splice(2..2, conditional_menu_entries);
 		}
 		Layout::MenuLayout(MenuLayout::new(menu_bar_entries))
 	}
