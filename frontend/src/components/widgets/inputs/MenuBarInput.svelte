@@ -63,7 +63,7 @@
 				// New fields in `MenuListEntry`
 				shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
 				value: undefined,
-				disabled: undefined,
+				disabled: entry.disabled ?? undefined,
 				font: undefined,
 				ref: undefined,
 			});

@@ -33,11 +33,13 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
+		let has_active_document = self.active_document_id.is_some();
+
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, ()),
+			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, has_active_document),
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -109,6 +111,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
 				}
+
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
 
@@ -179,6 +182,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				if self.document_ids.is_empty() {
 					self.active_document_id = None;
+					responses.add(MenuBarMessage::SendLayout);
 				} else if self.active_document_id.is_some() {
 					let document_id = if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
@@ -195,6 +199,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.documents.clear();
 				self.document_ids.clear();
 				self.active_document_id = None;
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			PortfolioMessage::FontLoaded {
 				font_family,
@@ -462,7 +467,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 			}
-			PortfolioMessage::SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
+			PortfolioMessage::SetActiveDocument { document_id } => {
+				self.active_document_id = Some(document_id);
+				responses.add(MenuBarMessage::SendLayout);
+			}
 			PortfolioMessage::SetImageBlobUrl {
 				document_id,
 				layer_path,

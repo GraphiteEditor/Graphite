@@ -37,12 +37,14 @@ pub struct MenuBarEntry {
 	pub shortcut: Option<ActionKeys>,
 	pub action: WidgetHolder,
 	pub children: MenuBarEntryChildren,
+	pub disabled: bool,
 }
 
 impl MenuBarEntry {
-	pub fn new_root(label: String, children: MenuBarEntryChildren) -> Self {
+	pub fn new_root(label: String, disabled: bool, children: MenuBarEntryChildren) -> Self {
 		Self {
 			label,
+			disabled,
 			children,
 			..Default::default()
 		}
@@ -67,6 +69,7 @@ impl Default for MenuBarEntry {
 			shortcut: None,
 			action: MenuBarEntry::no_action(),
 			children: MenuBarEntryChildren::empty(),
+			disabled: false,
 		}
 	}
 }
