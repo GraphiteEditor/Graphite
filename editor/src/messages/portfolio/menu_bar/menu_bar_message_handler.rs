@@ -7,14 +7,14 @@ use crate::messages::prelude::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {
-	has_active_document: bool,
+	has_inactive_document: bool,
 }
 
 impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: bool) {
 		use MenuBarMessage::*;
-		self.has_active_document = _data;
+		self.has_inactive_document = !_data;
 
 		#[remain::sorted]
 		match message {
@@ -29,12 +29,13 @@ impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 
 impl PropertyHolder for MenuBarMessageHandler {
 	fn properties(&self) -> Layout {
-		let has_active_document = self.has_active_document;
+		let has_inactive_document = self.has_inactive_document;
 
+		// enable these only if there's an active document
 		let conditional_menu_entries = vec![
 			MenuBarEntry::new_root(
 				"Edit".into(),
-				has_active_document,
+				has_inactive_document,
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
@@ -76,7 +77,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"Layer".into(),
-				has_active_document,
+				has_inactive_document,
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
@@ -154,7 +155,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"Document".into(),
-				has_active_document,
+				has_inactive_document,
 				MenuBarEntryChildren(vec![vec![MenuBarEntry {
 					label: "Clear Artboards".into(),
 					action: MenuBarEntry::create_action(|_| ArtboardMessage::ClearArtboards.into()),
@@ -163,7 +164,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 			MenuBarEntry::new_root(
 				"View".into(),
-				has_active_document,
+				has_inactive_document,
 				MenuBarEntryChildren(vec![vec![
 					MenuBarEntry {
 						label: "Zoom to Selected".into(),
@@ -201,7 +202,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			},
 			MenuBarEntry::new_root(
 				"File".into(),
-				true,
+				false,
 				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
@@ -224,14 +225,14 @@ impl PropertyHolder for MenuBarMessageHandler {
 							label: "Close".into(),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::CloseActiveDocumentWithConfirmation.into()),
-							enabled: has_active_document,
+							disabled: has_inactive_document,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Close All".into(),
 							shortcut: action_keys!(DialogMessageDiscriminant::CloseAllDocumentsWithConfirmation),
 							action: MenuBarEntry::create_action(|_| DialogMessage::CloseAllDocumentsWithConfirmation.into()),
-							enabled: has_active_document,
+							disabled: has_inactive_document,
 							..MenuBarEntry::default()
 						},
 					],
@@ -239,7 +240,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 						label: "Save".into(),
 						shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
 						action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
-						enabled: has_active_document,
+						disabled: has_inactive_document,
 						..MenuBarEntry::default()
 					}],
 					vec![
@@ -253,7 +254,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 							label: "Export…".into(),
 							shortcut: action_keys!(DialogMessageDiscriminant::RequestExportDialog),
 							action: MenuBarEntry::create_action(|_| DialogMessage::RequestExportDialog.into()),
-							enabled: has_active_document,
+							disabled: has_inactive_document,
 							..MenuBarEntry::default()
 						},
 					],
@@ -348,7 +349,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 			),
 		];
 
-		if has_active_document {
+		if !has_inactive_document {
 			menu_bar_entries.splice(2..2, conditional_menu_entries);
 		}
 		Layout::MenuLayout(MenuLayout::new(menu_bar_entries))
