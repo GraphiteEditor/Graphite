@@ -30,76 +30,7 @@ impl PropertyHolder for MenuBarMessageHandler {
 	fn properties(&self) -> Layout {
 		let has_active_document = self.has_active_document;
 
-		Layout::MenuLayout(MenuLayout::new(vec![
-			MenuBarEntry {
-				icon: Some("GraphiteLogo".into()),
-				action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into()),
-				..Default::default()
-			},
-			// TODO: ensure that menubar is re-rendered when a document opens
-			MenuBarEntry::new_root(
-				"File".into(),
-				true,
-				MenuBarEntryChildren(vec![
-					vec![
-						MenuBarEntry {
-							label: "New…".into(),
-							icon: Some("File".into()),
-							action: MenuBarEntry::create_action(|_| DialogMessage::RequestNewDocumentDialog.into()),
-							shortcut: action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog),
-							children: MenuBarEntryChildren::empty(),
-							enabled: true,
-						},
-						MenuBarEntry {
-							label: "Open…".into(),
-							shortcut: action_keys!(PortfolioMessageDiscriminant::OpenDocument),
-							action: MenuBarEntry::create_action(|_| PortfolioMessage::OpenDocument.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![
-						MenuBarEntry {
-							label: "Close".into(),
-							shortcut: action_keys!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation),
-							action: MenuBarEntry::create_action(|_| PortfolioMessage::CloseActiveDocumentWithConfirmation.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Close All".into(),
-							shortcut: action_keys!(DialogMessageDiscriminant::CloseAllDocumentsWithConfirmation),
-							action: MenuBarEntry::create_action(|_| DialogMessage::CloseAllDocumentsWithConfirmation.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![MenuBarEntry {
-						label: "Save".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
-						..MenuBarEntry::default()
-					}],
-					vec![
-						MenuBarEntry {
-							label: "Import…".into(),
-							shortcut: action_keys!(PortfolioMessageDiscriminant::Import),
-							action: MenuBarEntry::create_action(|_| PortfolioMessage::Import.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Export…".into(),
-							shortcut: action_keys!(DialogMessageDiscriminant::RequestExportDialog),
-							action: MenuBarEntry::create_action(|_| DialogMessage::RequestExportDialog.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![MenuBarEntry {
-						label: "Preferences…".into(),
-						icon: Some("Settings".into()),
-						shortcut: action_keys!(DialogMessageDiscriminant::RequestPreferencesDialog),
-						action: MenuBarEntry::create_action(|_| DialogMessage::RequestPreferencesDialog.into()),
-						..MenuBarEntry::default()
-					}],
-				]),
-			),
+		let conditional_menu_entries = vec![
 			MenuBarEntry::new_root(
 				"Edit".into(),
 				has_active_document,
@@ -259,6 +190,82 @@ impl PropertyHolder for MenuBarMessageHandler {
 					},
 				]]),
 			),
+		];
+
+		let mut menu_bar_entries = vec![
+			MenuBarEntry {
+				icon: Some("GraphiteLogo".into()),
+				action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into()),
+				..Default::default()
+			},
+			// TODO: ensure that menubar is re-rendered when a document opens
+			MenuBarEntry::new_root(
+				"File".into(),
+				true,
+				MenuBarEntryChildren(vec![
+					vec![
+						MenuBarEntry {
+							label: "New…".into(),
+							icon: Some("File".into()),
+							action: MenuBarEntry::create_action(|_| DialogMessage::RequestNewDocumentDialog.into()),
+							shortcut: action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog),
+							children: MenuBarEntryChildren::empty(),
+							enabled: true,
+						},
+						MenuBarEntry {
+							label: "Open…".into(),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::OpenDocument),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::OpenDocument.into()),
+							..MenuBarEntry::default()
+						},
+					],
+					vec![
+						MenuBarEntry {
+							label: "Close".into(),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::CloseActiveDocumentWithConfirmation.into()),
+							enabled: has_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Close All".into(),
+							shortcut: action_keys!(DialogMessageDiscriminant::CloseAllDocumentsWithConfirmation),
+							action: MenuBarEntry::create_action(|_| DialogMessage::CloseAllDocumentsWithConfirmation.into()),
+							enabled: has_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![MenuBarEntry {
+						label: "Save".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
+						enabled: has_active_document,
+						..MenuBarEntry::default()
+					}],
+					vec![
+						MenuBarEntry {
+							label: "Import…".into(),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::Import),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::Import.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Export…".into(),
+							shortcut: action_keys!(DialogMessageDiscriminant::RequestExportDialog),
+							action: MenuBarEntry::create_action(|_| DialogMessage::RequestExportDialog.into()),
+							enabled: has_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![MenuBarEntry {
+						label: "Preferences…".into(),
+						icon: Some("Settings".into()),
+						shortcut: action_keys!(DialogMessageDiscriminant::RequestPreferencesDialog),
+						action: MenuBarEntry::create_action(|_| DialogMessage::RequestPreferencesDialog.into()),
+						..MenuBarEntry::default()
+					}],
+				]),
+			),
 			MenuBarEntry::new_root(
 				"Help".into(),
 				true,
@@ -339,6 +346,11 @@ impl PropertyHolder for MenuBarMessageHandler {
 					],
 				]),
 			),
-		]))
+		];
+
+		if has_active_document {
+			menu_bar_entries.splice(1..1, conditional_menu_entries);
+		}
+		Layout::MenuLayout(MenuLayout::new(menu_bar_entries))
 	}
 }
