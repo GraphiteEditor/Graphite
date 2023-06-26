@@ -335,11 +335,11 @@ fn hue_shift_color_node(color: Color, hue_shift: f32, saturation_shift: f32, lig
 	let [hue, saturation, lightness, alpha] = color.to_hsla();
 
 	let color = Color::from_hsla(
-		(hue + hue_shift as f32 / 360.) % 1.,
+		(hue + hue_shift / 360.) % 1.,
 		// TODO: Improve the way saturation works (it's slightly off)
-		(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+		(saturation + saturation_shift / 100.).clamp(0., 1.),
 		// TODO: Fix the way lightness works (it's very off)
-		(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
+		(lightness + lightness_shift / 100.).clamp(0., 1.),
 		alpha,
 	);
 
