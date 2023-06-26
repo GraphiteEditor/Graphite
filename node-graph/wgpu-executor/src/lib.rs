@@ -253,7 +253,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			entries: entries.as_slice(),
 		});
 
-		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("compute encoder") });
 		{
 			let dimensions = instances.get();
 			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });

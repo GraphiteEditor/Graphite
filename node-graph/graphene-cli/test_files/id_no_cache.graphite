@@ -122,7 +122,7 @@
                                                 "path": null
                                             },
                                             "7980892639443901364": {
-                                                "name": "Invert RGB",
+                                                "name": "Id Node",
                                                 "inputs": [
                                                     {
                                                         "Value": {
@@ -149,7 +149,7 @@
                                                 ],
                                                 "implementation": {
                                                     "Unresolved": {
-                                                        "name": "graphene_core::raster::InvertRGBNode"
+                                                        "name": "graphene_core::ops::IdNode"
                                                     }
                                                 },
                                                 "metadata": {
@@ -387,106 +387,6 @@
                                                 },
                                                 "path": null
                                             },
-                                            "6852130424696213675": {
-                                                "name": "Grayscale",
-                                                "inputs": [
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "ImageFrame": {
-                                                                    "image": {
-                                                                        "width": 0,
-                                                                        "height": 0,
-                                                                        "data": ""
-                                                                    },
-                                                                    "transform": [
-                                                                        0.0,
-                                                                        0.0,
-                                                                        0.0,
-                                                                        0.0,
-                                                                        0.0,
-                                                                        0.0
-                                                                    ]
-                                                                }
-                                                            },
-                                                            "exposed": true
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "Color": {
-                                                                    "red": 0.0,
-                                                                    "green": 0.0,
-                                                                    "blue": 0.0,
-                                                                    "alpha": 1.0
-                                                                }
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "F32": 40.0
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "F32": 60.0
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "F32": 40.0
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "F32": 60.0
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "F32": 20.0
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    },
-                                                    {
-                                                        "Value": {
-                                                            "tagged_value": {
-                                                                "F32": 80.0
-                                                            },
-                                                            "exposed": false
-                                                        }
-                                                    }
-                                                ],
-                                                "implementation": {
-                                                    "Unresolved": {
-                                                        "name": "graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>"
-                                                    }
-                                                },
-                                                "metadata": {
-                                                    "position": [
-                                                        8,
-                                                        8
-                                                    ]
-                                                },
-                                                "path": null
-                                            },
                                             "1": {
                                                 "name": "Transform",
                                                 "inputs": [
@@ -568,7 +468,7 @@
                                                 "inputs": [
                                                     {
                                                         "Node": {
-                                                            "node_id": 6852130424696213675,
+                                                            "node_id": 7980892639443901364,
                                                             "output_index": 0,
                                                             "lambda": false
                                                         }
@@ -837,8 +737,8 @@
             "previous_outputs": null
         }
     },
-    "saved_document_identifier": 3394900556496932235,
-    "auto_saved_document_identifier": 14232060544949019459,
+    "saved_document_identifier": 14232060544949019459,
+    "auto_saved_document_identifier": 18163322870368315468,
     "name": "Untitled Document",
     "version": "0.0.16",
     "document_mode": "DesignMode",

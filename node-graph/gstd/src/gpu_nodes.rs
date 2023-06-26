@@ -8,6 +8,8 @@ use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::WgpuExecutor;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::wasm_application_io::WasmApplicationIo;
@@ -42,11 +44,69 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
 	editor_api: EditorApi,
+	cache: RefCell<HashMap<String, ComputePass<WgpuExecutor>>>,
 }
 
-#[node_macro::node_fn(MapGpuNode)]
+struct ComputePass<T: GpuExecutor> {
+	pipeline_layout: PipelineLayout<T>,
+	readback_buffer: Option<Arc<ShaderInput<T>>>,
+}
+
+impl<T: GpuExecutor> Clone for ComputePass<T> {
+	fn clone(&self) -> Self {
+		Self {
+			pipeline_layout: self.pipeline_layout.clone(),
+			readback_buffer: self.readback_buffer.clone(),
+		}
+	}
+}
+
+#[node_macro::node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
+	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
+
+	// TODO: The cache should be based on the network topology not the node name
+	let compute_pass_descriptor = self
+		.cache
+		.borrow_mut()
+		.entry(node.name.clone())
+		.or_insert_with(|| futures::executor::block_on(create_compute_pass_descriptor(node, &image, executor)))
+		.clone();
+
+	let compute_pass = executor
+		.create_compute_pass(
+			&compute_pass_descriptor.pipeline_layout,
+			compute_pass_descriptor.readback_buffer.clone(),
+			ComputePassDimensions::XY(image.image.width / 12 + 1, image.image.height / 8 + 1),
+		)
+		.unwrap();
+	executor.execute_compute_pipeline(compute_pass).unwrap();
+	log::error!("executed pipeline");
+	log::debug!("reading buffer");
+	let result = executor.read_output_buffer(compute_pass_descriptor.readback_buffer.clone().unwrap()).await.unwrap();
+	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
+	ImageFrame {
+		image: Image {
+			data: colors,
+			width: image.image.width,
+			height: image.image.height,
+		},
+		transform: image.transform,
+	}
+}
+
+impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
+	pub fn new(node: Node, editor_api: EditorApi) -> Self {
+		Self {
+			node,
+			editor_api,
+			cache: RefCell::new(HashMap::new()),
+		}
+	}
+}
+
+async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<Color>, executor: &&WgpuExecutor) -> ComputePass<WgpuExecutor> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -68,7 +128,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
 				..Default::default()
 			},*/
-			/*
+				/*
 			DocumentNode {
 				name: "GetNode".into(),
 				inputs: vec![NodeInput::node(1, 0), NodeInput::node(0, 0)],
@@ -124,8 +184,6 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	//return ImageFrame::empty();
 	let len: usize = image.image.data.len();
 
-	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
-
 	/*
 	let canvas = editor_api.application_io.create_surface();
 
@@ -175,36 +233,18 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let shader = executor.load_shader(shader).unwrap();
 	log::debug!("loaded shader");
 	let pipeline = PipelineLayout {
-		shader,
+		shader: shader.into(),
 		entry_point: "eval".to_string(),
-		bind_group,
+		bind_group: bind_group.into(),
 		output_buffer: output_buffer.clone(),
 	};
 	log::debug!("created pipeline");
-	let compute_pass = executor
-		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(image.image.width, image.image.height))
-		.unwrap();
-	executor.execute_compute_pipeline(compute_pass).unwrap();
-	log::debug!("executed pipeline");
-	log::debug!("reading buffer");
-	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
-	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
-	ImageFrame {
-		image: Image {
-			data: colors,
-			width: image.image.width,
-			height: image.image.height,
-		},
-		transform: image.transform,
-	}
 
-	/*
-	let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();
-	let data: Vec<_> = input.into_iter().collect();
-	let result = executor.execute(Box::new(data)).unwrap();
-	let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
-	*result
-	*/
+	let compute_pass_descriptor = ComputePass {
+		pipeline_layout: pipeline,
+		readback_buffer: Some(readback_buffer.clone()),
+	};
+	compute_pass_descriptor
 }
 /*
 #[node_macro::node_fn(MapGpuNode)]
@@ -414,9 +454,9 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let shader = executor.load_shader(shader).unwrap();
 	log::debug!("loaded shader");
 	let pipeline = PipelineLayout {
-		shader,
+		shader: shader.into(),
 		entry_point: "eval".to_string(),
-		bind_group,
+		bind_group: bind_group.into(),
 		output_buffer: output_buffer.clone(),
 	};
 	log::debug!("created pipeline");

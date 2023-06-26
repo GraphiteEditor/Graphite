@@ -202,7 +202,7 @@ pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result
 	context.insert("input_nodes", &input_nodes);
 	context.insert("output_nodes", &output_nodes);
 	context.insert("nodes", &nodes);
-	context.insert("compute_threads", &64);
+	context.insert("compute_threads", "12, 8");
 	Ok(tera.render("spirv", &context)?)
 }
 
