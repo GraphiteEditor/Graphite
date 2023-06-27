@@ -4,6 +4,7 @@ use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
+use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::WgpuExecutor;
@@ -112,13 +113,25 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 
 	log::debug!("inner_network: {:?}", inner_network);
 	let network = NodeNetwork {
-		inputs: vec![], //vec![0, 1],
-		outputs: vec![NodeOutput::new(1, 0)],
+		inputs: vec![1, 2], //vec![0, 1],
+		outputs: vec![NodeOutput::new(6, 0)],
 		nodes: [
 			DocumentNode {
 				name: "Slice".into(),
-				inputs: vec![NodeInput::Inline(InlineRust::new("i1[(_global_index.y * i0 + _global_index.x) as usize]".into(), concrete![Color]))],
+				inputs: vec![NodeInput::Inline(InlineRust::new("i2[(_global_index.y * i1 + _global_index.x) as usize]".into(), concrete![Color]))],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+				..Default::default()
+			},
+			DocumentNode {
+				name: "Quantization".into(),
+				inputs: vec![NodeInput::Network(concrete!(quantization::Quantization))],
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::CloneNode".into()),
+				..Default::default()
+			},
+			DocumentNode {
+				name: "Width".into(),
+				inputs: vec![NodeInput::Network(concrete!(u32))],
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 				..Default::default()
 			},
 			/*DocumentNode {
@@ -136,25 +149,35 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 				..Default::default()
 			},*/
 			DocumentNode {
+				name: "Dequantize".into(),
+				inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
+				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode"),
+				..Default::default()
+			},
+			DocumentNode {
 				name: "MapNode".into(),
-				inputs: vec![NodeInput::node(0, 0)],
+				inputs: vec![NodeInput::node(3, 0)],
 				implementation: DocumentNodeImplementation::Network(inner_network),
 				..Default::default()
 			},
-			/*
+			DocumentNode {
+				name: "Quantize".into(),
+				inputs: vec![NodeInput::node(4, 0), NodeInput::node(1, 0)],
+				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
+				..Default::default()
+			},
 			DocumentNode {
 				name: "SaveNode".into(),
 				inputs: vec![
-					//NodeInput::node(0, 0),
+					NodeInput::node(5, 0),
 					NodeInput::Inline(InlineRust::new(
-						"o0[_global_index.x as usize] = i0[_global_index.x as usize]".into(),
+						"move |x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
 						Type::Fn(Box::new(concrete!(Color)), Box::new(concrete!(()))),
 					)),
 				],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnOnceNode".into()),
 				..Default::default()
 			},
-			*/
 		]
 		.into_iter()
 		.enumerate()
@@ -171,12 +194,13 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 		vec![concrete!(Color)],
 		ShaderIO {
 			inputs: vec![
+				ShaderInput::UniformBuffer((), concrete!(quantization::QuantizationChannels)),
 				ShaderInput::UniformBuffer((), concrete!(u32)),
-				ShaderInput::StorageBuffer((), concrete!(Color)),
+				ShaderInput::StorageBuffer((), concrete!(PackedPixel)),
 				//ShaderInput::Constant(gpu_executor::GPUConstant::GlobalInvocationId),
-				ShaderInput::OutputBuffer((), concrete!(Color)),
+				ShaderInput::OutputBuffer((), concrete!(PackedPixel)),
 			],
-			output: ShaderInput::OutputBuffer((), concrete!(Color)),
+			output: ShaderInput::OutputBuffer((), concrete!(PackedPixel)),
 		},
 	)
 	.await
@@ -202,6 +226,7 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
+	let quantization_uniform = executor.create_uniform_buffer(QuantizationChannels::default()).unwrap();
 	let storage_buffer = executor
 		.create_storage_buffer(
 			image.image.data.clone(),

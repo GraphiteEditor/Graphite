@@ -43,7 +43,7 @@ async fn post_compile_spirv(State(state): State<Arc<AppState>>, Json(compile_req
 	let result = compile_request.compile(state.compile_dir.path().to_str().expect("non utf8 tempdir path"), &path).map_err(|e| {
 		eprintln!("compilation failed: {}", e);
 		StatusCode::INTERNAL_SERVER_ERROR
-	});
-	state.cache.write().unwrap().insert(compile_request, result.clone());
-	result
+	})?;
+	state.cache.write().unwrap().insert(compile_request, Ok(result.clone()));
+	Ok(result)
 }

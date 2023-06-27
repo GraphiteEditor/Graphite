@@ -44,7 +44,7 @@ use core::any::TypeId;
 pub use raster::Color;
 
 // pub trait Node: for<'n> NodeIO<'n> {
-pub trait Node<'i, Input: 'i>: 'i {
+pub trait Node<'i, Input: 'i>: 'i + NodeMut<'i, Input, MutOutput = Self::Output> {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
 	fn reset(&self) {}
@@ -52,6 +52,32 @@ pub trait Node<'i, Input: 'i>: 'i {
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
+	}
+}
+
+pub trait NodeMut<'i, Input: 'i>: 'i {
+	type MutOutput: 'i;
+	fn eval_mut(&'i mut self, input: Input) -> Self::MutOutput;
+}
+
+pub trait NodeOnce<'i, Input>
+where
+	Input: 'i,
+{
+	type OnceOutput: 'i;
+	fn eval_once(self, input: Input) -> Self::OnceOutput;
+}
+
+impl<'i, T: Node<'i, I>, I: 'i> NodeOnce<'i, I> for &'i T {
+	type OnceOutput = T::Output;
+	fn eval_once(self, input: I) -> Self::OnceOutput {
+		(self).eval(input)
+	}
+}
+impl<'i, T: Node<'i, I> + ?Sized, I: 'i> NodeMut<'i, I> for T {
+	type MutOutput = T::Output;
+	fn eval_mut(&'i mut self, input: I) -> Self::MutOutput {
+		(*self).eval(input)
 	}
 }
 
@@ -98,52 +124,40 @@ where
 {
 }
 
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for &'s N {
+impl<'i, 's: 'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
+	type Output = N::Output;
+	fn eval(&'i self, input: I) -> N::Output {
+		(*self).eval(input)
+	}
+}
+#[cfg(feature = "alloc")]
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
 	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
 #[cfg(feature = "alloc")]
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for Box<N> {
+impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
 	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
-		(**self).eval(input)
-	}
-}
-#[cfg(feature = "alloc")]
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O>> Node<'i, I> for alloc::sync::Arc<N> {
-	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
 
-impl<'i, I: 'i, O: 'i> Node<'i, I> for &'i dyn Node<'i, I, Output = O> {
-	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
-		(**self).eval(input)
-	}
-}
 use core::pin::Pin;
 
 use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O, MutOutput = O> + 'i>> {
 	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O, MutOutput = O> + 'i)> {
 	type Output = O;
-
-	fn eval(&'i self, input: I) -> Self::Output {
+	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
