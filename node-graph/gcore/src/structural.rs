@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use crate::Node;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ComposeNode<First, Second, I> {
 	first: First,
 	second: Second,

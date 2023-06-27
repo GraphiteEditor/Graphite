@@ -19,11 +19,11 @@ pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n)>;
-pub type TypeErasedRef<'n> = &'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n);
-pub type TypeErasedBox<'n> = Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>>;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>, MutOutput = FutureAny<'i>> + 'n;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
+pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
+pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
+pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
 

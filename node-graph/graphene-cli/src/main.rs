@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let device = application_io.gpu_executor().unwrap().context.device.clone();
 	std::thread::spawn(move || loop {
-		std::thread::sleep(std::time::Duration::from_nanos(1));
+		std::thread::sleep(std::time::Duration::from_nanos(10));
 		device.poll(wgpu::Maintain::Poll);
 	});
 
