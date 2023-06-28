@@ -55,6 +55,7 @@ pub enum TaggedValue {
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	#[cfg_attr(feature = "serde", serde(skip))]
 	BrushCache(BrushCache),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),

@@ -39,21 +39,8 @@ fn generate_quantization_per_channel(data: Vec<f64>, samples: u32) -> Quantizati
 		name: "identity",
 	});*/
 
-	let linear = Quantization {
-		fn_index: 0,
-		a: max as f32,
-		b: 0.,
-		c: 0.,
-		d: 0.,
-	};
-	let log_fit = autoquant::models::OptimizedLog::new(dist, samples as u64);
-	let parameters = log_fit.parameters();
-	let log_fit = Quantization {
-		fn_index: 1,
-		a: parameters[0] as f32,
-		b: parameters[1] as f32,
-		c: parameters[2] as f32,
-		d: parameters[3] as f32,
-	};
-	log_fit
+	let lin_fit = autoquant::models::OptimizedLin::new(dist, samples as u64);
+	let parameters = lin_fit.parameters();
+	let lin_fit = Quantization::new(parameters[0] as f32, parameters[1] as u32, samples.ilog2());
+	lin_fit
 }

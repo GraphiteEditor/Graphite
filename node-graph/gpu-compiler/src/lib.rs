@@ -151,13 +151,13 @@ pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result
 		}
 		for (i, id) in network.inputs.iter().enumerate() {
 			let Some((_, node)) = network.nodes.iter().find(|(i, _)| i == id) else {
-			anyhow::bail!("Input node not found");
-		};
+				anyhow::bail!("Input node not found");
+			};
 			let fqn = &node.identifier.name;
 			let id = nid(id);
 			let node = Node {
 				id: id.clone(),
-				index: i,
+				index: i + 2,
 				fqn: fqn.to_string().split('<').next().unwrap().to_owned(),
 				args: node.construction_args.new_function_args(),
 			};

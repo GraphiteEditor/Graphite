@@ -380,8 +380,8 @@ pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 
 #[node_macro::node_fn(ThresholdNode)]
 fn threshold_node(color: Color, min_luminance: f32, max_luminance: f32, luminance_calc: LuminanceCalculation) -> Color {
-	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
-	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
+	let min_luminance = Color::srgb_to_linear(min_luminance / 100.);
+	let max_luminance = Color::srgb_to_linear(max_luminance / 100.);
 
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),

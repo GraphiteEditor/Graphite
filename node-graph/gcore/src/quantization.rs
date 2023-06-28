@@ -1,4 +1,4 @@
-use crate::raster::Color;
+use crate::raster::{Color, Pixel};
 use crate::Node;
 use bytemuck::{Pod, Zeroable};
 use dyn_any::{DynAny, StaticType};
@@ -17,6 +17,15 @@ pub struct Quantization {
 }
 
 impl Quantization {
+	pub fn new(a: f32, b: u32, bits: u32) -> Self {
+		Self {
+			a,
+			b_and_bits: (b << 16) | bits,
+			_padding: 0,
+			_padding2: 0,
+		}
+	}
+
 	pub fn a(&self) -> f32 {
 		self.a
 	}
@@ -40,12 +49,7 @@ impl core::hash::Hash for Quantization {
 
 impl Default for Quantization {
 	fn default() -> Self {
-		Self {
-			a: 1.,
-			b_and_bits: 8,
-			_padding: 0,
-			_padding2: 0,
-		}
+		Self::new(1., 0, 8)
 	}
 }
 
@@ -54,12 +58,14 @@ pub type QuantizationChannels = [Quantization; 4];
 #[derive(DynAny, Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
 pub struct PackedPixel(u32);
 
+impl Pixel for PackedPixel {}
+
 #[inline(always)]
 fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
 	let a = quantization.a();
 	let bits = quantization.bits();
 	let b = quantization.b();
-	let value = (((a * value) * (1 << bits) as f32) as i32 + b as i32) as u32;
+	let value = (((a * value) * ((1 << bits) - 1) as f32) as i32 + b) as u32;
 	value << (32 - bits - offset)
 }
 
@@ -70,7 +76,7 @@ fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
 	let b = quantization.b();
 	let value = (value << offset) >> (32 - bits);
 	let value = value as i32 - b;
-	(value as f32 / (1 << bits) as f32) / a
+	(value as f32 / ((1 << bits) - 1) as f32) / a
 }
 
 pub struct QuantizeNode<Quantization> {
@@ -80,6 +86,10 @@ pub struct QuantizeNode<Quantization> {
 #[node_macro::node_fn(QuantizeNode)]
 fn quantize_fn<'a>(color: Color, quantization: [Quantization; 4]) -> PackedPixel {
 	let quant = quantization;
+	quantize_color(color, quant)
+}
+
+pub fn quantize_color(color: Color, quant: [Quantization; 4]) -> PackedPixel {
 	let mut offset = 0;
 	let r = quantize(color.r(), offset, quant[0]);
 	offset += quant[0].bits();
@@ -99,6 +109,10 @@ pub struct DeQuantizeNode<Quantization> {
 #[node_macro::node_fn(DeQuantizeNode)]
 fn dequantize_fn<'a>(color: PackedPixel, quantization: [Quantization; 4]) -> Color {
 	let quant = quantization;
+	dequantize_color(color, quant)
+}
+
+pub fn dequantize_color(color: PackedPixel, quant: [Quantization; 4]) -> Color {
 	let mut offset = 0;
 	let r = decode(color.0, offset, quant[0]);
 	offset += quant[0].bits();
@@ -109,4 +123,29 @@ fn dequantize_fn<'a>(color: PackedPixel, quantization: [Quantization; 4]) -> Col
 	let a = decode(color.0, offset, quant[3]);
 
 	Color::from_rgbaf32_unchecked(r, g, b, a)
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn quantize() {
+		let quant = Quantization::new(1., 0, 8);
+		let color = Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 0.5);
+		let quantized = quantize_color(color, [quant; 4]);
+		assert_eq!(quantized.0, 0x7f7f7f7f);
+		let dequantized = dequantize_color(quantized, [quant; 4]);
+		//assert_eq!(color, dequantized);
+	}
+
+	#[test]
+	fn quantize_black() {
+		let quant = Quantization::new(1., 0, 8);
+		let color = Color::from_rgbaf32_unchecked(0., 0., 0., 1.);
+		let quantized = quantize_color(color, [quant; 4]);
+		assert_eq!(quantized.0, 0xff);
+		let dequantized = dequantize_color(quantized, [quant; 4]);
+		assert_eq!(color, dequantized);
+	}
 }

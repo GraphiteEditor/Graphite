@@ -35,7 +35,7 @@ extern crate spirv_std;
 
 		{% for output in output_nodes %}
 		let v = {{output}}.eval(());
-		o{{loop.index0}}[(_global_index.y * i1 + _global_index.x) as usize] = v;
+		o{{loop.index0}}[(_global_index.y * i0 + _global_index.x) as usize] = v;
 		{% endfor %}
 		// TODO: Write output to buffer
 	}
