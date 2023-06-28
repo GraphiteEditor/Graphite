@@ -7,6 +7,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHan
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::Fill;
 
 use glam::DVec2;
@@ -103,6 +104,17 @@ impl Fsm for FillToolFsmState {
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					if let Some(path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
+						let is_bitmap = document
+							.document_legacy
+							.layer(path)
+							.ok()
+							.and_then(|layer| layer.as_layer().ok())
+							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+
+						if is_bitmap {
+							return self;
+						}
+
 						let color = match lmb_or_rmb {
 							LeftPointerDown => global_tool_data.primary_color,
 							RightPointerDown => global_tool_data.secondary_color,

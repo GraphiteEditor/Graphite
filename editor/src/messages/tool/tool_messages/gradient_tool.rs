@@ -11,6 +11,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::Layer;
+use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{Fill, Gradient, GradientType, PathStyle, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
@@ -420,9 +421,6 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					for path in document.selected_visible_layers() {
-						if !document.document_legacy.multiply_transforms(path).unwrap().inverse().is_finite() {
-							continue;
-						}
 						let layer = document.document_legacy.layer(path).unwrap();
 
 						if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
@@ -568,7 +566,18 @@ impl Fsm for GradientToolFsmState {
 						let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
 						let intersection = document.document_legacy.intersects_quad_root(quad, render_data).pop();
 
+						// the intersection is the layer where the gradient is being applied
 						if let Some(intersection) = intersection {
+							let is_bitmap = document
+								.document_legacy
+								.layer(&intersection)
+								.ok()
+								.and_then(|layer| layer.as_layer().ok())
+								.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+							if is_bitmap {
+								return self;
+							}
+
 							if !document.selected_layers_contains(&intersection) {
 								let replacement_selected_layers = vec![intersection.clone()];
 
