@@ -8,10 +8,12 @@ use spirv_std::num_traits::Float;
 
 #[derive(Clone, Copy, Debug, DynAny, PartialEq, Pod, Zeroable)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[repr(C)]
+#[repr(C, align(16))]
 pub struct Quantization {
 	pub a: f32,
 	pub b_and_bits: u32,
+	_padding: u32,
+	_padding2: u32,
 }
 
 impl Quantization {
@@ -38,7 +40,12 @@ impl core::hash::Hash for Quantization {
 
 impl Default for Quantization {
 	fn default() -> Self {
-		Self { a: 1., b_and_bits: 8 }
+		Self {
+			a: 1.,
+			b_and_bits: 8,
+			_padding: 0,
+			_padding2: 0,
+		}
 	}
 }
 
@@ -48,7 +55,7 @@ pub type QuantizationChannels = [Quantization; 4];
 pub struct PackedPixel(u32);
 
 #[inline(always)]
-fn quantize(value: f32, offset: u32, quantization: &Quantization) -> u32 {
+fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
 	let a = quantization.a();
 	let bits = quantization.bits();
 	let b = quantization.b();
@@ -57,7 +64,7 @@ fn quantize(value: f32, offset: u32, quantization: &Quantization) -> u32 {
 }
 
 #[inline(always)]
-fn decode(value: u32, offset: u32, quantization: &Quantization) -> f32 {
+fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
 	let a = quantization.a();
 	let bits = quantization.bits();
 	let b = quantization.b();
@@ -74,13 +81,13 @@ pub struct QuantizeNode<Quantization> {
 fn quantize_fn<'a>(color: Color, quantization: [Quantization; 4]) -> PackedPixel {
 	let quant = quantization;
 	let mut offset = 0;
-	let r = quantize(color.r(), offset, &quant[0]);
+	let r = quantize(color.r(), offset, quant[0]);
 	offset += quant[0].bits();
-	let g = quantize(color.g(), offset, &quant[1]);
+	let g = quantize(color.g(), offset, quant[1]);
 	offset += quant[1].bits();
-	let b = quantize(color.b(), offset, &quant[2]);
+	let b = quantize(color.b(), offset, quant[2]);
 	offset += quant[2].bits();
-	let a = quantize(color.a(), offset, &quant[3]);
+	let a = quantize(color.a(), offset, quant[3]);
 
 	PackedPixel(r | g | b | a)
 }
@@ -93,13 +100,13 @@ pub struct DeQuantizeNode<Quantization> {
 fn dequantize_fn<'a>(color: PackedPixel, quantization: [Quantization; 4]) -> Color {
 	let quant = quantization;
 	let mut offset = 0;
-	let r = decode(color.0, offset, &quant[0]);
+	let r = decode(color.0, offset, quant[0]);
 	offset += quant[0].bits();
-	let g = decode(color.0, offset, &quant[1]);
+	let g = decode(color.0, offset, quant[1]);
 	offset += quant[1].bits();
-	let b = decode(color.0, offset, &quant[2]);
+	let b = decode(color.0, offset, quant[2]);
 	offset += quant[2].bits();
-	let a = decode(color.0, offset, &quant[3]);
+	let a = decode(color.0, offset, quant[3]);
 
 	Color::from_rgbaf32_unchecked(r, g, b, a)
 }

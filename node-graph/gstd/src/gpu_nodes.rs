@@ -114,7 +114,7 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 	log::debug!("inner_network: {:?}", inner_network);
 	let network = NodeNetwork {
 		inputs: vec![1, 2], //vec![0, 1],
-		outputs: vec![NodeOutput::new(6, 0)],
+		outputs: vec![NodeOutput::new(5, 0)],
 		nodes: [
 			DocumentNode {
 				name: "Slice".into(),
@@ -125,7 +125,7 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 			DocumentNode {
 				name: "Quantization".into(),
 				inputs: vec![NodeInput::Network(concrete!(quantization::Quantization))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::CloneNode".into()),
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
@@ -166,18 +166,21 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
 				..Default::default()
 			},
+			/*
 			DocumentNode {
 				name: "SaveNode".into(),
 				inputs: vec![
 					NodeInput::node(5, 0),
 					NodeInput::Inline(InlineRust::new(
-						"move |x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
-						Type::Fn(Box::new(concrete!(Color)), Box::new(concrete!(()))),
+						"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
+						//"|x|()".into(),
+						Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
 					)),
 				],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnOnceNode".into()),
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnMutNode".into()),
 				..Default::default()
 			},
+			*/
 		]
 		.into_iter()
 		.enumerate()
@@ -239,6 +242,7 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 		)
 		.unwrap();
 	let width_uniform = Arc::new(width_uniform);
+	let quantization_uniform = Arc::new(quantization_uniform);
 	let storage_buffer = Arc::new(storage_buffer);
 	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
 	let output_buffer = Arc::new(output_buffer);
@@ -246,7 +250,7 @@ async fn create_compute_pass_descriptor(node: DocumentNode, image: &ImageFrame<C
 	let readback_buffer = Arc::new(readback_buffer);
 	log::debug!("created buffer");
 	let bind_group = Bindgroup {
-		buffers: vec![width_uniform.clone(), storage_buffer.clone()],
+		buffers: vec![quantization_uniform.clone(), width_uniform.clone(), storage_buffer.clone()],
 	};
 
 	let shader = gpu_executor::Shader {

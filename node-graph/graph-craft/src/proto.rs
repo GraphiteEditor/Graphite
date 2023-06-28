@@ -19,7 +19,7 @@ pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>, MutOutput = FutureAny<'i>> + 'n;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;

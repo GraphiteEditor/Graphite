@@ -44,7 +44,7 @@ use core::any::TypeId;
 pub use raster::Color;
 
 // pub trait Node: for<'n> NodeIO<'n> {
-pub trait Node<'i, Input: 'i>: 'i + NodeMut<'i, Input, MutOutput = Self::Output> {
+pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	fn eval(&'i self, input: Input) -> Self::Output;
 	fn reset(&self) {}
@@ -74,7 +74,7 @@ impl<'i, T: Node<'i, I>, I: 'i> NodeOnce<'i, I> for &'i T {
 		(self).eval(input)
 	}
 }
-impl<'i, T: Node<'i, I> + ?Sized, I: 'i> NodeMut<'i, I> for T {
+impl<'i, T: Node<'i, I> + ?Sized, I: 'i> NodeMut<'i, I> for &'i T {
 	type MutOutput = T::Output;
 	fn eval_mut(&'i mut self, input: I) -> Self::MutOutput {
 		(*self).eval(input)
@@ -149,13 +149,13 @@ use core::pin::Pin;
 
 use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O, MutOutput = O> + 'i>> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O, MutOutput = O> + 'i)> {
+impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
