@@ -1,7 +1,7 @@
 use graph_craft::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
-use graphene_core::quantization::{QuantizationChannels, PackedPixel};
+use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
@@ -251,6 +251,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
+		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: WasmEditorApi, output: Arc<[u8]>, params: [String]),
+		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
 		async_node!(graphene_std::wasm_application_io::CreateSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>, params: []),
 		async_node!(
 			graphene_std::wasm_application_io::DrawImageFrameNode<_>,

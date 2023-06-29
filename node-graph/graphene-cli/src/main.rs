@@ -1,5 +1,5 @@
 use fern::colors::{Color, ColoredLevelConfig};
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use document_legacy::{
 	document::Document,
@@ -36,11 +36,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let document_path = std::env::args().nth(1).expect("No document path provided");
 
+	let image_path = std::env::args().nth(2);
+
 	let document_string = std::fs::read_to_string(&document_path).expect("Failed to read document");
 
 	let executor = create_executor(document_string)?;
 	println!("creating gpu context",);
-	let application_io = &block_on(WasmApplicationIo::new());
+	let mut application_io = block_on(WasmApplicationIo::new());
+	if let Some(image_path) = image_path {
+		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
+	}
 
 	let device = application_io.gpu_executor().unwrap().context.device.clone();
 	std::thread::spawn(move || loop {
@@ -51,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let editor_api = WasmEditorApi {
 		image_frame: None,
 		font_cache: &FontCache::default(),
-		application_io,
+		application_io: &application_io,
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
 	};

@@ -255,6 +255,50 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::input_properties,
 		},
 		DocumentNodeType {
+			name: "Load Image",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Load Resource".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi)), NodeInput::Network(concrete!(String))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::LoadResourceNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Decode Image".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "api",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+				DocumentInputType {
+					name: "path",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::String("graphite:null".to_string()), false),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Image Frame",
+				data_type: FrontendGraphDataType::Raster,
+			}],
+			properties: node_properties::load_image_properties,
+		},
+		DocumentNodeType {
 			name: "Create Canvas",
 			category: "Structural",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -289,7 +333,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Draw Canvas",
@@ -345,7 +389,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Begin Scope",

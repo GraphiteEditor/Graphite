@@ -238,8 +238,8 @@ fn levels_node(color: Color, input_start: f32, input_mid: f32, input_end: f32, o
 	let input_highlights = (input_end / 100.) as f32;
 
 	// Output Range (Range: 0-1)
-	let output_minimums = (output_start / 100.) as f32;
-	let output_maximums = (output_end / 100.) as f32;
+	let output_minimums = output_start / 100.;
+	let output_maximums = output_end / 100.;
 
 	// Midtones interpolation factor between minimums and maximums (Range: 0-1)
 	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
@@ -462,7 +462,7 @@ pub struct VibranceNode<Vibrance> {
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
 fn vibrance_node(color: Color, vibrance: f32) -> Color {
-	let vibrance = vibrance as f32 / 100.;
+	let vibrance = vibrance / 100.;
 	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 	// So this scales the 0% to -50% range to 0% to -100%.
 	let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };

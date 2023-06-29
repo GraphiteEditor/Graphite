@@ -80,12 +80,14 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		transform: image.transform,
 	};
 	// TODO: The cache should be based on the network topology not the node name
-	let compute_pass_descriptor = self
-		.cache
-		.borrow_mut()
-		.entry(node.name.clone())
-		.or_insert_with(|| futures::executor::block_on(create_compute_pass_descriptor(node, &image, executor)))
-		.clone();
+	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
+		self.cache.borrow().get(&node.name).unwrap().clone()
+	} else {
+		let name = node.name.clone();
+		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor).await;
+		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
+		compute_pass_descriptor
+	};
 
 	let compute_pass = executor
 		.create_compute_pass(
