@@ -85,6 +85,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DragStart,
 				Delete,
 				NudgeSelectedPoints,
+				Enter,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
@@ -92,12 +93,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				PointerMove,
 				Delete,
 			),
-			_ => actions!(PathToolMessageDiscriminant;
+			DrawingBox => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
-			), // TODO: handle all cases
+				Enter
+			),
 		}
 	}
 }
@@ -267,8 +269,6 @@ impl Fsm for PathToolFsmState {
 								return PathToolFsmState::Dragging;
 							}
 						} else {
-							warn!("starting the dragging process...");
-
 							tool_data.drag_start = input.mouse.position;
 							tool_data.drag_current = input.mouse.position;
 
@@ -280,7 +280,6 @@ impl Fsm for PathToolFsmState {
 									bounding_box.opposite_pivot = selected_edges.calculate_pivot();
 									selected_edges
 								});
-								warn!("{:?}", edges);
 								edges
 							});
 
@@ -292,7 +291,6 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
-					warn!("drawingbox state pointer move trigger");
 					tool_data.drag_current = input.mouse.position;
 
 					responses.add_front(DocumentMessage::Overlays(
@@ -342,13 +340,18 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Dragging
 				}
 
-				(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { .. } | PathToolMessage::Enter) => {
-					warn!("drag stop drawing box state");
-					// todo: need to do some processing here
-					let quad = tool_data.selection_quad();
-					responses.add_front(DocumentMessage::AddSelectedLayers {
-						additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
-					});
+				(PathToolFsmState::DrawingBox, PathToolMessage::Enter) => {
+					let mut finished_processing = false;
+					if tool_data.drag_start == tool_data.drag_current {
+						responses.add(DocumentMessage::DeselectAllLayers);
+						finished_processing = true;
+					}
+
+					if !finished_processing {
+						let quad = tool_data.selection_quad();
+						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), true);
+					}
+
 					responses.add_front(DocumentMessage::Overlays(
 						Operation::DeleteLayer {
 							path: tool_data.drag_box_overlay_layer.take().unwrap(),
@@ -359,7 +362,30 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// Mouse up
-				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
+				(state, PathToolMessage::DragStop { shift_mirror_distance }) => {
+					if state == PathToolFsmState::DrawingBox {
+						let mut finished_processing = false;
+						if tool_data.drag_start == tool_data.drag_current {
+							responses.add(DocumentMessage::DeselectAllLayers);
+							finished_processing = true;
+						}
+
+						if !finished_processing {
+							let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
+							let quad = tool_data.selection_quad();
+							shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
+						};
+
+						responses.add_front(DocumentMessage::Overlays(
+							Operation::DeleteLayer {
+								path: tool_data.drag_box_overlay_layer.take().unwrap(),
+							}
+							.into(),
+						));
+						return PathToolFsmState::Ready;
+					}
+
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
 						.map(|(_, nearest_point)| nearest_point);
@@ -378,6 +404,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 					PathToolFsmState::Ready
 				}
+
 				// Delete key
 				(_, PathToolMessage::Delete) => {
 					// Delete the selected points and clean up overlays
@@ -424,18 +451,20 @@ impl Fsm for PathToolFsmState {
 	}
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+		let general_hint_data = HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+			HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
+		]);
+
 		let hint_data = match self {
-			PathToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
-			]),
+			PathToolFsmState::Ready => general_hint_data,
 			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
 				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),
-			_ => HintData(vec![]), // TODO: handle all cases
+			PathToolFsmState::DrawingBox => general_hint_data,
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
