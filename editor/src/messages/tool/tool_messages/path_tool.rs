@@ -364,6 +364,8 @@ impl Fsm for PathToolFsmState {
 
 				// Mouse up
 				(state, PathToolMessage::DragStop { shift_mirror_distance }) => {
+					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+
 					if state == PathToolFsmState::DrawingBox {
 						let mut finished_processing = false;
 						if tool_data.drag_start == tool_data.drag_current {
@@ -372,8 +374,6 @@ impl Fsm for PathToolFsmState {
 						}
 
 						if !finished_processing {
-							let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
-
 							let quad = tool_data.selection_quad();
 							shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
 							tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -391,7 +391,6 @@ impl Fsm for PathToolFsmState {
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
 						.map(|(_, nearest_point)| nearest_point);
-					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 					shape_editor.delete_selected_handles_with_zero_length(&document.document_legacy, &tool_data.opposing_handle_lengths, responses);
 

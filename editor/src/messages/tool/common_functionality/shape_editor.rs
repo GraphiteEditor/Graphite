@@ -100,10 +100,6 @@ impl ShapeState {
 				return None;
 			}
 		}
-
-		// Deselect all points if no nearby point
-		self.deselect_all();
-
 		None
 	}
 
@@ -628,7 +624,7 @@ impl ShapeState {
 	pub fn select_all_in_quad(&mut self, document: &Document, quad: [DVec2; 2], clear_selection: bool) {
 		for (layer_path, state) in &mut self.selected_shape_state {
 			if clear_selection {
-				state.clear_points();
+				state.clear_points()
 			}
 
 			let Ok(layer) = document.layer(&layer_path) else {continue};
