@@ -249,7 +249,7 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 	let image = image.to_rgba32f();
 	let image = ImageFrame {
 		image: Image {
-			data: image.chunks(4).map(|pixel| Color::from_rgbaf32_unchecked(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
+			data: image.chunks(4).map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
 			width: image.width(),
 			height: image.height(),
 		},

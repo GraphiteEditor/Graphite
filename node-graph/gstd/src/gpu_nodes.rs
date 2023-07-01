@@ -68,7 +68,8 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
 
-	let quantization = QuantizationChannels::default();
+	let quantization = crate::quantization::generate_quantization_from_image_frame(&image);
+	log::debug!("quantization: {:?}", quantization);
 
 	#[cfg(feature = "quantization")]
 	let image = ImageFrame {
@@ -84,8 +85,9 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		self.cache.borrow().get(&node.name).unwrap().clone()
 	} else {
 		let name = node.name.clone();
-		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor).await;
+		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor, quantization).await;
 		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
+		log::error!("created compute pass");
 		compute_pass_descriptor
 	};
 
@@ -97,15 +99,18 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		)
 		.unwrap();
 	executor.execute_compute_pipeline(compute_pass).unwrap();
-	log::error!("executed pipeline");
+	log::debug!("executed pipeline");
 	log::debug!("reading buffer");
 	let result = executor.read_output_buffer(compute_pass_descriptor.readback_buffer.clone().unwrap()).await.unwrap();
 	#[cfg(feature = "quantization")]
 	let colors = bytemuck::pod_collect_to_vec::<u8, PackedPixel>(result.as_slice());
 	#[cfg(feature = "quantization")]
-	let colors = colors.iter().map(|c| quantization::dequantize_color(*c, quantization)).collect();
+	log::debug!("first color: {:b}", colors[0].0);
+	#[cfg(feature = "quantization")]
+	let colors: Vec<_> = colors.iter().map(|c| quantization::dequantize_color(*c, quantization)).collect();
 	#[cfg(not(feature = "quantization"))]
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
+	log::debug!("first color: {:?}", colors[0]);
 	ImageFrame {
 		image: Image {
 			data: colors,
@@ -126,7 +131,12 @@ impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
 	}
 }
 
-async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrame<T>, executor: &&WgpuExecutor) -> ComputePass<WgpuExecutor> {
+async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
+	node: DocumentNode,
+	image: &ImageFrame<T>,
+	executor: &&WgpuExecutor,
+	quantization: QuantizationChannels,
+) -> ComputePass<WgpuExecutor> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -266,7 +276,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
-	let quantization_uniform = executor.create_uniform_buffer(QuantizationChannels::default()).unwrap();
+	let quantization_uniform = executor.create_uniform_buffer(quantization).unwrap();
 	let storage_buffer = executor
 		.create_storage_buffer(
 			image.image.data.clone(),

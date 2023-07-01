@@ -757,7 +757,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Memoize",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			inputs: vec![
+				DocumentInputType::value("ShortCircut", TaggedValue::None, false),
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::no_properties,
 		},

@@ -10,7 +10,12 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["wasm", "imaginate"]
-gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client", "gpu-executor"]
+gpu = [
+	"graphene-core/gpu",
+	"gpu-compiler-bin-wrapper",
+	"compilation-client",
+	"gpu-executor",
+]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
@@ -19,7 +24,7 @@ imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 wayland = []
 
 [dependencies]
-autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
+autoquant = { path = "../../../autoquant", optional = true, features = [
 	"fitting",
 ] }
 graphene-core = { path = "../gcore", features = [

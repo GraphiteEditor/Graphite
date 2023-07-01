@@ -3,39 +3,41 @@ use crate::Node;
 use bytemuck::{Pod, Zeroable};
 use dyn_any::{DynAny, StaticType};
 
+use num_traits::CheckedShr;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
 
-#[derive(Clone, Copy, Debug, DynAny, PartialEq, Pod, Zeroable)]
+#[derive(Clone, Copy, DynAny, PartialEq, Pod, Zeroable)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C, align(16))]
 pub struct Quantization {
 	pub a: f32,
-	pub b_and_bits: u32,
+	pub b: f32,
+	pub bits: u32,
 	_padding: u32,
-	_padding2: u32,
+}
+
+impl core::fmt::Debug for Quantization {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("Quantization").field("a", &self.a).field("b", &self.b()).field("bits", &self.bits()).finish()
+	}
 }
 
 impl Quantization {
-	pub fn new(a: f32, b: u32, bits: u32) -> Self {
-		Self {
-			a,
-			b_and_bits: (b << 16) | bits,
-			_padding: 0,
-			_padding2: 0,
-		}
+	pub fn new(a: f32, b: f32, bits: u32) -> Self {
+		Self { a, b, bits, _padding: 0 }
 	}
 
 	pub fn a(&self) -> f32 {
 		self.a
 	}
 
-	pub fn b(&self) -> i32 {
-		(self.b_and_bits >> 16) as i32
+	pub fn b(&self) -> f32 {
+		self.b
 	}
 
 	pub fn bits(&self) -> u32 {
-		self.b_and_bits & 0xFF
+		self.bits
 	}
 }
 
@@ -43,40 +45,77 @@ impl core::hash::Hash for Quantization {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.bits().hash(state);
 		self.a().to_bits().hash(state);
-		self.b().hash(state);
+		self.b().to_bits().hash(state);
 	}
 }
 
 impl Default for Quantization {
 	fn default() -> Self {
-		Self::new(1., 0, 8)
+		Self::new(1., 0., 8)
 	}
 }
 
 pub type QuantizationChannels = [Quantization; 4];
 #[repr(transparent)]
 #[derive(DynAny, Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
-pub struct PackedPixel(u32);
+pub struct PackedPixel(pub u32);
 
 impl Pixel for PackedPixel {}
 
+/*
 #[inline(always)]
 fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
 	let a = quantization.a();
 	let bits = quantization.bits();
 	let b = quantization.b();
 	let value = (((a * value) * ((1 << bits) - 1) as f32) as i32 + b) as u32;
-	value << (32 - bits - offset)
+	value.checked_shl(32 - bits - offset).unwrap_or(0)
+}*/
+
+#[inline(always)]
+fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
+	let a = quantization.a();
+	let b = quantization.b();
+	let bits = quantization.bits();
+
+	// Calculate the quantized value
+	// Scale the value by 'a' and the maximum quantization range
+	let scaled_value = ((a * value) + b) * ((1 << bits) - 1) as f32;
+	// Round the scaled value to the nearest integer
+	let rounded_value = scaled_value.clamp(0., (1 << bits) as f32 - 1.) as u32;
+
+	// Shift the quantized value to the appropriate position based on the offset
+	let shifted_value = rounded_value.checked_shl(32 - bits - offset).unwrap();
+
+	shifted_value as u32
 }
+/*
+#[inline(always)]
+fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
+	let a = quantization.a();
+	let bits = quantization.bits();
+	let b = quantization.b();
+	let value = (value << offset) >> (31 - bits);
+	let value = value as i32 - b;
+	(value as f32 / ((1 << bits) - 1) as f32) / a
+}*/
 
 #[inline(always)]
 fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
 	let a = quantization.a();
 	let bits = quantization.bits();
 	let b = quantization.b();
-	let value = (value << offset) >> (32 - bits);
-	let value = value as i32 - b;
-	(value as f32 / ((1 << bits) - 1) as f32) / a
+
+	// Shift the value to the appropriate position based on the offset
+	let shifted_value = value.checked_shr(32 - bits - offset).unwrap();
+
+	// Unpack the quantized value
+	let unpacked_value = shifted_value & ((1 << bits) - 1); // Mask out the unnecessary bits
+	let normalized_value = unpacked_value as f32 / ((1 << bits) - 1) as f32; // Normalize the value based on the quantization range
+	let decoded_value = normalized_value - b;
+	let original_value = decoded_value / a;
+
+	original_value
 }
 
 pub struct QuantizeNode<Quantization> {
@@ -131,7 +170,7 @@ mod test {
 
 	#[test]
 	fn quantize() {
-		let quant = Quantization::new(1., 0, 8);
+		let quant = Quantization::new(1., 0., 8);
 		let color = Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 0.5);
 		let quantized = quantize_color(color, [quant; 4]);
 		assert_eq!(quantized.0, 0x7f7f7f7f);
@@ -141,11 +180,19 @@ mod test {
 
 	#[test]
 	fn quantize_black() {
-		let quant = Quantization::new(1., 0, 8);
+		let quant = Quantization::new(1., 0., 8);
 		let color = Color::from_rgbaf32_unchecked(0., 0., 0., 1.);
 		let quantized = quantize_color(color, [quant; 4]);
 		assert_eq!(quantized.0, 0xff);
 		let dequantized = dequantize_color(quantized, [quant; 4]);
 		assert_eq!(color, dequantized);
+	}
+
+	#[test]
+	fn test_getters() {
+		let quant = Quantization::new(1., 3., 8);
+		assert_eq!(quant.a(), 1.);
+		assert_eq!(quant.b(), 3.);
+		assert_eq!(quant.bits(), 8);
 	}
 }
