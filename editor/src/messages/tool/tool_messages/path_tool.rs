@@ -350,6 +350,7 @@ impl Fsm for PathToolFsmState {
 					if !finished_processing {
 						let quad = tool_data.selection_quad();
 						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), true);
+						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					}
 
 					responses.add_front(DocumentMessage::Overlays(
@@ -375,6 +376,7 @@ impl Fsm for PathToolFsmState {
 
 							let quad = tool_data.selection_quad();
 							shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
+							tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 						};
 
 						responses.add_front(DocumentMessage::Overlays(
