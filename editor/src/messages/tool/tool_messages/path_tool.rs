@@ -43,7 +43,9 @@ pub enum PathToolMessage {
 	DragStop {
 		shift_mirror_distance: Key,
 	},
-	Enter,
+	Enter {
+		shift_mirror_distance: Key,
+	},
 	InsertPoint,
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -340,30 +342,8 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Dragging
 				}
 
-				(PathToolFsmState::DrawingBox, PathToolMessage::Enter) => {
-					let mut finished_processing = false;
-					if tool_data.drag_start == tool_data.drag_current {
-						responses.add(DocumentMessage::DeselectAllLayers);
-						finished_processing = true;
-					}
-
-					if !finished_processing {
-						let quad = tool_data.selection_quad();
-						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), true);
-						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
-					}
-
-					responses.add_front(DocumentMessage::Overlays(
-						Operation::DeleteLayer {
-							path: tool_data.drag_box_overlay_layer.take().unwrap(),
-						}
-						.into(),
-					));
-					PathToolFsmState::Ready
-				}
-
 				// Mouse up
-				(state, PathToolMessage::DragStop { shift_mirror_distance }) => {
+				(state, PathToolMessage::DragStop { shift_mirror_distance } | PathToolMessage::Enter { shift_mirror_distance }) => {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 					if state == PathToolFsmState::DrawingBox {
@@ -444,7 +424,6 @@ impl Fsm for PathToolFsmState {
 					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
 					PathToolFsmState::Ready
 				}
-				(_, _) => PathToolFsmState::Ready,
 			}
 		} else {
 			self
