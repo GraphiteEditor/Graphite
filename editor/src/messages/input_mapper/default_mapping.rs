@@ -180,7 +180,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter {
-			shift_mirror_distance: Shift
+			add_to_selection: Shift
 		}),
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
