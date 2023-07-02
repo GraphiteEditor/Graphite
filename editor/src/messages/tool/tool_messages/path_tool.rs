@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box, BoundingBoxOverlays, SelectedEdges};
+use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box};
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
@@ -54,7 +54,6 @@ pub enum PathToolMessage {
 	PointerMove {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
-		// center: Key, // this mightn't be needed
 	},
 }
 
@@ -135,7 +134,6 @@ struct PathToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	bounding_box_overlays: Option<BoundingBoxOverlays>,
 }
 
 impl PathToolData {
@@ -159,12 +157,7 @@ impl PathToolData {
 	}
 
 	fn selection_box(&self) -> [DVec2; 2] {
-		if self.drag_current == self.drag_start {
-			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start - tolerance, self.drag_start + tolerance]
-		} else {
-			[self.drag_start, self.drag_current]
-		}
+		[self.drag_start, self.drag_current]
 	}
 }
 
@@ -274,17 +267,6 @@ impl Fsm for PathToolFsmState {
 							tool_data.drag_start = input.mouse.position;
 							tool_data.drag_current = input.mouse.position;
 
-							tool_data.bounding_box_overlays.as_mut().and_then(|bounding_box| {
-								let edges = bounding_box.check_selected_edges(input.mouse.position);
-
-								bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
-									let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
-									bounding_box.opposite_pivot = selected_edges.calculate_pivot();
-									selected_edges
-								});
-								edges
-							});
-
 							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
 							return PathToolFsmState::DrawingBox;
 						}
@@ -344,14 +326,10 @@ impl Fsm for PathToolFsmState {
 
 				(PathToolFsmState::DrawingBox, PathToolMessage::Enter { add_to_selection }) => {
 					let shift_pressed = input.keyboard.get(add_to_selection as usize);
-					let mut finished_processing = false;
 
 					if tool_data.drag_start == tool_data.drag_current {
 						responses.add(DocumentMessage::DeselectAllLayers);
-						finished_processing = true;
-					}
-
-					if !finished_processing {
+					} else {
 						let quad = tool_data.selection_quad();
 						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -367,30 +345,27 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// Mouse up
-				(state, PathToolMessage::DragStop { shift_mirror_distance }) => {
+				(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { shift_mirror_distance }) => {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
-					if state == PathToolFsmState::DrawingBox {
-						let mut finished_processing = false;
-						if tool_data.drag_start == tool_data.drag_current {
-							responses.add(DocumentMessage::DeselectAllLayers);
-							finished_processing = true;
+					if tool_data.drag_start == tool_data.drag_current {
+						responses.add(DocumentMessage::DeselectAllLayers);
+					} else {
+						let quad = tool_data.selection_quad();
+						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
+						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+					};
+
+					responses.add_front(DocumentMessage::Overlays(
+						Operation::DeleteLayer {
+							path: tool_data.drag_box_overlay_layer.take().unwrap(),
 						}
-
-						if !finished_processing {
-							let quad = tool_data.selection_quad();
-							shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
-							tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
-						};
-
-						responses.add_front(DocumentMessage::Overlays(
-							Operation::DeleteLayer {
-								path: tool_data.drag_box_overlay_layer.take().unwrap(),
-							}
-							.into(),
-						));
-						return PathToolFsmState::Ready;
-					}
+						.into(),
+					));
+					return PathToolFsmState::Ready;
+				}
+				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
+					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 					let nearest_point = shape_editor
 						.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
