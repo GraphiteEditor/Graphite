@@ -13,7 +13,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::intersection::Quad;
 use document_legacy::LayerId;
 
-use glam::{DVec2, Vec2Swizzles};
+use glam::{DVec2, IVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -226,6 +226,11 @@ impl Fsm for ArtboardToolFsmState {
 								position: position.round().into(),
 								size: size.round().into(),
 							});
+							responses.add(GraphOperationMessage::ResizeArtboard {
+								id: tool_data.selected_artboard.unwrap(),
+								location: position.round().as_ivec2(),
+								dimensions: size.round().as_ivec2(),
+							});
 
 							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
@@ -250,6 +255,11 @@ impl Fsm for ArtboardToolFsmState {
 							artboard: tool_data.selected_artboard.unwrap(),
 							position: position.round().into(),
 							size: size.round().into(),
+						});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap(),
+							location: position.round().as_ivec2(),
+							dimensions: size.round().as_ivec2(),
 						});
 
 						responses.add(BroadcastEvent::DocumentIsDirty);
@@ -285,6 +295,11 @@ impl Fsm for ArtboardToolFsmState {
 							position: start.round().into(),
 							size: size.round().into(),
 						});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap(),
+							location: start.round().as_ivec2(),
+							dimensions: size.round().as_ivec2(),
+						});
 					} else {
 						let id = generate_uuid();
 						tool_data.selected_artboard = Some(id);
@@ -297,6 +312,15 @@ impl Fsm for ArtboardToolFsmState {
 							position: start.round().into(),
 							size: (1., 1.),
 						});
+						responses.add(GraphOperationMessage::NewArtboard {
+							id,
+							artboard: graphene_core::Artboard {
+								graphic_group: graphene_core::GraphicGroup::EMPTY,
+								location: start.round().as_ivec2(),
+								dimensions: IVec2::splat(1),
+								background: graphene_core::Color::WHITE,
+							},
+						})
 					}
 
 					// Have to put message here instead of when Artboard is created
@@ -352,6 +376,8 @@ impl Fsm for ArtboardToolFsmState {
 				(_, ArtboardToolMessage::DeleteSelected) => {
 					if let Some(artboard) = tool_data.selected_artboard.take() {
 						responses.add(ArtboardMessage::DeleteArtboard { artboard });
+						responses.add(GraphOperationMessage::DeleteArtboard { id: artboard });
+
 						responses.add(BroadcastEvent::DocumentIsDirty);
 					}
 					ArtboardToolFsmState::Ready
@@ -362,6 +388,11 @@ impl Fsm for ArtboardToolFsmState {
 							artboard: tool_data.selected_artboard.unwrap(),
 							position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
 							size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
+						});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap(),
+							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
+							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 						});
 					}
 

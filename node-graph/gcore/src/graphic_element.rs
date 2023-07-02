@@ -51,6 +51,17 @@ pub struct Artboard {
 	pub background: Color,
 }
 
+impl Artboard {
+	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
+		Self {
+			graphic_group: GraphicGroup::EMPTY,
+			location,
+			dimensions,
+			background: Color::WHITE,
+		}
+	}
+}
+
 pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
 	name: Name,
 	blend_mode: BlendMode,

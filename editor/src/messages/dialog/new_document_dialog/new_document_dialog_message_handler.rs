@@ -5,7 +5,8 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInp
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
-use glam::UVec2;
+use glam::{IVec2, UVec2};
+use graphene_core::uuid::generate_uuid;
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]
@@ -31,6 +32,10 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 						id: None,
 						position: (0., 0.),
 						size: (self.dimensions.x as f64, self.dimensions.y as f64),
+					});
+					responses.add(GraphOperationMessage::NewArtboard {
+						id: generate_uuid(),
+						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
 					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
