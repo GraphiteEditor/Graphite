@@ -36,10 +36,10 @@ fn generate_quantization(data: Vec<f64>, samples: usize) -> [Quantization; 4] {
 	let blue = create_distribution(data.clone(), samples, 2);
 	let alpha = create_distribution(data, samples, 3);
 
-	let fit_red = autoquant::calculate_error_function(&red, 0, &red);
-	let fit_green = autoquant::calculate_error_function(&green, 0, &green);
-	let fit_blue = autoquant::calculate_error_function(&blue, 0, &blue);
-	let fit_alpha = autoquant::calculate_error_function(&alpha, 0, &alpha);
+	let fit_red = autoquant::calculate_error_function(&red, 1, &red);
+	let fit_green = autoquant::calculate_error_function(&green, 1, &green);
+	let fit_blue = autoquant::calculate_error_function(&blue, 1, &blue);
+	let fit_alpha = autoquant::calculate_error_function(&alpha, 1, &alpha);
 	let red_error: ErrorFunction<10> = autoquant::packing::ErrorFunction::new(fit_red.as_slice());
 	let green_error: ErrorFunction<10> = autoquant::packing::ErrorFunction::new(fit_green.as_slice());
 	let blue_error: ErrorFunction<10> = autoquant::packing::ErrorFunction::new(fit_blue.as_slice());
@@ -48,7 +48,7 @@ fn generate_quantization(data: Vec<f64>, samples: usize) -> [Quantization; 4] {
 	let merged: ErrorFunction<30> = autoquant::packing::merge_error_functions(&merged, &blue_error);
 	let merged: ErrorFunction<40> = autoquant::packing::merge_error_functions(&merged, &alpha_error);
 
-	let bin_size = 8;
+	let bin_size = 32;
 	let mut distributions = [red, green, blue, alpha].into_iter();
 
 	let bits = &merged.bits[bin_size];

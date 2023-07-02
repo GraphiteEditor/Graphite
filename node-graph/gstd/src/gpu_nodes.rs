@@ -68,7 +68,10 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
 
+	#[cfg(feature = "quantization")]
 	let quantization = crate::quantization::generate_quantization_from_image_frame(&image);
+	#[cfg(not(feature = "quantization"))]
+	let quantization = QuantizationChannels::default();
 	log::debug!("quantization: {:?}", quantization);
 
 	#[cfg(feature = "quantization")]
