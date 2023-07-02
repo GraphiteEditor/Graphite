@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
@@ -149,15 +151,6 @@ impl PathToolData {
 		}
 
 		self.opposing_handle_lengths = None;
-	}
-
-	fn selection_quad(&self) -> Quad {
-		let bbox = self.selection_box();
-		Quad::from_box(bbox)
-	}
-
-	fn selection_box(&self) -> [DVec2; 2] {
-		[self.drag_start, self.drag_current]
 	}
 }
 
@@ -330,8 +323,7 @@ impl Fsm for PathToolFsmState {
 					if tool_data.drag_start == tool_data.drag_current {
 						responses.add(DocumentMessage::DeselectAllLayers);
 					} else {
-						let quad = tool_data.selection_quad();
-						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
+						shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start, tool_data.drag_current], !shift_pressed);
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					};
 
@@ -351,8 +343,7 @@ impl Fsm for PathToolFsmState {
 					if tool_data.drag_start == tool_data.drag_current {
 						responses.add(DocumentMessage::DeselectAllLayers);
 					} else {
-						let quad = tool_data.selection_quad();
-						shape_editor.select_all_in_quad(&document.document_legacy, quad.bounding_box(), !shift_pressed);
+						shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start, tool_data.drag_current], !shift_pressed);
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					};
 
@@ -444,7 +435,10 @@ impl Fsm for PathToolFsmState {
 				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
 				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
 			])]),
-			PathToolFsmState::DrawingBox => general_hint_data,
+			PathToolFsmState::DrawingBox => HintData(vec![HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+				HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+			])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
