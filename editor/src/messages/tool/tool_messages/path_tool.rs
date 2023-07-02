@@ -3,7 +3,6 @@ use std::vec;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
@@ -133,8 +132,6 @@ struct PathToolData {
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
-	drag_start: ViewportPosition,
-	drag_current: ViewportPosition,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
 }
 
@@ -257,8 +254,9 @@ impl Fsm for PathToolFsmState {
 								return PathToolFsmState::Dragging;
 							}
 						} else {
-							tool_data.drag_start = input.mouse.position;
-							tool_data.drag_current = input.mouse.position;
+							// an empty intersection means that the user is drawing a box
+							tool_data.drag_start_pos = input.mouse.position;
+							tool_data.previous_mouse_position = input.mouse.position;
 
 							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
 							return PathToolFsmState::DrawingBox;
@@ -268,12 +266,12 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
-					tool_data.drag_current = input.mouse.position;
+					tool_data.previous_mouse_position = input.mouse.position;
 
 					responses.add_front(DocumentMessage::Overlays(
 						Operation::SetLayerTransformInViewport {
 							path: tool_data.drag_box_overlay_layer.clone().unwrap(),
-							transform: transform_from_box(tool_data.drag_start, tool_data.drag_current, DAffine2::IDENTITY).to_cols_array(),
+							transform: transform_from_box(tool_data.drag_start_pos, tool_data.previous_mouse_position, DAffine2::IDENTITY).to_cols_array(),
 						}
 						.into(),
 					));
@@ -320,10 +318,10 @@ impl Fsm for PathToolFsmState {
 				(PathToolFsmState::DrawingBox, PathToolMessage::Enter { add_to_selection }) => {
 					let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
-					if tool_data.drag_start == tool_data.drag_current {
+					if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 						responses.add(DocumentMessage::DeselectAllLayers);
 					} else {
-						shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start, tool_data.drag_current], !shift_pressed);
+						shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					};
 
@@ -340,10 +338,10 @@ impl Fsm for PathToolFsmState {
 				(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { shift_mirror_distance }) => {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
-					if tool_data.drag_start == tool_data.drag_current {
+					if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 						responses.add(DocumentMessage::DeselectAllLayers);
 					} else {
-						shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start, tool_data.drag_current], !shift_pressed);
+						shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					};
 
