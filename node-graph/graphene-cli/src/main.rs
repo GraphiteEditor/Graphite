@@ -108,8 +108,23 @@ mod test {
 	use super::*;
 
 	#[test]
-	fn gpu_surface() {
-		let document_string = include_str!("../test_files/gpu_surface.graphite");
+	fn grays_scale() {
+		let document_string = include_str!("../test_files/gray.graphite");
+		let executor = create_executor(document_string.to_string()).unwrap();
+		let editor_api = WasmEditorApi {
+			image_frame: None,
+			font_cache: &FontCache::default(),
+			application_io: &block_on(WasmApplicationIo::new()),
+			node_graph_message_sender: &UpdateLogger {},
+			imaginate_preferences: &ImaginatePreferences::default(),
+		};
+		let result = block_on((&executor).execute(editor_api.clone())).unwrap();
+		println!("result: {:?}", result);
+	}
+
+	#[test]
+	fn hue() {
+		let document_string = include_str!("../test_files/hue.graphite");
 		let executor = create_executor(document_string.to_string()).unwrap();
 		let editor_api = WasmEditorApi {
 			image_frame: None,
