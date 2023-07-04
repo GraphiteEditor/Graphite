@@ -1,5 +1,5 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::DocumentRenderMode;
+use super::utility_types::misc::{DocumentRenderMode, SnappingOptions};
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::frontend::utility_types::ExportBounds;
@@ -1561,9 +1561,28 @@ impl DocumentMessageHandler {
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				..Default::default()
 			})),
+			// this isn't working, why?
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
-				text: "Coming soon".into(),
+				text: "Select the vector to snap to.".into(), // TODO: check whether this is an apt description
+				options_widget: WidgetLayout::new(vec![LayoutGroup::Row {
+					widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+						entries: vec![vec![
+							DropdownEntryData {
+								label: SnappingOptions::BoundingBoxes.to_string(),
+								..DropdownEntryData::default()
+							},
+							DropdownEntryData {
+								label: SnappingOptions::Nodes.to_string(),
+								..DropdownEntryData::default()
+							},
+						]],
+						selected_index: Some(0_u32),
+						draw_icon: false,
+						interactive: true,
+						..Default::default()
+					}))],
+				}]),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {

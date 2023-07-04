@@ -931,6 +931,8 @@ export class PopoverButton extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+    options_widget: WidgetLayout | undefined;
 }
 
 export type RadioEntryData = {

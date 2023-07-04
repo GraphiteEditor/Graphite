@@ -74,3 +74,19 @@ pub enum DocumentRenderMode<'a> {
 	OnlyBelowLayerInFolder(&'a [LayerId]),
 	LayerCutout(&'a [LayerId], Color),
 }
+
+pub enum SnappingOptions {
+	BoundingBoxes,
+	Nodes,
+}
+
+impl fmt::Display for SnappingOptions {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
+			SnappingOptions::Nodes => write!(f, "Nodes"),
+		}
+	}
+}
+
+// TODO: implement icons for SnappingOptions eventually
