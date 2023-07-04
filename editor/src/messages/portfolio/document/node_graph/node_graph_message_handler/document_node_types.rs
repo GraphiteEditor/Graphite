@@ -764,6 +764,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 			],
 			primary_output: false,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Brush",
@@ -869,6 +870,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Uniform",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -919,6 +921,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Storage",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1127,6 +1130,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "PipelineResult",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1177,6 +1181,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Buffer",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1214,6 +1219,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "GpuSurface",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1267,6 +1273,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "RenderedTexture",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1317,6 +1324,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Texture",
 				data_type: FrontendGraphDataType::General,
 			}],
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
