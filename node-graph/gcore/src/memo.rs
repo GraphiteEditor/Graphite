@@ -21,7 +21,7 @@ where
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty acurate xD
 	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
-	fn eval(&'i self, input: ()) -> Self::Output {
+	fn eval(&'i self, input: ()) -> Pin<Box<dyn Future<Output = T> + 'i>> {
 		Box::pin(async move {
 			if let Some(cached_value) = self.cache.take() {
 				self.cache.set(Some(cached_value.clone()));

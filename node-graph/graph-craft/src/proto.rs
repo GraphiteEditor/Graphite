@@ -20,10 +20,10 @@ pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n)>;
-pub type TypeErasedRef<'n> = &'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n);
-pub type TypeErasedBox<'n> = Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>>;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
+pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
+pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
+pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
@@ -181,7 +181,7 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
 			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
@@ -248,7 +248,7 @@ impl ProtoNode {
 
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ValueNode"),
+			identifier: NodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 			document_node_path: path,
