@@ -1,13 +1,17 @@
+use dyn_any::{StaticType, StaticTypeSized};
 use glam::{DAffine2, DVec2, Mat2, Vec2};
 use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
 use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
+use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::WgpuExecutor;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::wasm_application_io::WasmApplicationIo;
@@ -42,23 +46,127 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
 	editor_api: EditorApi,
+	cache: RefCell<HashMap<String, ComputePass<WgpuExecutor>>>,
 }
 
-#[node_macro::node_fn(MapGpuNode)]
+struct ComputePass<T: GpuExecutor> {
+	pipeline_layout: PipelineLayout<T>,
+	readback_buffer: Option<Arc<ShaderInput<T>>>,
+}
+
+impl<T: GpuExecutor> Clone for ComputePass<T> {
+	fn clone(&self) -> Self {
+		Self {
+			pipeline_layout: self.pipeline_layout.clone(),
+			readback_buffer: self.readback_buffer.clone(),
+		}
+	}
+}
+
+#[node_macro::node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
+	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
+
+	#[cfg(feature = "quantization")]
+	let quantization = crate::quantization::generate_quantization_from_image_frame(&image);
+	#[cfg(not(feature = "quantization"))]
+	let quantization = QuantizationChannels::default();
+	log::debug!("quantization: {:?}", quantization);
+
+	#[cfg(feature = "quantization")]
+	let image = ImageFrame {
+		image: Image {
+			data: image.image.data.iter().map(|c| quantization::quantize_color(*c, quantization)).collect(),
+			width: image.image.width,
+			height: image.image.height,
+		},
+		transform: image.transform,
+	};
+	// TODO: The cache should be based on the network topology not the node name
+	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
+		self.cache.borrow().get(&node.name).unwrap().clone()
+	} else {
+		let name = node.name.clone();
+		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor, quantization).await;
+		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
+		log::error!("created compute pass");
+		compute_pass_descriptor
+	};
+
+	let compute_pass = executor
+		.create_compute_pass(
+			&compute_pass_descriptor.pipeline_layout,
+			compute_pass_descriptor.readback_buffer.clone(),
+			ComputePassDimensions::XY(image.image.width / 12 + 1, image.image.height / 8 + 1),
+		)
+		.unwrap();
+	executor.execute_compute_pipeline(compute_pass).unwrap();
+	log::debug!("executed pipeline");
+	log::debug!("reading buffer");
+	let result = executor.read_output_buffer(compute_pass_descriptor.readback_buffer.clone().unwrap()).await.unwrap();
+	#[cfg(feature = "quantization")]
+	let colors = bytemuck::pod_collect_to_vec::<u8, PackedPixel>(result.as_slice());
+	#[cfg(feature = "quantization")]
+	log::debug!("first color: {:b}", colors[0].0);
+	#[cfg(feature = "quantization")]
+	let colors: Vec<_> = colors.iter().map(|c| quantization::dequantize_color(*c, quantization)).collect();
+	#[cfg(not(feature = "quantization"))]
+	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
+	log::debug!("first color: {:?}", colors[0]);
+	ImageFrame {
+		image: Image {
+			data: colors,
+			width: image.image.width,
+			height: image.image.height,
+		},
+		transform: image.transform,
+	}
+}
+
+impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
+	pub fn new(node: Node, editor_api: EditorApi) -> Self {
+		Self {
+			node,
+			editor_api,
+			cache: RefCell::new(HashMap::new()),
+		}
+	}
+}
+
+async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
+	node: DocumentNode,
+	image: &ImageFrame<T>,
+	executor: &&WgpuExecutor,
+	quantization: QuantizationChannels,
+) -> ComputePass<WgpuExecutor> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
 	log::debug!("inner_network: {:?}", inner_network);
 	let network = NodeNetwork {
-		inputs: vec![], //vec![0, 1],
-		outputs: vec![NodeOutput::new(1, 0)],
+		inputs: vec![2, 1], //vec![0, 1],
+		#[cfg(feature = "quantization")]
+		outputs: vec![NodeOutput::new(5, 0)],
+		#[cfg(not(feature = "quantization"))]
+		outputs: vec![NodeOutput::new(3, 0)],
 		nodes: [
 			DocumentNode {
 				name: "Slice".into(),
 				inputs: vec![NodeInput::Inline(InlineRust::new("i1[(_global_index.y * i0 + _global_index.x) as usize]".into(), concrete![Color]))],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+				..Default::default()
+			},
+			DocumentNode {
+				name: "Quantization".into(),
+				inputs: vec![NodeInput::Network(concrete!(quantization::Quantization))],
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+				..Default::default()
+			},
+			DocumentNode {
+				name: "Width".into(),
+				inputs: vec![NodeInput::Network(concrete!(u32))],
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 				..Default::default()
 			},
 			/*DocumentNode {
@@ -68,30 +176,48 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
 				..Default::default()
 			},*/
-			/*
+				/*
 			DocumentNode {
 				name: "GetNode".into(),
 				inputs: vec![NodeInput::node(1, 0), NodeInput::node(0, 0)],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::storage::GetNode".into()),
 				..Default::default()
 			},*/
+			#[cfg(feature = "quantization")]
+			DocumentNode {
+				name: "Dequantize".into(),
+				inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
+				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode"),
+				..Default::default()
+			},
 			DocumentNode {
 				name: "MapNode".into(),
+				#[cfg(feature = "quantization")]
+				inputs: vec![NodeInput::node(3, 0)],
+				#[cfg(not(feature = "quantization"))]
 				inputs: vec![NodeInput::node(0, 0)],
 				implementation: DocumentNodeImplementation::Network(inner_network),
+				..Default::default()
+			},
+			#[cfg(feature = "quantization")]
+			DocumentNode {
+				name: "Quantize".into(),
+				inputs: vec![NodeInput::node(4, 0), NodeInput::node(1, 0)],
+				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
 				..Default::default()
 			},
 			/*
 			DocumentNode {
 				name: "SaveNode".into(),
 				inputs: vec![
-					//NodeInput::node(0, 0),
+					NodeInput::node(5, 0),
 					NodeInput::Inline(InlineRust::new(
-						"o0[_global_index.x as usize] = i0[_global_index.x as usize]".into(),
-						Type::Fn(Box::new(concrete!(Color)), Box::new(concrete!(()))),
+						"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
+						//"|x|()".into(),
+						Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
 					)),
 				],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnMutNode".into()),
 				..Default::default()
 			},
 			*/
@@ -110,12 +236,23 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		vec![concrete!(u32), concrete!(Color)], //, concrete!(u32)],
 		vec![concrete!(Color)],
 		ShaderIO {
+			#[cfg(feature = "quantization")]
+			inputs: vec![
+				ShaderInput::UniformBuffer((), concrete!(u32)),
+				ShaderInput::StorageBuffer((), concrete!(PackedPixel)),
+				ShaderInput::UniformBuffer((), concrete!(quantization::QuantizationChannels)),
+				//ShaderInput::Constant(gpu_executor::GPUConstant::GlobalInvocationId),
+				ShaderInput::OutputBuffer((), concrete!(PackedPixel)),
+			],
+			#[cfg(not(feature = "quantization"))]
 			inputs: vec![
 				ShaderInput::UniformBuffer((), concrete!(u32)),
 				ShaderInput::StorageBuffer((), concrete!(Color)),
-				//ShaderInput::Constant(gpu_executor::GPUConstant::GlobalInvocationId),
 				ShaderInput::OutputBuffer((), concrete!(Color)),
 			],
+			#[cfg(feature = "quantization")]
+			output: ShaderInput::OutputBuffer((), concrete!(PackedPixel)),
+			#[cfg(not(feature = "quantization"))]
 			output: ShaderInput::OutputBuffer((), concrete!(Color)),
 		},
 	)
@@ -123,8 +260,6 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	.unwrap();
 	//return ImageFrame::empty();
 	let len: usize = image.image.data.len();
-
-	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
 
 	/*
 	let canvas = editor_api.application_io.create_surface();
@@ -144,6 +279,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
+	let quantization_uniform = executor.create_uniform_buffer(quantization).unwrap();
 	let storage_buffer = executor
 		.create_storage_buffer(
 			image.image.data.clone(),
@@ -156,6 +292,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		)
 		.unwrap();
 	let width_uniform = Arc::new(width_uniform);
+	let quantization_uniform = Arc::new(quantization_uniform);
 	let storage_buffer = Arc::new(storage_buffer);
 	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
 	let output_buffer = Arc::new(output_buffer);
@@ -163,6 +300,9 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let readback_buffer = Arc::new(readback_buffer);
 	log::debug!("created buffer");
 	let bind_group = Bindgroup {
+		#[cfg(feature = "quantization")]
+		buffers: vec![width_uniform.clone(), storage_buffer.clone(), quantization_uniform.clone()],
+		#[cfg(not(feature = "quantization"))]
 		buffers: vec![width_uniform.clone(), storage_buffer.clone()],
 	};
 
@@ -175,36 +315,18 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let shader = executor.load_shader(shader).unwrap();
 	log::debug!("loaded shader");
 	let pipeline = PipelineLayout {
-		shader,
+		shader: shader.into(),
 		entry_point: "eval".to_string(),
-		bind_group,
+		bind_group: bind_group.into(),
 		output_buffer: output_buffer.clone(),
 	};
 	log::debug!("created pipeline");
-	let compute_pass = executor
-		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(image.image.width, image.image.height))
-		.unwrap();
-	executor.execute_compute_pipeline(compute_pass).unwrap();
-	log::debug!("executed pipeline");
-	log::debug!("reading buffer");
-	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
-	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
-	ImageFrame {
-		image: Image {
-			data: colors,
-			width: image.image.width,
-			height: image.image.height,
-		},
-		transform: image.transform,
-	}
 
-	/*
-	let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();
-	let data: Vec<_> = input.into_iter().collect();
-	let result = executor.execute(Box::new(data)).unwrap();
-	let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
-	*result
-	*/
+	let compute_pass_descriptor = ComputePass {
+		pipeline_layout: pipeline,
+		readback_buffer: Some(readback_buffer.clone()),
+	};
+	compute_pass_descriptor
 }
 /*
 #[node_macro::node_fn(MapGpuNode)]
@@ -414,9 +536,9 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let shader = executor.load_shader(shader).unwrap();
 	log::debug!("loaded shader");
 	let pipeline = PipelineLayout {
-		shader,
+		shader: shader.into(),
 		entry_point: "eval".to_string(),
-		bind_group,
+		bind_group: bind_group.into(),
 		output_buffer: output_buffer.clone(),
 	};
 	log::debug!("created pipeline");

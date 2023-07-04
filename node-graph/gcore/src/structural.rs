@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
-use crate::Node;
+use crate::{Node, NodeMut};
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct ComposeNode<First, Second, I> {
 	first: First,
 	second: Second,
@@ -21,12 +21,20 @@ where
 		second.eval(arg)
 	}
 }
-
-impl<'i, First, Second, Input: 'i> ComposeNode<First, Second, Input>
+impl<'i, 'f: 'i, 's: 'i, Input: 'i, First, Second> NodeMut<'i, Input> for ComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
-	Second: Node<'i, <First as Node<'i, Input>>::Output>,
+	Second: NodeMut<'i, <First as Node<'i, Input>>::Output> + 'i,
 {
+	type MutOutput = <Second as NodeMut<'i, <First as Node<'i, Input>>::Output>>::MutOutput;
+	fn eval_mut(&'i mut self, input: Input) -> Self::MutOutput {
+		let arg = self.first.eval(input);
+		let second = &mut self.second;
+		second.eval_mut(arg)
+	}
+}
+
+impl<'i, First, Second, Input: 'i> ComposeNode<First, Second, Input> {
 	pub const fn new(first: First, second: Second) -> Self {
 		ComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
 	}

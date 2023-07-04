@@ -19,20 +19,18 @@ extern crate spirv_std;
 		{{input}},
 		{% endfor %}
 	) {
-		use graphene_core::Node;
+		use graphene_core::{Node, NodeMut};
 		use graphene_core::raster::adjustments::{BlendMode, BlendNode};
 		use graphene_core::Color;
 
-		/*
 		{% for input in input_nodes %}
-		let i{{input.index}} = graphene_core::value::CopiedNode::new(i{{input.index}});
+		let _i{{input.index}} = graphene_core::value::CopiedNode::new(*i{{input.index}});
 		let _{{input.id}} = {{input.fqn}}::new({% for arg in input.args %}{{arg}}, {% endfor %});
-		let {{input.id}} = graphene_core::structural::ComposeNode::new(i{{input.index}}, _{{input.id}});
+		let {{input.id}} = graphene_core::structural::ComposeNode::new(_i{{input.index}}, _{{input.id}});
 		{% endfor %}
-		*/
 
 		{% for node in nodes %}
-		let {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}{{arg}}, {% endfor %});
+		let mut {{node.id}} = {{node.fqn}}::new({% for arg in node.args %}{{arg}}, {% endfor %});
 		{% endfor %}
 
 		{% for output in output_nodes %}

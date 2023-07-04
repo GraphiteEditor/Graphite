@@ -21,7 +21,7 @@ wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
-
+wayland = []
 
 [dependencies]
 autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
@@ -42,7 +42,7 @@ gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", 
 compilation-client = { path = "../compilation-client", optional = true }
 bytemuck = { version = "1.8" }
 tempfile = "3"
-image = { version = "*", default-features = false }
+image = { version = "*", default-features = false, features = ["png", "jpeg"] }
 base64 = { version = "0.21", optional = true }
 dyn-clone = "1.0"
 
@@ -62,6 +62,9 @@ js-sys = { version = "0.3.63", optional = true }
 wgpu-types = "0.16.0"
 wgpu = "0.16.1"
 wasm-bindgen-futures = { version = "0.4.36", optional = true }
+winit = "0.28.6"
+url = "2.4.0"
+tokio = { version = "1.29.0", optional = true, features = ["fs", "io-std"] }
 
 [dependencies.serde]
 version = "1.0"
