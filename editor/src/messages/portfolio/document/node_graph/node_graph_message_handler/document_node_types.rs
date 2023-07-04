@@ -698,48 +698,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
-			name: "Gaussian Blur",
-			category: "Ignore",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1, 1],
-				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: vec![
-					(
-						0,
-						DocumentNode {
-							name: "CacheNode".to_string(),
-							inputs: vec![NodeInput::Network(concrete!(Image<Color>))],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::memo::CacheNode")),
-							..Default::default()
-						},
-					),
-					(
-						1,
-						DocumentNode {
-							name: "BlurNode".to_string(),
-							inputs: vec![NodeInput::node(0, 0), NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(f64)), NodeInput::node(0, 0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlurNode")),
-							..Default::default()
-						},
-					),
-				]
-				.into_iter()
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Radius", TaggedValue::U32(3), false),
-				DocumentInputType::value("Sigma", TaggedValue::F64(1.), false),
-			],
-			outputs: vec![DocumentOutputType {
-				name: "Image",
-				data_type: FrontendGraphDataType::Raster,
-			}],
-			primary_output: true,
-			properties: node_properties::blur_image_properties,
-		},
-		DocumentNodeType {
 			name: "Brush",
 			category: "Brush",
 			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _>"),
