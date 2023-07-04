@@ -248,7 +248,7 @@ impl ProtoNode {
 
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ValueNode"),
+			identifier: NodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 			document_node_path: path,
