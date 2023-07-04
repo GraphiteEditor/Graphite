@@ -11,19 +11,17 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input, S0: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, S0>
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
 where
-	N: for<'any_input> Node<'any_input, _I, Output = DynFuture<'any_input, _O>>,
-	S0: for<'any_input> Node<'any_input, (), Output = &'any_input N>,
+	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
 {
 	type Output = FutureAny<'input>;
 	#[inline]
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
-		let node = self.node.eval(());
 		let node_name = core::any::type_name::<N>();
 		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name));
 		let output = async move {
-			let result = node.eval(*input).await;
+			let result = self.node.eval(*input).await;
 			Box::new(result) as Any<'input>
 		};
 		Box::pin(output)
@@ -34,14 +32,14 @@ where
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
-		self.node.eval(()).serialize()
+		self.node.serialize()
 	}
 }
-impl<'input, _I: StaticType, _O: StaticType, N, S0: 'input> DynAnyNode<_I, _O, S0>
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> DynAnyNode<_I, _O, N>
 where
-	S0: for<'any_input> Node<'any_input, (), Output = &'any_input N>,
+	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
 {
-	pub const fn new(node: S0) -> Self {
+	pub const fn new(node: N) -> Self {
 		Self {
 			node,
 			_i: core::marker::PhantomData,
@@ -76,6 +74,7 @@ impl<_I, _O, S0> DynAnyRefNode<_I, _O, S0> {
 		Self { node, _i: core::marker::PhantomData }
 	}
 }
+
 pub struct DynAnyInRefNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<(I, O)>,
@@ -115,9 +114,13 @@ where
 	fn reset(&self) {
 		self.node.reset();
 	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		self.node.serialize()
+	}
 }
 
-impl<'i, N> FutureWrapperNode<N> {
+impl<N> FutureWrapperNode<N> {
 	pub const fn new(node: N) -> Self {
 		Self { node }
 	}
@@ -266,7 +269,7 @@ mod test {
 	pub fn dyn_input_invalid_eval_panic() {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
-		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddNode::new() });
 		let type_erased = Box::new(dyn_any) as TypeErasedBox;
 		let _ref_type_erased = type_erased.as_ref();
 		//let type_erased = Box::pin(dyn_any) as TypeErasedBox<'_>;
@@ -277,11 +280,11 @@ mod test {
 	pub fn dyn_input_compose() {
 		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
-		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(ValueNode::new(FutureWrapperNode { node: AddNode::new() }));
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddNode::new() });
 		let type_erased = Box::new(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new((4u32, 2u32)));
 		let id_node = FutureWrapperNode::new(IdNode::new());
-		let any_id = DynAnyNode::<u32, u32, _>::new(ValueNode::new(id_node));
+		let any_id = DynAnyNode::<u32, u32, _>::new(id_node);
 		let type_erased_id = Box::new(any_id) as TypeErasedBox;
 		let type_erased = ComposeTypeErased::new(NodeContainer::new(type_erased), NodeContainer::new(type_erased_id));
 		type_erased.eval(Box::new((4u32, 2u32)));

@@ -123,7 +123,7 @@ impl OverlayRenderer {
 		responses.add(OverlaysMessage::Rerender);
 	}
 
-	pub fn clear_subpath_overlays(&mut self, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+	pub fn clear_subpath_overlays(&mut self, _document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 		let layer_id = layer_path.last().unwrap();
 
 		// Remove the shape outline overlays

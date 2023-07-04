@@ -11,6 +11,8 @@ pub mod adjustments;
 pub mod bbox;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brightness_contrast;
+#[cfg(not(target_arch = "spirv"))]
+pub mod brush_cache;
 pub mod color;
 pub mod discrete_srgb;
 pub use adjustments::*;

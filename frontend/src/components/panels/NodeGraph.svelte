@@ -18,6 +18,8 @@
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
+	const ADD_NODE_MENU_WIDTH = 180;
+	const ADD_NODE_MENU_HEIGHT = 200;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -46,6 +48,19 @@
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 	$: nodeListX = ((nodeListLocation?.x || 0) * GRID_SIZE + transform.x) * transform.scale;
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
+
+	let appearAboveMouse = false;
+	let appearRightOfMouse = false;
+
+	$: (() => {
+		const bounds = graph?.div()?.getBoundingClientRect();
+		if (!bounds) return;
+		const { width, height } = bounds;
+
+		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH / 2;
+		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT / 2;
+	})();
+
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
 	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
 
@@ -60,16 +75,35 @@
 		return sparse;
 	}
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, FrontendNodeType[]][] {
-		const categories = new Map();
+	type NodeCategoryDetails = {
+		nodes: FrontendNodeType[];
+		open: boolean;
+	};
+
+	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
+		const categories = new Map<string, NodeCategoryDetails>();
+
 		nodeTypes.forEach((node) => {
-			if (searchTerm.length > 0 && !node.name.toLowerCase().includes(searchTerm.toLowerCase()) && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
+			const nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+
+			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
 				return;
 			}
 
 			const category = categories.get(node.category);
-			if (category) category.push(node);
-			else categories.set(node.category, [node]);
+			let open = nameIncludesSearchTerm;
+			if (searchTerm.length === 0) {
+				open = false;
+			}
+
+			if (category) {
+				category.open = open;
+				category.nodes.push(node);
+			} else
+				categories.set(node.category, {
+					open: open,
+					nodes: [node],
+				});
 		});
 
 		return Array.from(categories);
@@ -497,18 +531,32 @@
 		}}
 	>
 		{#if nodeListLocation}
-			<LayoutCol class="node-list" data-node-list styles={{ "margin-left": `${nodeListX}px`, "margin-top": `${nodeListY}px` }}>
+			<LayoutCol
+				class="node-list"
+				data-node-list
+				styles={{
+					left: `${nodeListX}px`,
+					top: `${nodeListY}px`,
+					transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+					width: `${ADD_NODE_MENU_WIDTH}px`,
+				}}
+			>
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				{#each nodeCategories as nodeCategory}
-					<LayoutCol>
-						<TextLabel>{nodeCategory[0]}</TextLabel>
-						{#each nodeCategory[1] as nodeType}
-							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-						{/each}
-					</LayoutCol>
-				{:else}
-					<TextLabel>No search results</TextLabel>
-				{/each}
+				<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|stopPropagation>
+					{#each nodeCategories as nodeCategory}
+						<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
+							<summary>
+								<IconLabel icon="DropdownArrow" />
+								<TextLabel>{nodeCategory[0]}</TextLabel>
+							</summary>
+							{#each nodeCategory[1].nodes as nodeType}
+								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
+							{/each}
+						</details>
+					{:else}
+						<div style="margin-right: 4px;"><TextLabel>No search results</TextLabel></div>
+					{/each}
+				</div>
 			</LayoutCol>
 		{/if}
 		<div class="nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
@@ -607,12 +655,45 @@
 
 		.node-list {
 			width: max-content;
-			position: fixed;
+			position: absolute;
 			padding: 5px;
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 
+			.text-button {
+				width: 100%;
+			}
+
+			.list-nodes {
+				overflow-y: scroll;
+			}
+
+			details {
+				margin-right: 4px;
+				cursor: pointer;
+			}
+
+			summary {
+				list-style-type: none;
+				display: flex;
+				align-items: center;
+				gap: 2px;
+
+				span {
+					white-space: break-spaces;
+				}
+			}
+
+			details summary svg {
+				transform: rotate(-90deg);
+			}
+
+			details[open] summary svg {
+				transform: rotate(0deg);
+			}
+
 			.text-button + .text-button {
+				display: block;
 				margin-left: 0;
 				margin-top: 4px;
 			}

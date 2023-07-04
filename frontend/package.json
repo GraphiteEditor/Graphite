@@ -56,7 +56,7 @@
 		"webpack": "^5.81.0"
 	},
 	"optionalDependencies": {
-		"wasm-pack": "0.10.3"
+		"wasm-pack": "0.11.1"
 	},
 	"//": "Notes about dependency issues and incompatibilities should be added here when needed.",
 	"homepage": "https://graphite.rs",

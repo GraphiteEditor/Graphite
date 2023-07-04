@@ -1,29 +1,11 @@
-use graphene_std::text::FontCache;
+use graphene_std::{imaginate::ImaginatePersistentData, text::FontCache};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Default)]
 pub struct PersistentData {
 	pub font_cache: FontCache,
-	pub imaginate_server_status: ImaginateServerStatus,
-}
-
-impl Default for PersistentData {
-	fn default() -> Self {
-		Self {
-			font_cache: Default::default(),
-			imaginate_server_status: ImaginateServerStatus::Unknown,
-		}
-	}
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize, specta::Type)]
-pub enum ImaginateServerStatus {
-	#[default]
-	Unknown,
-	Checking,
-	Unavailable,
-	Connected,
+	pub imaginate: ImaginatePersistentData,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]

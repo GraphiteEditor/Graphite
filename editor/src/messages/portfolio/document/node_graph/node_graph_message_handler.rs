@@ -168,8 +168,8 @@ impl NodeGraphMessageHandler {
 	fn collect_nested_addresses(&mut self, document: &Document, responses: &mut VecDeque<Message>) {
 		// // Build path list
 		let mut path = vec![];
-		if let Some(layer) = self.layer_path.as_ref().and_then(|path| document.layer(&path).ok()) {
-			path.push(format!("Layer: {}", layer.name.as_ref().map(|name| name.as_str()).unwrap_or("Untitled Layer")));
+		if let Some(layer) = self.layer_path.as_ref().and_then(|path| document.layer(path).ok()) {
+			path.push(format!("Layer: {}", layer.name.as_deref().unwrap_or("Untitled Layer")));
 		} else {
 			path.push("Document Network".to_string());
 		}
@@ -459,7 +459,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				let input = NodeInput::node(output_node, output_node_connector_index);
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
-				let should_rerender = network.connected_to_output(node_id, true);
+				let should_rerender = network.connected_to_output(node_id);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender });
 			}
 			NodeGraphMessage::Copy => {
@@ -517,7 +517,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 
 				if let Some(network) = self.get_active_network(document) {
 					// Only generate node graph if one of the selected nodes is connected to the output
-					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id, true)) {
+					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id)) {
 						if let Some(layer_path) = self.layer_path.clone() {
 							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}
@@ -549,7 +549,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				}
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
-				let should_rerender = network.connected_to_output(node_id, true);
+				let should_rerender = network.connected_to_output(node_id);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender });
 			}
 			NodeGraphMessage::DoubleClickNode { node } => {
@@ -626,7 +626,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				}
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
-				let should_rerender = network.connected_to_output(node_id, true);
+				let should_rerender = network.connected_to_output(node_id);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender });
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
@@ -714,7 +714,6 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				layer_path: Vec::new(),
 				input_image_data: vec![],
 				size: (0, 0),
-				imaginate_node_path: None,
 			}),
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
@@ -743,7 +742,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 						let input = NodeInput::Value { tagged_value: value, exposed: false };
 						responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 						responses.add(PropertiesPanelMessage::ResendActiveProperties);
-						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id, true) {
+						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id) {
 							if let Some(layer_path) = self.layer_path.clone() {
 								responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 							} else {
@@ -780,7 +779,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network(generic!(T))));
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
-						if network.connected_to_output(*node_id, true) {
+						if network.connected_to_output(*node_id) {
 							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}
 					}
@@ -854,7 +853,7 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 					Self::send_graph(network, executor, &self.layer_path, responses);
 
 					// Only generate node graph if one of the selected nodes is connected to the output
-					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id, true)) {
+					if self.selected_nodes.iter().any(|&node_id| network.connected_to_output(node_id)) {
 						if let Some(layer_path) = self.layer_path.clone() {
 							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 						}

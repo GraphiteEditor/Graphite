@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -125,6 +126,10 @@ impl PropertyHolder for SelectTool {
 			})
 			.collect();
 
+		let selected_layers_count = self.tool_data.selected_layers_count;
+		let deactivate_alignment = selected_layers_count < 2;
+		let deactivate_pivot = selected_layers_count < 1;
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(vec![layer_selection_behavior_entries])
@@ -134,11 +139,13 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::related_separator(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
+					.disabled(deactivate_pivot)
 					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
 					.widget_holder(),
 				WidgetHolder::section_separator(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -149,6 +156,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignHorizontalCenter", 24)
 					.tooltip("Align Horizontal Center")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -159,6 +167,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignRight", 24)
 					.tooltip("Align Right")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -170,6 +179,7 @@ impl PropertyHolder for SelectTool {
 				WidgetHolder::unrelated_separator(),
 				IconButton::new("AlignTop", 24)
 					.tooltip("Align Top")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -180,6 +190,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignVerticalCenter", 24)
 					.tooltip("Align Vertical Center")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -190,6 +201,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignBottom", 24)
 					.tooltip("Align Bottom")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -252,9 +264,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() {
+		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.tool_data.selected_layers_changed = false;
 		}
 	}
 
@@ -317,6 +330,8 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	nested_selection_behavior: NestedSelectionBehavior,
+	selected_layers_count: usize,
+	selected_layers_changed: bool,
 }
 
 impl SelectToolData {
@@ -433,6 +448,16 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
+					let selected_layers_count = document.selected_layers().count();
+					let selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
+
+					if selected_layers_changed {
+						tool_data.selected_layers_count = selected_layers_count;
+						tool_data.selected_layers_changed = true;
+					} else {
+						tool_data.selected_layers_changed = false;
+					}
+
 					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some(bounds), paths) => {
@@ -565,7 +590,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging = selected;
 
 						RotatingBounds
-					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
+					} else if intersection.last().map(|last| selected.iter().any(|selected_layer| last.starts_with(selected_layer))).unwrap_or(false) {
 						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.layers_dragging = selected;
@@ -1219,7 +1244,7 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 	}
 }
 
-fn recursive_search(document: &DocumentMessageHandler, layer_path: &Vec<u64>, incoming_layer_path_vector: &Vec<u64>) -> bool {
+fn recursive_search(document: &DocumentMessageHandler, layer_path: &[u64], incoming_layer_path_vector: &Vec<u64>) -> bool {
 	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
 	for path in layer_paths {
 		if path == *incoming_layer_path_vector || document.document_legacy.is_folder(path.clone()) && recursive_search(document, &path, incoming_layer_path_vector) {

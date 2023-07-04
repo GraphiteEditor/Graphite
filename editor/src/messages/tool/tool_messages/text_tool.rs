@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -209,7 +211,6 @@ impl ToolTransition for TextTool {
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
-			..Default::default()
 		}
 	}
 }
@@ -318,7 +319,7 @@ impl TextToolData {
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size);
+			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size as f32);
 
 			responses.add(Operation::AddFrame {
 				path: self.layer_path.clone(),

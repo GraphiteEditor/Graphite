@@ -20,10 +20,10 @@ pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n)>;
-pub type TypeErasedRef<'n> = &'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n);
-pub type TypeErasedBox<'n> = Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n>>;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
+pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
+pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
+pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
@@ -181,7 +181,7 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
 			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
@@ -248,7 +248,7 @@ impl ProtoNode {
 
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ValueNode"),
+			identifier: NodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 			document_node_path: path,
@@ -384,25 +384,25 @@ impl ProtoNetwork {
 	pub fn topological_sort(&self) -> Vec<NodeId> {
 		let mut sorted = Vec::new();
 		let inwards_edges = self.collect_inwards_edges();
-		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>) {
+		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) {
 			if sorted.contains(&node_id) {
 				return;
 			};
 			if temp_marks.contains(&node_id) {
-				panic!("Cycle detected");
+				panic!("Cycle detected {:#?}, {:#?}", &inwards_edges, &network);
 			}
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
 				temp_marks.insert(node_id);
 				for &dependant in dependencies {
-					visit(dependant, temp_marks, sorted, inwards_edges);
+					visit(dependant, temp_marks, sorted, inwards_edges, network);
 				}
 				temp_marks.remove(&node_id);
 			}
 			sorted.push(node_id);
 		}
 		assert!(self.nodes.iter().any(|(id, _)| *id == self.output), "Output id {} does not exist", self.output);
-		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges);
+		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self);
 
 		sorted
 	}
@@ -544,9 +544,9 @@ impl TypingContext {
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
 		}
-		if parameters.iter().any(|p| match p {
-			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)) => true,
-			_ => false,
+		if parameters.iter().any(|p| {
+			matches!(p,
+			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
 			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
 		}

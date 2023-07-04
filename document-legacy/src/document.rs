@@ -983,23 +983,5 @@ pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, render_data: &RenderD
 	let layer_bounds = layer.bounding_transform(render_data);
 	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
 
-	pick_safe_imaginate_resolution(layer_bounds_size)
-}
-
-pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
-	const MAX_RESOLUTION: u64 = 1000 * 1000;
-
-	let mut scale_factor = 1.;
-
-	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
-
-	loop {
-		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
-
-		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
-			return possible_solution;
-		}
-
-		scale_factor -= 0.1;
-	}
+	graphene_std::imaginate::pick_safe_imaginate_resolution(layer_bounds_size)
 }

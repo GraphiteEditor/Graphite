@@ -29,10 +29,10 @@ graphene-core = { path = "../../node-graph/gcore", features = [
 	"alloc",
 ] }
 serde = { version = "1.0", features = ["derive"] }
-wasm-bindgen = { version = "0.2.84" }
-serde-wasm-bindgen = "0.4.1"
-js-sys = "0.3.55"
-wasm-bindgen-futures = "0.4.33"
+wasm-bindgen = { version = "=0.2.86" }
+serde-wasm-bindgen = "0.5.0"
+js-sys = "0.3.63"
+wasm-bindgen-futures = "0.4.36"
 ron = { version = "0.8", optional = true }
 bezier-rs = { path = "../../libraries/bezier-rs" }
 

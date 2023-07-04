@@ -108,6 +108,10 @@ pub enum Type {
 	Future(Box<Type>),
 }
 
+unsafe impl StaticType for Type {
+	type Static = Self;
+}
+
 impl Type {
 	pub fn is_generic(&self) -> bool {
 		matches!(self, Type::Generic(_))

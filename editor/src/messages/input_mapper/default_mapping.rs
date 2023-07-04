@@ -179,6 +179,9 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
+		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter {
+			add_to_selection: Shift
+		}),
 		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),

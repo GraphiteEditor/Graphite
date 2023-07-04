@@ -8,13 +8,21 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::NodeIdentifier;
+#[cfg(feature = "gpu")]
+use graphene_core::application_io::SurfaceHandle;
+use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
+#[cfg(feature = "gpu")]
+use gpu_executor::*;
+use graphene_std::wasm_application_io::WasmEditorApi;
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
+#[cfg(feature = "gpu")]
+use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DocumentInputType {
@@ -72,6 +80,12 @@ pub enum NodeImplementation {
 	Extract,
 }
 
+impl Default for NodeImplementation {
+	fn default() -> Self {
+		Self::ProtoNode(NodeIdentifier::new("graphene_core::ops::IdNode"))
+	}
+}
+
 impl NodeImplementation {
 	pub fn proto(name: &'static str) -> Self {
 		Self::ProtoNode(NodeIdentifier::new(name))
@@ -87,6 +101,20 @@ pub struct DocumentNodeType {
 	pub outputs: Vec<DocumentOutputType>,
 	pub primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
+}
+
+impl Default for DocumentNodeType {
+	fn default() -> Self {
+		Self {
+			name: Default::default(),
+			category: Default::default(),
+			identifier: Default::default(),
+			inputs: Default::default(),
+			outputs: Default::default(),
+			primary_output: Default::default(),
+			properties: node_properties::no_properties,
+		}
+	}
 }
 
 // We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
@@ -106,8 +134,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::None, true),
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Monitor",
@@ -119,8 +147,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::None, true),
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Layer",
@@ -170,8 +198,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Stack", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
-			primary_output: true,
 			properties: node_properties::layer_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Artboard",
@@ -184,8 +212,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
-			primary_output: true,
 			properties: node_properties::artboard_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Downres",
@@ -222,8 +250,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
+			..Default::default()
 		},
 		// DocumentNodeType {
 		// 	name: "Input Frame",
@@ -244,14 +272,59 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::Network(concrete!(EditorApi)),
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
 			}],
 			outputs: vec![DocumentOutputType {
 				name: "Image Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			primary_output: true,
 			properties: node_properties::input_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Load Image",
+			category: "Structural",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Load Resource".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi)), NodeInput::Network(concrete!(String))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::LoadResourceNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Decode Image".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "api",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+				DocumentInputType {
+					name: "path",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::String("graphite:null".to_string()), false),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Image Frame",
+				data_type: FrontendGraphDataType::Raster,
+			}],
+			properties: node_properties::load_image_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Create Canvas",
@@ -262,8 +335,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -282,14 +355,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
-				default: NodeInput::Network(concrete!(EditorApi)),
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
 			}],
 			outputs: vec![DocumentOutputType {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			primary_output: true,
-			properties: node_properties::input_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Draw Canvas",
@@ -306,8 +378,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(EditorApi))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::CreateSurfaceNode")),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -319,7 +391,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Draw Canvas".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::node(2, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::wasm_application_io::DrawImageFrameNode<_>")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::DrawImageFrameNode<_>")),
 						..Default::default()
 					},
 				]
@@ -338,15 +410,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(EditorApi)),
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
 				},
 			],
 			outputs: vec![DocumentOutputType {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			primary_output: true,
-			properties: node_properties::input_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Begin Scope",
@@ -357,7 +428,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(EditorApi))],
+						inputs: vec![NodeInput::ShortCircut(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						..Default::default()
 					},
@@ -384,7 +455,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::Network(concrete!(EditorApi)),
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
 			}],
 			outputs: vec![
 				DocumentOutputType {
@@ -396,8 +467,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					data_type: FrontendGraphDataType::Raster,
 				},
 			],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "End Scope",
@@ -419,8 +490,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Output",
@@ -432,8 +503,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			}],
 			outputs: vec![],
-			primary_output: true,
 			properties: node_properties::output_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image Frame",
@@ -444,8 +515,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Mask",
@@ -456,8 +527,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Stencil", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::mask_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Insert Channel",
@@ -469,8 +540,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Replace", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::insert_channel_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Combine Channels",
@@ -487,8 +558,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Blend",
@@ -498,11 +568,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Second", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("BlendMode", TaggedValue::BlendMode(BlendMode::Normal), false),
-				DocumentInputType::value("Opacity", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::blend_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Levels",
@@ -517,32 +587,32 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "Shadows",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(0.), false),
+					default: NodeInput::value(TaggedValue::F32(0.), false),
 				},
 				DocumentInputType {
 					name: "Midtones",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(50.), false),
+					default: NodeInput::value(TaggedValue::F32(50.), false),
 				},
 				DocumentInputType {
 					name: "Highlights",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(100.), false),
+					default: NodeInput::value(TaggedValue::F32(100.), false),
 				},
 				DocumentInputType {
 					name: "Output Minimums",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(0.), false),
+					default: NodeInput::value(TaggedValue::F32(0.), false),
 				},
 				DocumentInputType {
 					name: "Output Maximums",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(100.), false),
+					default: NodeInput::value(TaggedValue::F32(100.), false),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::levels_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Grayscale",
@@ -562,37 +632,37 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType {
 					name: "Reds",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(40.), false),
+					default: NodeInput::value(TaggedValue::F32(40.), false),
 				},
 				DocumentInputType {
 					name: "Yellows",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(60.), false),
+					default: NodeInput::value(TaggedValue::F32(60.), false),
 				},
 				DocumentInputType {
 					name: "Greens",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(40.), false),
+					default: NodeInput::value(TaggedValue::F32(40.), false),
 				},
 				DocumentInputType {
 					name: "Cyans",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(60.), false),
+					default: NodeInput::value(TaggedValue::F32(60.), false),
 				},
 				DocumentInputType {
 					name: "Blues",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(20.), false),
+					default: NodeInput::value(TaggedValue::F32(20.), false),
 				},
 				DocumentInputType {
 					name: "Magentas",
 					data_type: FrontendGraphDataType::Number,
-					default: NodeInput::value(TaggedValue::F64(80.), false),
+					default: NodeInput::value(TaggedValue::F32(80.), false),
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::grayscale_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Luminance",
@@ -603,8 +673,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::luminance_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Channel",
@@ -615,8 +685,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("From", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::extract_channel_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Alpha",
@@ -624,8 +694,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractAlphaNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Opaque",
@@ -633,7 +702,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Split Channels",
@@ -695,23 +764,22 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 			],
 			primary_output: false,
-			properties: node_properties::no_properties,
 		},
 		DocumentNodeType {
 			name: "Brush",
 			category: "Brush",
-			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _>"),
+			identifier: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Background", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Bounds", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Trace", TaggedValue::BrushStrokes(Vec::new()), false),
+				DocumentInputType::value("Cache", TaggedValue::BrushCache(BrushCache::new_proto()), false),
 			],
 			outputs: vec![DocumentOutputType {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Vector Points",
@@ -722,17 +790,18 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Vector Points",
 				data_type: FrontendGraphDataType::General,
 			}],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Memoize",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			inputs: vec![
+				DocumentInputType::value("ShortCircut", TaggedValue::None, false),
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image",
@@ -740,8 +809,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Ref",
@@ -749,8 +818,505 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "Uniform",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Uniform".to_string(),
+						inputs: vec![NodeInput::Network(generic!(T)), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::UniformNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::F32(0.), true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Uniform",
+				data_type: FrontendGraphDataType::General,
+			}],
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "Storage",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Storage".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(Vec<u8>)), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::StorageNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Storage",
+				data_type: FrontendGraphDataType::General,
+			}],
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "CreateOutputBuffer",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Output Buffer".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(usize)), NodeInput::node(0, 0), NodeInput::Network(concrete!(Type))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::CreateOutputBufferNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "OutputBuffer",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::input_properties,
+			..Default::default()
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "CreateComputePass",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0, 1, 1],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Compute Pass".to_string(),
+						inputs: vec![
+							NodeInput::Network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>)),
+							NodeInput::node(0, 0),
+							NodeInput::Network(concrete!(ShaderInput<WgpuExecutor>)),
+							NodeInput::Network(concrete!(gpu_executor::ComputePassDimensions)),
+						],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::CreateComputePassNode<_, _, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>)),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(ShaderInput<WgpuExecutor>)),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(gpu_executor::ComputePassDimensions)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "CommandBuffer",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::input_properties,
+			..Default::default()
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "CreatePipelineLayout",
+			category: "Gpu",
+			identifier: NodeImplementation::proto("gpu_executor::CreatePipelineLayoutNode<_, _, _, _>"),
+			inputs: vec![
+				DocumentInputType {
+					name: "ShaderHandle",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(<WgpuExecutor as GpuExecutor>::ShaderHandle)),
+				},
+				DocumentInputType {
+					name: "String",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(String)),
+				},
+				DocumentInputType {
+					name: "Bindgroup",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(gpu_executor::Bindgroup<WgpuExecutor>)),
+				},
+				DocumentInputType {
+					name: "ArcShaderInput",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(Arc<ShaderInput<WgpuExecutor>>)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "PipelineLayout",
+				data_type: FrontendGraphDataType::General,
+			}],
+			properties: node_properties::input_properties,
+			..Default::default()
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "ExecuteComputePipeline",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Execute Compute Pipeline".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(<WgpuExecutor as GpuExecutor>::CommandBuffer)), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::ExecuteComputePipelineNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "PipelineResult",
+				data_type: FrontendGraphDataType::General,
+			}],
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "ReadOutputBuffer",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Read Output Buffer".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(Arc<ShaderInput<WgpuExecutor>>)), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::ReadOutputBufferNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Buffer",
+				data_type: FrontendGraphDataType::General,
+			}],
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "CreateGpuSurface",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Create Gpu Surface".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::CreateGpuSurfaceNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::Network(concrete!(WasmEditorApi)),
+			}],
+			outputs: vec![DocumentOutputType {
+				name: "GpuSurface",
+				data_type: FrontendGraphDataType::General,
+			}],
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "RenderTexture",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 1, 0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Render Texture".to_string(),
+						inputs: vec![
+							NodeInput::Network(concrete!(ShaderInputFrame<WgpuExecutor>)),
+							NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>)),
+							NodeInput::node(0, 0),
+						],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "Texture",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "Surface",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "EditorApi",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "RenderedTexture",
+				data_type: FrontendGraphDataType::General,
+			}],
+		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeType {
+			name: "UploadTexture",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(2, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Upload Texture".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::UploadTextureNode<_>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Texture",
+				data_type: FrontendGraphDataType::General,
+			}],
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -764,10 +1330,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					data_type: FrontendGraphDataType::General,
 					default: NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true),
 				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -781,8 +1351,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Opacity", TaggedValue::F32(100.0), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::blend_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract",
@@ -794,10 +1364,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true),
 			}],
 			outputs: vec![DocumentOutputType::new("DocumentNode", FrontendGraphDataType::General)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
-		#[cfg(feature = "quantization")]
 		#[cfg(feature = "quantization")]
 		DocumentNodeType {
 			name: "Generate Quantization",
@@ -821,8 +1389,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Quantization", FrontendGraphDataType::General)],
-			primary_output: true,
 			properties: node_properties::quantize_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeType {
@@ -842,8 +1410,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Encoded", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::quantize_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeType {
@@ -863,8 +1431,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Decoded", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::quantize_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Invert RGB",
@@ -872,8 +1440,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::InvertRGBNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Hue/Saturation",
@@ -881,13 +1448,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::HueSaturationNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Hue Shift", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Saturation Shift", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Lightness Shift", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Hue Shift", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Saturation Shift", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Lightness Shift", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::adjust_hsl_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Brightness/Contrast",
@@ -895,13 +1462,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Brightness", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Contrast", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Brightness", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Contrast", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Use Legacy", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::brightness_contrast_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Threshold",
@@ -909,13 +1476,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Min Luminance", TaggedValue::F64(50.), false),
-				DocumentInputType::value("Max Luminance", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Min Luminance", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Max Luminance", TaggedValue::F32(100.), false),
 				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::adjust_threshold_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Vibrance",
@@ -923,11 +1490,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::VibranceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Vibrance", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Vibrance", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::adjust_vibrance_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Channel Mixer",
@@ -938,31 +1505,31 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				// Monochrome toggle
 				DocumentInputType::value("Monochrome", TaggedValue::Bool(false), false),
 				// Monochrome
-				DocumentInputType::value("Red", TaggedValue::F64(40.), false),
-				DocumentInputType::value("Green", TaggedValue::F64(40.), false),
-				DocumentInputType::value("Blue", TaggedValue::F64(20.), false),
-				DocumentInputType::value("Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Red", TaggedValue::F32(40.), false),
+				DocumentInputType::value("Green", TaggedValue::F32(40.), false),
+				DocumentInputType::value("Blue", TaggedValue::F32(20.), false),
+				DocumentInputType::value("Constant", TaggedValue::F32(0.), false),
 				// Red output channel
-				DocumentInputType::value("(Red) Red", TaggedValue::F64(100.), false),
-				DocumentInputType::value("(Red) Green", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Red) Blue", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Red) Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Red) Red", TaggedValue::F32(100.), false),
+				DocumentInputType::value("(Red) Green", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Red) Blue", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Red) Constant", TaggedValue::F32(0.), false),
 				// Green output channel
-				DocumentInputType::value("(Green) Red", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Green) Green", TaggedValue::F64(100.), false),
-				DocumentInputType::value("(Green) Blue", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Green) Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Green) Red", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Green) Green", TaggedValue::F32(100.), false),
+				DocumentInputType::value("(Green) Blue", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Green) Constant", TaggedValue::F32(0.), false),
 				// Blue output channel
-				DocumentInputType::value("(Blue) Red", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blue) Green", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blue) Blue", TaggedValue::F64(100.), false),
-				DocumentInputType::value("(Blue) Constant", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blue) Red", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blue) Green", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blue) Blue", TaggedValue::F32(100.), false),
+				DocumentInputType::value("(Blue) Constant", TaggedValue::F32(0.), false),
 				// Display-only properties (not used within the node)
 				DocumentInputType::value("Output Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::adjust_channel_mixer_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Selective Color",
@@ -975,56 +1542,56 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				// Mode
 				DocumentInputType::value("Mode", TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), false),
 				// Reds
-				DocumentInputType::value("(Reds) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Reds) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Reds) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Reds) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Reds) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Reds) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Reds) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Reds) Black", TaggedValue::F32(0.), false),
 				// Yellows
-				DocumentInputType::value("(Yellows) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Yellows) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Yellows) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Yellows) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Yellows) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Yellows) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Yellows) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Yellows) Black", TaggedValue::F32(0.), false),
 				// Greens
-				DocumentInputType::value("(Greens) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Greens) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Greens) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Greens) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Greens) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Greens) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Greens) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Greens) Black", TaggedValue::F32(0.), false),
 				// Cyans
-				DocumentInputType::value("(Cyans) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Cyans) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Cyans) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Cyans) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Cyans) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Cyans) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Cyans) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Cyans) Black", TaggedValue::F32(0.), false),
 				// Blues
-				DocumentInputType::value("(Blues) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blues) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blues) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blues) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blues) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blues) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blues) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blues) Black", TaggedValue::F32(0.), false),
 				// Magentas
-				DocumentInputType::value("(Magentas) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Magentas) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Magentas) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Magentas) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Magentas) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Magentas) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Magentas) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Magentas) Black", TaggedValue::F32(0.), false),
 				// Whites
-				DocumentInputType::value("(Whites) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Whites) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Whites) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Whites) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Whites) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Whites) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Whites) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Whites) Black", TaggedValue::F32(0.), false),
 				// Neutrals
-				DocumentInputType::value("(Neutrals) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Neutrals) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Neutrals) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Neutrals) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Neutrals) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Neutrals) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Neutrals) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Neutrals) Black", TaggedValue::F32(0.), false),
 				// Blacks
-				DocumentInputType::value("(Blacks) Cyan", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blacks) Magenta", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F64(0.), false),
-				DocumentInputType::value("(Blacks) Black", TaggedValue::F64(0.), false),
+				DocumentInputType::value("(Blacks) Cyan", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blacks) Magenta", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F32(0.), false),
+				DocumentInputType::value("(Blacks) Black", TaggedValue::F32(0.), false),
 				// Display-only properties (not used within the node)
 				DocumentInputType::value("Colors", TaggedValue::SelectiveColorChoice(SelectiveColorChoice::Reds), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::adjust_selective_color_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Opacity",
@@ -1032,11 +1599,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Factor", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::multiply_opacity,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Posterize",
@@ -1044,11 +1611,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Value", TaggedValue::F64(4.), false),
+				DocumentInputType::value("Value", TaggedValue::F32(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::posterize_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Exposure",
@@ -1056,25 +1623,25 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExposureNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Exposure", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Offset", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Gamma Correction", TaggedValue::F64(1.), false),
+				DocumentInputType::value("Exposure", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Offset", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Gamma Correction", TaggedValue::F32(1.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::exposure_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Add",
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("Input", TaggedValue::F64(0.), true),
-				DocumentInputType::value("Addend", TaggedValue::F64(0.), true),
+				DocumentInputType::value("Input", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Addend", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			primary_output: true,
 			properties: node_properties::add_properties,
+			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeType {
@@ -1083,8 +1650,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitCircleGenerator"),
 			inputs: vec![DocumentInputType::none()],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Path Generator",
@@ -1095,8 +1661,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Mirror", TaggedValue::ManipulatorGroupIds(vec![]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Text",
@@ -1106,11 +1671,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("hello world".to_string()), false),
 				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
-				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
+				DocumentInputType::value("Size", TaggedValue::F32(24.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			primary_output: true,
 			properties: node_properties::node_section_font,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Transform",
@@ -1119,14 +1684,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
 			],
 			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
-			primary_output: true,
 			properties: node_properties::transform_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "SetTransform",
@@ -1137,8 +1702,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Fill",
@@ -1155,8 +1719,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Positions", TaggedValue::GradientPositions(vec![(0., Some(Color::BLACK)), (1., Some(Color::WHITE))]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			primary_output: true,
 			properties: node_properties::fill_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Stroke",
@@ -1165,16 +1729,16 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
-				DocumentInputType::value("Weight", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Weight", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Dash Lengths", TaggedValue::VecF32(Vec::new()), false),
-				DocumentInputType::value("Dash Offset", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Dash Offset", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Line Cap", TaggedValue::LineCap(graphene_core::vector::style::LineCap::Butt), false),
 				DocumentInputType::value("Line Join", TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter), false),
-				DocumentInputType::value("Miter Limit", TaggedValue::F64(4.), false),
+				DocumentInputType::value("Miter Limit", TaggedValue::F32(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			primary_output: true,
 			properties: node_properties::stroke_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image Segmentation",
@@ -1185,8 +1749,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Mask", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Segments", FrontendGraphDataType::Raster)],
-			primary_output: true,
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Index",
@@ -1197,8 +1760,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Index", TaggedValue::U32(0), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			primary_output: true,
 			properties: node_properties::index_node_properties,
+			..Default::default()
 		},
 	]
 }
@@ -1206,32 +1769,80 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeType {
 	name: "Imaginate",
 	category: "Image Synthesis",
-	identifier: NodeImplementation::proto("graphene_std::raster::ImaginateNode<_>"),
+	identifier: NodeImplementation::DocumentNode(NodeNetwork {
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		outputs: vec![NodeOutput::new(1, 0)],
+		nodes: [
+			(
+				0,
+				DocumentNode {
+					name: "Frame Monitor".into(),
+					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+					..Default::default()
+				},
+			),
+			(
+				1,
+				DocumentNode {
+					name: "Imaginate".into(),
+					inputs: vec![
+						NodeInput::node(0, 0),
+						NodeInput::Network(concrete!(WasmEditorApi)),
+						NodeInput::Network(concrete!(ImaginateController)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(Option<DVec2>)),
+						NodeInput::Network(concrete!(u32)),
+						NodeInput::Network(concrete!(ImaginateSamplingMethod)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(String)),
+						NodeInput::Network(concrete!(String)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(Option<Vec<u64>>)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(f64)),
+						NodeInput::Network(concrete!(ImaginateMaskStartingFill)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(bool)),
+						NodeInput::Network(concrete!(ImaginateCache)),
+					],
+					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+					..Default::default()
+				},
+			),
+		]
+		.into(),
+		..Default::default()
+	}),
 	inputs: vec![
 		DocumentInputType::value("Input Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
+		DocumentInputType {
+			name: "Editor Api",
+			data_type: FrontendGraphDataType::General,
+			default: NodeInput::Network(concrete!(WasmEditorApi)),
+		},
+		DocumentInputType::value("Controller", TaggedValue::ImaginateController(Default::default()), false),
+		DocumentInputType::value("Seed", TaggedValue::F32(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
-		DocumentInputType::value("Samples", TaggedValue::F64(30.), false),
+		DocumentInputType::value("Samples", TaggedValue::U32(30), false),
 		DocumentInputType::value("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-		DocumentInputType::value("Prompt Guidance", TaggedValue::F64(7.5), false),
+		DocumentInputType::value("Prompt Guidance", TaggedValue::F32(7.5), false),
 		DocumentInputType::value("Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::value("Negative Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::value("Adapt Input Image", TaggedValue::Bool(false), false),
-		DocumentInputType::value("Image Creativity", TaggedValue::F64(66.), false),
+		DocumentInputType::value("Image Creativity", TaggedValue::F32(66.), false),
 		DocumentInputType::value("Masking Layer", TaggedValue::LayerPath(None), false),
 		DocumentInputType::value("Inpaint", TaggedValue::Bool(true), false),
-		DocumentInputType::value("Mask Blur", TaggedValue::F64(4.), false),
+		DocumentInputType::value("Mask Blur", TaggedValue::F32(4.), false),
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::value("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Tiling", TaggedValue::Bool(false), false),
-		// Non-user status (is document input the right way to do this?)
-		DocumentInputType::value("Cached Data", TaggedValue::RcImage(None), false),
-		DocumentInputType::value("Percent Complete", TaggedValue::F64(0.), false),
-		DocumentInputType::value("Status", TaggedValue::ImaginateStatus(ImaginateStatus::Idle), false),
+		DocumentInputType::value("Cache", TaggedValue::ImaginateCache(Default::default()), false),
 	],
 	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-	primary_output: true,
 	properties: node_properties::imaginate_properties,
+	..Default::default()
 });
 
 pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
@@ -1253,7 +1864,9 @@ impl DocumentNodeType {
 
 		let inner_network = match &self.identifier {
 			NodeImplementation::DocumentNode(network) => network.clone(),
-			NodeImplementation::ProtoNode(ident) => {
+
+			NodeImplementation::ProtoNode(ident) => return DocumentNodeImplementation::Unresolved(ident.clone()),
+			/*
 				NodeNetwork {
 					inputs: (0..num_inputs).map(|_| 0).collect(),
 					outputs: vec![NodeOutput::new(0, 0)],
@@ -1271,23 +1884,10 @@ impl DocumentNodeType {
 					.collect(),
 					..Default::default()
 				}
+
 			}
-			NodeImplementation::Extract => NodeNetwork {
-				inputs: (0..num_inputs).map(|_| 0).collect(),
-				outputs: vec![NodeOutput::new(0, 0)],
-				nodes: [(
-					0,
-					DocumentNode {
-						name: "ExtractNode".to_string(),
-						implementation: DocumentNodeImplementation::Extract,
-						inputs: self.inputs.iter().map(|i| NodeInput::Network(i.default.ty())).collect(),
-						..Default::default()
-					},
-				)]
-				.into_iter()
-				.collect(),
-				..Default::default()
-			},
+			*/
+			NodeImplementation::Extract => return DocumentNodeImplementation::Extract,
 		};
 
 		DocumentNodeImplementation::Network(inner_network)
@@ -1316,9 +1916,9 @@ impl DocumentNodeType {
 }
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
-	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
-
 	network.generate_node_paths(&[]);
+
+	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
 		network.flatten(id);
 	}
@@ -1413,7 +2013,7 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network
 }
 
-pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
+pub fn new_text_network(text: String, font: Font, size: f32) -> NodeNetwork {
 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -1427,10 +2027,10 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	network.push_node(
 		text_generator.to_document_node(
 			[
-				NodeInput::Network(concrete!(graphene_core::EditorApi)),
+				NodeInput::Network(concrete!(WasmEditorApi)),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F64(size), false),
+				NodeInput::value(TaggedValue::F32(size), false),
 			],
 			DocumentNodeMetadata::position((0, 4)),
 		),

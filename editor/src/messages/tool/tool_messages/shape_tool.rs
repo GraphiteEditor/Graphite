@@ -2,7 +2,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, NumberInput, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::{ColorInput, NumberInput, RadioEntryData, RadioInput, WidgetHolder};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -28,6 +28,7 @@ pub struct ShapeOptions {
 	fill: ToolColorOptions,
 	stroke: ToolColorOptions,
 	vertices: u32,
+	primitive_shape_type: PrimitiveShapeType,
 }
 
 impl Default for ShapeOptions {
@@ -37,6 +38,7 @@ impl Default for ShapeOptions {
 			line_weight: 5.,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
+			primitive_shape_type: PrimitiveShapeType::Polygon,
 		}
 	}
 }
@@ -61,12 +63,19 @@ pub enum ShapeToolMessage {
 	UpdateOptions(ShapeOptionsUpdate),
 }
 
+#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
+pub enum PrimitiveShapeType {
+	Polygon = 0,
+	Star = 1,
+}
+
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum ShapeOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
 	LineWeight(f64),
+	PrimitiveShapeType(PrimitiveShapeType),
 	StrokeColor(Option<Color>),
 	StrokeColorType(ToolColorType),
 	Vertices(u32),
@@ -96,6 +105,14 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.widget_holder()
 }
 
+fn create_star_option_widget(primitive_shape_type: PrimitiveShapeType) -> WidgetHolder {
+	let entries = vec![
+		RadioEntryData::new("Polygon").on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
+		RadioEntryData::new("Star").on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
+	];
+	RadioInput::new(entries).selected_index(primitive_shape_type as u32).widget_holder()
+}
+
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
@@ -107,7 +124,11 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl PropertyHolder for ShapeTool {
 	fn properties(&self) -> Layout {
-		let mut widgets = vec![create_sides_widget(self.options.vertices)];
+		let mut widgets = vec![
+			create_star_option_widget(self.options.primitive_shape_type),
+			WidgetHolder::related_separator(),
+			create_sides_widget(self.options.vertices),
+		];
 
 		widgets.push(WidgetHolder::section_separator());
 
@@ -139,6 +160,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 		if let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message {
 			match action {
 				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
+				ShapeOptionsUpdate::PrimitiveShapeType(primitive_shape_type) => self.options.primitive_shape_type = primitive_shape_type,
 				ShapeOptionsUpdate::FillColor(color) => {
 					self.options.fill.custom_color = color;
 					self.options.fill.color_type = ToolColorType::Custom;
@@ -238,13 +260,16 @@ impl Fsm for ShapeToolFsmState {
 					let layer_path = document.get_path_for_new_layer();
 					shape_data.path = Some(layer_path.clone());
 
-					let subpath = bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.);
+					let subpath = match tool_options.primitive_shape_type {
+						PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
+						PrimitiveShapeType::Star => bezier_rs::Subpath::new_regular_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
+					};
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 
 					let fill_color = tool_options.fill.active_color();
 					responses.add(GraphOperationMessage::FillSet {
 						layer: layer_path.clone(),
-						fill: if fill_color.is_some() { Fill::Solid(fill_color.unwrap()) } else { Fill::None },
+						fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 					});
 
 					responses.add(GraphOperationMessage::StrokeSet {

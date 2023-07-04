@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, FnArg, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PredicateType, ReturnType, Token, TraitBound, Type, TypeParam,
-	TypeParamBound, WhereClause, WherePredicate,
+	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, Binding, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
+	PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
 #[proc_macro_attribute]
@@ -30,7 +30,7 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	let node = &node;
 	let node_name = &node.ident;
-	let mut args = args(node);
+	let mut args = node_args(node);
 
 	let arg_idents = args
 		.iter()
@@ -38,7 +38,7 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 		.map(|arg| Ident::new(arg.to_token_stream().to_string().to_lowercase().as_str(), Span::call_site()))
 		.collect::<Vec<_>>();
 
-	let (_, _, parameter_pat_ident_patterns) = parse_inputs(&function);
+	let (_, _, parameter_pat_ident_patterns) = parse_inputs(&function, false);
 	let parameter_idents = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.ident).collect::<Vec<_>>();
 
 	// Extract the output type of the entire node - `()` by default
@@ -69,7 +69,7 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	.into()
 }
 
-fn args(node: &syn::PathSegment) -> Vec<Type> {
+fn node_args(node: &syn::PathSegment) -> Vec<Type> {
 	match node.arguments.clone() {
 		PathArguments::AngleBracketed(args) => args
 			.args
@@ -105,7 +105,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	let node = &node;
 	let node_name = &node.ident;
-	let mut args = args(node);
+	let mut args = node_args(node);
 
 	let async_out = match asyncness {
 		Asyncness::Sync => false,
@@ -126,13 +126,11 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 		}
 	});
 
-	let (primary_input, parameter_inputs, parameter_pat_ident_patterns) = parse_inputs(&function);
+	let (primary_input, parameter_inputs, parameter_pat_ident_patterns) = parse_inputs(&function, true);
 	let primary_input_ty = &primary_input.ty;
 	let Pat::Ident(PatIdent{ident: primary_input_ident, mutability: primary_input_mutability,..} ) =&*primary_input.pat else {
 		panic!("Expected ident as primary input.");
 	};
-	let parameter_idents = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.ident).collect::<Vec<_>>();
-	let parameter_mutability = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.mutability);
 
 	// Extract the output type of the entire node - `()` by default
 	let output = if let ReturnType::Type(_, ty) = &function.sig.output {
@@ -141,10 +139,18 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 		quote::quote!(())
 	};
 
-	let struct_generics = (0..parameter_pat_ident_patterns.len()).map(|x| format_ident!("S{x}")).collect::<Vec<_>>();
-	let future_generics = (0..parameter_pat_ident_patterns.len()).map(|x| format_ident!("F{x}")).collect::<Vec<_>>();
-	let future_types = future_generics.iter().map(|x| Type::Verbatim(x.to_token_stream())).collect::<Vec<_>>();
+	let num_inputs = parameter_inputs.len();
+	let struct_generics = (0..num_inputs).map(|x| format_ident!("S{x}")).collect::<Vec<_>>();
+	let future_generics = (0..num_inputs).map(|x| format_ident!("F{x}")).collect::<Vec<_>>();
 	let parameter_types = parameter_inputs.iter().map(|x| *x.ty.clone()).collect::<Vec<Type>>();
+	let future_types = future_generics
+		.iter()
+		.enumerate()
+		.map(|(i, x)| match parameter_types[i].clone() {
+			Type::ImplTrait(x) => Type::ImplTrait(x),
+			_ => Type::Verbatim(x.to_token_stream()),
+		})
+		.collect::<Vec<_>>();
 
 	for ident in struct_generics.iter() {
 		args.push(Type::Verbatim(quote::quote!(#ident)));
@@ -153,6 +159,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	// Generics are simply `S0` through to `Sn-1` where n is the number of secondary inputs
 	let node_generics = construct_node_generics(&struct_generics);
 	let future_generic_params = construct_node_generics(&future_generics);
+	let (future_parameter_types, future_generic_params): (Vec<_>, Vec<_>) = parameter_types.iter().cloned().zip(future_generic_params).filter(|(ty, _)| !matches!(ty, Type::ImplTrait(_))).unzip();
 
 	let generics = if async_in {
 		type_generics
@@ -166,12 +173,12 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	// Bindings for all of the above generics to a node with an input of `()` and an output of the type in the function
 	let node_bounds = if async_in {
-		let mut node_bounds = input_node_bounds(future_types, node_generics, |ty| quote! {Node<'input, (), Output = #ty>});
-		let future_bounds = input_node_bounds(parameter_types, future_generic_params, |ty| quote! { core::future::Future<Output = #ty>});
+		let mut node_bounds = input_node_bounds(future_types, node_generics, |lifetime, in_ty, out_ty| quote! {Node<#lifetime, #in_ty, Output = #out_ty>});
+		let future_bounds = input_node_bounds(future_parameter_types, future_generic_params, |_, _, out_ty| quote! { core::future::Future<Output = #out_ty>});
 		node_bounds.extend(future_bounds);
 		node_bounds
 	} else {
-		input_node_bounds(parameter_types, node_generics, |ty| quote! {Node<'input, (), Output = #ty>})
+		input_node_bounds(parameter_types, node_generics, |lifetime, in_ty, out_ty| quote! {Node<#lifetime, #in_ty, Output = #out_ty>})
 	};
 	where_clause.predicates.extend(node_bounds);
 
@@ -180,6 +187,9 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	} else {
 		quote::quote!(#output)
 	};
+
+	let parameter_idents = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.ident).collect::<Vec<_>>();
+	let parameter_mutability = parameter_pat_ident_patterns.iter().map(|pat_ident| &pat_ident.mutability);
 
 	let parameters = if matches!(asyncness, Asyncness::AllAsync) {
 		quote::quote!(#(let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(()).await;)*)
@@ -209,7 +219,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	.into()
 }
 
-fn parse_inputs(function: &ItemFn) -> (&syn::PatType, Vec<&syn::PatType>, Vec<&PatIdent>) {
+fn parse_inputs(function: &ItemFn, remove_impl_node: bool) -> (&syn::PatType, Vec<&syn::PatType>, Vec<&PatIdent>) {
 	let mut function_inputs = function.sig.inputs.iter().filter_map(|arg| if let FnArg::Typed(typed_arg) = arg { Some(typed_arg) } else { None });
 
 	// Extract primary input as first argument
@@ -217,8 +227,10 @@ fn parse_inputs(function: &ItemFn) -> (&syn::PatType, Vec<&syn::PatType>, Vec<&P
 
 	// Extract secondary inputs as all other arguments
 	let parameter_inputs = function_inputs.collect::<Vec<_>>();
+
 	let parameter_pat_ident_patterns = parameter_inputs
 		.iter()
+		.filter(|input| !matches!(&*input.ty, Type::ImplTrait(_)) || !remove_impl_node)
 		.map(|input| {
 			let Pat::Ident(pat_ident) = &*input.pat else { panic!("Expected ident for secondary input."); };
 			pat_ident
@@ -244,14 +256,43 @@ fn construct_node_generics(struct_generics: &[Ident]) -> Vec<GenericParam> {
 		.collect()
 }
 
-fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericParam>, trait_bound: impl Fn(Type) -> proc_macro2::TokenStream) -> Vec<WherePredicate> {
+fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericParam>, trait_bound: impl Fn(Lifetime, Type, Type) -> proc_macro2::TokenStream) -> Vec<WherePredicate> {
 	parameter_inputs
 		.iter()
 		.zip(&node_generics)
 		.map(|(ty, name)| {
 			let GenericParam::Type(generic_ty) = name else { panic!("Expected type generic."); };
 			let ident = &generic_ty.ident;
-			let bound = trait_bound(ty.clone());
+			let (lifetime, in_ty, out_ty) = match ty.clone() {
+				Type::ImplTrait(TypeImplTrait { bounds, .. }) if bounds.len() == 1 => {
+					let TypeParamBound::Trait(TraitBound { ref path, .. }) = bounds[0] else {panic!("impl Traits other then Node are not supported")};
+					let node_segment = path.segments.last().expect("Found an empty path in the impl Trait arg");
+					assert_eq!(node_segment.ident.to_string(), "Node", "Only impl Node is supported as an argument");
+					let PathArguments::AngleBracketed(AngleBracketedGenericArguments {ref args, .. }) = node_segment.arguments else { panic!("Node must have generic arguments")};
+					let mut args_iter = args.iter();
+					let lifetime = if args.len() == 2 {
+						Lifetime::new("'input", Span::call_site())
+					} else if let Some(GenericArgument::Lifetime(node_lifetime)) = args_iter.next() {
+						node_lifetime.clone()
+					} else {
+						panic!("Invalid arguments for Node trait")
+					};
+
+					let Some(GenericArgument::Type(in_ty)) = args_iter.next() else { panic!("Expected type argument in Node<> declaration")};
+					let Some(GenericArgument::Binding(Binding {ty: out_ty, ..} )) = args_iter.next() else { panic!("Expected Output = in Node declaration")};
+					(lifetime, in_ty.clone(), out_ty.clone())
+				}
+				ty => (
+					Lifetime::new("'input", Span::call_site()),
+					Type::Tuple(TypeTuple {
+						paren_token: syn::token::Paren { span: Span::call_site() },
+						elems: Punctuated::new(),
+					}),
+					ty,
+				),
+			};
+
+			let bound = trait_bound(lifetime, in_ty, out_ty);
 			WherePredicate::Type(PredicateType {
 				lifetimes: None,
 				bounded_ty: Type::Verbatim(ident.to_token_stream()),

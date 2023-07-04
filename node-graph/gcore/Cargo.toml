@@ -9,30 +9,16 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = [
-	"dyn-any",
-	"dyn-any/std",
-	"alloc",
-	"glam/std",
-	"specta",
-	"num-traits/std",
-	"rustybuzz",
-]
+std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta", "num-traits/std", "rustybuzz"]
 default = ["async", "serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
 log = ["dep:log"]
-serde = [
-	"dep:serde",
-	"glam/serde",
-	"bezier-rs/serde",
-	"bezier-rs/serde",
-	"base64",
-]
+serde = ["dep:serde", "glam/serde", "bezier-rs/serde", "bezier-rs/serde", "base64"]
 gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
 async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs", "once_cell"]
 type_id_logging = []
-wasm = ["wasm-bindgen", "web-sys", "js-sys", "std"]
+wasm = ["web-sys"]
 
 [dependencies]
 dyn-any = { path = "../../libraries/dyn-any", features = [
@@ -77,10 +63,4 @@ js-sys = { version = "0.3.55", optional = true }
 [dependencies.web-sys]
 version = "0.3.4"
 optional = true
-features = [
-	"Window",
-	"CanvasRenderingContext2d",
-	"ImageData",
-	"Document",
-	"HtmlCanvasElement",
-]
+features = ["HtmlCanvasElement"]
