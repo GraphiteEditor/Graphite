@@ -235,6 +235,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors(anchor_positions, true)
 	}
 
+	/// Constructs a regular star polygon (n-star). See [new_regular_polygon], but with interspersed vertices at an `inner_radius`.
+	pub fn new_regular_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
+		let anchor_positions = (0..sides * 2).map(|i| {
+			let angle = (i as f64) * 0.5 * std::f64::consts::TAU / (sides as f64);
+			let center = center + DVec2::ONE * radius;
+			let r = if i % 2 == 0 { radius } else { inner_radius };
+			DVec2::new(center.x + r * f64::cos(angle), center.y + r * f64::sin(angle)) * 0.5
+		});
+		Self::from_anchors(anchor_positions, true)
+	}
+
 	/// Constructs a line from `p1` to `p2`
 	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
 		Self::from_anchors([p1, p2], false)
