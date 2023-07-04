@@ -24,7 +24,7 @@ imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 wayland = []
 
 [dependencies]
-autoquant = { path = "../../../autoquant", optional = true, features = [
+autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
 	"fitting",
 ] }
 graphene-core = { path = "../gcore", features = [
