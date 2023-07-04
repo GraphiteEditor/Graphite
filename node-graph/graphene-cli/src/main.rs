@@ -99,7 +99,7 @@ fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn E
 	let wrapped_network = wrap_network_in_scope(network.clone());
 	let compiler = Compiler {};
 	let protograph = compiler.compile_single(wrapped_network, true)?;
-	let mut executor = block_on(DynamicExecutor::new(protograph))?;
+	let executor = block_on(DynamicExecutor::new(protograph))?;
 	Ok(executor)
 }
 
@@ -107,8 +107,9 @@ fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn E
 mod test {
 	use super::*;
 
-	#[test]
-	fn grays_scale() {
+	#[tokio::test]
+	#[cfg_attr(not(feature = "wayland"), ignore)]
+	async fn grays_scale() {
 		let document_string = include_str!("../test_files/gray.graphite");
 		let executor = create_executor(document_string.to_string()).unwrap();
 		let editor_api = WasmEditorApi {
@@ -118,12 +119,13 @@ mod test {
 			node_graph_message_sender: &UpdateLogger {},
 			imaginate_preferences: &ImaginatePreferences::default(),
 		};
-		let result = block_on((&executor).execute(editor_api.clone())).unwrap();
+		let result = (&executor).execute(editor_api.clone()).await.unwrap();
 		println!("result: {:?}", result);
 	}
 
-	#[test]
-	fn hue() {
+	#[tokio::test]
+	#[cfg_attr(not(feature = "wayland"), ignore)]
+	async fn hue() {
 		let document_string = include_str!("../test_files/hue.graphite");
 		let executor = create_executor(document_string.to_string()).unwrap();
 		let editor_api = WasmEditorApi {
@@ -133,7 +135,7 @@ mod test {
 			node_graph_message_sender: &UpdateLogger {},
 			imaginate_preferences: &ImaginatePreferences::default(),
 		};
-		let result = block_on((&executor).execute(editor_api.clone())).unwrap();
+		let result = (&executor).execute(editor_api.clone()).await.unwrap();
 		println!("result: {:?}", result);
 	}
 }
