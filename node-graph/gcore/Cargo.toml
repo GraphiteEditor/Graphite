@@ -9,24 +9,10 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = [
-	"dyn-any",
-	"dyn-any/std",
-	"alloc",
-	"glam/std",
-	"specta",
-	"num-traits/std",
-	"rustybuzz",
-]
+std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta", "num-traits/std", "rustybuzz"]
 default = ["async", "serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
 log = ["dep:log"]
-serde = [
-	"dep:serde",
-	"glam/serde",
-	"bezier-rs/serde",
-	"bezier-rs/serde",
-	"base64",
-]
+serde = ["dep:serde", "glam/serde", "bezier-rs/serde", "bezier-rs/serde", "base64"]
 gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
 async = ["async-trait", "alloc"]
 nightly = []

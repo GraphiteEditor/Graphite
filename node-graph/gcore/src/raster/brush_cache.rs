@@ -100,7 +100,6 @@ pub struct BrushPlan {
 }
 
 #[derive(Debug, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
 	proto: bool,

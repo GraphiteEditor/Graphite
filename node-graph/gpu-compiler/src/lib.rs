@@ -121,7 +121,7 @@ impl SpirVCompiler for GpuCompiler {
 
 pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result<String> {
 	fn nid(id: &u64) -> String {
-		format!("n{id}")
+		format!("n{id:0x}")
 	}
 
 	dbg!(&io);
@@ -151,13 +151,13 @@ pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result
 		}
 		for (i, id) in network.inputs.iter().enumerate() {
 			let Some((_, node)) = network.nodes.iter().find(|(i, _)| i == id) else {
-			anyhow::bail!("Input node not found");
-		};
+				anyhow::bail!("Input node not found");
+			};
 			let fqn = &node.identifier.name;
 			let id = nid(id);
 			let node = Node {
 				id: id.clone(),
-				index: i,
+				index: i + 2,
 				fqn: fqn.to_string().split('<').next().unwrap().to_owned(),
 				args: node.construction_args.new_function_args(),
 			};
@@ -202,7 +202,7 @@ pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result
 	context.insert("input_nodes", &input_nodes);
 	context.insert("output_nodes", &output_nodes);
 	context.insert("nodes", &nodes);
-	context.insert("compute_threads", &64);
+	context.insert("compute_threads", "12, 8");
 	Ok(tera.render("spirv", &context)?)
 }
 
@@ -215,9 +215,13 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 		.preserve_bindings(true)
 		.release(true)
 		.spirv_metadata(SpirvMetadata::Full)
-		//.extra_arg("no-early-report-zombies")
-		//.extra_arg("no-infer-storage-classes")
-		//.extra_arg("spirt-passes=qptr")
+		//.scalar_block_layout(true)
+		.relax_logical_pointer(true)
+		//.capability(spirv_builder::Capability::Float64)
+		//.capability(spirv_builder::Capability::VariablePointersStorageBuffer)
+		.extra_arg("no-early-report-zombies")
+		.extra_arg("no-infer-storage-classes")
+		.extra_arg("spirt-passes=qptr")
 		.build()?;
 
 	Ok(result)

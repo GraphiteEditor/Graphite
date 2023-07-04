@@ -1,7 +1,7 @@
 use graph_craft::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
-use graphene_core::quantization::QuantizationChannels;
+use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
@@ -191,10 +191,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: u32, params: [&u32]),
 		register_node!(graphene_core::ops::AddParameterNode<_>, input: &u32, params: [&u32]),
-		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [f64]),
-		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [f64]),
-		register_node!(graphene_core::ops::AddParameterNode<_>, input: f64, params: [&f64]),
-		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f64, params: [&f64]),
+		register_node!(graphene_core::ops::AddParameterNode<_>, input: f32, params: [f32]),
+		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f32, params: [f32]),
+		register_node!(graphene_core::ops::AddParameterNode<_>, input: f32, params: [&f32]),
+		register_node!(graphene_core::ops::AddParameterNode<_>, input: &f32, params: [&f32]),
 		register_node!(graphene_core::ops::SomeNode, input: WasmEditorApi, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>, input: ImageFrame<Color>, output: ImageFrame<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, output: ImageFrame<Color>, params: []),
@@ -251,6 +251,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: graphene_core::GraphicGroup, params: []),
+		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: WasmEditorApi, output: Arc<[u8]>, params: [String]),
+		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
 		async_node!(graphene_std::wasm_application_io::CreateSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>, params: []),
 		async_node!(
 			graphene_std::wasm_application_io::DrawImageFrameNode<_>,
@@ -284,7 +286,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		),
 		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::ReadOutputBufferNode<_, _>, input: Arc<ShaderInput<WgpuExecutor>>, output: Vec<u8>, params: [&WgpuExecutor, ()]),
-		#[cfg(all(feature = "gpu", target_arch = "wasm32"))]
+		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>, params: []),
 		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame<WgpuExecutor>, output: SurfaceFrame, params: [Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>, &WgpuExecutor]),
@@ -310,7 +312,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(
 				concrete!(ImageFrame<Color>),
-				concrete!(SurfaceFrame),
+				concrete!(ImageFrame<Color>),
 				vec![fn_type!(graph_craft::document::DocumentNode), fn_type!(WasmEditorApi)],
 			),
 		)],
@@ -355,7 +357,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::ExtractChannelNode<_>, params: [RedGreenBlue]),
 		raster_node!(graphene_core::raster::ExtractAlphaNode<>, params: []),
 		raster_node!(graphene_core::raster::ExtractOpaqueNode<>, params: []),
-		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
+		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f32, f32, f32, f32, f32]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
 		vec![(
@@ -364,7 +366,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				Box::pin(async move {
 					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0].clone());
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1].clone());
-					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2].clone());
+					let opacity: DowncastBothNode<(), f32> = DowncastBothNode::new(args[2].clone());
 					let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(blend_mode.eval(()).await), CopiedNode::new(opacity.eval(()).await));
 					let node = graphene_std::raster::BlendImageNode::new(image, blend_node);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
@@ -374,21 +376,21 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			NodeIOTypes::new(
 				concrete!(ImageFrame<Color>),
 				concrete!(ImageFrame<Color>),
-				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f64)],
+				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f32)],
 			),
 		)],
-		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
-		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
+		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f32, f32, f32, f32, f32, f32]),
+		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f32, f32, f32]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
-		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f64, f64, LuminanceCalculation]),
-		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
+		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f32, f32, LuminanceCalculation]),
+		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f32]),
 		raster_node!(
 			graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,
-			params: [bool, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64]
+			params: [bool, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32]
 		),
 		raster_node!(
 			graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,
-			params: [RelativeAbsolute, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64]
+			params: [RelativeAbsolute, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32]
 		),
 		vec![(
 			NodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
@@ -396,9 +398,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				Box::pin(async move {
 					use graphene_core::raster::brightness_contrast::*;
 
-					let brightness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[0].clone());
+					let brightness: DowncastBothNode<(), f32> = DowncastBothNode::new(args[0].clone());
 					let brightness = ClonedNode::new(brightness.eval(()).await as f32);
-					let contrast: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1].clone());
+					let contrast: DowncastBothNode<(), f32> = DowncastBothNode::new(args[1].clone());
 					let contrast = ClonedNode::new(contrast.eval(()).await as f32);
 					let use_legacy: DowncastBothNode<(), bool> = DowncastBothNode::new(args[2].clone());
 
@@ -417,11 +419,11 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					}
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
+			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f32), fn_type!(f32), fn_type!(bool)]),
 		)],
-		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
-		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
-		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
+		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f32]),
+		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f32]),
+		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f32, f32, f32]),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<WasmEditorApi>, params: []),
 		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: ImageFrame<Color>, params: [ImageFrame<Color>]),
@@ -479,18 +481,18 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					vec![
 						fn_type!(WasmEditorApi),
 						fn_type!(ImaginateController),
-						fn_type!(f64),
+						fn_type!(f32),
 						fn_type!(Option<DVec2>),
 						fn_type!(u32),
 						fn_type!(ImaginateSamplingMethod),
-						fn_type!(f64),
+						fn_type!(f32),
 						fn_type!(String),
 						fn_type!(String),
 						fn_type!(bool),
-						fn_type!(f64),
+						fn_type!(f32),
 						fn_type!(Option<Vec<u64>>),
 						fn_type!(bool),
-						fn_type!(f64),
+						fn_type!(f32),
 						fn_type!(ImaginateMaskStartingFill),
 						fn_type!(bool),
 						fn_type!(bool),
@@ -513,25 +515,25 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
-		raster_node!(graphene_core::quantization::QuantizeNode<_>, params: [QuantizationChannels]),
-		raster_node!(graphene_core::quantization::DeQuantizeNode<_>, params: [QuantizationChannels]),
+		register_node!(graphene_core::quantization::QuantizeNode<_>, input: Color, params: [QuantizationChannels]),
+		register_node!(graphene_core::quantization::DeQuantizeNode<_>, input: PackedPixel, params: [QuantizationChannels]),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
-		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f64, DVec2, DVec2, DVec2]),
-		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f64, DVec2, DVec2, DVec2]),
-		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: WasmSurfaceHandleFrame, params: [DVec2, f64, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f32, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f32, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: WasmSurfaceHandleFrame, params: [DVec2, f32, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [VectorData]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [DAffine2]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [DAffine2]),
 		register_node!(graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>, input: VectorData, params: [graphene_core::vector::style::FillType, Option<graphene_core::Color>, graphene_core::vector::style::GradientType, DVec2, DVec2, DAffine2, Vec<(f64, Option<graphene_core::Color>)>]),
-		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [Option<graphene_core::Color>, f64, Vec<f32>, f64, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f64]),
+		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [Option<graphene_core::Color>, f32, Vec<f32>, f32, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f32]),
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
 			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
 		),
-		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
+		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f32]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: WasmEditorApi, params: []),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::vector::VectorData, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),

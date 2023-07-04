@@ -1,13 +1,21 @@
+use std::any::Any;
 use std::cell::RefCell;
 
+use core::future::Future;
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::application_io::{ApplicationError, ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::raster::Image;
+use graphene_core::Color;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
 };
 use js_sys::{Object, Reflect};
+use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
+#[cfg(feature = "tokio")]
+use tokio::io::AsyncReadExt;
 use wasm_bindgen::{Clamped, JsCast, JsValue};
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
 #[cfg(feature = "wgpu")]
@@ -20,15 +28,23 @@ pub struct WasmApplicationIo {
 	ids: RefCell<u64>,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
+	#[cfg(not(target_arch = "wasm32"))]
+	windows: RefCell<Vec<Arc<winit::window::Window>>>,
+	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		Self {
+		let mut io = Self {
 			ids: RefCell::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: WgpuExecutor::new().await,
-		}
+			#[cfg(not(target_arch = "wasm32"))]
+			windows: RefCell::new(Vec::new()),
+			resources: HashMap::new(),
+		};
+		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+		io
 	}
 }
 
@@ -51,12 +67,16 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
+	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
+	#[cfg(not(target_arch = "wasm32"))]
+	type Surface = Arc<winit::window::Window>;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
 	type Executor = ();
 
+	#[cfg(target_arch = "wasm32")]
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
 		let wrapper = || {
 			let document = window().expect("should have a window in this context").document().expect("window should have a document");
@@ -90,7 +110,29 @@ impl ApplicationIo for WasmApplicationIo {
 
 		wrapper().expect("should be able to set canvas in global scope")
 	}
+	#[cfg(not(target_arch = "wasm32"))]
+	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
+		#[cfg(feature = "wayland")]
+		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
+		#[cfg(feature = "wayland")]
+		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build();
+		#[cfg(not(feature = "wayland"))]
+		let event_loop = winit::event_loop::EventLoop::new();
+		let window = winit::window::WindowBuilder::new()
+			.with_title("Graphite")
+			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
+			.build(&event_loop)
+			.unwrap();
+		let window = Arc::new(window);
+		self.windows.borrow_mut().push(window.clone());
+		SurfaceHandle {
+			surface_id: SurfaceId(window.id().into()),
+			surface: window,
+		}
+	}
+
+	#[cfg(target_arch = "wasm32")]
 	fn destroy_surface(&self, surface_id: SurfaceId) {
 		let window = window().expect("should have a window in this context");
 		let window = Object::from(window);
@@ -111,9 +153,49 @@ impl ApplicationIo for WasmApplicationIo {
 		wrapper().expect("should be able to set canvas in global scope")
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
+	fn destroy_surface(&self, _surface_id: SurfaceId) {}
+
 	#[cfg(feature = "wgpu")]
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		self.gpu_executor.as_ref()
+	}
+
+	fn load_resource(&self, url: impl AsRef<str>) -> Result<Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>, ApplicationError> {
+		let url = url::Url::parse(url.as_ref()).map_err(|_| ApplicationError::InvalidUrl)?;
+		log::info!("Loading resource: {:?}", url);
+		match url.scheme() {
+			#[cfg(feature = "tokio")]
+			"file" => {
+				let path = url.to_file_path().map_err(|_| ApplicationError::NotFound)?;
+				let path = path.to_str().ok_or(ApplicationError::NotFound)?;
+				let path = path.to_owned();
+				Ok(Box::pin(async move {
+					let file = tokio::fs::File::open(path).await.map_err(|_| ApplicationError::NotFound)?;
+					let mut reader = tokio::io::BufReader::new(file);
+					let mut data = Vec::new();
+					reader.read_to_end(&mut data).await.map_err(|_| ApplicationError::NotFound)?;
+					Ok(Arc::from(data))
+				}) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+			}
+			"http" | "https" => {
+				let url = url.to_string();
+				Ok(Box::pin(async move {
+					let client = reqwest::Client::new();
+					let response = client.get(url).send().await.map_err(|_| ApplicationError::NotFound)?;
+					let data = response.bytes().await.map_err(|_| ApplicationError::NotFound)?;
+					Ok(Arc::from(data.to_vec()))
+				}) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+			}
+			"graphite" => {
+				let path = url.path();
+				let path = path.to_owned();
+				log::info!("Loading resource: {}", path);
+				let data = self.resources.get(&path).ok_or(ApplicationError::NotFound)?.clone();
+				Ok(Box::pin(async move { Ok(data.clone()) }) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+			}
+			_ => Err(ApplicationError::NotFound),
+		}
 	}
 }
 
@@ -123,7 +205,7 @@ pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<HtmlCanvasElement>> {
+async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
 	editor.application_io.create_surface().into()
 }
 
@@ -148,4 +230,30 @@ async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_ha
 		surface_handle,
 		transform: image.transform,
 	}
+}
+
+pub struct LoadResourceNode<Url> {
+	url: Url,
+}
+
+#[node_macro::node_fn(LoadResourceNode)]
+async fn load_resource_node<'a: 'input>(editor: WasmEditorApi<'a>, url: String) -> Arc<[u8]> {
+	editor.application_io.load_resource(url).unwrap().await.unwrap()
+}
+
+pub struct DecodeImageNode;
+
+#[node_macro::node_fn(DecodeImageNode)]
+fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
+	let image = image::load_from_memory(data.as_ref()).expect("Failed to decode image");
+	let image = image.to_rgba32f();
+	let image = ImageFrame {
+		image: Image {
+			data: image.chunks(4).map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
+			width: image.width(),
+			height: image.height(),
+		},
+		transform: glam::DAffine2::IDENTITY,
+	};
+	image
 }

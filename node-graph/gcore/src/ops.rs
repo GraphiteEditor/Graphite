@@ -210,6 +210,7 @@ pub struct IntoNode<I, O> {
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
+#[cfg(feature = "alloc")]
 #[node_macro::node_fn(IntoNode<_I, _O>)]
 async fn into<_I, _O>(input: _I) -> _O
 where

@@ -8,7 +8,10 @@ use dyn_any::StaticType;
 use dyn_any::StaticTypeSized;
 use glam::DAffine2;
 
+use core::any::Any;
+use core::future::Future;
 use core::hash::{Hash, Hasher};
+use core::pin::Pin;
 
 use crate::text::FontCache;
 
@@ -93,6 +96,7 @@ pub trait ApplicationIo {
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
+	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>, ApplicationError>;
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
@@ -110,6 +114,16 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	fn gpu_executor(&self) -> Option<&T::Executor> {
 		(**self).gpu_executor()
 	}
+
+	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>, ApplicationError> {
+		(**self).load_resource(url)
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ApplicationError {
+	NotFound,
+	InvalidUrl,
 }
 
 #[derive(Debug, Clone)]
