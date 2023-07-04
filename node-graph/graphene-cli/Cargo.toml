@@ -2,6 +2,9 @@
 name = "graphene-cli"
 version = "0.1.0"
 edition = "2021"
+description = "CLI interface for the graphene language"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
