@@ -13,6 +13,7 @@ use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
+use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
@@ -2081,8 +2082,53 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Transform",
+			category: "Gpu",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![1, 0],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Extract Executor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::application_io::IntoNode<_, &WgpuExecutor>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Upload Texture".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::UploadTextureNode<_>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
+				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Texture",
+				data_type: FrontendGraphDataType::General,
+			}],
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Transform",
 			category: "Transform",
-			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),

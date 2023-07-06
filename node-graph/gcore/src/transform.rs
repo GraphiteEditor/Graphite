@@ -1,3 +1,6 @@
+use core::future::Future;
+
+use dyn_any::{DynAny, StaticType};
 use glam::DAffine2;
 
 use glam::DVec2;
@@ -116,16 +119,49 @@ impl TransformMut for DAffine2 {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
+pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
+	pub(crate) transform_target: TransformTarget,
 	pub(crate) translate: Translation,
 	pub(crate) rotate: Rotation,
 	pub(crate) scale: Scale,
 	pub(crate) shear: Shear,
 	pub(crate) pivot: Pivot,
 }
+#[derive(Debug, Clone, Copy, dyn_any::DynAny)]
+pub struct Footprint(DAffine2);
+
+impl Transform for Footprint {
+	fn transform(&self) -> DAffine2 {
+		self.0
+	}
+}
+impl TransformMut for Footprint {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.0
+	}
+}
 
 #[node_macro::node_fn(TransformNode)]
-pub(crate) fn transform_vector_data<Data: TransformMut>(mut data: Data, translate: DVec2, rotate: f32, scale: DVec2, shear: DVec2, pivot: DVec2) -> Data {
+pub(crate) async fn transform_vector_data<Fut: Future>(
+	mut footprint: Footprint,
+	transform_target: impl Node<Footprint, Output = Fut>,
+	translate: DVec2,
+	rotate: f32,
+	scale: DVec2,
+	shear: DVec2,
+	pivot: DVec2,
+) -> Fut::Output
+where
+	Fut::Output: TransformMut,
+{
+	// TOOD: This is hack and might break for Vector data because the pivot may be incorrect
+	let pivot_transform = DAffine2::from_translation(pivot);
+	let transform =
+		pivot_transform * DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot_transform.inverse();
+	let inverse = transform.inverse();
+	*footprint.transform_mut() = inverse * footprint.transform();
+
+	let mut data = self.transform_target.eval(footprint).await;
 	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
 
 	let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
