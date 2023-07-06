@@ -138,11 +138,9 @@
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
-			<PopoverButton {...exclude(popoverButton, ["header", "text"])}>
+			<PopoverButton {...exclude(popoverButton, ["header", "text", "optionsWidget", "layoutTarget"])}>
 				<TextLabel bold={true}>{popoverButton.header}</TextLabel>
 				<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
-                <!-- ! how will this work? -->
-                <!-- <DropdownInput entries={popoverButton.options_widget}></DropdownInput> -->
 			</PopoverButton>
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}

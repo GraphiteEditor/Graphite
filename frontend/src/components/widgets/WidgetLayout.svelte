@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "@graphite/wasm-communication/messages";
+	import { isWidgetColumn, isWidgetRow, isWidgetSection, LayoutGroup, type WidgetLayout } from "@graphite/wasm-communication/messages";
 
 	import WidgetSection from "@graphite/components/widgets/groups/WidgetSection.svelte";
 	import WidgetRow from "@graphite/components/widgets/WidgetRow.svelte";
@@ -12,6 +12,7 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
 		.join(" ");
+    console.log(layout);
 </script>
 
 <!-- TODO: Refactor this component (together with `WidgetRow.svelte`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
