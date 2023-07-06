@@ -932,8 +932,7 @@ export class PopoverButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-    optionsWidget: WidgetLayout = defaultWidgetLayout();
-    layoutTarget: unknown = undefined;
+    optionsWidget: LayoutGroup[] | undefined;
 }
 
 export type RadioEntryData = {
@@ -1128,6 +1127,11 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	const kind = Object.keys(widgetHolder.widget)[0];
 	const props = widgetHolder.widget[kind];
 	props.kind = kind;
+
+	
+	if (kind === "PopoverButton") {
+		props.optionsWidget = props.optionsWidget.map(createLayoutGroup);
+	}
 
 	const { widgetId } = widgetHolder;
 

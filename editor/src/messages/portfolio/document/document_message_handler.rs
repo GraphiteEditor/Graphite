@@ -1565,15 +1565,23 @@ impl DocumentMessageHandler {
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
 				text: "Select the vector to snap to.".into(), // TODO: check whether this is an apt description
-				options_widget: WidgetLayout::new(vec![LayoutGroup::Row {
+				options_widget: vec![LayoutGroup::Row {
 					widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
 						entries: vec![vec![
 							DropdownEntryData {
 								label: SnappingOptions::BoundingBoxes.to_string(),
+								on_update: WidgetCallback::new(|_| {
+									info!("Bouding boxes");
+									Message::NoOp
+								}),
 								..DropdownEntryData::default()
 							},
 							DropdownEntryData {
 								label: SnappingOptions::Nodes.to_string(),
+								on_update: WidgetCallback::new(|_| {
+									info!("Nodes");
+									Message::NoOp
+								}),
 								..DropdownEntryData::default()
 							},
 						]],
@@ -1582,7 +1590,7 @@ impl DocumentMessageHandler {
 						interactive: true,
 						..Default::default()
 					}))],
-				}]),
+				}],
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {

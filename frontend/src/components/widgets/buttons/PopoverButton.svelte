@@ -3,13 +3,10 @@
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import { WidgetLayout } from "~src/wasm-communication/messages";
 
 	export let icon: IconName = "DropdownArrow";
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
-	export let optionsWidget: WidgetLayout;
-	export let layoutTarget: unknown;
 
 	// Callbacks
 	export let action: (() => void) | undefined = undefined;
@@ -23,11 +20,7 @@
 </script>
 
 <LayoutRow class="popover-button">
-	{#if optionsWidget === undefined}
-		<IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
-	{:else}
-		<IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {optionsWidget} {layoutTarget} data-floating-menu-spawner />
-	{/if}
+	<IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
 
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} type="Popover" direction="Bottom">
 		<slot />
