@@ -4,7 +4,6 @@ import { Transform, Type, plainToClass } from "class-transformer";
 
 import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
-import WidgetLayout from "~src/components/widgets/WidgetLayout.svelte";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.

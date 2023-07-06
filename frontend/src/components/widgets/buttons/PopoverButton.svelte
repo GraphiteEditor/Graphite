@@ -1,11 +1,11 @@
 <script lang="ts">
 	import type { IconName } from "@graphite/utility-functions/icons";
-	// import { LayoutGroup, WidgetLayout } from "~src/wasm-communication/messages";
-
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-    import WidgetLayout from "../WidgetLayout.svelte";
+	import { WidgetLayout } from "~src/wasm-communication/messages";
+    // import WidgetLayout from "../WidgetLayout.svelte";
+    
 
 	export let icon: IconName = "DropdownArrow";
 	export let tooltip: string | undefined = undefined;
@@ -22,7 +22,6 @@
 		open = true;
 		action?.();
 	}
-    // console.log(optionsWidget, layoutTarget);
 </script>
 
 <LayoutRow class="popover-button">
@@ -30,7 +29,7 @@
 	    <IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
     
     {:else}
-        <IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} options_widget={optionsWidget} data-floating-menu-spawner />
+        <IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} options_widget={optionsWidget} layoutTarget={layoutTarget} data-floating-menu-spawner />
     {/if}
 
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} type="Popover" direction="Bottom">
