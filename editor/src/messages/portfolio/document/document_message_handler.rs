@@ -7,6 +7,7 @@ use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::{CheckboxEntryData, CheckboxInput};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
@@ -1561,33 +1562,33 @@ impl DocumentMessageHandler {
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				..Default::default()
 			})),
-			// this isn't working, why?
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
-				text: "Select the vector to snap to.".into(), // TODO: check whether this is an apt description
+				text: "Select the vector to snap to.".into(),
 				options_widget: vec![LayoutGroup::Row {
-					widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
+					widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 						entries: vec![vec![
-							DropdownEntryData {
+							CheckboxEntryData {
+								// TODO: perform the requisite operations instead of NoOp
+								checked: self.snapping_enabled,
 								label: SnappingOptions::BoundingBoxes.to_string(),
 								on_update: WidgetCallback::new(|_| {
-									info!("Bouding boxes");
+									info!("Bounding Boxes");
+									// Message::Tool(ToolMessage)
 									Message::NoOp
 								}),
-								..DropdownEntryData::default()
+								..CheckboxInput::default()
 							},
-							DropdownEntryData {
+							CheckboxEntryData {
+								checked: self.snapping_enabled,
 								label: SnappingOptions::Nodes.to_string(),
 								on_update: WidgetCallback::new(|_| {
 									info!("Nodes");
 									Message::NoOp
 								}),
-								..DropdownEntryData::default()
+								..CheckboxInput::default()
 							},
 						]],
-						selected_index: Some(0_u32),
-						draw_icon: false,
-						interactive: true,
 						..Default::default()
 					}))],
 				}],

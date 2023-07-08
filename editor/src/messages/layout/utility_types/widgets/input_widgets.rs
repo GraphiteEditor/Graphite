@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 #[derivative(Debug, PartialEq)]
 pub struct CheckboxInput {
 	#[widget_builder(constructor)]
+	pub entries: CheckboxInputEntries,
+
+	#[widget_builder(constructor)]
 	pub checked: bool,
 
 	pub disabled: bool,
@@ -33,6 +36,7 @@ pub struct CheckboxInput {
 impl Default for CheckboxInput {
 	fn default() -> Self {
 		Self {
+			entries: Vec::new(),
 			checked: false,
 			disabled: false,
 			icon: "Checkmark".into(),
@@ -41,6 +45,31 @@ impl Default for CheckboxInput {
 			on_update: Default::default(),
 		}
 	}
+}
+
+pub type CheckboxInputEntries = Vec<Vec<CheckboxEntryData>>;
+
+#[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq)]
+#[widget_builder(not_widget_holder)]
+pub struct CheckboxEntryData {
+	pub value: String,
+
+	#[widget_builder(constructor)]
+	pub label: String,
+
+	pub icon: String,
+
+	pub shortcut: Vec<String>,
+
+	pub disabled: bool,
+
+	pub checked: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
 }
 
 #[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
