@@ -1577,7 +1577,7 @@ impl DocumentMessageHandler {
 									// Message::Tool(ToolMessage)
 									Message::NoOp
 								}),
-								..CheckboxInput::default()
+								..CheckboxEntryData::default()
 							},
 							CheckboxEntryData {
 								checked: self.snapping_enabled,
@@ -1586,7 +1586,7 @@ impl DocumentMessageHandler {
 									info!("Nodes");
 									Message::NoOp
 								}),
-								..CheckboxInput::default()
+								..CheckboxEntryData::default()
 							},
 						]],
 						..Default::default()
