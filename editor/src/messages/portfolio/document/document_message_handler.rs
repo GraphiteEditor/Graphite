@@ -7,6 +7,7 @@ use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::CheckboxInput;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
@@ -1561,35 +1562,31 @@ impl DocumentMessageHandler {
 				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
 				..Default::default()
 			})),
-			// this isn't working, why?
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
-				text: "Select the vector to snap to.".into(), // TODO: check whether this is an apt description
+				text: "Select the vectors to snap to.".into(), // TODO: check whether this is an apt description
 				options_widget: vec![LayoutGroup::Row {
-					widgets: vec![WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-						entries: vec![vec![
-							DropdownEntryData {
-								label: SnappingOptions::BoundingBoxes.to_string(),
-								on_update: WidgetCallback::new(|_| {
-									info!("Bouding boxes");
-									Message::NoOp
-								}),
-								..DropdownEntryData::default()
-							},
-							DropdownEntryData {
-								label: SnappingOptions::Nodes.to_string(),
-								on_update: WidgetCallback::new(|_| {
-									info!("Nodes");
-									Message::NoOp
-								}),
-								..DropdownEntryData::default()
-							},
-						]],
-						selected_index: Some(0_u32),
-						draw_icon: false,
-						interactive: true,
-						..Default::default()
-					}))],
+					widgets: vec![
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: self.snapping_enabled,
+							tooltip: SnappingOptions::BoundingBoxes.to_string(),
+							on_update: WidgetCallback::new(|_| {
+								info!("Bounding boxes");
+								Message::NoOp
+							}),
+							..CheckboxInput::default()
+						})),
+						// TODO: separate the two checkboxes -- currently rendered right next to one another
+						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+							checked: self.snapping_enabled,
+							tooltip: SnappingOptions::Nodes.to_string(),
+							on_update: WidgetCallback::new(|_| {
+								info!("Nodes");
+								Message::NoOp
+							}),
+							..CheckboxInput::default()
+						})),
+					],
 				}],
 				..Default::default()
 			})),
