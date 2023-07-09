@@ -52,6 +52,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	fn locate_layer(&mut self, mut id: NodeId) -> Option<NodeId> {
 		while self.network.nodes.get(&id)?.name != "Layer" {
+			info!("Name {}", self.network.nodes.get(&id)?.name);
 			id = self.outwards_links.get(&id)?.first().copied()?;
 		}
 		self.layer_node = Some(id);
@@ -93,8 +94,7 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
-	pub fn insert_node_before(&mut self, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
-		let new_id = generate_uuid();
+	pub fn insert_node_before(&mut self, new_id: NodeId, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
 		let post_node = self.network.nodes.get_mut(&node_id)?;
 
 		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
@@ -104,7 +104,7 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
-	pub fn create_layer(&mut self, output_node_id: NodeId) -> Option<NodeId> {
+	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId) -> Option<NodeId> {
 		let mut current_node = output_node_id;
 		let mut input_index = 0;
 		let mut current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
@@ -131,7 +131,7 @@ impl<'a> ModifyInputsContext<'a> {
 		info!("Insert layer below");
 
 		let layer_node = resolve_document_node_type("Layer").expect("Node").to_document_node_default_inputs([], Default::default());
-		let layer_node = self.insert_node_before(current_node, input_index, layer_node, IVec2::new(0, 3))?;
+		let layer_node = self.insert_node_before(new_id, current_node, input_index, layer_node, IVec2::new(0, 3))?;
 
 		Some(layer_node)
 	}
@@ -146,7 +146,7 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		self.insert_node_before(layer, 0, artboard_node, IVec2::new(-8, 0))
+		self.insert_node_before(generate_uuid(), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
 	fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
@@ -477,7 +477,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
 				info!("Gen artboard");
-				if let Some(layer) = modify_inputs.create_layer(modify_inputs.network.outputs[0].node_id) {
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
 
@@ -485,7 +485,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
-				info!("Gen artboard");
 				if let Some(layer) = modify_inputs.locate_layer(id) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
