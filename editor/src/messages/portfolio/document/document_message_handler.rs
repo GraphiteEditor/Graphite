@@ -1565,9 +1565,9 @@ impl DocumentMessageHandler {
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
 				text: "Select the vectors to snap to.".into(), // TODO: check whether this is an apt description
-				options_widget: vec![LayoutGroup::Row {
-					widgets: vec![
-						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+				options_widget: vec![
+					LayoutGroup::Row {
+						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 							checked: self.snapping_enabled,
 							tooltip: SnappingOptions::BoundingBoxes.to_string(),
 							label: SnappingOptions::BoundingBoxes.to_string(),
@@ -1576,9 +1576,10 @@ impl DocumentMessageHandler {
 								Message::NoOp
 							}),
 							..CheckboxInput::default()
-						})),
-						// TODO: separate the two checkboxes -- currently rendered right next to one another
-						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+						}))],
+					},
+					LayoutGroup::Row {
+						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 							checked: self.snapping_enabled,
 							tooltip: SnappingOptions::Nodes.to_string(),
 							label: SnappingOptions::Nodes.to_string(),
@@ -1587,9 +1588,10 @@ impl DocumentMessageHandler {
 								Message::NoOp
 							}),
 							..CheckboxInput::default()
-						})),
-					],
-				}],
+						}))],
+					},
+				],
+
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {
