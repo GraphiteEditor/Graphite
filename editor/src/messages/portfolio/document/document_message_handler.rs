@@ -1570,6 +1570,7 @@ impl DocumentMessageHandler {
 						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 							checked: self.snapping_enabled,
 							tooltip: SnappingOptions::BoundingBoxes.to_string(),
+							label: SnappingOptions::BoundingBoxes.to_string(),
 							on_update: WidgetCallback::new(|_| {
 								info!("Bounding boxes");
 								Message::NoOp
@@ -1580,6 +1581,7 @@ impl DocumentMessageHandler {
 						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
 							checked: self.snapping_enabled,
 							tooltip: SnappingOptions::Nodes.to_string(),
+							label: SnappingOptions::Nodes.to_string(),
 							on_update: WidgetCallback::new(|_| {
 								info!("Nodes");
 								Message::NoOp

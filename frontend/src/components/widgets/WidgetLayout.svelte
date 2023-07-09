@@ -12,7 +12,6 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
 		.join(" ");
-    console.log(layout);
 </script>
 
 <!-- TODO: Refactor this component (together with `WidgetRow.svelte`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->

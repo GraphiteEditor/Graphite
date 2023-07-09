@@ -5,6 +5,7 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "../labels/TextLabel.svelte";
 
 	// emits: ["update:checked"],
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
@@ -13,6 +14,7 @@
 	export let disabled = false;
 	export let icon: IconName = "Checkmark";
 	export let tooltip: string | undefined = undefined;
+	export let label: string | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
 
@@ -35,7 +37,12 @@
 	}
 </script>
 
+<!-- TODO: add text labels for checkbox input dropdown entries -->
 <LayoutRow class="checkbox-input">
+	{#if label !== undefined}
+		<TextLabel bold={false}>{label}</TextLabel>
+	{/if}
+
 	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => dispatch("checked", inputElement?.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
 	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">

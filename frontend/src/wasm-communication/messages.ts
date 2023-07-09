@@ -746,6 +746,9 @@ export class CheckboxInput extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+    @Transform(({ value }: { value: string }) => value || undefined)
+	label!: string | undefined;
 }
 
 export class ColorInput extends WidgetProps {
