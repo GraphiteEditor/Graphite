@@ -37,7 +37,6 @@
 	}
 </script>
 
-<!-- TODO: add text labels for checkbox input dropdown entries -->
 <LayoutRow class="checkbox-input">
 	{#if label !== undefined}
 		<TextLabel bold={false}>{label}</TextLabel>

@@ -153,6 +153,14 @@ impl SnapOverlays {
 		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, 0);
 		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, 0);
 	}
+
+	fn cleanup_axis(&mut self, responses: &mut VecDeque<Message>) {
+		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, 0);
+	}
+
+	fn cleanup_points(&mut self, responses: &mut VecDeque<Message>) {
+		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, 0);
+	}
 }
 
 /// Handles snapping and snap overlays
@@ -216,7 +224,7 @@ impl SnapManager {
 		snap_x: bool,
 		snap_y: bool,
 	) {
-		if document_message_handler.snapping_enabled {
+		if document_message_handler.snapping_state.snapping_enabled {
 			self.snap_x = snap_x;
 			self.snap_y = snap_y;
 
@@ -235,7 +243,7 @@ impl SnapManager {
 	///
 	/// This should be called after start_snap
 	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
-		if document_message_handler.snapping_enabled {
+		if document_message_handler.snapping_state.snapping_enabled {
 			let snap_points = snap_points.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y);
 			if let Some(targets) = &mut self.point_targets {
 				targets.extend(snap_points);
@@ -299,7 +307,7 @@ impl SnapManager {
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.
 	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
 	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, mouse_delta: DVec2) -> DVec2 {
-		if document_message_handler.snapping_enabled {
+		if document_message_handler.snapping_state.snapping_enabled {
 			self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
 		} else {
 			DVec2::ZERO
@@ -308,7 +316,7 @@ impl SnapManager {
 
 	/// Handles snapping of a viewport position, returning another viewport position.
 	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
-		if document_message_handler.snapping_enabled {
+		if document_message_handler.snapping_state.snapping_enabled {
 			self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
 		} else {
 			position_viewport
@@ -319,6 +327,16 @@ impl SnapManager {
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
 		self.snap_overlays.cleanup(responses);
 		self.bound_targets = None;
+		self.point_targets = None;
+	}
+
+	pub fn disable_bounding_box_snap(&mut self, responses: &mut VecDeque<Message>) {
+		self.snap_overlays.cleanup_axis(responses);
+		self.bound_targets = None;
+	}
+
+	pub fn disable_node_snap(&mut self, responses: &mut VecDeque<Message>) {
+		self.snap_overlays.cleanup_points(responses);
 		self.point_targets = None;
 	}
 }

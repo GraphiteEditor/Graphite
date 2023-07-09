@@ -1,5 +1,5 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{DocumentRenderMode, SnappingOptions};
+use super::utility_types::misc::{DocumentRenderMode, SnappingOptions, SnappingState};
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::frontend::utility_types::ExportBounds;
@@ -49,7 +49,7 @@ pub struct DocumentMessageHandler {
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
-	pub snapping_enabled: bool,
+	pub snapping_state: SnappingState,
 	pub overlays_visible: bool,
 
 	#[serde(skip)]
@@ -84,7 +84,7 @@ impl Default for DocumentMessageHandler {
 
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			snapping_enabled: true,
+			snapping_state: SnappingState::default(),
 			overlays_visible: true,
 
 			document_undo_history: VecDeque::new(),
@@ -846,8 +846,18 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let additional_layers = replacement_selected_layers;
 				responses.add_front(AddSelectedLayers { additional_layers });
 			}
-			SetSnapping { snap } => {
-				self.snapping_enabled = snap;
+			// TODO: make all 3 parameters optional to reduce code repetition
+			SetSnapping {
+				snapping_enabled,
+				node_snapping,
+				bounding_box_snapping,
+			} => {
+				self.snapping_state.snapping_enabled = snapping_enabled;
+				self.snapping_state.bounding_box_snapping = bounding_box_snapping;
+				self.snapping_state.node_snapping = node_snapping;
+
+				let s = &self.snapping_state;
+				info!("updated snapping state: {:?}", s);
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1554,12 +1564,21 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
 			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: self.snapping_enabled,
+				checked: snapping_state.snapping_enabled,
 				icon: "Snapping".into(),
 				tooltip: "Snapping".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
+				on_update: WidgetCallback::new(|optional_input: &OptionalInput| {
+					let snapping_enabled = optional_input.checked;
+					DocumentMessage::SetSnapping {
+						snapping_enabled: snapping_enabled,
+						bounding_box_snapping: snapping_enabled,
+						node_snapping: snapping_enabled,
+					}
+					.into()
+				}),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
@@ -1568,26 +1587,42 @@ impl DocumentMessageHandler {
 				options_widget: vec![
 					LayoutGroup::Row {
 						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: self.snapping_enabled,
+							checked: snapping_state.bounding_box_snapping,
 							tooltip: SnappingOptions::BoundingBoxes.to_string(),
 							label: SnappingOptions::BoundingBoxes.to_string(),
-							on_update: WidgetCallback::new(|_| {
-								info!("Bounding boxes");
-								Message::NoOp
+							on_update: WidgetCallback::new(|input: &CheckboxInput| {
+								{
+									// TODO: resolve borrowed data outliving
+									let bounding_box_snapping = input.checked;
+									DocumentMessage::SetSnapping {
+										snapping_enabled: snapping_state.snapping_enabled.clone(),
+										bounding_box_snapping,
+										node_snapping: snapping_state.node_snapping.clone(),
+									}
+								}
+								.into()
 							}),
-							..CheckboxInput::default()
+							..Default::default()
 						}))],
 					},
 					LayoutGroup::Row {
 						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: self.snapping_enabled,
+							checked: self.snapping_state.node_snapping,
 							tooltip: SnappingOptions::Nodes.to_string(),
 							label: SnappingOptions::Nodes.to_string(),
-							on_update: WidgetCallback::new(|_| {
-								info!("Nodes");
-								Message::NoOp
+							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
+								{
+									// TODO: add a lifetime to avoid struct duplication
+									let node_snapping = input.checked;
+									DocumentMessage::SetSnapping {
+										snapping_enabled: snapping_state.snapping_enabled,
+										bounding_box_snapping: snapping_state.node_snapping,
+										node_snapping,
+									}
+								}
+								.into()
 							}),
-							..CheckboxInput::default()
+							..Default::default()
 						}))],
 					},
 				],
