@@ -141,8 +141,8 @@
 		{#if popoverButton}
 			<PopoverButton {...exclude(popoverButton, ["header", "text", "optionsWidget"])}>
 				<TextLabel bold={true}>{popoverButton.header}</TextLabel>
-				{#if popoverButton.optionsWidget}
-					<WidgetLayout layout={{ layout: popoverButton.optionsWidget, layoutTarget: layoutTarget }} />
+                {#if popoverButton.optionsWidget}
+					<WidgetLayout layout={ { layout: popoverButton.optionsWidget, layoutTarget: layoutTarget} } />
 				{:else}
 					<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
 				{/if}

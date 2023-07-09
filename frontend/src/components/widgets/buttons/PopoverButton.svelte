@@ -21,6 +21,7 @@
 
 <LayoutRow class="popover-button">
 	<IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
+
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} type="Popover" direction="Bottom">
 		<slot />
 	</FloatingMenu>
