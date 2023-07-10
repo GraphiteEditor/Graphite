@@ -1183,6 +1183,9 @@ export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: Widge
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
+				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.optionsWidget){
+					return targetLayout.props.optionsWidget[index];
+				}
 				// eslint-disable-next-line no-console
 				console.error("Tried to index widget");
 				return targetLayout;

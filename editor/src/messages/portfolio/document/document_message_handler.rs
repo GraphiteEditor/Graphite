@@ -1595,8 +1595,7 @@ impl DocumentMessageHandler {
 							tooltip: SnappingOptions::BoundingBoxes.to_string(),
 							label: SnappingOptions::BoundingBoxes.to_string(),
 							checked: snapping_state.bounding_box_snapping,
-							on_update: MutWidgetCallback::new(move |input: &mut CheckboxInput| {
-								input.checked = !input.checked;
+							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
 								DocumentMessage::SetSnapping {
 									snapping_enabled: None,
 									bounding_box_snapping: Some(input.checked),
@@ -1612,8 +1611,7 @@ impl DocumentMessageHandler {
 							checked: self.snapping_state.node_snapping,
 							tooltip: SnappingOptions::Nodes.to_string(),
 							label: SnappingOptions::Nodes.to_string(),
-							on_update: MutWidgetCallback::new(move |input: &mut CheckboxInput| {
-								input.checked = !input.checked;
+							on_update: WidgetCallback::new(|input: &CheckboxInput| {
 								DocumentMessage::SetSnapping {
 									snapping_enabled: None,
 									bounding_box_snapping: None,
