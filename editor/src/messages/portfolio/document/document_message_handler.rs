@@ -846,18 +846,23 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let additional_layers = replacement_selected_layers;
 				responses.add_front(AddSelectedLayers { additional_layers });
 			}
-			// TODO: make all 3 parameters optional to reduce code repetition
 			SetSnapping {
 				snapping_enabled,
-				node_snapping,
 				bounding_box_snapping,
+				node_snapping,
 			} => {
-				self.snapping_state.snapping_enabled = snapping_enabled;
-				self.snapping_state.bounding_box_snapping = bounding_box_snapping;
-				self.snapping_state.node_snapping = node_snapping;
-
-				let s = &self.snapping_state;
-				info!("updated snapping state: {:?}", s);
+				if let Some(state) = snapping_enabled {
+					info!("prev snap state: {}", self.snapping_state.snapping_enabled);
+					self.snapping_state.snapping_enabled = state
+				};
+				if let Some(state) = bounding_box_snapping {
+					info!("prev bbox state: {}", self.snapping_state.bounding_box_snapping);
+					self.snapping_state.bounding_box_snapping = state
+				}
+				if let Some(state) = node_snapping {
+					info!("prev node state: {}", self.snapping_state.node_snapping);
+					self.snapping_state.node_snapping = state
+				};
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1570,12 +1575,12 @@ impl DocumentMessageHandler {
 				checked: snapping_state.snapping_enabled,
 				icon: "Snapping".into(),
 				tooltip: "Snapping".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| {
+				on_update: WidgetCallback::new(move |optional_input: &OptionalInput| {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
-						snapping_enabled: snapping_enabled,
-						bounding_box_snapping: snapping_enabled,
-						node_snapping: snapping_enabled,
+						snapping_enabled: Some(snapping_enabled),
+						bounding_box_snapping: None,
+						node_snapping: None,
 					}
 					.into()
 				}),
@@ -1591,13 +1596,10 @@ impl DocumentMessageHandler {
 							label: SnappingOptions::BoundingBoxes.to_string(),
 							checked: snapping_state.bounding_box_snapping,
 							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
-								{
-									let bounding_box_snapping = input.checked;
-									DocumentMessage::SetSnapping {
-										snapping_enabled: snapping_state.snapping_enabled,
-										bounding_box_snapping,
-										node_snapping: snapping_state.node_snapping,
-									}
+								DocumentMessage::SetSnapping {
+									snapping_enabled: None,
+									bounding_box_snapping: Some(input.checked),
+									node_snapping: None,
 								}
 								.into()
 							}),
@@ -1610,13 +1612,10 @@ impl DocumentMessageHandler {
 							tooltip: SnappingOptions::Nodes.to_string(),
 							label: SnappingOptions::Nodes.to_string(),
 							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
-								{
-									let node_snapping = input.checked;
-									DocumentMessage::SetSnapping {
-										snapping_enabled: snapping_state.snapping_enabled,
-										bounding_box_snapping: snapping_state.node_snapping,
-										node_snapping,
-									}
+								DocumentMessage::SetSnapping {
+									snapping_enabled: None,
+									bounding_box_snapping: None,
+									node_snapping: Some(input.checked),
 								}
 								.into()
 							}),

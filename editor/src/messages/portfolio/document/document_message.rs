@@ -171,9 +171,9 @@ pub enum DocumentMessage {
 		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},
 	SetSnapping {
-		snapping_enabled: bool,
-		bounding_box_snapping: bool,
-		node_snapping: bool,
+		snapping_enabled: Option<bool>,
+		bounding_box_snapping: Option<bool>,
+		node_snapping: Option<bool>,
 	},
 	SetViewMode {
 		view_mode: ViewMode,
