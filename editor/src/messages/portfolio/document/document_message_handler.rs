@@ -1587,17 +1587,16 @@ impl DocumentMessageHandler {
 				options_widget: vec![
 					LayoutGroup::Row {
 						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: snapping_state.bounding_box_snapping,
 							tooltip: SnappingOptions::BoundingBoxes.to_string(),
 							label: SnappingOptions::BoundingBoxes.to_string(),
-							on_update: WidgetCallback::new(|input: &CheckboxInput| {
+							checked: snapping_state.bounding_box_snapping,
+							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
 								{
-									// TODO: resolve borrowed data outliving
 									let bounding_box_snapping = input.checked;
 									DocumentMessage::SetSnapping {
-										snapping_enabled: snapping_state.snapping_enabled.clone(),
+										snapping_enabled: snapping_state.snapping_enabled,
 										bounding_box_snapping,
-										node_snapping: snapping_state.node_snapping.clone(),
+										node_snapping: snapping_state.node_snapping,
 									}
 								}
 								.into()
@@ -1612,7 +1611,6 @@ impl DocumentMessageHandler {
 							label: SnappingOptions::Nodes.to_string(),
 							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
 								{
-									// TODO: add a lifetime to avoid struct duplication
 									let node_snapping = input.checked;
 									DocumentMessage::SetSnapping {
 										snapping_enabled: snapping_state.snapping_enabled,
