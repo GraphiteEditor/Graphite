@@ -153,14 +153,6 @@ impl SnapOverlays {
 		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, 0);
 		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, 0);
 	}
-
-	fn cleanup_axis(&mut self, responses: &mut VecDeque<Message>) {
-		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, 0);
-	}
-
-	fn cleanup_points(&mut self, responses: &mut VecDeque<Message>) {
-		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, 0);
-	}
 }
 
 /// Handles snapping and snap overlays

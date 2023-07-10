@@ -5,7 +5,7 @@ use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, 
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, MutWidgetCallback, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::CheckboxInput;
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
@@ -1579,8 +1579,8 @@ impl DocumentMessageHandler {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
-						bounding_box_snapping: None,
-						node_snapping: None,
+						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
+						node_snapping: Some(snapping_state.node_snapping),
 					}
 					.into()
 				}),
@@ -1595,7 +1595,8 @@ impl DocumentMessageHandler {
 							tooltip: SnappingOptions::BoundingBoxes.to_string(),
 							label: SnappingOptions::BoundingBoxes.to_string(),
 							checked: snapping_state.bounding_box_snapping,
-							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
+							on_update: MutWidgetCallback::new(move |input: &mut CheckboxInput| {
+								input.checked = !input.checked;
 								DocumentMessage::SetSnapping {
 									snapping_enabled: None,
 									bounding_box_snapping: Some(input.checked),
@@ -1611,7 +1612,8 @@ impl DocumentMessageHandler {
 							checked: self.snapping_state.node_snapping,
 							tooltip: SnappingOptions::Nodes.to_string(),
 							label: SnappingOptions::Nodes.to_string(),
-							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
+							on_update: MutWidgetCallback::new(move |input: &mut CheckboxInput| {
+								input.checked = !input.checked;
 								DocumentMessage::SetSnapping {
 									snapping_enabled: None,
 									bounding_box_snapping: None,

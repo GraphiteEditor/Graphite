@@ -505,6 +505,22 @@ impl<T> Default for WidgetCallback<T> {
 	}
 }
 
+pub struct MutWidgetCallback<T> {
+	pub callback: Arc<dyn Fn(&mut T) -> Message + 'static + Send + Sync>,
+}
+
+impl<T> MutWidgetCallback<T> {
+	pub fn new(callback: impl Fn(&mut T) -> Message + 'static + Send + Sync) -> Self {
+		Self { callback: Arc::new(callback) }
+	}
+}
+
+impl<T> Default for MutWidgetCallback<T> {
+	fn default() -> Self {
+		Self::new(|_| Message::NoOp)
+	}
+}
+
 #[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Widget {
