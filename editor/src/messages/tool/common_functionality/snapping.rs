@@ -224,7 +224,9 @@ impl SnapManager {
 		snap_x: bool,
 		snap_y: bool,
 	) {
-		if document_message_handler.snapping_state.snapping_enabled {
+		let snapping_enabled = document_message_handler.snapping_state.snapping_enabled;
+		let bounding_box_snapping = document_message_handler.snapping_state.bounding_box_snapping;
+		if snapping_enabled && bounding_box_snapping {
 			self.snap_x = snap_x;
 			self.snap_y = snap_y;
 
@@ -243,7 +245,9 @@ impl SnapManager {
 	///
 	/// This should be called after start_snap
 	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
-		if document_message_handler.snapping_state.snapping_enabled {
+		let snapping_enabled = document_message_handler.snapping_state.snapping_enabled;
+		let node_snapping = document_message_handler.snapping_state.node_snapping;
+		if snapping_enabled && node_snapping {
 			let snap_points = snap_points.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y);
 			if let Some(targets) = &mut self.point_targets {
 				targets.extend(snap_points);
@@ -266,6 +270,10 @@ impl SnapManager {
 		ignore_points: &[ManipulatorPointInfo],
 	) {
 		let Some(vector_data) = &layer.as_vector_data() else { return };
+
+		if !document_message_handler.snapping_state.node_snapping {
+			return;
+		};
 
 		let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
 		let snap_points = vector_data
@@ -327,16 +335,6 @@ impl SnapManager {
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
 		self.snap_overlays.cleanup(responses);
 		self.bound_targets = None;
-		self.point_targets = None;
-	}
-
-	pub fn disable_bounding_box_snap(&mut self, responses: &mut VecDeque<Message>) {
-		self.snap_overlays.cleanup_axis(responses);
-		self.bound_targets = None;
-	}
-
-	pub fn disable_node_snap(&mut self, responses: &mut VecDeque<Message>) {
-		self.snap_overlays.cleanup_points(responses);
 		self.point_targets = None;
 	}
 }
