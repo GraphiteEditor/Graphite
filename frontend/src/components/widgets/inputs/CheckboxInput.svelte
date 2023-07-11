@@ -38,22 +38,27 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	{#if label !== undefined}
-		<TextLabel bold={false}>{label}</TextLabel>
-	{/if}
-
 	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => dispatch("checked", inputElement?.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
 	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>
 	</label>
+
+	{#if label !== undefined}
+		<TextLabel class="label-text" bold={false}>
+			{label}
+		</TextLabel>
+	{/if}
 </LayoutRow>
 
 <style lang="scss" global>
+	.label-text {
+		margin-left: 5px;
+	}
 	.checkbox-input {
 		flex: 0 0 auto;
-		align-items: center;
+		align-items: right;
 
 		input {
 			// We can't use `display: none` because it must be visible to work as a tabbale input that accepts a space bar actuation
@@ -79,6 +84,10 @@
 				.icon-label {
 					fill: var(--color-8-uppergray);
 				}
+			}
+
+			.label-text {
+				margin-left: 8px;
 			}
 
 			// Hovered
