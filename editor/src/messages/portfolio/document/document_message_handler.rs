@@ -7,7 +7,7 @@ use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::CheckboxInput;
+use crate::messages::layout::utility_types::widget_prelude::{CheckboxInput, TextLabel};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
@@ -852,15 +852,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				node_snapping,
 			} => {
 				if let Some(state) = snapping_enabled {
-					info!("prev snap state: {}", self.snapping_state.snapping_enabled);
 					self.snapping_state.snapping_enabled = state
 				};
 				if let Some(state) = bounding_box_snapping {
-					info!("prev bbox state: {}", self.snapping_state.bounding_box_snapping);
 					self.snapping_state.bounding_box_snapping = state
 				}
 				if let Some(state) = node_snapping {
-					info!("prev node state: {}", self.snapping_state.node_snapping);
 					self.snapping_state.node_snapping = state
 				};
 			}
@@ -1591,36 +1588,63 @@ impl DocumentMessageHandler {
 				text: "Select the vectors to snap to.".into(), // TODO: check whether this is an apt description
 				options_widget: vec![
 					LayoutGroup::Row {
-						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							tooltip: SnappingOptions::BoundingBoxes.to_string(),
-							label: SnappingOptions::BoundingBoxes.to_string(),
-							checked: snapping_state.bounding_box_snapping,
-							on_update: WidgetCallback::new(move |input: &CheckboxInput| {
-								DocumentMessage::SetSnapping {
-									snapping_enabled: None,
-									bounding_box_snapping: Some(input.checked),
-									node_snapping: None,
-								}
-								.into()
-							}),
-							..Default::default()
-						}))],
+						widgets: vec![
+							WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+								tooltip: SnappingOptions::BoundingBoxes.to_string(),
+								checked: snapping_state.bounding_box_snapping,
+								on_update: WidgetCallback::new(move |input: &CheckboxInput| {
+									DocumentMessage::SetSnapping {
+										snapping_enabled: None,
+										bounding_box_snapping: Some(input.checked),
+										node_snapping: None,
+									}
+									.into()
+								}),
+								..Default::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								direction: SeparatorDirection::Horizontal,
+								separator_type: SeparatorType::Unrelated,
+							})),
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: SnappingOptions::BoundingBoxes.to_string(),
+								table_align: false,
+								min_width: 60,
+								..Default::default()
+							})),
+							// adds appropriate space between row elements
+							WidgetHolder::new(Widget::Separator(Separator {
+								direction: SeparatorDirection::Vertical,
+								separator_type: SeparatorType::Related,
+							})),
+						],
 					},
 					LayoutGroup::Row {
-						widgets: vec![WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: self.snapping_state.node_snapping,
-							tooltip: SnappingOptions::Nodes.to_string(),
-							label: SnappingOptions::Nodes.to_string(),
-							on_update: WidgetCallback::new(|input: &CheckboxInput| {
-								DocumentMessage::SetSnapping {
-									snapping_enabled: None,
-									bounding_box_snapping: None,
-									node_snapping: Some(input.checked),
-								}
-								.into()
-							}),
-							..Default::default()
-						}))],
+						widgets: vec![
+							WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+								checked: self.snapping_state.node_snapping,
+								tooltip: SnappingOptions::Nodes.to_string(),
+								on_update: WidgetCallback::new(|input: &CheckboxInput| {
+									DocumentMessage::SetSnapping {
+										snapping_enabled: None,
+										bounding_box_snapping: None,
+										node_snapping: Some(input.checked),
+									}
+									.into()
+								}),
+								..Default::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								direction: SeparatorDirection::Horizontal,
+								separator_type: SeparatorType::Unrelated,
+							})),
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: SnappingOptions::Nodes.to_string(),
+								table_align: false,
+								min_width: 60,
+								..Default::default()
+							})),
+						],
 					},
 				],
 

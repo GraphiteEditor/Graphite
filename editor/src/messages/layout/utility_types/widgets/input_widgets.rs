@@ -19,8 +19,6 @@ pub struct CheckboxInput {
 
 	pub icon: String,
 
-	pub label: String,
-
 	pub tooltip: String,
 
 	#[serde(skip)]
@@ -38,7 +36,6 @@ impl Default for CheckboxInput {
 			checked: false,
 			disabled: false,
 			icon: "Checkmark".into(),
-			label: Default::default(),
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),
 			on_update: Default::default(),

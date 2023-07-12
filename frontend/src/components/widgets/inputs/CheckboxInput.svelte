@@ -5,7 +5,6 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "../labels/TextLabel.svelte";
 
 	// emits: ["update:checked"],
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
@@ -14,7 +13,6 @@
 	export let disabled = false;
 	export let icon: IconName = "Checkmark";
 	export let tooltip: string | undefined = undefined;
-	export let label: string | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
 
@@ -44,18 +42,9 @@
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>
 	</label>
-
-	{#if label !== undefined}
-		<TextLabel class="label-text" bold={false}>
-			{label}
-		</TextLabel>
-	{/if}
 </LayoutRow>
 
 <style lang="scss" global>
-	.label-text {
-		margin-left: 5px;
-	}
 	.checkbox-input {
 		flex: 0 0 auto;
 		align-items: right;
