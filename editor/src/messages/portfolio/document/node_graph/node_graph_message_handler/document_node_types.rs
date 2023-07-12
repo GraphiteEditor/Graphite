@@ -80,6 +80,12 @@ pub enum NodeImplementation {
 	Extract,
 }
 
+impl Default for NodeImplementation {
+	fn default() -> Self {
+		Self::ProtoNode(NodeIdentifier::new("graphene_core::ops::IdNode"))
+	}
+}
+
 impl NodeImplementation {
 	pub fn proto(name: &'static str) -> Self {
 		Self::ProtoNode(NodeIdentifier::new(name))
@@ -93,7 +99,22 @@ pub struct DocumentNodeType {
 	pub identifier: NodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
+	pub primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
+}
+
+impl Default for DocumentNodeType {
+	fn default() -> Self {
+		Self {
+			name: Default::default(),
+			category: Default::default(),
+			identifier: Default::default(),
+			inputs: Default::default(),
+			outputs: Default::default(),
+			primary_output: Default::default(),
+			properties: node_properties::no_properties,
+		}
+	}
 }
 
 // We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
@@ -114,6 +135,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Monitor",
@@ -126,6 +148,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Layer",
@@ -176,6 +199,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
 			properties: node_properties::layer_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Artboard",
@@ -189,6 +213,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Downres",
@@ -226,6 +251,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
+			..Default::default()
 		},
 		// DocumentNodeType {
 		// 	name: "Input Frame",
@@ -253,6 +279,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::Raster,
 			}],
 			properties: node_properties::input_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Load Image",
@@ -297,6 +324,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::Raster,
 			}],
 			properties: node_properties::load_image_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Create Canvas",
@@ -333,7 +361,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Draw Canvas",
@@ -389,7 +417,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Begin Scope",
@@ -440,6 +468,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "End Scope",
@@ -462,6 +491,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::Raster,
 			}],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Output",
@@ -474,6 +504,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}],
 			outputs: vec![],
 			properties: node_properties::output_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image Frame",
@@ -485,6 +516,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Mask",
@@ -496,6 +528,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::mask_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Insert Channel",
@@ -508,6 +541,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::insert_channel_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Combine Channels",
@@ -524,7 +558,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Blend",
@@ -538,6 +572,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::blend_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Levels",
@@ -577,6 +612,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::levels_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Grayscale",
@@ -626,6 +662,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::grayscale_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Luminance",
@@ -637,6 +674,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::luminance_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Channel",
@@ -648,6 +686,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::extract_channel_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Alpha",
@@ -655,7 +694,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractAlphaNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Opaque",
@@ -663,7 +702,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Split Channels",
@@ -724,7 +763,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentOutputType::new("Blue", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 			],
-			properties: node_properties::no_properties,
+			primary_output: false,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Brush",
@@ -740,7 +780,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Image",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract Vector Points",
@@ -751,7 +791,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Vector Points",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Memoize",
@@ -762,7 +802,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image",
@@ -771,6 +811,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Ref",
@@ -778,7 +819,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -829,7 +870,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Uniform",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -880,7 +921,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Storage",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -937,6 +978,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::General,
 			}],
 			properties: node_properties::input_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1003,6 +1045,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::General,
 			}],
 			properties: node_properties::input_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1036,6 +1079,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				data_type: FrontendGraphDataType::General,
 			}],
 			properties: node_properties::input_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1086,7 +1130,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "PipelineResult",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1137,7 +1181,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Buffer",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1175,7 +1219,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "GpuSurface",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1229,7 +1273,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "RenderedTexture",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1280,7 +1324,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Texture",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1301,7 +1345,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeType {
@@ -1316,6 +1360,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::blend_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Extract",
@@ -1327,7 +1372,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				default: NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true),
 			}],
 			outputs: vec![DocumentOutputType::new("DocumentNode", FrontendGraphDataType::General)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeType {
@@ -1353,6 +1398,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Quantization", FrontendGraphDataType::General)],
 			properties: node_properties::quantize_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeType {
@@ -1373,6 +1419,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Encoded", FrontendGraphDataType::Raster)],
 			properties: node_properties::quantize_properties,
+			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeType {
@@ -1393,6 +1440,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Decoded", FrontendGraphDataType::Raster)],
 			properties: node_properties::quantize_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Invert RGB",
@@ -1400,7 +1448,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::InvertRGBNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Hue/Saturation",
@@ -1414,6 +1462,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_hsl_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Brightness/Contrast",
@@ -1427,6 +1476,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::brightness_contrast_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Threshold",
@@ -1440,6 +1490,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_threshold_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Vibrance",
@@ -1451,6 +1502,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_vibrance_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Channel Mixer",
@@ -1485,6 +1537,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_channel_mixer_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Selective Color",
@@ -1546,6 +1599,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_selective_color_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Opacity",
@@ -1557,6 +1611,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::multiply_opacity,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Posterize",
@@ -1568,6 +1623,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::posterize_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Exposure",
@@ -1581,6 +1637,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::exposure_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Add",
@@ -1592,6 +1649,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::add_properties,
+			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeType {
@@ -1600,7 +1658,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitCircleGenerator"),
 			inputs: vec![DocumentInputType::none()],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Path Generator",
@@ -1611,7 +1669,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Mirror", TaggedValue::ManipulatorGroupIds(vec![]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Text",
@@ -1625,6 +1683,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_section_font,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Transform",
@@ -1640,6 +1699,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
 			properties: node_properties::transform_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "SetTransform",
@@ -1650,7 +1710,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Fill",
@@ -1668,6 +1728,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::fill_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Stroke",
@@ -1685,6 +1746,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::stroke_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image Segmentation",
@@ -1695,7 +1757,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Mask", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Segments", FrontendGraphDataType::Raster)],
-			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Index",
@@ -1707,6 +1769,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::index_node_properties,
+			..Default::default()
 		},
 	]
 }
@@ -1787,6 +1850,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	],
 	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 	properties: node_properties::imaginate_properties,
+	..Default::default()
 });
 
 pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeType> {
