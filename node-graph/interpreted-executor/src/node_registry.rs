@@ -21,6 +21,7 @@ use graphene_std::wasm_application_io::*;
 use gpu_executor::{GpuExecutor, ShaderInput, ShaderInputFrame};
 use graphene_std::raster::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
+#[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutor;
 
 use dyn_any::StaticType;
@@ -481,7 +482,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					vec![
 						fn_type!(WasmEditorApi),
 						fn_type!(ImaginateController),
-						fn_type!(f32),
+						fn_type!(f64),
 						fn_type!(Option<DVec2>),
 						fn_type!(u32),
 						fn_type!(ImaginateSamplingMethod),
