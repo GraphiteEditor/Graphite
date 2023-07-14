@@ -10,7 +10,9 @@ use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::value::CopiedNode;
 use graphene_core::{Color, Node};
 
+use std::collections::HashMap;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::Path;
 
@@ -424,7 +426,7 @@ macro_rules! generate_imaginate_node {
 			editor_api: E,
 			controller: C,
 			$($val: $t,)*
-			cache: std::sync::Arc<std::sync::Mutex<Image<P>>>,
+			cache: std::sync::Mutex<HashMap<u64, Image<P>>>,
 		}
 
 		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
@@ -432,12 +434,12 @@ macro_rules! generate_imaginate_node {
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
 		{
-			pub fn new(editor_api: E, controller: C, $($val: $t,)* cache: std::sync::Arc<std::sync::Mutex<Image<P>>>) -> Self {
-				Self { editor_api, controller, $($val,)* cache }
+			pub fn new(editor_api: E, controller: C, $($val: $t,)* ) -> Self {
+				Self { editor_api, controller, $($val,)* cache: Default::default() }
 			}
 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
+		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
@@ -447,19 +449,27 @@ macro_rules! generate_imaginate_node {
 			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
 				let controller = self.controller.eval(());
 				$(let $val = self.$val.eval(());)*
+
+				use std::hash::Hasher;
+				use xxhash_rust::xxh3::Xxh3;
+				let mut hasher = Xxh3::new();
+				frame.hash(&mut hasher);
+				let hash =hasher.finish();
+
 				Box::pin(async move {
 					let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController>>> = controller;
 					let controller: ImaginateController = controller.await;
 					if controller.take_regenerate_trigger() {
 						let editor_api = self.editor_api.eval(());
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
-						self.cache.lock().unwrap().clone_from(&image);
+
+						self.cache.lock().unwrap().insert(hash, image.clone());
 						return ImageFrame {
 							image,
 							..frame
 						}
 					}
-					let image = self.cache.lock().unwrap().clone();
+					let image = self.cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
 					ImageFrame {
 						image,
 						..frame
