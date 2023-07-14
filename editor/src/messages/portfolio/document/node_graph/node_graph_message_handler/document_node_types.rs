@@ -1778,7 +1778,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 	name: "Imaginate",
 	category: "Image Synthesis",
 	identifier: NodeImplementation::DocumentNode(NodeNetwork {
-		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
 			(
@@ -1813,7 +1813,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 						NodeInput::Network(concrete!(ImaginateMaskStartingFill)),
 						NodeInput::Network(concrete!(bool)),
 						NodeInput::Network(concrete!(bool)),
-						NodeInput::Network(concrete!(ImaginateCache)),
 					],
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 					..Default::default()
@@ -1846,7 +1845,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 		DocumentInputType::value("Improve Faces", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Tiling", TaggedValue::Bool(false), false),
-		DocumentInputType::value("Cache", TaggedValue::ImaginateCache(Default::default()), false),
 	],
 	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 	properties: node_properties::imaginate_properties,
