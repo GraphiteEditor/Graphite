@@ -241,6 +241,12 @@ impl<'a> Iterator for WidgetIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(item) = self.current_slice.and_then(|slice| slice.first()) {
 			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
+
+			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = item {
+				self.stack.extend(p.options_widget.iter());
+				return self.next();
+			}
+
 			return Some(item);
 		}
 
@@ -276,6 +282,12 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some((first, rest)) = self.current_slice.take().and_then(|slice| slice.split_first_mut()) {
 			self.current_slice = Some(rest);
+
+			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = first {
+				self.stack.extend(p.options_widget.iter_mut());
+				return self.next();
+			}
+
 			return Some(first);
 		};
 

@@ -5,6 +5,7 @@
 	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@graphite/wasm-communication/messages";
 
 	import PivotAssist from "@graphite/components/widgets/assists/PivotAssist.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
@@ -138,9 +139,13 @@
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
-			<PopoverButton {...exclude(popoverButton, ["header", "text"])}>
+			<PopoverButton {...exclude(popoverButton, ["header", "text", "optionsWidget"])}>
 				<TextLabel bold={true}>{popoverButton.header}</TextLabel>
-				<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
+				{#if popoverButton.optionsWidget}
+					<WidgetLayout layout={{ layout: popoverButton.optionsWidget, layoutTarget: layoutTarget }} />
+				{:else}
+					<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
+				{/if}
 			</PopoverButton>
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
