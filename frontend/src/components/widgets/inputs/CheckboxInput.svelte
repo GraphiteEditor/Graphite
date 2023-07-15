@@ -47,7 +47,7 @@
 <style lang="scss" global>
 	.checkbox-input {
 		flex: 0 0 auto;
-		align-items: right;
+		align-items: center;
 
 		input {
 			// We can't use `display: none` because it must be visible to work as a tabbale input that accepts a space bar actuation
@@ -73,10 +73,6 @@
 				.icon-label {
 					fill: var(--color-8-uppergray);
 				}
-			}
-
-			.label-text {
-				margin-left: 8px;
 			}
 
 			// Hovered
