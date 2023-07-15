@@ -21,6 +21,7 @@ use graphene_std::wasm_application_io::*;
 use gpu_executor::{GpuExecutor, ShaderInput, ShaderInputFrame};
 use graphene_std::raster::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
+#[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutor;
 
 use dyn_any::StaticType;
@@ -466,9 +467,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				|args: Vec<Arc<graph_craft::proto::NodeContainer>>| {
 					Box::pin(async move {
 						use graphene_std::raster::ImaginateNode;
-						let cache: ImaginateCache = graphene_std::any::input_node(args.last().unwrap().clone()).eval(()).await;
 						macro_rules! instanciate_imaginate_node {
-							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* cache.into_inner()) };
+							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* ) };
 						}
 						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
 						let any = graphene_std::any::DynAnyNode::new(node);
@@ -481,7 +481,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					vec![
 						fn_type!(WasmEditorApi),
 						fn_type!(ImaginateController),
-						fn_type!(f32),
+						fn_type!(f64),
 						fn_type!(Option<DVec2>),
 						fn_type!(u32),
 						fn_type!(ImaginateSamplingMethod),
@@ -496,7 +496,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						fn_type!(ImaginateMaskStartingFill),
 						fn_type!(bool),
 						fn_type!(bool),
-						fn_type!(ImaginateCache),
 					],
 				),
 			),
