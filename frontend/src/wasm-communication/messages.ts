@@ -499,15 +499,15 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadAutoSaveDocuments extends JsMessage { }
 
-export class TriggerLoadPreferences extends JsMessage {}
+export class TriggerLoadPreferences extends JsMessage { }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpenDocument extends JsMessage { }
 
-export class TriggerImport extends JsMessage {}
+export class TriggerImport extends JsMessage { }
 
-export class TriggerPaste extends JsMessage {}
+export class TriggerPaste extends JsMessage { }
 
 export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 	readonly blobUrl!: string;
@@ -546,7 +546,7 @@ export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly size!: [number, number];
 }
 
-export class TriggerRefreshBoundsOfViewports extends JsMessage {}
+export class TriggerRefreshBoundsOfViewports extends JsMessage { }
 
 export class TriggerRevokeBlobUrl extends JsMessage {
 	readonly url!: string;
@@ -556,7 +556,7 @@ export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
 }
 
-export class DocumentChanged extends JsMessage {}
+export class DocumentChanged extends JsMessage { }
 
 export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
 	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructureJs[]) {
@@ -649,7 +649,7 @@ export class UpdateImageData extends JsMessage {
 	readonly imageData!: ImaginateImageData[];
 }
 
-export class DisplayRemoveEditableTextbox extends JsMessage {}
+export class DisplayRemoveEditableTextbox extends JsMessage { }
 
 export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
@@ -700,7 +700,7 @@ export class ImaginateImageData {
 	readonly transform!: Float64Array;
 }
 
-export class DisplayDialogDismiss extends JsMessage {}
+export class DisplayDialogDismiss extends JsMessage { }
 
 export class Font {
 	fontFamily!: string;
@@ -719,7 +719,7 @@ export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
-export class TriggerTextCommit extends JsMessage {}
+export class TriggerTextCommit extends JsMessage { }
 
 export class TriggerTextCopy extends JsMessage {
 	readonly copyText!: string;
@@ -729,7 +729,7 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-export class TriggerViewportResize extends JsMessage {}
+export class TriggerViewportResize extends JsMessage { }
 
 // WIDGET PROPS
 
@@ -774,7 +774,7 @@ type MenuEntryCommon = {
 export type MenuBarEntry = MenuEntryCommon & {
 	action: Widget;
 	children?: MenuBarEntry[][];
-    disabled?: boolean,
+	disabled?: boolean,
 };
 
 // An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
@@ -931,6 +931,8 @@ export class PopoverButton extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	optionsWidget: LayoutGroup[] | undefined;
 }
 
 export type RadioEntryData = {
@@ -1126,6 +1128,10 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	const props = widgetHolder.widget[kind];
 	props.kind = kind;
 
+	if (kind === "PopoverButton") {
+		props.optionsWidget = props.optionsWidget.map(createLayoutGroup);
+	}
+
 	const { widgetId } = widgetHolder;
 
 	return plainToClass(Widget, { props, widgetId });
@@ -1173,6 +1179,9 @@ export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: Widge
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
+				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.optionsWidget) {
+					return targetLayout.props.optionsWidget[index];
+				}
 				// eslint-disable-next-line no-console
 				console.error("Tried to index widget");
 				return targetLayout;
@@ -1258,25 +1267,25 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 }
 
 // WIDGET LAYOUTS
-export class UpdateDialogDetails extends WidgetDiffUpdate {}
+export class UpdateDialogDetails extends WidgetDiffUpdate { }
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
+export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
+export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
+export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
 
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
+export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
 
-export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate {}
+export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate { }
 
 export class UpdateMenuBarLayout extends JsMessage {
 	layoutTarget!: unknown;
@@ -1301,7 +1310,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 			...entry,
 			action: hoistWidgetHolders([entry.action])[0],
 			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
-            disabled: entry.disabled ?? false,
+			disabled: entry.disabled ?? false,
 		}))
 	);
 }

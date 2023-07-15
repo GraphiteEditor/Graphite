@@ -1866,7 +1866,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 impl DocumentNodeType {
 	/// Generate a [`DocumentNodeImplementation`] from this node type, using a nested network.
 	pub fn generate_implementation(&self) -> DocumentNodeImplementation {
-		let num_inputs = self.inputs.len();
+		// let num_inputs = self.inputs.len();
 
 		let inner_network = match &self.identifier {
 			NodeImplementation::DocumentNode(network) => network.clone(),
