@@ -319,6 +319,7 @@ impl Fsm for ArtboardToolFsmState {
 								location: start.round().as_ivec2(),
 								dimensions: IVec2::splat(1),
 								background: graphene_core::Color::WHITE,
+								clip: false,
 							},
 						})
 					}

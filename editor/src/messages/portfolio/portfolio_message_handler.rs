@@ -15,6 +15,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
+use glam::DAffine2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
@@ -644,7 +645,11 @@ impl PortfolioMessageHandler {
 				}))),
 				LayerDataType::Layer(layer) => {
 					let input_is_font = |input: &NodeInput| {
-						let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = input else {
+						let NodeInput::Value {
+							tagged_value: TaggedValue::Font(font),
+							..
+						} = input
+						else {
 							return false;
 						};
 						font == target_font
@@ -660,7 +665,8 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		self.executor.poll_node_graph_evaluation(responses).unwrap_or_else(|e| {
+		let transform = self.active_document().map(|document| document.document_legacy.root.transform).unwrap_or(DAffine2::IDENTITY);
+		self.executor.poll_node_graph_evaluation(transform, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {}", e);
 		});
 	}

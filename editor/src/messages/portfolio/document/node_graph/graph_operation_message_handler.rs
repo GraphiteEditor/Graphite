@@ -143,6 +143,7 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
+				Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 			],
 			Default::default(),
 		);
@@ -332,13 +333,15 @@ impl<'a> ModifyInputsContext<'a> {
 			let NodeInput::Value {
 				tagged_value: TaggedValue::Subpaths(subpaths),
 				..
-			} = subpaths else {
+			} = subpaths
+			else {
 				return;
 			};
 			let NodeInput::Value {
 				tagged_value: TaggedValue::ManipulatorGroupIds(mirror_angle_groups),
 				..
-			} = mirror_angle_groups else {
+			} = mirror_angle_groups
+			else {
 				return;
 			};
 

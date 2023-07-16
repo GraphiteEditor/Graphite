@@ -150,6 +150,9 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateDocumentNodeRender {
+		svg: String,
+	},
 	UpdateDocumentOverlays {
 		svg: String,
 	},

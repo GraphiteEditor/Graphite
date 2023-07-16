@@ -49,6 +49,7 @@ pub struct Artboard {
 	pub location: IVec2,
 	pub dimensions: IVec2,
 	pub background: Color,
+	pub clip: bool,
 }
 
 impl Artboard {
@@ -58,6 +59,7 @@ impl Artboard {
 			location,
 			dimensions,
 			background: Color::WHITE,
+			clip: false,
 		}
 	}
 }
@@ -95,19 +97,21 @@ fn construct_layer<Data: Into<GraphicElementData>>(
 	stack
 }
 
-pub struct ConstructArtboardNode<Location, Dimensions, Background> {
+pub struct ConstructArtboardNode<Location, Dimensions, Background, Clip> {
 	location: Location,
 	dimensions: Dimensions,
 	background: Background,
+	clip: Clip,
 }
 
 #[node_fn(ConstructArtboardNode)]
-fn construct_artboard(graphic_group: GraphicGroup, location: IVec2, dimensions: IVec2, background: Color) -> Artboard {
+fn construct_artboard(graphic_group: GraphicGroup, location: IVec2, dimensions: IVec2, background: Color, clip: bool) -> Artboard {
 	Artboard {
 		graphic_group,
 		location,
 		dimensions,
 		background,
+		clip,
 	}
 }
 

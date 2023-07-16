@@ -18,6 +18,7 @@
 		UpdateDocumentScrollbars,
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
+		UpdateDocumentNodeRender,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -58,6 +59,7 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
+	let nodeRenderSvg = "";
 	let artboardSvg = "";
 	let overlaysSvg = "";
 
@@ -140,9 +142,14 @@
 	export function updateDocumentOverlays(svg: string) {
 		overlaysSvg = svg;
 	}
-
+	
 	export function updateDocumentArtboards(svg: string) {
 		artboardSvg = svg;
+		rasterizedCanvas = undefined;
+	}
+
+	export function updateDocumentNodeRender(svg: string) {
+		nodeRenderSvg = svg;
 		rasterizedCanvas = undefined;
 	}
 
@@ -335,6 +342,11 @@
 
 			updateDocumentArtboards(data.svg);
 		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentNodeRender, async (data) => {
+			await tick();
+
+			updateDocumentNodeRender(data.svg);
+		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
 
@@ -444,6 +456,9 @@
 					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasContainer} data-canvas>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
+						</svg>
+						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+							{@html nodeRenderSvg}
 						</svg>
 						<svg class="artwork" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}

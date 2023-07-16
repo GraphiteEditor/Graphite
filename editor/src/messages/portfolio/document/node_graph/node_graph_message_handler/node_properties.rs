@@ -1045,7 +1045,11 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateController(ref controller),..} = controller else {
+	let &NodeInput::Value {
+		tagged_value: TaggedValue::ImaginateController(ref controller),
+		..
+	} = controller
+	else {
 		panic!("Invalid output status input")
 	};
 	let imaginate_status = controller.get_status();
@@ -1613,5 +1617,8 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
 	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);
 	let background = color_widget(document_node, node_id, 3, "Background", ColorInput::default().allow_none(false), true);
-	vec![location, dimensions, background]
+	let clip = LayoutGroup::Row {
+		widgets: bool_widget(document_node, node_id, 4, "Clip", true),
+	};
+	vec![location, dimensions, background, clip]
 }
