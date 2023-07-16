@@ -739,7 +739,9 @@ impl Document {
 						let mut old_to_new_layer_id: HashMap<LayerId, LayerId> = HashMap::new();
 
 						for (i, duplicate_layer) in duplicated_layers.into_iter().enumerate() {
-							let Some(old_layer_id) = duplicate_layer.last().cloned() else { continue; };
+							let Some(old_layer_id) = duplicate_layer.last().cloned() else {
+								continue;
+							};
 
 							// Iterate through each ID of the current duplicate layer
 							// If the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one

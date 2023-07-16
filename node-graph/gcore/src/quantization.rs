@@ -84,7 +84,6 @@ fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
 	let rounded_value = scaled_value.clamp(0., (1 << bits) as f32 - 1.) as u32;
 
 	// Shift the quantized value to the appropriate position based on the offset
-	
 
 	rounded_value.checked_shl(32 - bits - offset).unwrap()
 }
@@ -112,7 +111,6 @@ fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
 	let unpacked_value = shifted_value & ((1 << bits) - 1); // Mask out the unnecessary bits
 	let normalized_value = unpacked_value as f32 / ((1 << bits) - 1) as f32; // Normalize the value based on the quantization range
 	let decoded_value = normalized_value - b;
-	
 
 	decoded_value / a
 }

@@ -185,7 +185,9 @@ impl NodeRuntime {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
 			if let Some(old_id) = old_id {
 				if old_id != surface_id {
-					if let Some(io) = self.wasm_io.as_ref() { io.destroy_surface(old_id) }
+					if let Some(io) = self.wasm_io.as_ref() {
+						io.destroy_surface(old_id)
+					}
 				}
 			}
 		}
@@ -338,7 +340,9 @@ impl NodeGraphExecutor {
 		extract_data: F2,
 	) -> Option<U> {
 		let wrapping_document_node = network.nodes.get(node_path.last()?)?;
-		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else { return None; };
+		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else {
+			return None;
+		};
 		let introspection_node = find_node(wrapped_network)?;
 		let introspection = self.introspect_node(&[node_path, &[introspection_node]].concat())?;
 		let downcasted: &T = <dyn std::any::Any>::downcast_ref(introspection.as_ref())?;

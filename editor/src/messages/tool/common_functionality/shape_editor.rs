@@ -194,7 +194,9 @@ impl ShapeState {
 					}
 
 					if mirror {
-						let Some(mut original_handle_position) = point.manipulator_type.get_position(group) else { continue };
+						let Some(mut original_handle_position) = point.manipulator_type.get_position(group) else {
+							continue;
+						};
 						original_handle_position += delta;
 
 						let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
@@ -318,7 +320,9 @@ impl ShapeState {
 						continue;
 					}
 
-					let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else { continue };
+					let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else {
+						continue;
+					};
 
 					let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
 					let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
@@ -344,7 +348,9 @@ impl ShapeState {
 						continue;
 					};
 
-					let Some(opposing_handle) = single_selected_handle.opposite().get_position(manipulator_group) else { continue };
+					let Some(opposing_handle) = single_selected_handle.opposite().get_position(manipulator_group) else {
+						continue;
+					};
 
 					let Some(offset) = (opposing_handle - manipulator_group.anchor).try_normalize() else { continue };
 
@@ -627,14 +633,14 @@ impl ShapeState {
 				state.clear_points()
 			}
 
-			let Ok(layer) = document.layer(layer_path) else {continue};
-			let Some(vector_data) = layer.as_vector_data() else {continue};
+			let Ok(layer) = document.layer(layer_path) else { continue };
+			let Some(vector_data) = layer.as_vector_data() else { continue };
 
 			let transform = document.multiply_transforms(layer_path).unwrap_or_default();
 
 			for manipulator_group in vector_data.manipulator_groups() {
 				for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-					let Some(position) = selected_type.get_position(manipulator_group) else {continue};
+					let Some(position) = selected_type.get_position(manipulator_group) else { continue };
 					let transformed_position = transform.transform_point2(position);
 
 					if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {

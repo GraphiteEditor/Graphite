@@ -1,11 +1,11 @@
-use dyn_any::{StaticTypeSized};
+use dyn_any::StaticTypeSized;
 use glam::{DAffine2, DVec2, Mat2, Vec2};
 use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
 use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
-use graphene_core::quantization::{QuantizationChannels};
+use graphene_core::quantization::QuantizationChannels;
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::WgpuExecutor;
@@ -322,7 +322,6 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	};
 	log::debug!("created pipeline");
 
-	
 	ComputePass {
 		pipeline_layout: pipeline,
 		readback_buffer: Some(readback_buffer.clone()),
