@@ -256,7 +256,9 @@ where
 	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
 	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
 
-	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {return ImageFrame::empty()};
+	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {
+		return ImageFrame::empty();
+	};
 
 	if background_aabb.contains(foreground_aabb.start) && background_aabb.contains(foreground_aabb.end) {
 		return blend_image(foreground, background, map_fn);
@@ -434,6 +436,7 @@ macro_rules! generate_imaginate_node {
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
 		{
+			#[allow(clippy::too_many_arguments)]
 			pub fn new(editor_api: E, controller: C, $($val: $t,)* ) -> Self {
 				Self { editor_api, controller, $($val,)* cache: Default::default() }
 			}

@@ -1,4 +1,4 @@
-use graph_craft::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
 use graphene_core::quantization::{PackedPixel, QuantizationChannels};

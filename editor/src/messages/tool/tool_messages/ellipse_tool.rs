@@ -210,7 +210,7 @@ impl Fsm for EllipseToolFsmState {
 		use EllipseToolFsmState::*;
 		use EllipseToolMessage::*;
 
-		let mut shape_data = &mut tool_data.data;
+		let shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {

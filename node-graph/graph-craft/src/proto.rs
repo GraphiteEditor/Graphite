@@ -19,6 +19,7 @@ pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
+// TODO: is this safe? This is assumed to be send+sync.
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
@@ -34,6 +35,10 @@ pub struct NodeContainer {
 	#[cfg(not(feature = "dealloc_nodes"))]
 	pub node: TypeErasedRef<'static>,
 }
+
+// TODO: is this safe??
+unsafe impl Send for NodeContainer {}
+unsafe impl Sync for NodeContainer {}
 
 impl Deref for NodeContainer {
 	type Target = TypeErasedNode<'static>;
@@ -64,7 +69,10 @@ impl core::fmt::Debug for NodeContainer {
 }
 
 impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> Arc<Self> {
+	pub fn new(node: TypeErasedBox<'static>) -> Arc<Self>
+	where
+		Self: Send + Sync,
+	{
 		let node = Box::leak(node);
 		Arc::new(Self { node })
 	}
@@ -89,7 +97,7 @@ impl core::fmt::Display for ProtoNetwork {
 		f.write_str("Proto Network with nodes: ")?;
 		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
 			f.write_str(&"\t".repeat(indent))?;
-			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else {
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)| *node_id == id) else {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;

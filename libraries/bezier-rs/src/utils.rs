@@ -324,7 +324,7 @@ mod tests {
 
 	/// Compare vectors of `f64`s with a provided max absolute value difference.
 	fn f64_compare_vector(vec1: Vec<f64>, vec2: Vec<f64>, max_abs_diff: f64) -> bool {
-		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2.into_iter()).all(|(a, b)| f64_compare(a, b, max_abs_diff))
+		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2).all(|(a, b)| f64_compare(a, b, max_abs_diff))
 	}
 
 	#[test]

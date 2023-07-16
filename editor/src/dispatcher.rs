@@ -534,15 +534,15 @@ mod test {
 
 		editor.handle_message(DocumentMessage::SelectedLayersRaise);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::SelectedLayersLower);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
+		assert_eq!(all, selected.into_iter().chain(non_selected).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::SelectedLayersRaiseToFront);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());
 	}
 
 	#[test]

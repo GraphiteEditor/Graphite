@@ -11,6 +11,7 @@ mod base64_serde {
 	//! Basic wrapper for [`serde`] to perform [`base64`] encoding
 
 	use super::super::Pixel;
+	use base64::Engine;
 	use serde::{Deserialize, Deserializer, Serializer};
 
 	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
@@ -18,7 +19,7 @@ mod base64_serde {
 		S: Serializer,
 	{
 		let u8_data = key.iter().flat_map(|color| color.to_bytes()).collect::<Vec<_>>();
-		serializer.serialize_str(&base64::encode(u8_data))
+		serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(u8_data))
 	}
 
 	pub fn from_base64<'a, D, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error>
@@ -32,7 +33,7 @@ mod base64_serde {
 		let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(P::byte_size()).map(color_from_chunk).collect();
 
 		String::deserialize(deserializer)
-			.and_then(|string| base64::decode(string).map_err(|err| Error::custom(err.to_string())))
+			.and_then(|string| base64::engine::general_purpose::STANDARD.decode(string).map_err(|err| Error::custom(err.to_string())))
 			.map(colors_from_bytes)
 			.map_err(serde::de::Error::custom)
 	}

@@ -8,7 +8,6 @@ use dyn_any::StaticType;
 use dyn_any::StaticTypeSized;
 use glam::DAffine2;
 
-use core::any::Any;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
@@ -54,6 +53,10 @@ pub struct SurfaceHandle<Surface> {
 	pub surface: Surface,
 }
 
+// TODO: is this safe??
+unsafe impl<Surface> Send for SurfaceHandle<Surface> {}
+unsafe impl<Surface> Sync for SurfaceHandle<Surface> {}
+
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }
@@ -88,6 +91,8 @@ impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
 	}
 }*/
 
+pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
+
 pub trait ApplicationIo {
 	type Surface;
 	type Executor;
@@ -96,7 +101,7 @@ pub trait ApplicationIo {
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
-	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>, ApplicationError>;
+	fn load_resource(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError>;
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
@@ -115,7 +120,7 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 		(**self).gpu_executor()
 	}
 
-	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>, ApplicationError> {
+	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError> {
 		(**self).load_resource(url)
 	}
 }

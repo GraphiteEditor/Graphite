@@ -351,7 +351,7 @@ impl Fsm for PathToolFsmState {
 						}
 						.into(),
 					));
-					return PathToolFsmState::Ready;
+					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
 					let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);

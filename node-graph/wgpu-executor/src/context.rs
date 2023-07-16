@@ -12,8 +12,10 @@ pub struct Context {
 impl Context {
 	pub async fn new() -> Option<Self> {
 		// Instantiates instance of WebGPU
-		let mut instance_descriptor = wgpu::InstanceDescriptor::default();
-		instance_descriptor.backends = wgpu::Backends::VULKAN | wgpu::Backends::BROWSER_WEBGPU;
+		let  instance_descriptor = wgpu::InstanceDescriptor {
+			backends: wgpu::Backends::VULKAN | wgpu::Backends::BROWSER_WEBGPU,
+			..Default::default()
+		};
 		let instance = wgpu::Instance::new(instance_descriptor);
 
 		// `request_adapter` instantiates the general connection to the GPU
@@ -30,7 +32,7 @@ impl Context {
 					features: wgpu::Features::empty(),
 					#[cfg(feature = "passthrough")]
 					features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
-					limits: limits,
+					limits,
 				},
 				None,
 			)

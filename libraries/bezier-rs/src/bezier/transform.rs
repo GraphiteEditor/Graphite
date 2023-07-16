@@ -1010,8 +1010,7 @@ mod tests {
 	fn test_arcs_cubic() {
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
 		let actual_arcs = bezier.arcs(ArcsOptions::default());
-		let expected_arcs = vec![
-			CircleArc {
+		let expected_arcs = [CircleArc {
 				center: DVec2::new(122.394877, 30.7777189),
 				radius: 92.39815,
 				start_angle: 2.5637146,
@@ -1022,8 +1021,7 @@ mod tests {
 				radius: 107.61701,
 				start_angle: -0.53556,
 				end_angle: 0.0356025,
-			},
-		];
+			}];
 
 		assert_eq!(actual_arcs.len(), 2);
 		assert!(compare_arcs(actual_arcs[0], expected_arcs[0]));

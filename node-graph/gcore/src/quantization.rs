@@ -3,7 +3,6 @@ use crate::Node;
 use bytemuck::{Pod, Zeroable};
 use dyn_any::{DynAny, StaticType};
 
-use num_traits::CheckedShr;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
 
@@ -85,9 +84,9 @@ fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
 	let rounded_value = scaled_value.clamp(0., (1 << bits) as f32 - 1.) as u32;
 
 	// Shift the quantized value to the appropriate position based on the offset
-	let shifted_value = rounded_value.checked_shl(32 - bits - offset).unwrap();
+	
 
-	shifted_value as u32
+	rounded_value.checked_shl(32 - bits - offset).unwrap()
 }
 /*
 #[inline(always)]
@@ -113,9 +112,9 @@ fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
 	let unpacked_value = shifted_value & ((1 << bits) - 1); // Mask out the unnecessary bits
 	let normalized_value = unpacked_value as f32 / ((1 << bits) - 1) as f32; // Normalize the value based on the quantization range
 	let decoded_value = normalized_value - b;
-	let original_value = decoded_value / a;
+	
 
-	original_value
+	decoded_value / a
 }
 
 pub struct QuantizeNode<Quantization> {
@@ -174,7 +173,7 @@ mod test {
 		let color = Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 0.5);
 		let quantized = quantize_color(color, [quant; 4]);
 		assert_eq!(quantized.0, 0x7f7f7f7f);
-		let dequantized = dequantize_color(quantized, [quant; 4]);
+		let _dequantized = dequantize_color(quantized, [quant; 4]);
 		//assert_eq!(color, dequantized);
 	}
 

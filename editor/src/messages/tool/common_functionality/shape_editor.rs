@@ -627,7 +627,7 @@ impl ShapeState {
 				state.clear_points()
 			}
 
-			let Ok(layer) = document.layer(&layer_path) else {continue};
+			let Ok(layer) = document.layer(layer_path) else {continue};
 			let Some(vector_data) = layer.as_vector_data() else {continue};
 
 			let transform = document.multiply_transforms(layer_path).unwrap_or_default();

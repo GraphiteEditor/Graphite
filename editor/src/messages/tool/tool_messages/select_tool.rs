@@ -503,7 +503,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.drag_start = input.mouse.position;
 					tool_data.drag_current = input.mouse.position;
 
-					let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|mut bounding_box| {
+					let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|bounding_box| {
 						let edges = bounding_box.check_selected_edges(input.mouse.position);
 
 						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {

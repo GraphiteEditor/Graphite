@@ -176,6 +176,10 @@ pub enum ShaderInput<E: GpuExecutor + ?Sized> {
 	ReadBackBuffer(E::BufferHandle, Type),
 }
 
+// TODO: is this safe??
+unsafe impl<E: GpuExecutor + ?Sized> Send for ShaderInput<E> {}
+unsafe impl<E: GpuExecutor + ?Sized> Sync for ShaderInput<E> {}
+
 unsafe impl<E: 'static> StaticType for ShaderInput<E>
 where
 	E: GpuExecutor,
