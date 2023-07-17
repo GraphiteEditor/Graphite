@@ -148,10 +148,10 @@ impl GraphicElementRendered for Artboard {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("class", "artboard-bg");
 			attributes.push("fill", format!("#{}", self.background.rgba_hex()));
-			attributes.push("x", self.location.x);
-			attributes.push("y", self.location.y);
-			attributes.push("width", self.dimensions.x);
-			attributes.push("height", self.dimensions.y);
+			attributes.push("x", (self.location.x).to_string());
+			attributes.push("y", (self.location.y).to_string());
+			attributes.push("width", (self.dimensions.x).to_string());
+			attributes.push("height", (self.dimensions.y).to_string());
 		});
 
 		// Label
@@ -160,8 +160,8 @@ impl GraphicElementRendered for Artboard {
 			|attributes| {
 				attributes.push("class", "artboard-label");
 				attributes.push("fill", format!("#{}", self.background.rgba_hex()));
-				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x));
-				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y) - 3);
+				attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
+				attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 3).to_string());
 				attributes.push("font-size", "25px");
 			},
 			|render| {
@@ -204,8 +204,8 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		let transform: String = format_transform_matrix(self.transform * render.transform);
 		let uuid = generate_uuid();
 		render.leaf_tag("image", |attributes| {
-			attributes.push("width", 1);
-			attributes.push("height", 1);
+			attributes.push("width", 1.to_string());
+			attributes.push("height", 1.to_string());
 			attributes.push("preserveAspectRatio", "none");
 			attributes.push("transform", transform);
 			attributes.push("href", SvgSegment::BlobUrl(uuid))
@@ -254,11 +254,11 @@ impl From<String> for SvgSegment {
 	}
 }
 
-impl<T: ToString> From<T> for SvgSegment {
-	default fn from(value: T) -> Self {
-		Self::String(value.to_string())
-	}
-}
+// impl<T: ToString> From<T> for SvgSegment {
+// 	default fn from(value: T) -> Self {
+// 		Self::String(value.to_string())
+// 	}
+// }
 
 impl From<&'static str> for SvgSegment {
 	fn from(value: &'static str) -> Self {
