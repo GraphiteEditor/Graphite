@@ -11,19 +11,30 @@ use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 
+use std::cell::Cell;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
 
-#[derive(Debug, dyn_any::DynAny)]
+#[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
-	context: Context,
+	pub context: Context,
 	render_configuration: RenderConfiguration,
+	surface_config: Cell<Option<SurfaceConfiguration>>,
+}
+
+impl std::fmt::Debug for WgpuExecutor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("WgpuExecutor")
+			.field("context", &self.context)
+			.field("render_configuration", &self.render_configuration)
+			.finish()
+	}
 }
 
 impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &'a WgpuExecutor {
@@ -104,13 +115,21 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	#[cfg(target_arch = "wasm32")]
 	type Window = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
-	type Window = winit::window::Window;
+	type Window = Arc<winit::window::Window>;
 
 	fn load_shader(&self, shader: Shader) -> Result<Self::ShaderHandle> {
+		#[cfg(not(feature = "passthrough"))]
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some(shader.name),
 			source: wgpu::ShaderSource::SpirV(shader.source),
 		});
+		#[cfg(feature = "passthrough")]
+		let shader_module = unsafe {
+			self.context.device.create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
+				label: Some(shader.name),
+				source: shader.source,
+			})
+		};
 		Ok(ShaderModuleWrapper(shader_module))
 	}
 
@@ -234,14 +253,16 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			entries: entries.as_slice(),
 		});
 
-		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("compute encoder") });
 		{
 			let dimensions = instances.get();
 			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
 			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
+			cpass.push_debug_group("compute shader");
 			cpass.dispatch_workgroups(dimensions.0, dimensions.1, dimensions.2); // Number of cells to run, the (x,y,z) size of item being processed
+			cpass.pop_debug_group();
 		}
 		// Sets adds copy operation to command encoder.
 		// Will copy data from storage buffer on GPU to staging buffer on CPU.
@@ -265,7 +286,40 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<wgpu::Surface>>) -> Result<()> {
 		let texture = texture.texture().expect("Expected texture input");
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let output = canvas.as_ref().surface.get_current_texture()?;
+		let result = canvas.as_ref().surface.get_current_texture();
+
+		let surface = &canvas.as_ref().surface;
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		println!("{:?}", surface_caps);
+		if surface_caps.formats.is_empty() {
+			log::warn!("No surface formats available");
+			//return Ok(());
+		}
+		let Some(config) = self.surface_config.take() else {return Ok(())};
+		let new_config = config.clone();
+		self.surface_config.replace(Some(config));
+		let output = match result {
+			Err(SurfaceError::Timeout) => {
+				log::warn!("Timeout when getting current texture");
+				return Ok(());
+			}
+			Err(SurfaceError::Lost) => {
+				log::warn!("Surface lost");
+
+				surface.configure(&self.context.device, &new_config);
+				return Ok(());
+			}
+			Err(SurfaceError::OutOfMemory) => {
+				log::warn!("Out of memory");
+				return Ok(());
+			}
+			Err(SurfaceError::Outdated) => {
+				log::warn!("Surface outdated");
+				surface.configure(&self.context.device, &new_config);
+				return Ok(());
+			}
+			Ok(surface) => surface,
+		};
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
 			format: Some(wgpu::TextureFormat::Bgra8Unorm),
 			..Default::default()
@@ -306,10 +360,16 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			render_pass.set_vertex_buffer(0, self.render_configuration.vertex_buffer.slice(..));
 			render_pass.set_index_buffer(self.render_configuration.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 			render_pass.draw_indexed(0..self.render_configuration.num_indices, 0, 0..1);
+			render_pass.insert_debug_marker("render node network");
 		}
 
 		let encoder = encoder.finish();
+		#[cfg(feature = "profiling")]
+		nvtx::range_push!("render");
 		self.context.queue.submit(Some(encoder));
+		#[cfg(feature = "profiling")]
+		nvtx::range_pop!();
+		log::trace!("Submitted render pass");
 		output.present();
 
 		Ok(())
@@ -318,10 +378,6 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()> {
 		self.context.queue.submit(Some(encoder.0));
 
-		// Poll the device in a blocking manner so that our future resolves.
-		// In an actual application, `device.poll(...)` should
-		// be called in an event loop or on another thread.
-		self.context.device.poll(wgpu::Maintain::Wait);
 		Ok(())
 	}
 
@@ -394,8 +450,25 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
-	fn create_surface(&self, window: SurfaceHandle<winit::window::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
-		let surface = unsafe { self.context.instance.create_surface(&window.surface) }?;
+	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
+		let surface = unsafe { self.context.instance.create_surface(window.surface.as_ref()) }?;
+
+		let size = window.surface.inner_size();
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		println!("{:?}", surface_caps);
+		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+		let config = wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: surface_format,
+			width: size.width,
+			height: size.height,
+			present_mode: surface_caps.present_modes[0],
+			alpha_mode: surface_caps.alpha_modes[0],
+			view_formats: vec![],
+		};
+		surface.configure(&self.context.device, &config);
+		self.surface_config.set(Some(config));
+
 		let surface_id = window.surface_id;
 		Ok(SurfaceHandle { surface_id, surface })
 	}
@@ -404,6 +477,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 impl WgpuExecutor {
 	pub async fn new() -> Option<Self> {
 		let context = Context::new().await?;
+		println!("wgpu executor created");
 
 		let texture_bind_group_layout = context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			entries: &[
@@ -512,7 +586,11 @@ impl WgpuExecutor {
 			sampler,
 		};
 
-		Some(Self { context, render_configuration })
+		Some(Self {
+			context,
+			render_configuration,
+			surface_config: Cell::new(None),
+		})
 	}
 }
 

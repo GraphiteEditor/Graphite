@@ -624,6 +624,12 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
+pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let url = text_widget(document_node, node_id, 1, "Url", true);
+
+	vec![LayoutGroup::Row { widgets: url }]
+}
+
 pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let output_type = context.executor.previous_output_type(context.layer_path);
 	let raster_output_type = concrete!(ImageFrame<Color>);

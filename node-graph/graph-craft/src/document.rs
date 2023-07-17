@@ -99,7 +99,7 @@ impl DocumentNode {
 				document_node_path: self.path.unwrap_or(Vec::new()),
 			}
 		} else {
-			unreachable!("tried to resolve not flattened node on resolved node");
+			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
 		}
 	}
 
@@ -662,10 +662,13 @@ impl NodeNetwork {
 
 	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let (id, mut node) = self
+		self.resolve_extract_nodes();
+		let Some((id, mut node)) = self
 			.nodes
-			.remove_entry(&node)
-			.unwrap_or_else(|| panic!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self));
+			.remove_entry(&node) else {
+				warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
+				return;
+			};
 
 		if self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
@@ -673,11 +676,12 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		}
+		log::debug!("Flattening node {:?}", &node.name);
 
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
 			// Skip inputs that are already value nodes
-			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()) {
+			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()) {
 				break;
 			}
 
@@ -698,7 +702,7 @@ impl NodeNetwork {
 					DocumentNode {
 						name: "Value".into(),
 						inputs: vec![NodeInput::Value { tagged_value, exposed }],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
 						path,
 						..Default::default()
 					},
@@ -714,6 +718,8 @@ impl NodeNetwork {
 		}
 
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
+			// Resolve all extract nodes in the inner network
+			inner_network.resolve_extract_nodes();
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
@@ -725,8 +731,10 @@ impl NodeNetwork {
 			assert_eq!(
 				node.inputs.len(),
 				inner_network.inputs.len(),
-				"The number of inputs to the node and the inner network must be the same {}",
-				node.name
+				"The number of inputs to the node and the inner network must be the same for {}. The node has {:?} inputs, the network has {:?} inputs.",
+				node.name,
+				node.inputs,
+				inner_network.inputs
 			);
 			// Match the document node input and the inputs of the inner network
 			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
@@ -837,21 +845,30 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
+			log::info!("extraction network: {:#?}", &self);
 			if let DocumentNodeImplementation::Extract = node.implementation {
 				assert_eq!(node.inputs.len(), 1);
+				log::debug!("Resolving extract node {:?}", node);
 				let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
-					panic!("Extract node has no input");
+					panic!("Extract node has no input, inputs: {:?}", node.inputs);
 				};
 				assert_eq!(output_index, 0);
 				// TODO: check if we can readd lambda checking
 				let mut input_node = self.nodes.remove(&node_id).unwrap();
-				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into());
+				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into());
+				if let Some(input) = input_node.inputs.get_mut(0) {
+					*input = match &input {
+						NodeInput::Node { .. } => NodeInput::Network(generic!(T)),
+						ni => NodeInput::Network(ni.ty()),
+					};
+				}
+
 				for input in input_node.inputs.iter_mut() {
-					match input {
-						NodeInput::Node { .. } | NodeInput::Value { .. } => *input = NodeInput::Network(generic!(T)),
-						_ => (),
+					if let NodeInput::Node { .. } = input {
+						*input = NodeInput::Network(generic!(T))
 					}
 				}
+				log::debug!("Extract node {:?} resolved to {:?}", node, input_node);
 				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
 			}
 		}
@@ -1116,7 +1133,7 @@ mod test {
 							tagged_value: TaggedValue::U32(2),
 							exposed: false,
 						}],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ValueNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
 						path: Some(vec![1, 4]),
 						..Default::default()
 					},

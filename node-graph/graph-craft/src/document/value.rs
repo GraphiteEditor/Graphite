@@ -55,6 +55,7 @@ pub enum TaggedValue {
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	#[cfg_attr(feature = "serde", serde(skip))]
 	BrushCache(BrushCache),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
@@ -193,6 +194,7 @@ impl<'a> TaggedValue {
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(blend_mode) => "BlendMode::".to_string() + &blend_mode.to_string(),
+			TaggedValue::Color(color) => "graphene_core::Color::from_rgbaf32_unchecked(0.,0.,0.,1.)".to_string(),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}

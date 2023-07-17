@@ -357,10 +357,21 @@ where
 
 /// A struct representing a compute pipeline.
 pub struct PipelineLayout<E: GpuExecutor + ?Sized> {
-	pub shader: E::ShaderHandle,
+	pub shader: Arc<E::ShaderHandle>,
 	pub entry_point: String,
-	pub bind_group: Bindgroup<E>,
+	pub bind_group: Arc<Bindgroup<E>>,
 	pub output_buffer: Arc<ShaderInput<E>>,
+}
+
+impl<E: GpuExecutor + ?Sized> Clone for PipelineLayout<E> {
+	fn clone(&self) -> Self {
+		Self {
+			shader: self.shader.clone(),
+			entry_point: self.entry_point.clone(),
+			bind_group: self.bind_group.clone(),
+			output_buffer: self.output_buffer.clone(),
+		}
+	}
 }
 
 unsafe impl<E: GpuExecutor + ?Sized + StaticType> StaticType for PipelineLayout<E>
@@ -457,9 +468,9 @@ pub struct CreatePipelineLayoutNode<_E, EntryPoint, Bindgroup, OutputBuffer> {
 #[node_macro::node_fn(CreatePipelineLayoutNode<_E>)]
 async fn create_pipeline_layout_node<_E: GpuExecutor>(shader: _E::ShaderHandle, entry_point: String, bind_group: Bindgroup<_E>, output_buffer: Arc<ShaderInput<_E>>) -> PipelineLayout<_E> {
 	PipelineLayout {
-		shader,
+		shader: shader.into(),
 		entry_point,
-		bind_group,
+		bind_group: bind_group.into(),
 		output_buffer,
 	}
 }
@@ -520,6 +531,7 @@ where
 #[node_macro::node_fn(RenderTextureNode)]
 async fn render_texture_node<'a: 'input, E: 'a + GpuExecutor>(image: ShaderInputFrame<E>, surface: Arc<SurfaceHandle<E::Surface>>, executor: &'a E) -> SurfaceFrame {
 	let surface_id = surface.surface_id;
+	log::trace!("rendering to surface {:?}", surface_id);
 
 	executor.create_render_pass(image.shader_input, surface).unwrap();
 

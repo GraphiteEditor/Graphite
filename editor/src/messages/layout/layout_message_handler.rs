@@ -31,6 +31,10 @@ impl LayoutMessageHandler {
 							widget_path.push(index);
 							return Some((widget, widget_path));
 						}
+
+						if let Widget::PopoverButton(popover) = &widget.widget {
+							stack.extend(popover.options_widget.iter().enumerate().map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)));
+						}
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.

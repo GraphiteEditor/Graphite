@@ -156,9 +156,6 @@ unsafe impl<T: StaticTypeSized> StaticType for *const [T] {
 unsafe impl<T: StaticTypeSized> StaticType for *mut [T] {
 	type Static = *mut [<T as StaticTypeSized>::Static];
 }
-unsafe impl<'a, T: StaticTypeSized> StaticType for &'a [T] {
-	type Static = &'static [<T as StaticTypeSized>::Static];
-}
 macro_rules! impl_slice {
 	($($id:ident),*) => {
 		$(
@@ -191,6 +188,9 @@ unsafe impl<'a, T: 'a + StaticType + ?Sized> StaticType for &'a T {
 }
 unsafe impl<T: StaticTypeSized, const N: usize> StaticType for [T; N] {
 	type Static = [<T as StaticTypeSized>::Static; N];
+}
+unsafe impl<T: StaticTypeSized> StaticType for [T] {
+	type Static = [<T as StaticTypeSized>::Static];
 }
 
 unsafe impl StaticType for dyn for<'i> DynAny<'_> + '_ {
@@ -271,7 +271,9 @@ impl_type!(Rc<T>);
 #[cfg(all(feature = "rc", feature = "alloc"))]
 use std::sync::Arc;
 #[cfg(all(feature = "rc", feature = "alloc"))]
-impl_type!(Arc<T>);
+unsafe impl<T: StaticType + ?Sized> StaticType for Arc<T> {
+	type Static = Arc<<T as StaticType>::Static>;
+}
 
 #[cfg(feature = "glam")]
 use glam::*;

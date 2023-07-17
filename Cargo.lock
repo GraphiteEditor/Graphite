@@ -1943,6 +1943,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-cli"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "bitflags 1.3.2",
+ "chrono",
+ "dyn-any",
+ "env_logger",
+ "fern",
+ "future-executor",
+ "futures",
+ "glam",
+ "gpu-executor",
+ "graph-craft",
+ "graphene-core",
+ "graphene-std",
+ "graphite-document-legacy",
+ "image",
+ "interpreted-executor",
+ "log",
+ "serde",
+ "serde_json",
+ "test-case",
+ "tokio",
+ "wasm-bindgen",
+ "wgpu",
+ "wgpu-executor",
+]
+
+[[package]]
 name = "graphene-core"
 version = "0.1.0"
 dependencies = [
@@ -1995,6 +2025,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "url",
  "vulkan-executor",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2002,6 +2034,7 @@ dependencies = [
  "wgpu",
  "wgpu-executor",
  "wgpu-types",
+ "winit",
  "xxhash-rust",
 ]
 
@@ -2454,6 +2487,7 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "color_quant",
+ "jpeg-decoder",
  "num-rational",
  "num-traits",
  "png",
@@ -2601,6 +2635,12 @@ checksum = "936cfd212a0155903bcbc060e316fb6cc7cbf2e1907329391ebadc1fe0ce77c2"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "jpeg-decoder"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0000e42512c92e31c2252315bda326620a4e034105e900c98ec492fa077b3e"
 
 [[package]]
 name = "js-sys"
@@ -3283,6 +3323,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "nvtx"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfd9a105a93591e01bc67a8c0f86f697a6c09e384f3129aa2bd55823bc431261"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -6278,6 +6327,7 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
+ "nvtx",
  "serde",
  "spirv",
  "web-sys",
