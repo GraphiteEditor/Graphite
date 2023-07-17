@@ -53,10 +53,6 @@ pub struct SurfaceHandle<Surface> {
 	pub surface: Surface,
 }
 
-// TODO: is this safe??
-unsafe impl<Surface> Send for SurfaceHandle<Surface> {}
-unsafe impl<Surface> Sync for SurfaceHandle<Surface> {}
-
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-
+use std::rc::Rc;
 use std::sync::Arc;
 
 use dyn_any::StaticType;
@@ -80,7 +80,7 @@ impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
 
 #[derive(Default)]
 pub struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<NodeContainer>>,
+	nodes: HashMap<NodeId, Rc<NodeContainer>>,
 	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 
@@ -109,11 +109,11 @@ impl BorrowTree {
 		Ok(old_nodes.into_iter().collect())
 	}
 
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Rc<NodeContainer>> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: Arc<NodeContainer>, id: NodeId) {
+	fn store_node(&mut self, node: Rc<NodeContainer>, id: NodeId) {
 		self.nodes.insert(id, node);
 	}
 
@@ -123,7 +123,7 @@ impl BorrowTree {
 		Some(node.serialize())
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer>> {
+	pub fn get(&self, id: NodeId) -> Option<Rc<NodeContainer>> {
 		self.nodes.get(&id).cloned()
 	}
 

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
@@ -26,7 +26,7 @@ pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
 pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type NodeConstructor = for<'a> fn(Vec<Rc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -35,10 +35,6 @@ pub struct NodeContainer {
 	#[cfg(not(feature = "dealloc_nodes"))]
 	pub node: TypeErasedRef<'static>,
 }
-
-// TODO: is this safe??
-unsafe impl Send for NodeContainer {}
-unsafe impl Sync for NodeContainer {}
 
 impl Deref for NodeContainer {
 	type Target = TypeErasedNode<'static>;
@@ -69,12 +65,9 @@ impl core::fmt::Debug for NodeContainer {
 }
 
 impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> Arc<Self>
-	where
-		Self: Send + Sync,
-	{
+	pub fn new(node: TypeErasedBox<'static>) -> Rc<Self> {
 		let node = Box::leak(node);
-		Arc::new(Self { node })
+		Rc::new(Self { node })
 	}
 
 	#[cfg(feature = "dealloc_nodes")]

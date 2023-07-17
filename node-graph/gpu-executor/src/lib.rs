@@ -41,10 +41,10 @@ pub trait Texture {
 
 pub trait GpuExecutor {
 	type ShaderHandle;
-	type BufferHandle;
-	type TextureHandle;
-	type TextureView;
-	type Surface;
+	type BufferHandle: Send + Sync;
+	type TextureHandle: Send + Sync;
+	type TextureView: Send + Sync;
+	type Surface: Send + Sync;
 	type Window;
 	type CommandBuffer;
 
@@ -175,10 +175,6 @@ pub enum ShaderInput<E: GpuExecutor + ?Sized> {
 	OutputBuffer(E::BufferHandle, Type),
 	ReadBackBuffer(E::BufferHandle, Type),
 }
-
-// TODO: is this safe??
-unsafe impl<E: GpuExecutor + ?Sized> Send for ShaderInput<E> {}
-unsafe impl<E: GpuExecutor + ?Sized> Sync for ShaderInput<E> {}
 
 unsafe impl<E: 'static> StaticType for ShaderInput<E>
 where
