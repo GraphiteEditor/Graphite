@@ -166,6 +166,9 @@ pub enum FrontendMessage {
 		size: (f64, f64),
 		multiplier: (f64, f64),
 	},
+	UpdateDocumentTransform {
+		transform: String,
+	},
 	UpdateEyedropperSamplingState {
 		#[serde(rename = "mousePosition")]
 		mouse_position: Option<(f64, f64)>,

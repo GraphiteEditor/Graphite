@@ -495,27 +495,20 @@ impl NodeGraphExecutor {
 				use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, SvgRender};
 
 				// Setup rendering
-				let mut renderer = SvgRender::new();
+				let mut render = SvgRender::new();
 				let render_params = RenderParams::new(ViewMode::Normal, None, false);
 
-				// Wrap in a <g> tag with a transform to adjust for the viewport navigation
-				renderer.parent_tag(
-					"g",
-					|attributes| {
-						attributes.push("id", "transform-group");
-						attributes.push("transform", format_transform_matrix(transform));
-					},
-					|render| graphic_group.render_svg(render, &render_params),
-				);
+				// Render svg
+				graphic_group.render_svg(&mut render, &render_params);
 
 				// Concatinate the defs and the svg into one string
 				let mut svg = "<defs>".to_string();
-				svg.push_str(&renderer.svg_defs);
+				svg.push_str(&render.svg_defs);
 				svg.push_str("</defs>");
 				use std::fmt::Write;
-				write!(svg, "{}", renderer.svg).unwrap();
+				write!(svg, "{}", render.svg).unwrap();
 
-				// Render the svg
+				// Send to frontend
 				info!("SVG {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 

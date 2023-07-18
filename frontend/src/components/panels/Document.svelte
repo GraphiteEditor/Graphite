@@ -19,6 +19,7 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		UpdateDocumentNodeRender,
+		UpdateDocumentTransform,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -62,6 +63,7 @@
 	let nodeRenderSvg = "";
 	let artboardSvg = "";
 	let overlaysSvg = "";
+	let artworkTransform = "";
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -151,6 +153,10 @@
 	export function updateDocumentNodeRender(svg: string) {
 		nodeRenderSvg = svg;
 		rasterizedCanvas = undefined;
+	}
+
+	export function updateDocumentTransform(transform: string) {
+		artworkTransform = transform;
 	}
 
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
@@ -347,6 +353,11 @@
 
 			updateDocumentNodeRender(data.svg);
 		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentTransform, async (data) => {
+			await tick();
+
+			updateDocumentTransform(data.transform);
+		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
 
@@ -458,7 +469,9 @@
 							{@html artboardSvg}
 						</svg> -->
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							{@html nodeRenderSvg}
+							<g id="transform-group" transform={artworkTransform}>
+								{@html nodeRenderSvg}
+							</g>
 						</svg>
 						<svg class="artwork" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}

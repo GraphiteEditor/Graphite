@@ -1096,6 +1096,7 @@ impl DocumentMessageHandler {
 		let starting_root_transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document.document_legacy.root.transform = starting_root_transform;
 		document.artboard_message_handler.artboards_document.root.transform = starting_root_transform;
+		
 		document
 	}
 

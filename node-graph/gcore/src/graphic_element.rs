@@ -56,8 +56,8 @@ impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
 			graphic_group: GraphicGroup::EMPTY,
-			location,
-			dimensions,
+			location: location.min(location + dimensions),
+			dimensions: dimensions.abs(),
 			background: Color::WHITE,
 			clip: false,
 		}
@@ -108,8 +108,8 @@ pub struct ConstructArtboardNode<Location, Dimensions, Background, Clip> {
 fn construct_artboard(graphic_group: GraphicGroup, location: IVec2, dimensions: IVec2, background: Color, clip: bool) -> Artboard {
 	Artboard {
 		graphic_group,
-		location,
-		dimensions,
+		location: location.min(location + dimensions),
+		dimensions: dimensions.abs(),
 		background,
 		clip,
 	}

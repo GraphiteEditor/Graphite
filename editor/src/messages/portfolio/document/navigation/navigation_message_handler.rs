@@ -10,6 +10,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::document::Document;
 use document_legacy::Operation as DocumentOperation;
+use graphene_core::renderer::format_transform_matrix;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -352,6 +353,8 @@ impl NavigationMessageHandler {
 			}
 			.into(),
 		));
+		let transform = format_transform_matrix(self.calculate_offset_transform(scaled_half_viewport));
+		responses.add(FrontendMessage::UpdateDocumentTransform { transform });
 		// TODO: Artboard pos
 	}
 

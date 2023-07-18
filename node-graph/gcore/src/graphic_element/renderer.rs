@@ -148,10 +148,10 @@ impl GraphicElementRendered for Artboard {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("class", "artboard-bg");
 			attributes.push("fill", format!("#{}", self.background.rgba_hex()));
-			attributes.push("x", (self.location.x).to_string());
-			attributes.push("y", (self.location.y).to_string());
-			attributes.push("width", (self.dimensions.x).to_string());
-			attributes.push("height", (self.dimensions.y).to_string());
+			attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
+			attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
+			attributes.push("width", self.dimensions.x.abs().to_string());
+			attributes.push("height", self.dimensions.y.abs().to_string());
 		});
 
 		// Label
