@@ -1,9 +1,9 @@
 use dyn_any::StaticType;
 pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
-use graph_craft::proto::{DynFuture, FutureAny};
+use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
 use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
-use std::{marker::PhantomData, rc::Rc};
+use std::marker::PhantomData;
 
 pub struct DynAnyNode<I, O, Node> {
 	node: Node,
@@ -164,7 +164,7 @@ where
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
 #[derive(Clone)]
 pub struct DowncastBothNode<I, O> {
-	node: Rc<NodeContainer>,
+	node: SharedNodeContainer,
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
@@ -184,7 +184,7 @@ impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for
 	}
 }
 impl<I, O> DowncastBothNode<I, O> {
-	pub const fn new(node: Rc<NodeContainer>) -> Self {
+	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self {
 			node,
 			_i: core::marker::PhantomData,
@@ -196,7 +196,7 @@ impl<I, O> DowncastBothNode<I, O> {
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
 #[derive(Clone)]
 pub struct DowncastBothRefNode<I, O> {
-	node: Rc<NodeContainer>,
+	node: SharedNodeContainer,
 	_i: PhantomData<(I, O)>,
 }
 impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<I, O> {
@@ -214,14 +214,14 @@ impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for
 	}
 }
 impl<I, O> DowncastBothRefNode<I, O> {
-	pub const fn new(node: Rc<NodeContainer>) -> Self {
+	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self { node, _i: core::marker::PhantomData }
 	}
 }
 
 pub struct ComposeTypeErased {
-	first: Rc<NodeContainer>,
-	second: Rc<NodeContainer>,
+	first: SharedNodeContainer,
+	second: SharedNodeContainer,
 }
 
 impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased {
@@ -235,12 +235,12 @@ impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased {
 }
 
 impl ComposeTypeErased {
-	pub const fn new(first: Rc<NodeContainer>, second: Rc<NodeContainer>) -> Self {
+	pub const fn new(first: SharedNodeContainer, second: SharedNodeContainer) -> Self {
 		ComposeTypeErased { first, second }
 	}
 }
 
-pub fn input_node<O: StaticType>(n: Rc<NodeContainer>) -> DowncastBothNode<(), O> {
+pub fn input_node<O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<(), O> {
 	DowncastBothNode::new(n)
 }
 

@@ -464,7 +464,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
-				|args: Vec<std::rc::Rc<graph_craft::proto::NodeContainer>>| {
+				|args: Vec<graph_craft::proto::SharedNodeContainer>| {
 					Box::pin(async move {
 						use graphene_std::raster::ImaginateNode;
 						macro_rules! instanciate_imaginate_node {

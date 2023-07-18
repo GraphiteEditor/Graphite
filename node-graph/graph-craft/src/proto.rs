@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
-use std::rc::Rc;
 
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
@@ -26,7 +25,9 @@ pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
 pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<Rc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type SharedNodeContainer = std::rc::Rc<NodeContainer>;
+
+pub type NodeConstructor = for<'a> fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -65,9 +66,9 @@ impl core::fmt::Debug for NodeContainer {
 }
 
 impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> Rc<Self> {
+	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
 		let node = Box::leak(node);
-		Rc::new(Self { node })
+		Self { node }.into()
 	}
 
 	#[cfg(feature = "dealloc_nodes")]
