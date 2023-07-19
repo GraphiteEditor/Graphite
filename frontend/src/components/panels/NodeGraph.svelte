@@ -354,7 +354,7 @@
 				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 			}
 
-			if (modifiedSelected) editor.instance.selectNodes(new BigUint64Array(selected));
+			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected): null);
 
 			return;
 		}
@@ -362,7 +362,7 @@
 		// Clicked on the graph background
 		if (lmb && selected.length !== 0) {
 			selected = [];
-			editor.instance.selectNodes(new BigUint64Array([]));
+			editor.instance.selectNodes(null);
 		}
 
 		// LMB clicked on the graph background or MMB clicked anywhere

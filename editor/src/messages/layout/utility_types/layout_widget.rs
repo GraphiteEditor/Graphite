@@ -221,7 +221,7 @@ impl WidgetLayout {
 			return;
 		}
 		// Diff all of the children
-		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout.into_iter()).enumerate() {
+		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout).enumerate() {
 			widget_path.push(index);
 			current_child.diff(new_child, widget_path, widget_diffs);
 			widget_path.pop();
@@ -394,7 +394,7 @@ impl LayoutGroup {
 					return;
 				}
 				// Diff all of the children
-				for (index, (current_child, new_child)) in current_widgets.iter_mut().zip(new_widgets.into_iter()).enumerate() {
+				for (index, (current_child, new_child)) in current_widgets.iter_mut().zip(new_widgets).enumerate() {
 					widget_path.push(index);
 					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();
@@ -421,7 +421,7 @@ impl LayoutGroup {
 					return;
 				}
 				// Diff all of the children
-				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout.into_iter()).enumerate() {
+				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout).enumerate() {
 					widget_path.push(index);
 					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();

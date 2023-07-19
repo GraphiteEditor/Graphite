@@ -289,7 +289,7 @@ impl SelectedGradient {
 		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, render_data);
 
 		// Clear if no longer a gradient
-		let Some(gradient) = layer.style().ok().and_then(|style|style.fill().as_gradient()) else {
+		let Some(gradient) = layer.style().ok().and_then(|style| style.fill().as_gradient()) else {
 			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;

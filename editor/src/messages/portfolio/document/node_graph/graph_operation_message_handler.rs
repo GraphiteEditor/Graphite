@@ -202,13 +202,15 @@ impl<'a> ModifyInputsContext<'a> {
 			let NodeInput::Value {
 				tagged_value: TaggedValue::Subpaths(subpaths),
 				..
-			} = subpaths else {
+			} = subpaths
+			else {
 				return;
 			};
 			let NodeInput::Value {
 				tagged_value: TaggedValue::ManipulatorGroupIds(mirror_angle_groups),
 				..
-			} = mirror_angle_groups else {
+			} = mirror_angle_groups
+			else {
 				return;
 			};
 

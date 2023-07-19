@@ -318,7 +318,7 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 		// Compute transformation from stroke texture space into layer space, and create the stroke texture.
 		let skip = if idx == 0 { brush_plan.first_stroke_point_skip } else { 0 };
 		let positions: Vec<_> = stroke.compute_blit_points().into_iter().skip(skip).collect();
-		let stroke_texture = if idx == 0 && positions.len() == 0 {
+		let stroke_texture = if idx == 0 && positions.is_empty() {
 			core::mem::take(&mut brush_plan.first_stroke_texture)
 		} else {
 			let mut bbox = stroke.bounding_box();
