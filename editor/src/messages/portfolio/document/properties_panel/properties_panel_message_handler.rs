@@ -134,10 +134,13 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				}
 			}
 			ResendActiveProperties => {
-				if let Some((path, TargetDocument::Artwork)) = self.active_selection.clone() {
-					let document = get_document(TargetDocument::Artwork);
+				if let Some((path, target_document)) = self.active_selection.clone() {
+					let document = get_document(target_document);
 					let layer = document.layer(&path).unwrap();
-					register_artboard_layer_properties(layer, responses, persistent_data)
+					match target_document {
+						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
+						TargetDocument::Artwork => register_artwork_layer_properties(document, path, layer, responses, persistent_data, node_graph_message_handler, executor),
+					}
 				} else {
 					let context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
 						persistent_data,
