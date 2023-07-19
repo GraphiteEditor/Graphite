@@ -13,7 +13,7 @@ crate-type = ["dylib", "lib"]
 libm = { git = "https://github.com/rust-lang/libm", tag = "0.2.5" }
 
 [dependencies]
-spirv-std = { version = "0.7" }
+spirv-std = { version = "0.8" }
 graphene-core = { path = "{{gcore_path}}", default-features = false, features = [
 	"gpu",
 ] }

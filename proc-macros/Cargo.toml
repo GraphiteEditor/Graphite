@@ -19,7 +19,7 @@ default = ["serde-discriminant"]
 serde-discriminant = []
 
 [dependencies]
-proc-macro2 = "1.0.26"
+proc-macro2 = "1"
 syn = { version = "1.0.68", features = ["full"] }
 quote = "1.0.9"
 

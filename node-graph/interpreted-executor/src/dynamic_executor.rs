@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-
 use std::sync::Arc;
 
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::NodeId;
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, TypeErasedBox, TypingContext};
+use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::Type;
 
 use crate::node_registry;
@@ -80,7 +79,7 @@ impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
 
 #[derive(Default)]
 pub struct BorrowTree {
-	nodes: HashMap<NodeId, Arc<NodeContainer>>,
+	nodes: HashMap<NodeId, SharedNodeContainer>,
 	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 
@@ -109,11 +108,11 @@ impl BorrowTree {
 		Ok(old_nodes.into_iter().collect())
 	}
 
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<Arc<NodeContainer>> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
 	}
 
-	fn store_node(&mut self, node: Arc<NodeContainer>, id: NodeId) {
+	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId) {
 		self.nodes.insert(id, node);
 	}
 
@@ -123,7 +122,7 @@ impl BorrowTree {
 		Some(node.serialize())
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<Arc<NodeContainer>> {
+	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
 		self.nodes.get(&id).cloned()
 	}
 

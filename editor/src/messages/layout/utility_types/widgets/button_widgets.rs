@@ -58,7 +58,7 @@ pub struct PopoverButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+#[serde(rename_all = "camelCase")]
 pub struct ParameterExposeButton {
 	pub exposed: bool,
 
@@ -78,7 +78,7 @@ pub struct ParameterExposeButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+#[serde(rename_all = "camelCase")]
 pub struct TextButton {
 	#[widget_builder(constructor)]
 	pub label: String,
@@ -105,7 +105,7 @@ pub struct TextButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+#[serde(rename_all = "camelCase")]
 pub struct BreadcrumbTrailButtons {
 	#[widget_builder(constructor)]
 	pub labels: Vec<String>,

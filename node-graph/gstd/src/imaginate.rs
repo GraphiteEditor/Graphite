@@ -2,7 +2,7 @@ use crate::wasm_application_io::WasmEditorApi;
 use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
-use glam::DVec2;
+use glam::{DVec2, U64Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
@@ -62,6 +62,8 @@ impl Default for ImaginatePersistentData {
 	}
 }
 
+type ImaginateFuture = core::pin::Pin<Box<dyn Future<Output = ()> + 'static>>;
+
 impl ImaginatePersistentData {
 	pub fn set_host_name(&mut self, name: &str) {
 		match parse_url(name) {
@@ -70,9 +72,11 @@ impl ImaginatePersistentData {
 		}
 	}
 
-	fn initiate_server_check_maybe_fail(&mut self) -> Result<Option<core::pin::Pin<Box<dyn Future<Output = ()> + 'static>>>, Error> {
+	fn initiate_server_check_maybe_fail(&mut self) -> Result<Option<ImaginateFuture>, Error> {
 		use futures::future::FutureExt;
-		let Some(client) = &self.client else { return Ok(None); };
+		let Some(client) = &self.client else {
+			return Ok(None);
+		};
 		if self.pending_server_check.is_some() {
 			return Ok(None);
 		}
@@ -87,7 +91,7 @@ impl ImaginatePersistentData {
 		Ok(Some(Box::pin(response_future)))
 	}
 
-	pub fn initiate_server_check(&mut self) -> Option<core::pin::Pin<Box<dyn Future<Output = ()> + 'static>>> {
+	pub fn initiate_server_check(&mut self) -> Option<ImaginateFuture> {
 		match self.initiate_server_check_maybe_fail() {
 			Ok(f) => f,
 			Err(err) => {
@@ -256,6 +260,7 @@ struct ImaginateCommonImageRequest<'a> {
 }
 
 #[cfg(feature = "imaginate")]
+#[allow(clippy::too_many_arguments)]
 pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
 	editor_api: impl Future<Output = WasmEditorApi<'a>>,
@@ -323,6 +328,7 @@ pub async fn imaginate<'a, P: Pixel>(
 }
 
 #[cfg(feature = "imaginate")]
+#[allow(clippy::too_many_arguments)]
 async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 	image: Image<P>,
 	host_name: &str,
@@ -492,26 +498,25 @@ pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64)
 	const MAX_DIMENSION: u64 = (MAX_RESOLUTION / 64) & !63;
 
 	// round the resolution to the nearest multiple of 64
-	let [width, height] = [width, height].map(|c| (c.round().clamp(0., MAX_DIMENSION as _) as u64 + 32).max(64) & !63);
-	let resolution = width * height;
+	let size = (DVec2::new(width, height).round().clamp(DVec2::ZERO, DVec2::splat(MAX_DIMENSION as _)).as_u64vec2() + U64Vec2::splat(32)).max(U64Vec2::splat(64)) & !U64Vec2::splat(63);
+	let resolution = size.x * size.y;
 
 	if resolution > MAX_RESOLUTION {
 		// scale down the image, so it is smaller than MAX_RESOLUTION
 		let scale = (MAX_RESOLUTION as f64 / resolution as f64).sqrt();
-		let [width, height] = [width, height].map(|c| c as f64 * scale);
+		let size = size.as_dvec2() * scale;
 
-		if width < 64.0 {
+		if size.x < 64.0 {
 			// the image is extremely wide
 			(64, MAX_DIMENSION)
-		} else if height < 64.0 {
+		} else if size.y < 64.0 {
 			// the image is extremely high
 			(MAX_DIMENSION, 64)
 		} else {
 			// round down to a multiple of 64, so that the resolution still is smaller than MAX_RESOLUTION
-			let [width, height] = [width, height].map(|c| c as u64 & !63);
-			(width, height)
+			(size.as_u64vec2() & !U64Vec2::splat(63)).into()
 		}
 	} else {
-		(width, height)
+		size.into()
 	}
 }

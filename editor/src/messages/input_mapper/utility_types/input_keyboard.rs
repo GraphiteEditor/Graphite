@@ -33,8 +33,9 @@ pub enum KeyPosition {
 }
 
 bitflags! {
-	#[derive(Default, Serialize, Deserialize)]
+	#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 	#[repr(transparent)]
+	#[serde(transparent)]
 	pub struct ModifierKeys: u8 {
 		const SHIFT           = 0b_0000_0001;
 		const ALT             = 0b_0000_0010;
