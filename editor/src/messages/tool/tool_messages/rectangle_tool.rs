@@ -209,7 +209,7 @@ impl Fsm for RectangleToolFsmState {
 		use RectangleToolFsmState::*;
 		use RectangleToolMessage::*;
 
-		let mut shape_data = &mut tool_data.data;
+		let shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {

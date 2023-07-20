@@ -157,7 +157,7 @@ impl NodeRuntime {
 		let editor_api = WasmEditorApi {
 			font_cache: &self.font_cache,
 			image_frame,
-			application_io: &self.wasm_io.as_ref().unwrap(),
+			application_io: self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			imaginate_preferences: &self.imaginate_preferences,
 		};
@@ -185,7 +185,9 @@ impl NodeRuntime {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
 			if let Some(old_id) = old_id {
 				if old_id != surface_id {
-					self.wasm_io.as_ref().map(|io| io.destroy_surface(old_id));
+					if let Some(io) = self.wasm_io.as_ref() {
+						io.destroy_surface(old_id)
+					}
 				}
 			}
 		}
@@ -341,7 +343,7 @@ impl NodeGraphExecutor {
 		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else {
 			return None;
 		};
-		let introspection_node = find_node(&wrapped_network)?;
+		let introspection_node = find_node(wrapped_network)?;
 		let introspection = self.introspect_node(&[node_path, &[introspection_node]].concat())?;
 		let downcasted: &T = <dyn std::any::Any>::downcast_ref(introspection.as_ref())?;
 		Some(extract_data(downcasted))

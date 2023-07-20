@@ -97,7 +97,9 @@ impl BrushStroke {
 		// placing a blit point every time we travelled our spacing distance.
 		let spacing_dist = self.style.spacing / 100. * self.style.diameter;
 
-		let Some(first_sample) = self.trace.first() else { return Vec::new(); };
+		let Some(first_sample) = self.trace.first() else {
+			return Vec::new();
+		};
 
 		let mut cur_pos = first_sample.position;
 		let mut result = vec![cur_pos];

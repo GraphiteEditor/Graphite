@@ -1010,7 +1010,7 @@ mod tests {
 	fn test_arcs_cubic() {
 		let bezier = Bezier::from_cubic_coordinates(30., 30., 30., 80., 60., 80., 60., 140.);
 		let actual_arcs = bezier.arcs(ArcsOptions::default());
-		let expected_arcs = vec![
+		let expected_arcs = [
 			CircleArc {
 				center: DVec2::new(122.394877, 30.7777189),
 				radius: 92.39815,

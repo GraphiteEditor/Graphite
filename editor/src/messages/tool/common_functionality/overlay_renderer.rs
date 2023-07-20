@@ -152,7 +152,7 @@ impl OverlayRenderer {
 		let Some(manipulator_groups) = self.manipulator_group_overlay_cache.get(layer_id) else { return };
 		if visibility {
 			let Ok(layer) = document.layer(&layer_path) else { return };
-			let Some(vector_data) = layer.as_vector_data()  else { return };
+			let Some(vector_data) = layer.as_vector_data() else { return };
 			for manipulator_group in vector_data.manipulator_groups() {
 				let id = manipulator_group.id;
 				if let Some(manipulator_group_overlays) = manipulator_groups.get(&id) {

@@ -106,7 +106,7 @@ impl InputPreprocessorMessageHandler {
 			let old_down = self.mouse.mouse_keys & bit_flag == bit_flag;
 			let new_down = new_state.mouse_keys & bit_flag == bit_flag;
 			if !old_down && new_down {
-				if allow_first_button_down || self.mouse.mouse_keys != MouseKeys::NONE {
+				if allow_first_button_down || self.mouse.mouse_keys != MouseKeys::empty() {
 					responses.add(InputMapperMessage::KeyDown(key));
 				} else {
 					// Required to stop a keyup being emitted for a keydown outside canvas

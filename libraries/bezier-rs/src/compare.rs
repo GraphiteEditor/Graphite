@@ -22,7 +22,7 @@ pub fn compare_points(p1: DVec2, p2: DVec2) -> bool {
 /// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors
 #[cfg(test)]
 pub fn compare_vec_of_points(a: Vec<DVec2>, b: Vec<DVec2>, max_absolute_difference: f64) -> bool {
-	a.len() == b.len() && a.into_iter().zip(b.into_iter()).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
+	a.len() == b.len() && a.into_iter().zip(b).all(|(p1, p2)| p1.abs_diff_eq(p2, max_absolute_difference))
 }
 
 /// Compare circle arcs by allowing some maximum absolute difference between values to account for floating point errors

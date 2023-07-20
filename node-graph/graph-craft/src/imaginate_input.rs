@@ -112,8 +112,8 @@ impl ImaginateStatus {
 			Self::Beginning => Cow::Borrowed("Beginning…"),
 			Self::Uploading => Cow::Borrowed("Downloading Image…"),
 			Self::Generating(percent) => Cow::Owned(format!("Generating {percent:.0}%")),
-			Self::Terminating => Cow::Owned(format!("Terminating…")),
-			Self::Terminated => Cow::Owned(format!("Terminated")),
+			Self::Terminating => Cow::Owned("Terminating…".to_string()),
+			Self::Terminated => Cow::Owned("Terminated".to_string()),
 			Self::Failed(err) => Cow::Owned(format!("Failed: {err}")),
 		}
 	}
