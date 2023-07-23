@@ -538,7 +538,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.backup(responses);
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-				let sign = if opposite_corner { -1. } else { 1. }; // * maybe this logic needs some changing, for the top-left corner??
+				let sign = if opposite_corner { -1. } else { 1. };
 
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					// Nudge translation
