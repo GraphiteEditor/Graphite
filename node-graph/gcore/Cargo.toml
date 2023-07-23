@@ -26,7 +26,7 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 	"glam",
 ], optional = true, default-features = false }
 
-spirv-std = { version = "0.7", optional = true }
+spirv-std = { version = "0.8", optional = true }
 bytemuck = { version = "1.8", features = ["derive"] }
 async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = [
@@ -40,16 +40,16 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ], optional = true }
 spin = "0.9.2"
-glam = { version = "^0.22", default-features = false, features = [
+glam = { version = "0.24", default-features = false, features = [
 	"scalar-math",
 ] }
 node-macro = { path = "../node-macro" }
-base64 = { version = "0.13", optional = true }
+base64 = { version = "0.21", optional = true }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
 
-rustybuzz = { version = "0.6.0", optional = true }
+rustybuzz = { version = "0.8.0", optional = true }
 
 num-derive = { version = "0.3.3" }
 num-traits = { version = "0.2.15", default-features = false, features = [

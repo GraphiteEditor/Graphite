@@ -375,7 +375,7 @@ impl NodeGraphMessageHandler {
 				continue;
 			}
 			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node{ node_id, .. } = input else {
+				let NodeInput::Node { node_id, .. } = input else {
 					continue;
 				};
 				if *node_id != deleting_node_id {
@@ -383,9 +383,9 @@ impl NodeGraphMessageHandler {
 				}
 
 				let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
-						warn!("Removing input of invalid node type '{}'", node.name);
-						return false;
-					};
+					warn!("Removing input of invalid node type '{}'", node.name);
+					return false;
+				};
 				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
 					*input = NodeInput::value(tagged_value.clone(), true);
 				}
@@ -444,12 +444,12 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				let Some(network) = self.get_active_network(document) else {
 					error!("No network");
 					return;
-				 };
+				};
 				let Some(input_node) = network.nodes.get(&input_node) else {
 					error!("No to");
 					return;
 				};
-				let Some((input_index, _)) = input_node.inputs.iter().enumerate().filter(|input|input.1.is_exposed()).nth(input_node_connector_index) else {
+				let Some((input_index, _)) = input_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(input_node_connector_index) else {
 					error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
 					return;
 				};
@@ -482,7 +482,10 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64)> 
 				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
-					responses.add(DialogMessage::DisplayDialogError { title: "Cannot insert node".to_string(), description: format!("The document node '{node_type}' does not exist in the document node list") });
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Cannot insert node".to_string(),
+						description: format!("The document node '{node_type}' does not exist in the document node list"),
+					});
 					return;
 				};
 

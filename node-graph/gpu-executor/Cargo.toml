@@ -26,8 +26,8 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 num-traits = "0.2"
 log = "0.4"
 serde = { version = "1", features = ["derive", "rc"] }
-glam = "0.22"
-base64 = "0.13"
+glam = "0.24"
+base64 = "0.21"
 
 bytemuck = { version = "1.8" }
 anyhow = "1.0.66"

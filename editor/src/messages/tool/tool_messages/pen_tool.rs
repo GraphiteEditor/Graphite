@@ -232,7 +232,9 @@ impl PenToolData {
 		// Stop the handles on the first point from mirroring
 		let Some(subpaths) = get_subpaths(layer, document) else { return };
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
-		let Some(last_handle) = (if from_start { manipulator_groups.first() } else { manipulator_groups.last() }) else { return };
+		let Some(last_handle) = (if from_start { manipulator_groups.first() } else { manipulator_groups.last() }) else {
+			return;
+		};
 
 		responses.add(GraphOperationMessage::Vector {
 			layer: layer.to_vec(),
@@ -765,7 +767,9 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 	let mut best_distance_squared = tolerance * tolerance;
 
 	for layer_path in document.selected_layers() {
-		let Ok(viewspace) = document.document_legacy.generate_transform_relative_to_viewport(layer_path) else { continue };
+		let Ok(viewspace) = document.document_legacy.generate_transform_relative_to_viewport(layer_path) else {
+			continue;
+		};
 
 		let subpaths = get_subpaths(layer_path, document)?;
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
@@ -795,7 +799,11 @@ fn get_subpaths<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler
 	for (node, _node_id) in network.primary_flow() {
 		if node.name == "Path Generator" {
 			let subpaths_input = node.inputs.get(0)?;
-			let NodeInput::Value { tagged_value: TaggedValue::Subpaths(subpaths), .. } = subpaths_input else {
+			let NodeInput::Value {
+				tagged_value: TaggedValue::Subpaths(subpaths),
+				..
+			} = subpaths_input
+			else {
 				continue;
 			};
 

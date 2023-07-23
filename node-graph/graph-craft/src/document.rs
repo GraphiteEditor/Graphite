@@ -111,7 +111,7 @@ impl DocumentNode {
 		P: Fn(String, usize) -> Option<NodeInput>,
 	{
 		for (index, input) in self.inputs.iter_mut().enumerate() {
-			let &mut NodeInput::Node{node_id: id, output_index, lambda} = input else {
+			let &mut NodeInput::Node { node_id: id, output_index, lambda } = input else {
 				continue;
 			};
 			if let Some(&new_id) = new_ids.get(&id) {
@@ -538,7 +538,7 @@ impl NodeNetwork {
 		while !dependencies.is_empty() {
 			let Some((&disconnected, _)) = dependencies.iter().find(|(_, l)| l.is_empty()) else {
 				error!("Dependencies {dependencies:?}");
-				return false
+				return false;
 			};
 			dependencies.remove(&disconnected);
 			for connections in dependencies.values_mut() {
@@ -655,12 +655,10 @@ impl NodeNetwork {
 	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		self.resolve_extract_nodes();
-		let Some((id, mut node)) = self
-			.nodes
-			.remove_entry(&node) else {
-				warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
-				return;
-			};
+		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
+			warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
+			return;
+		};
 
 		if self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());

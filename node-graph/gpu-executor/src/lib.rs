@@ -41,10 +41,10 @@ pub trait Texture {
 
 pub trait GpuExecutor {
 	type ShaderHandle;
-	type BufferHandle;
-	type TextureHandle;
-	type TextureView;
-	type Surface;
+	type BufferHandle: Send + Sync;
+	type TextureHandle: Send + Sync;
+	type TextureView: Send + Sync;
+	type Surface: Send + Sync;
 	type Window;
 	type CommandBuffer;
 

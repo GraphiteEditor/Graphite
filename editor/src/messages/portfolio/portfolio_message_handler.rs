@@ -644,7 +644,11 @@ impl PortfolioMessageHandler {
 				}))),
 				LayerDataType::Layer(layer) => {
 					let input_is_font = |input: &NodeInput| {
-						let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = input else {
+						let NodeInput::Value {
+							tagged_value: TaggedValue::Font(font),
+							..
+						} = input
+						else {
 							return false;
 						};
 						font == target_font

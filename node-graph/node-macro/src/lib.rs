@@ -128,7 +128,12 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	let (primary_input, parameter_inputs, parameter_pat_ident_patterns) = parse_inputs(&function, true);
 	let primary_input_ty = &primary_input.ty;
-	let Pat::Ident(PatIdent{ident: primary_input_ident, mutability: primary_input_mutability,..} ) =&*primary_input.pat else {
+	let Pat::Ident(PatIdent {
+		ident: primary_input_ident,
+		mutability: primary_input_mutability,
+		..
+	}) = &*primary_input.pat
+	else {
 		panic!("Expected ident as primary input.");
 	};
 
@@ -232,7 +237,9 @@ fn parse_inputs(function: &ItemFn, remove_impl_node: bool) -> (&syn::PatType, Ve
 		.iter()
 		.filter(|input| !matches!(&*input.ty, Type::ImplTrait(_)) || !remove_impl_node)
 		.map(|input| {
-			let Pat::Ident(pat_ident) = &*input.pat else { panic!("Expected ident for secondary input."); };
+			let Pat::Ident(pat_ident) = &*input.pat else {
+				panic!("Expected ident for secondary input.");
+			};
 			pat_ident
 		})
 		.collect::<Vec<_>>();
@@ -261,14 +268,20 @@ fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericPara
 		.iter()
 		.zip(&node_generics)
 		.map(|(ty, name)| {
-			let GenericParam::Type(generic_ty) = name else { panic!("Expected type generic."); };
+			let GenericParam::Type(generic_ty) = name else {
+				panic!("Expected type generic.");
+			};
 			let ident = &generic_ty.ident;
 			let (lifetime, in_ty, out_ty) = match ty.clone() {
 				Type::ImplTrait(TypeImplTrait { bounds, .. }) if bounds.len() == 1 => {
-					let TypeParamBound::Trait(TraitBound { ref path, .. }) = bounds[0] else {panic!("impl Traits other then Node are not supported")};
+					let TypeParamBound::Trait(TraitBound { ref path, .. }) = bounds[0] else {
+						panic!("impl Traits other then Node are not supported")
+					};
 					let node_segment = path.segments.last().expect("Found an empty path in the impl Trait arg");
 					assert_eq!(node_segment.ident.to_string(), "Node", "Only impl Node is supported as an argument");
-					let PathArguments::AngleBracketed(AngleBracketedGenericArguments {ref args, .. }) = node_segment.arguments else { panic!("Node must have generic arguments")};
+					let PathArguments::AngleBracketed(AngleBracketedGenericArguments { ref args, .. }) = node_segment.arguments else {
+						panic!("Node must have generic arguments")
+					};
 					let mut args_iter = args.iter();
 					let lifetime = if args.len() == 2 {
 						Lifetime::new("'input", Span::call_site())
@@ -278,8 +291,12 @@ fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericPara
 						panic!("Invalid arguments for Node trait")
 					};
 
-					let Some(GenericArgument::Type(in_ty)) = args_iter.next() else { panic!("Expected type argument in Node<> declaration")};
-					let Some(GenericArgument::Binding(Binding {ty: out_ty, ..} )) = args_iter.next() else { panic!("Expected Output = in Node declaration")};
+					let Some(GenericArgument::Type(in_ty)) = args_iter.next() else {
+						panic!("Expected type argument in Node<> declaration")
+					};
+					let Some(GenericArgument::Binding(Binding { ty: out_ty, .. })) = args_iter.next() else {
+						panic!("Expected Output = in Node declaration")
+					};
 					(lifetime, in_ty.clone(), out_ty.clone())
 				}
 				ty => (

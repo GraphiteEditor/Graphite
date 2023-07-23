@@ -1051,7 +1051,11 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {tagged_value: TaggedValue::ImaginateController(ref controller),..} = controller else {
+	let &NodeInput::Value {
+		tagged_value: TaggedValue::ImaginateController(ref controller),
+		..
+	} = controller
+	else {
 		panic!("Invalid output status input")
 	};
 	let imaginate_status = controller.get_status();
@@ -1085,7 +1089,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		})
 	};
 
-	let image_controls: _ = {
+	let image_controls = {
 		let mut widgets = vec![WidgetHolder::text_widget("Image"), WidgetHolder::unrelated_separator()];
 		let assist_separators = [
 			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
