@@ -538,7 +538,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.backup(responses);
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-				let sign = if opposite_corner { -1. } else { 1. };
+				let sign = if opposite_corner { -1. } else { 1. }; // * maybe this logic needs some changing, for the top-left corner??
 
 				for path in self.selected_layers().map(|path| path.to_vec()) {
 					// Nudge translation
@@ -566,7 +566,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					};
 
 					if let Some(transform) = transform {
-						let transform_in = TransformIn::Local;
+						let transform_in = TransformIn::Viewport;
 						responses.add(GraphOperationMessage::TransformChange {
 							layer: path,
 							transform,
