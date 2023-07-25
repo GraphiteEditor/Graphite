@@ -124,7 +124,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.modify_inputs("Transform", skip_rerender, |inputs| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let to = match transform_in {
-				TransformIn::Local => DAffine2::IDENTITY,
+				// * parent_transform fixes the top left bounding box point in place
+				TransformIn::Local => parent_transform,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
