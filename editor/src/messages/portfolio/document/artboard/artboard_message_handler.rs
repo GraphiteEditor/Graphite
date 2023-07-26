@@ -61,9 +61,11 @@ impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler
 				responses.add(DocumentMessage::RenderDocument);
 			}
 			ClearArtboards => {
-				for &artboard in self.artboard_ids.iter() {
-					responses.add_front(ArtboardMessage::DeleteArtboard { artboard });
-				}
+				// TODO: Make this remove the artboard layers from the graph (and cleanly reconnect the artwork)
+				responses.add(DialogMessage::RequestComingSoonDialog { issue: None });
+				// for &artboard in self.artboard_ids.iter() {
+				// 	responses.add_front(ArtboardMessage::DeleteArtboard { artboard });
+				// }
 			}
 			DeleteArtboard { artboard } => {
 				self.artboard_ids.retain(|&id| id != artboard);
