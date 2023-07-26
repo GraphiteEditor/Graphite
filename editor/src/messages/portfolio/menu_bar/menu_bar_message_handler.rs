@@ -30,171 +30,7 @@ impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 impl PropertyHolder for MenuBarMessageHandler {
 	fn properties(&self) -> Layout {
 		let no_active_document = self.no_active_document;
-
-		// enable these only if there's an active document
-		let conditional_menu_entries = vec![
-			MenuBarEntry::new_root(
-				"Edit".into(),
-				no_active_document,
-				MenuBarEntryChildren(vec![
-					vec![
-						MenuBarEntry {
-							label: "Undo".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::Undo),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::Undo.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Redo".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::Redo),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::Redo.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![
-						MenuBarEntry {
-							label: "Cut".into(),
-							shortcut: action_keys!(PortfolioMessageDiscriminant::Cut),
-							action: MenuBarEntry::create_action(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Copy".into(),
-							icon: Some("Copy".into()),
-							shortcut: action_keys!(PortfolioMessageDiscriminant::Copy),
-							action: MenuBarEntry::create_action(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Paste".into(),
-							icon: Some("Paste".into()),
-							shortcut: action_keys!(FrontendMessageDiscriminant::TriggerPaste),
-							action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerPaste.into()),
-							..MenuBarEntry::default()
-						},
-					],
-				]),
-			),
-			MenuBarEntry::new_root(
-				"Layer".into(),
-				no_active_document,
-				MenuBarEntryChildren(vec![
-					vec![
-						MenuBarEntry {
-							label: "Select All".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::SelectAllLayers),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::SelectAllLayers.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Deselect All".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::DeselectAllLayers),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::DeselectAllLayers.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![MenuBarEntry {
-						label: "Delete Selected".into(),
-						icon: Some("Trash".into()),
-						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
-						..MenuBarEntry::default()
-					}],
-					vec![
-						MenuBarEntry {
-							label: "Grab Selected".into(),
-							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
-							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginGrab.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Rotate Selected".into(),
-							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
-							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginRotate.into()),
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Scale Selected".into(),
-							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
-							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginScale.into()),
-							..MenuBarEntry::default()
-						},
-					],
-					vec![MenuBarEntry {
-						label: "Order".into(),
-						action: MenuBarEntry::no_action(),
-						children: MenuBarEntryChildren(vec![vec![
-							MenuBarEntry {
-								label: "Raise To Front".into(),
-								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront),
-								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaiseToFront.into()),
-								..MenuBarEntry::default()
-							},
-							MenuBarEntry {
-								label: "Raise".into(),
-								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise),
-								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaise.into()),
-								..MenuBarEntry::default()
-							},
-							MenuBarEntry {
-								label: "Lower".into(),
-								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLower),
-								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLower.into()),
-								..MenuBarEntry::default()
-							},
-							MenuBarEntry {
-								label: "Lower to Back".into(),
-								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack),
-								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLowerToBack.into()),
-								..MenuBarEntry::default()
-							},
-						]]),
-						..MenuBarEntry::default()
-					}],
-				]),
-			),
-			MenuBarEntry::new_root(
-				"Document".into(),
-				no_active_document,
-				MenuBarEntryChildren(vec![vec![MenuBarEntry {
-					label: "Clear Artboards".into(),
-					action: MenuBarEntry::create_action(|_| ArtboardMessage::ClearArtboards.into()),
-					..MenuBarEntry::default()
-				}]]),
-			),
-			MenuBarEntry::new_root(
-				"View".into(),
-				no_active_document,
-				MenuBarEntryChildren(vec![vec![
-					MenuBarEntry {
-						label: "Zoom to Selected".into(),
-						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
-						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
-						..MenuBarEntry::default()
-					},
-					MenuBarEntry {
-						label: "Zoom to Fit".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
-						..MenuBarEntry::default()
-					},
-					MenuBarEntry {
-						label: "Zoom to 100%".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
-						..MenuBarEntry::default()
-					},
-					MenuBarEntry {
-						label: "Zoom to 200%".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
-						..MenuBarEntry::default()
-					},
-				]]),
-			),
-		];
-
-		let mut menu_bar_entries = vec![
+		let menu_bar_entries = vec![
 			MenuBarEntry {
 				icon: Some("GraphiteLogo".into()),
 				action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into()),
@@ -266,6 +102,186 @@ impl PropertyHolder for MenuBarMessageHandler {
 						..MenuBarEntry::default()
 					}],
 				]),
+			),
+			MenuBarEntry::new_root(
+				"Edit".into(),
+				false,
+				MenuBarEntryChildren(vec![
+					vec![
+						MenuBarEntry {
+							label: "Undo".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::Undo),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::Undo.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Redo".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::Redo),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::Redo.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![
+						MenuBarEntry {
+							label: "Cut".into(),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::Cut),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Copy".into(),
+							icon: Some("Copy".into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::Copy),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Paste".into(),
+							icon: Some("Paste".into()),
+							shortcut: action_keys!(FrontendMessageDiscriminant::TriggerPaste),
+							action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerPaste.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+				]),
+			),
+			MenuBarEntry::new_root(
+				"Layer".into(),
+				no_active_document,
+				MenuBarEntryChildren(vec![
+					vec![
+						MenuBarEntry {
+							label: "Select All".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SelectAllLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SelectAllLayers.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Deselect All".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::DeselectAllLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::DeselectAllLayers.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![MenuBarEntry {
+						label: "Delete Selected".into(),
+						icon: Some("Trash".into()),
+						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
+					vec![
+						MenuBarEntry {
+							label: "Grab Selected".into(),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
+							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginGrab.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Rotate Selected".into(),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
+							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginRotate.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Scale Selected".into(),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
+							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginScale.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![MenuBarEntry {
+						label: "Order".into(),
+						action: MenuBarEntry::no_action(),
+						disabled: no_active_document,
+						children: MenuBarEntryChildren(vec![vec![
+							MenuBarEntry {
+								label: "Raise To Front".into(),
+								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront),
+								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaiseToFront.into()),
+								disabled: no_active_document,
+								..MenuBarEntry::default()
+							},
+							MenuBarEntry {
+								label: "Raise".into(),
+								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise),
+								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaise.into()),
+								disabled: no_active_document,
+								..MenuBarEntry::default()
+							},
+							MenuBarEntry {
+								label: "Lower".into(),
+								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLower),
+								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLower.into()),
+								disabled: no_active_document,
+								..MenuBarEntry::default()
+							},
+							MenuBarEntry {
+								label: "Lower to Back".into(),
+								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack),
+								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLowerToBack.into()),
+								disabled: no_active_document,
+								..MenuBarEntry::default()
+							},
+						]]),
+						..MenuBarEntry::default()
+					}],
+				]),
+			),
+			MenuBarEntry::new_root(
+				"Document".into(),
+				no_active_document,
+				MenuBarEntryChildren(vec![vec![MenuBarEntry {
+					label: "Clear Artboards".into(),
+					action: MenuBarEntry::create_action(|_| ArtboardMessage::ClearArtboards.into()),
+					disabled: no_active_document,
+					..MenuBarEntry::default()
+				}]]),
+			),
+			MenuBarEntry::new_root(
+				"View".into(),
+				no_active_document,
+				MenuBarEntryChildren(vec![vec![
+					MenuBarEntry {
+						label: "Zoom to Selected".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					},
+					MenuBarEntry {
+						label: "Zoom to Fit".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					},
+					MenuBarEntry {
+						label: "Zoom to 100%".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					},
+					MenuBarEntry {
+						label: "Zoom to 200%".into(),
+						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					},
+				]]),
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),
@@ -348,10 +364,6 @@ impl PropertyHolder for MenuBarMessageHandler {
 				]),
 			),
 		];
-
-		if !no_active_document {
-			menu_bar_entries.splice(2..2, conditional_menu_entries);
-		}
 		Layout::MenuLayout(MenuLayout::new(menu_bar_entries))
 	}
 }
