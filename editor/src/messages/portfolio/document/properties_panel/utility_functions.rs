@@ -98,12 +98,8 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	}];
 
 	let properties_body = {
-		let LayerDataType::Shape(shape) = &layer.data else {
-			panic!("Artboards can only be shapes")
-		};
-		let Fill::Solid(color) = shape.style.fill() else {
-			panic!("Artboard must have a solid fill")
-		};
+		let LayerDataType::Shape(shape) = &layer.data else { panic!("Artboards can only be shapes") };
+		let Fill::Solid(color) = shape.style.fill() else { panic!("Artboard must have a solid fill") };
 
 		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::default(), None);
 		let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&render_data));

@@ -1,5 +1,6 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
+use crate::messages::layout::utility_types::widget_prelude::SubLayout;
 use crate::messages::portfolio::document::node_graph::FrontendGraphDataType;
 
 use graphite_proc_macros::WidgetBuilder;
@@ -48,13 +49,16 @@ pub struct PopoverButton {
 
 	pub tooltip: String,
 
+	#[serde(rename = "optionsWidget")]
+	pub options_widget: SubLayout,
+
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+#[serde(rename_all = "camelCase")]
 pub struct ParameterExposeButton {
 	pub exposed: bool,
 
@@ -74,7 +78,7 @@ pub struct ParameterExposeButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+#[serde(rename_all = "camelCase")]
 pub struct TextButton {
 	#[widget_builder(constructor)]
 	pub label: String,
@@ -101,7 +105,7 @@ pub struct TextButton {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+#[serde(rename_all = "camelCase")]
 pub struct BreadcrumbTrailButtons {
 	#[widget_builder(constructor)]
 	pub labels: Vec<String>,

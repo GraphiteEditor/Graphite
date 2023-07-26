@@ -645,7 +645,8 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
-	pub fn select_nodes(&self, nodes: Vec<u64>) {
+	pub fn select_nodes(&self, nodes: Option<Vec<u64>>) {
+		let nodes = nodes.unwrap_or_default();
 		let message = NodeGraphMessage::SelectNodes { nodes };
 		self.dispatch(message);
 	}

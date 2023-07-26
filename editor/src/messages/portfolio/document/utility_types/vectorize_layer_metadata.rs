@@ -21,5 +21,5 @@ where
 	V: Deserialize<'de>,
 {
 	let container: Vec<_> = serde::Deserialize::deserialize(deserializer)?;
-	Ok(T::from_iter(container.into_iter()))
+	Ok(T::from_iter(container))
 }

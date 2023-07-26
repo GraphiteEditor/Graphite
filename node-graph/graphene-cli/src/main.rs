@@ -1,21 +1,17 @@
 use fern::colors::{Color, ColoredLevelConfig};
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{error::Error, sync::Arc};
 
-use document_legacy::{
-	document::Document,
-	layers::layer_info::{LayerData, LayerDataType},
-};
+use document_legacy::{document::Document, layers::layer_info::LayerDataType};
 use futures::executor::block_on;
 use graph_craft::{
 	concrete,
-	document::{value::TaggedValue, *},
+	document::*,
 	graphene_compiler::{Compiler, Executor},
 	imaginate_input::ImaginatePreferences,
 	NodeIdentifier, Type, TypeDescriptor,
 };
 use graphene_core::{
-	application_io::{self, ApplicationIo, NodeGraphUpdateSender},
-	raster::ImageFrame,
+	application_io::{ApplicationIo, NodeGraphUpdateSender},
 	text::FontCache,
 	Cow,
 };
@@ -63,12 +59,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	loop {
 		//println!("executing");
-		let result = (&executor).execute(editor_api.clone()).await?;
+		let _result = (&executor).execute(editor_api.clone()).await?;
 		//println!("result: {:?}", result);
 		std::thread::sleep(std::time::Duration::from_millis(16));
 	}
-
-	Ok(())
 }
 
 fn init_logging() {
@@ -94,50 +88,15 @@ fn init_logging() {
 fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
 	let document = serde_json::from_value::<Document>(document["document_legacy"].clone()).expect("Failed to parse document");
-	let Some(LayerDataType::Layer(ref node_graph)) = document.root.iter().find(|layer| matches!(layer.data, LayerDataType::Layer(_))).map(|x|&x.data) else { panic!("failed to extract node graph from docmuent") };
+	let Some(LayerDataType::Layer(ref node_graph)) = document.root.iter().find(|layer| matches!(layer.data, LayerDataType::Layer(_))).map(|x| &x.data) else {
+		panic!("failed to extract node graph from docmuent")
+	};
 	let network = &node_graph.network;
 	let wrapped_network = wrap_network_in_scope(network.clone());
 	let compiler = Compiler {};
 	let protograph = compiler.compile_single(wrapped_network, true)?;
 	let executor = block_on(DynamicExecutor::new(protograph))?;
 	Ok(executor)
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[tokio::test]
-	#[cfg_attr(not(feature = "wayland"), ignore)]
-	async fn grays_scale() {
-		let document_string = include_str!("../test_files/gray.graphite");
-		let executor = create_executor(document_string.to_string()).unwrap();
-		let editor_api = WasmEditorApi {
-			image_frame: None,
-			font_cache: &FontCache::default(),
-			application_io: &block_on(WasmApplicationIo::new()),
-			node_graph_message_sender: &UpdateLogger {},
-			imaginate_preferences: &ImaginatePreferences::default(),
-		};
-		let result = (&executor).execute(editor_api.clone()).await.unwrap();
-		println!("result: {:?}", result);
-	}
-
-	#[tokio::test]
-	#[cfg_attr(not(feature = "wayland"), ignore)]
-	async fn hue() {
-		let document_string = include_str!("../test_files/hue.graphite");
-		let executor = create_executor(document_string.to_string()).unwrap();
-		let editor_api = WasmEditorApi {
-			image_frame: None,
-			font_cache: &FontCache::default(),
-			application_io: &block_on(WasmApplicationIo::new()),
-			node_graph_message_sender: &UpdateLogger {},
-			imaginate_preferences: &ImaginatePreferences::default(),
-		};
-		let result = (&executor).execute(editor_api.clone()).await.unwrap();
-		println!("result: {:?}", result);
-	}
 }
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
@@ -230,5 +189,42 @@ fn begin_scope() -> DocumentNode {
 		}),
 		inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 		..Default::default()
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[tokio::test]
+	#[cfg_attr(not(feature = "wayland"), ignore)]
+	async fn grays_scale() {
+		let document_string = include_str!("../test_files/gray.graphite");
+		let executor = create_executor(document_string.to_string()).unwrap();
+		let editor_api = WasmEditorApi {
+			image_frame: None,
+			font_cache: &FontCache::default(),
+			application_io: &block_on(WasmApplicationIo::new()),
+			node_graph_message_sender: &UpdateLogger {},
+			imaginate_preferences: &ImaginatePreferences::default(),
+		};
+		let result = (&executor).execute(editor_api.clone()).await.unwrap();
+		println!("result: {:?}", result);
+	}
+
+	#[tokio::test]
+	#[cfg_attr(not(feature = "wayland"), ignore)]
+	async fn hue() {
+		let document_string = include_str!("../test_files/hue.graphite");
+		let executor = create_executor(document_string.to_string()).unwrap();
+		let editor_api = WasmEditorApi {
+			image_frame: None,
+			font_cache: &FontCache::default(),
+			application_io: &block_on(WasmApplicationIo::new()),
+			node_graph_message_sender: &UpdateLogger {},
+			imaginate_preferences: &ImaginatePreferences::default(),
+		};
+		let result = (&executor).execute(editor_api.clone()).await.unwrap();
+		println!("result: {:?}", result);
 	}
 }

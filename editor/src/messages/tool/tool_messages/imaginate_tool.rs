@@ -114,7 +114,7 @@ impl Fsm for ImaginateToolFsmState {
 		use ImaginateToolFsmState::*;
 		use ImaginateToolMessage::*;
 
-		let mut shape_data = &mut tool_data.data;
+		let shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Imaginate(event) = event {
 			match (self, event) {

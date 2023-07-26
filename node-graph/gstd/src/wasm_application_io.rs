@@ -1,23 +1,27 @@
-use std::any::Any;
 use std::cell::RefCell;
 
 use core::future::Future;
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
 use graphene_core::Color;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
 };
+#[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
-use wasm_bindgen::{Clamped, JsCast, JsValue};
-use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
+use wasm_bindgen::{Clamped, JsCast};
+#[cfg(target_arch = "wasm32")]
+use web_sys::window;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
@@ -25,6 +29,7 @@ pub struct Canvas(CanvasRenderingContext2d);
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
+	#[cfg(target_arch = "wasm32")]
 	ids: RefCell<u64>,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
@@ -36,6 +41,7 @@ pub struct WasmApplicationIo {
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
 		let mut io = Self {
+			#[cfg(target_arch = "wasm32")]
 			ids: RefCell::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: WgpuExecutor::new().await,
@@ -161,7 +167,7 @@ impl ApplicationIo for WasmApplicationIo {
 		self.gpu_executor.as_ref()
 	}
 
-	fn load_resource(&self, url: impl AsRef<str>) -> Result<Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>, ApplicationError> {
+	fn load_resource(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError> {
 		let url = url::Url::parse(url.as_ref()).map_err(|_| ApplicationError::InvalidUrl)?;
 		log::info!("Loading resource: {:?}", url);
 		match url.scheme() {
@@ -223,7 +229,7 @@ async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_ha
 		canvas.set_height(image.image.height);
 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from ImageData (lives on cpu)
 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width as u32, image.image.height as u32).expect("Failed to construct ImageData");
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
 		context.put_image_data(&image_data, 0.0, 0.0).unwrap();
 	}
 	SurfaceHandleFrame {

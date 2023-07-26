@@ -86,7 +86,7 @@ pub fn downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a>) -> Result<B
 	let type_id = DynAny::type_id(i.as_ref());
 	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type
-		let ptr = Box::into_raw(i) as *mut dyn DynAny<'a> as *mut V;
+		let ptr = Box::into_raw(i) as *mut V;
 		Ok(unsafe { Box::from_raw(ptr) })
 	} else {
 		if type_id == core::any::TypeId::of::<&dyn DynAny<'static>>() {

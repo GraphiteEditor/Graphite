@@ -315,7 +315,11 @@ impl BrushToolData {
 		for (node, _node_id) in network.primary_flow() {
 			if node.name == "Brush" {
 				let points_input = node.inputs.get(2)?;
-				let NodeInput::Value { tagged_value: TaggedValue::BrushStrokes(strokes), .. } = points_input else {
+				let NodeInput::Value {
+					tagged_value: TaggedValue::BrushStrokes(strokes),
+					..
+				} = points_input
+				else {
 					continue;
 				};
 				self.strokes = strokes.clone();

@@ -24,6 +24,6 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 ] }
 specta.workspace = true
 serde = { version = "1.0", features = ["derive"] }
-base64 = "0.13"
-glam = { version = "0.22", features = ["serde"] }
-rustybuzz = "0.6.0"
+base64 = "0.21"
+glam = { version = "0.24", features = ["serde"] }
+rustybuzz = "0.8"

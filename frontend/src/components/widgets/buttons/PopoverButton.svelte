@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { IconName } from "@graphite/utility-functions/icons";
-
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -8,6 +7,7 @@
 	export let icon: IconName = "DropdownArrow";
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
+
 	// Callbacks
 	export let action: (() => void) | undefined = undefined;
 
@@ -21,6 +21,7 @@
 
 <LayoutRow class="popover-button">
 	<IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
+
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} type="Popover" direction="Bottom">
 		<slot />
 	</FloatingMenu>

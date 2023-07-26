@@ -18,8 +18,8 @@ num-traits = "0.2"
 dyn-clone = "1.0"
 log = "0.4"
 serde = { version = "1", features = ["derive", "rc"], optional = true }
-glam = { version = "0.22" }
-base64 = "0.13"
+glam = { version = "0.24" }
+base64 = "0.21"
 bezier-rs = { path = "../../libraries/bezier-rs", features = ["dyn-any"] }
 specta.workspace = true
 
