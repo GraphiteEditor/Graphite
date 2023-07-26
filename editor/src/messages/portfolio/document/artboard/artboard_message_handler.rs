@@ -80,11 +80,13 @@ impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler
 					responses.add(FrontendMessage::UpdateDocumentArtboards {
 						svg: r##"<rect width="100%" height="100%" fill="#ffffff" />"##.to_string(),
 					})
-				} else {
-					let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
-					responses.add(FrontendMessage::UpdateDocumentArtboards {
-						svg: self.artboards_document.render_root(&render_data),
-					});
+					// TODO: Delete this whole legacy code path when cleaning up/removing the old (non-node based) artboard implementation
+					// TODO: The below code was used to draw the non-node based artboards, but we still need the above code to draw the infinite canvas until the refactor is complete and all this code can be removed
+					// } else {
+					// 	let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
+					// 	responses.add(FrontendMessage::UpdateDocumentArtboards {
+					// 		svg: self.artboards_document.render_root(&render_data),
+					// 	});
 				}
 			}
 			ResizeArtboard { artboard, position, mut size } => {

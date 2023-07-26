@@ -465,9 +465,9 @@
 						/>
 					{/if}
 					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasContainer} data-canvas>
-						<!-- <svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
-						</svg> -->
+						</svg>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							<g id="transform-group" transform={artworkTransform}>
 								{@html nodeRenderSvg}
