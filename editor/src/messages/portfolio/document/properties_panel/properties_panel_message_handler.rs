@@ -24,6 +24,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 		use PropertiesPanelMessage::*;
 
 		let PropertiesPanelMessageHandlerData {
+			document_name,
 			artwork_document,
 			artboard_document,
 			selected_layers,
@@ -151,7 +152,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 						executor,
 						network: &artwork_document.document_network,
 					};
-					register_document_graph_properties(context, node_graph_message_handler);
+					register_document_graph_properties(context, node_graph_message_handler, document_name);
 				}
 			}
 			UpdateSelectedDocumentProperties => responses.add(PropertiesPanelMessage::SetActiveLayers {

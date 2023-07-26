@@ -283,16 +283,16 @@ struct ExecutionContext {
 
 impl Default for NodeGraphExecutor {
 	fn default() -> Self {
-		let (request_sender, request_reciever) = std::sync::mpsc::channel();
-		let (response_sender, response_reciever) = std::sync::mpsc::channel();
+		let (request_sender, request_receiver) = std::sync::mpsc::channel();
+		let (response_sender, response_receiver) = std::sync::mpsc::channel();
 		NODE_RUNTIME.with(|runtime| {
-			runtime.borrow_mut().replace(NodeRuntime::new(request_reciever, response_sender));
+			runtime.borrow_mut().replace(NodeRuntime::new(request_receiver, response_sender));
 		});
 
 		Self {
 			futures: Default::default(),
 			sender: request_sender,
-			receiver: response_reciever,
+			receiver: response_receiver,
 			last_output_type: Default::default(),
 			thumbnails: Default::default(),
 		}
