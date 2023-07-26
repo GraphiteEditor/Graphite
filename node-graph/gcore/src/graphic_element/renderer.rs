@@ -159,10 +159,10 @@ impl GraphicElementRendered for Artboard {
 			"text",
 			|attributes| {
 				attributes.push("class", "artboard-label");
-				attributes.push("fill", format!("#{}", self.background.rgba_hex()));
+				attributes.push("fill", "white");
 				attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
-				attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 3).to_string());
-				attributes.push("font-size", "25px");
+				attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 4).to_string());
+				attributes.push("font-size", "14px");
 			},
 			|render| {
 				render.svg.push("Artboard");
