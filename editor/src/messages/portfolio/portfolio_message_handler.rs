@@ -467,6 +467,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			PortfolioMessage::SetActiveDocument { document_id } => {
 				self.active_document_id = Some(document_id);
