@@ -32,17 +32,7 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
 					self.viewport_bounds = bounds;
 
-					responses.add(Operation::TransformLayer {
-						path: vec![],
-						transform: glam::DAffine2::from_translation(translation).to_cols_array(),
-					});
-					responses.add(DocumentMessage::Artboard(
-						Operation::TransformLayer {
-							path: vec![],
-							transform: glam::DAffine2::from_translation(translation).to_cols_array(),
-						}
-						.into(),
-					));
+					responses.add(NavigationMessage::TranslateCanvas { delta: DVec2::ZERO });
 					responses.add(FrontendMessage::TriggerViewportResize);
 				}
 			}

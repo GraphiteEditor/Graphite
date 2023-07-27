@@ -18,6 +18,8 @@
 		UpdateDocumentScrollbars,
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
+		UpdateDocumentNodeRender,
+		UpdateDocumentTransform,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -58,8 +60,10 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
+	let nodeRenderSvg = "";
 	let artboardSvg = "";
 	let overlaysSvg = "";
+	let artworkTransform = "";
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -140,10 +144,19 @@
 	export function updateDocumentOverlays(svg: string) {
 		overlaysSvg = svg;
 	}
-
+	
 	export function updateDocumentArtboards(svg: string) {
 		artboardSvg = svg;
 		rasterizedCanvas = undefined;
+	}
+
+	export function updateDocumentNodeRender(svg: string) {
+		nodeRenderSvg = svg;
+		rasterizedCanvas = undefined;
+	}
+
+	export function updateDocumentTransform(transform: string) {
+		artworkTransform = transform;
 	}
 
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
@@ -335,6 +348,16 @@
 
 			updateDocumentArtboards(data.svg);
 		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentNodeRender, async (data) => {
+			await tick();
+
+			updateDocumentNodeRender(data.svg);
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentTransform, async (data) => {
+			await tick();
+
+			updateDocumentTransform(data.transform);
+		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
 
@@ -444,6 +467,11 @@
 					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasContainer} data-canvas>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
+						</svg>
+						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+							<g id="transform-group" transform={artworkTransform}>
+								{@html nodeRenderSvg}
+							</g>
 						</svg>
 						<svg class="artwork" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}

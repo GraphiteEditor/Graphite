@@ -539,7 +539,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: ImageFrame<Color>, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::GraphicGroup, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::Artboard, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
-		register_node!(graphene_core::ConstructArtboardNode<_, _, _>, input: graphene_core::GraphicGroup, params: [glam::IVec2, glam::IVec2, Color]),
+		register_node!(graphene_core::ConstructArtboardNode<_, _, _, _>, input: graphene_core::GraphicGroup, params: [glam::IVec2, glam::IVec2, Color, bool]),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {
