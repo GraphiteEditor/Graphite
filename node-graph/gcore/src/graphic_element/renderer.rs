@@ -254,12 +254,6 @@ impl From<String> for SvgSegment {
 	}
 }
 
-// impl<T: ToString> From<T> for SvgSegment {
-// 	default fn from(value: T) -> Self {
-// 		Self::String(value.to_string())
-// 	}
-// }
-
 impl From<&'static str> for SvgSegment {
 	fn from(value: &'static str) -> Self {
 		Self::Slice(value)

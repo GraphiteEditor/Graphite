@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
@@ -15,10 +13,12 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
-use glam::DAffine2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
+
+use glam::DAffine2;
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {

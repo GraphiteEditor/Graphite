@@ -5,8 +5,9 @@ use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInp
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
-use glam::{IVec2, UVec2};
 use graphene_core::uuid::generate_uuid;
+
+use glam::{IVec2, UVec2};
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]

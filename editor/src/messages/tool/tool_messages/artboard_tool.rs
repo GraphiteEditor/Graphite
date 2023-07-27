@@ -133,10 +133,6 @@ impl Fsm for ArtboardToolFsmState {
 							tool_data.bounding_box_overlays = Some(bounding_box_overlays);
 
 							responses.add(OverlaysMessage::Rerender);
-							// responses.add(PropertiesPanelMessage::SetActiveLayers {
-							// 	paths: vec![vec![tool_data.selected_artboard.unwrap()]],
-							// 	document: TargetDocument::Artboard,
-							// });
 						}
 						_ => {}
 					};
@@ -195,11 +191,6 @@ impl Fsm for ArtboardToolFsmState {
 								.snap_manager
 								.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), render_data), true, true);
 							tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-
-							// responses.add(PropertiesPanelMessage::SetActiveLayers {
-							// 	paths: vec![intersection.clone()],
-							// 	document: TargetDocument::Artboard,
-							// });
 
 							ArtboardToolFsmState::Dragging
 						} else {
@@ -326,10 +317,6 @@ impl Fsm for ArtboardToolFsmState {
 
 					// Have to put message here instead of when Artboard is created
 					// This might result in a few more calls but it is not reliant on the order of messages
-					// responses.add(PropertiesPanelMessage::SetActiveLayers {
-					// 	paths: vec![vec![tool_data.selected_artboard.unwrap()]],
-					// 	document: TargetDocument::Artboard,
-					// });
 
 					responses.add(BroadcastEvent::DocumentIsDirty);
 
