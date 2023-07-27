@@ -247,7 +247,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
 			PortfolioMessage::ImaginateServerHostname => {
-				info!("setting imaginate persistent data");
+				debug!("setting imaginate persistent data");
 				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}
 			PortfolioMessage::Import => {

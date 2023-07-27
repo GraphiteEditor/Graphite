@@ -52,7 +52,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	fn locate_layer(&mut self, mut id: NodeId) -> Option<NodeId> {
 		while self.network.nodes.get(&id)?.name != "Layer" {
-			info!("Name {}", self.network.nodes.get(&id)?.name);
+			debug!("Name {}", self.network.nodes.get(&id)?.name);
 			id = self.outwards_links.get(&id)?.first().copied()?;
 		}
 		self.layer_node = Some(id);
@@ -108,11 +108,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut current_node = output_node_id;
 		let mut input_index = 0;
 		let mut current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
-		info!("Got input");
+		debug!("Got input");
 
 		while let NodeInput::Node { node_id, output_index, .. } = current_input {
 			let mut sibling_node = &self.network.nodes.get(node_id)?;
-			info!("Sibling {}", sibling_node.name);
+			debug!("Sibling {}", sibling_node.name);
 			if sibling_node.name == "Layer" {
 				current_node = *node_id;
 				input_index = 7;
@@ -125,10 +125,10 @@ impl<'a> ModifyInputsContext<'a> {
 				current_node = node_id;
 				input_index = 7;
 				current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
-				info!("Fini insert");
+				debug!("Fini insert");
 			}
 		}
-		info!("Insert layer below");
+		debug!("Insert layer below");
 
 		let layer_node = resolve_document_node_type("Layer").expect("Node").to_document_node_default_inputs([], Default::default());
 		let layer_node = self.insert_node_before(new_id, current_node, input_index, layer_node, IVec2::new(0, 3))?;
@@ -479,7 +479,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
-				info!("Gen artboard");
+				debug!("Gen artboard");
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}

@@ -214,7 +214,7 @@ impl NodeRuntime {
 			graphic_group.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
 			render.format_svg(min, max);
-			info!("SVG {}", render.svg);
+			debug!("SVG {}", render.svg);
 
 			if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_path.get(node_path.len() - 2).copied()) {
 				let old_thumbnail = self.thumbnails.entry(layer_id).or_default().entry(node_id).or_default();
@@ -489,11 +489,11 @@ impl NodeGraphExecutor {
 				}
 			}
 			TaggedValue::Artboard(artboard) => {
-				info!("{artboard:#?}");
+				debug!("{artboard:#?}");
 				return Err("Artboard (see console)".to_string());
 			}
 			TaggedValue::GraphicGroup(graphic_group) => {
-				info!("{graphic_group:#?}");
+				debug!("{graphic_group:#?}");
 				use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, SvgRender};
 
 				// Setup rendering
@@ -511,7 +511,7 @@ impl NodeGraphExecutor {
 				write!(svg, "{}", render.svg).unwrap();
 
 				// Send to frontend
-				info!("SVG {svg}");
+				debug!("SVG {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				return Err("Graphic group (see console)".to_string());

@@ -843,7 +843,7 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			log::info!("extraction network: {:#?}", &self);
+			log::debug!("extraction network: {:#?}", &self);
 			if let DocumentNodeImplementation::Extract = node.implementation {
 				assert_eq!(node.inputs.len(), 1);
 				log::debug!("Resolving extract node {:?}", node);
