@@ -64,6 +64,9 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				}
 			}
 			ClearSelection => {
+				// This causes the Properties panel to change, so this needs to happen before the following lines clear the Properties panel
+				responses.add(NodeGraphMessage::CloseNodeGraph);
+
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 					layout_target: LayoutTarget::PropertiesOptions,
@@ -72,7 +75,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 					layout_target: LayoutTarget::PropertiesSections,
 				});
-				responses.add(NodeGraphMessage::CloseNodeGraph);
 				self.active_selection = None;
 			}
 			Deactivate => responses.add(BroadcastMessage::UnsubscribeEvent {

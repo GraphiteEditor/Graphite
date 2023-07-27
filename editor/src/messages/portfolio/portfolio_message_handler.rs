@@ -115,12 +115,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
+				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
 				responses.add(DocumentMessage::RenderDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
+
 				if let Some(document) = self.active_document() {
 					for layer in document.layer_metadata.keys() {
 						responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() });
