@@ -503,7 +503,7 @@ impl NodeGraphExecutor {
 				// Render svg
 				graphic_group.render_svg(&mut render, &render_params);
 
-				// Concatinate the defs and the svg into one string
+				// Conctenate the defs and the svg into one string
 				let mut svg = "<defs>".to_string();
 				svg.push_str(&render.svg_defs);
 				svg.push_str("</defs>");
@@ -511,7 +511,6 @@ impl NodeGraphExecutor {
 				write!(svg, "{}", render.svg).unwrap();
 
 				// Send to frontend
-				debug!("SVG {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				return Err("Graphic group (see console)".to_string());
