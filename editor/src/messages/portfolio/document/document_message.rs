@@ -124,6 +124,9 @@ pub enum DocumentMessage {
 		mouse: Option<(f64, f64)>,
 	},
 	Redo,
+	RenameDocument {
+		new_name: String,
+	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
 		new_name: String,

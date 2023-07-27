@@ -1623,5 +1623,8 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
 	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);
 	let background = color_widget(document_node, node_id, 3, "Background", ColorInput::default().allow_none(false), true);
-	vec![location, dimensions, background]
+	let clip = LayoutGroup::Row {
+		widgets: bool_widget(document_node, node_id, 4, "Clip", true),
+	};
+	vec![location, dimensions, background, clip]
 }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
@@ -18,6 +16,9 @@ use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
+
+use glam::DAffine2;
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
@@ -114,12 +115,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
+				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
 				responses.add(DocumentMessage::RenderDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
+
 				if let Some(document) = self.active_document() {
 					for layer in document.layer_metadata.keys() {
 						responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() });
@@ -246,7 +248,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
 			PortfolioMessage::ImaginateServerHostname => {
-				info!("setting imaginate persistent data");
+				debug!("setting imaginate persistent data");
 				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}
 			PortfolioMessage::Import => {
@@ -466,6 +468,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			PortfolioMessage::SetActiveDocument { document_id } => {
 				self.active_document_id = Some(document_id);
@@ -664,7 +667,8 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		self.executor.poll_node_graph_evaluation(responses).unwrap_or_else(|e| {
+		let transform = self.active_document().map(|document| document.document_legacy.root.transform).unwrap_or(DAffine2::IDENTITY);
+		self.executor.poll_node_graph_evaluation(transform, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {}", e);
 		});
 	}

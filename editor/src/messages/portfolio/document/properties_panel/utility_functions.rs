@@ -78,19 +78,14 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				..Default::default()
 			})),
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Artboard".into(),
-				..TextLabel::default()
-			})),
-			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
+				value: layer.name.clone().unwrap_or_else(|| "Untitled Artboard".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Options Bar".into(),
+				header: "Additional Options".into(),
 				text: "Coming soon".into(),
 				..Default::default()
 			})),
@@ -261,22 +256,14 @@ pub fn register_artwork_layer_properties(
 				})),
 			},
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: match &layer.data {
-					LayerDataType::Layer(_) => "Layer".into(),
-					other => LayerDataTypeDiscriminant::from(other).to_string(),
-				},
-				..TextLabel::default()
-			})),
-			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
+				value: layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
 			WidgetHolder::related_separator(),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Options Bar".into(),
+				header: "Additional Options".into(),
 				text: "Coming soon".into(),
 				..Default::default()
 			})),
@@ -326,18 +313,18 @@ pub fn register_artwork_layer_properties(
 	});
 }
 
-pub fn register_document_graph_properties(mut context: NodePropertiesContext, node_graph_message_handler: &NodeGraphMessageHandler) {
+pub fn register_document_graph_properties(mut context: NodePropertiesContext, node_graph_message_handler: &NodeGraphMessageHandler, document_name: &str) {
 	let mut properties_sections = Vec::new();
 	node_graph_message_handler.collate_properties(&mut context, &mut properties_sections);
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
-			IconLabel::new("File").widget_holder(),
+			IconLabel::new("File").tooltip("Document").widget_holder(),
 			WidgetHolder::unrelated_separator(),
-			TextLabel::new("Document graph").widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			TextInput::new("No layer selected").disabled(true).widget_holder(),
+			TextInput::new(document_name)
+				.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
+				.widget_holder(),
 			WidgetHolder::related_separator(),
-			PopoverButton::new("Options Bar", "Coming soon").widget_holder(),
+			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),
 		],
 	}];
 

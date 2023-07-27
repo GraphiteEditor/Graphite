@@ -24,6 +24,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 		use PropertiesPanelMessage::*;
 
 		let PropertiesPanelMessageHandlerData {
+			document_name,
 			artwork_document,
 			artboard_document,
 			selected_layers,
@@ -63,6 +64,9 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				}
 			}
 			ClearSelection => {
+				// This causes the Properties panel to change, so this needs to happen before the following lines clear the Properties panel
+				responses.add(NodeGraphMessage::CloseNodeGraph);
+
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 					layout_target: LayoutTarget::PropertiesOptions,
@@ -71,7 +75,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 					layout_target: LayoutTarget::PropertiesSections,
 				});
-				responses.add(NodeGraphMessage::CloseNodeGraph);
 				self.active_selection = None;
 			}
 			Deactivate => responses.add(BroadcastMessage::UnsubscribeEvent {
@@ -151,7 +154,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 						executor,
 						network: &artwork_document.document_network,
 					};
-					register_document_graph_properties(context, node_graph_message_handler);
+					register_document_graph_properties(context, node_graph_message_handler, document_name);
 				}
 			}
 			UpdateSelectedDocumentProperties => responses.add(PropertiesPanelMessage::SetActiveLayers {

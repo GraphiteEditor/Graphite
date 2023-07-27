@@ -169,7 +169,7 @@ impl ApplicationIo for WasmApplicationIo {
 
 	fn load_resource(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError> {
 		let url = url::Url::parse(url.as_ref()).map_err(|_| ApplicationError::InvalidUrl)?;
-		log::info!("Loading resource: {:?}", url);
+		log::trace!("Loading resource: {:?}", url);
 		match url.scheme() {
 			#[cfg(feature = "tokio")]
 			"file" => {
@@ -196,7 +196,7 @@ impl ApplicationIo for WasmApplicationIo {
 			"graphite" => {
 				let path = url.path();
 				let path = path.to_owned();
-				log::info!("Loading resource: {}", path);
+				log::trace!("Loading local resource: {}", path);
 				let data = self.resources.get(&path).ok_or(ApplicationError::NotFound)?.clone();
 				Ok(Box::pin(async move { Ok(data.clone()) }) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
 			}
