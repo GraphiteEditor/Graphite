@@ -209,7 +209,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor, document_id));
+				self.node_graph_handler
+					.process_message(message, responses, (&mut self.document_legacy, executor, document_id, self.name.as_str()));
 			}
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
@@ -663,6 +664,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			RenameDocument { new_name } => {
 				self.name = new_name;
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {

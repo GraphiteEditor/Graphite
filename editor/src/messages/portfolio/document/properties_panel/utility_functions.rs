@@ -78,13 +78,8 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				..Default::default()
 			})),
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Artboard".into(),
-				..TextLabel::default()
-			})),
-			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
+				value: layer.name.clone().unwrap_or_else(|| "Untitled Artboard".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
@@ -261,16 +256,8 @@ pub fn register_artwork_layer_properties(
 				})),
 			},
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: match &layer.data {
-					LayerDataType::Layer(_) => "Layer".into(),
-					other => LayerDataTypeDiscriminant::from(other).to_string(),
-				},
-				..TextLabel::default()
-			})),
-			WidgetHolder::unrelated_separator(),
 			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: layer.name.clone().unwrap_or_else(|| "Untitled".to_string()),
+				value: layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()),
 				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
 				..Default::default()
 			})),
@@ -331,9 +318,7 @@ pub fn register_document_graph_properties(mut context: NodePropertiesContext, no
 	node_graph_message_handler.collate_properties(&mut context, &mut properties_sections);
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
-			IconLabel::new("File").widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			TextLabel::new("Document").widget_holder(),
+			IconLabel::new("File").tooltip("Document").widget_holder(),
 			WidgetHolder::unrelated_separator(),
 			TextInput::new(document_name)
 				.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())

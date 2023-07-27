@@ -41,6 +41,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 		}
 
