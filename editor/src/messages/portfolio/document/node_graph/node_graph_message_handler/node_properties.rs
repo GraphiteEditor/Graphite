@@ -952,18 +952,22 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
 
 		if let NodeInput::Value {
-			tagged_value: TaggedValue::F64(val),
+			tagged_value: TaggedValue::F32(val),
 			exposed: false,
 		} = document_node.inputs[index]
 		{
 			widgets.extend_from_slice(&[
 				WidgetHolder::unrelated_separator(),
-				NumberInput::new(Some(val.to_degrees()))
+				NumberInput::new(Some(val.to_degrees().into()))
 					.unit("°")
 					.mode(NumberInputMode::Range)
 					.range_min(Some(-180.))
 					.range_max(Some(180.))
-					.on_update(update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()), node_id, index))
+					.on_update(update_value(
+						|number_input: &NumberInput| TaggedValue::F32((number_input.value.unwrap() as f32).to_radians()),
+						node_id,
+						index,
+					))
 					.widget_holder(),
 			]);
 		}
