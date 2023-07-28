@@ -20,12 +20,12 @@ jobs:
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: 🔧 Set up Node
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v3
       with:
-        node-version: '16.x'
+        node-version: '16'
 
     - name: 🚧 Install Node dependencies
       run: |
