@@ -964,10 +964,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					.range_min(Some(-180.))
 					.range_max(Some(180.))
 					.on_update(update_value(
-						|number_input: &NumberInput| {
-							let value = number_input.value.unwrap() as f32;
-							TaggedValue::F32(value.to_radians())
-						},
+						|number_input: &NumberInput| TaggedValue::F32((number_input.value.unwrap() as f32).to_radians()),
 						node_id,
 						index,
 					))
