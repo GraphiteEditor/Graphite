@@ -76,8 +76,12 @@ pub struct DocumentMessageHandler {
 
 impl Default for DocumentMessageHandler {
 	fn default() -> Self {
+		let document_legacy = DocumentLegacy {
+			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
+			..Default::default()
+		};
 		Self {
-			document_legacy: DocumentLegacy::default(),
+			document_legacy,
 			saved_document_identifier: 0,
 			auto_saved_document_identifier: 0,
 			name: String::from("Untitled Document"),

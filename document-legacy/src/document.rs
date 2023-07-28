@@ -28,6 +28,8 @@ pub struct Document {
 	pub state_identifier: DefaultHasher,
 	#[serde(default)]
 	pub document_network: graph_craft::document::NodeNetwork,
+	#[serde(default)]
+	pub commit_hash: String,
 }
 
 impl PartialEq for Document {
@@ -54,6 +56,7 @@ impl Default for Document {
 				network.push_node(node, false);
 				network
 			},
+			commit_hash: String::new(),
 		}
 	}
 }
