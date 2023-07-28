@@ -110,7 +110,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 		..Default::default()
 	};
 
-	buffer::CpuAccessibleBuffer::from_iter(alloc, buffer_usage, false, data.into_iter())
+	buffer::CpuAccessibleBuffer::from_iter(alloc, buffer_usage, false, data)
 }
 
 // TODO: Fix this test

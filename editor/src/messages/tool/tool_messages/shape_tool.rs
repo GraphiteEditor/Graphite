@@ -250,7 +250,7 @@ impl Fsm for ShapeToolFsmState {
 		use ShapeToolFsmState::*;
 		use ShapeToolMessage::*;
 
-		let mut shape_data = &mut tool_data.data;
+		let shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Shape(event) = event {
 			match (self, event) {

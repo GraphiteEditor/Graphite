@@ -403,7 +403,7 @@ impl Document {
 	}
 
 	pub fn mark_downstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
-		let mut layer = self.layer_mut(path)?;
+		let layer = self.layer_mut(path)?;
 		layer.cache_dirty = true;
 
 		let mut path = path.to_vec();
@@ -739,7 +739,9 @@ impl Document {
 						let mut old_to_new_layer_id: HashMap<LayerId, LayerId> = HashMap::new();
 
 						for (i, duplicate_layer) in duplicated_layers.into_iter().enumerate() {
-							let Some(old_layer_id) = duplicate_layer.last().cloned() else { continue; };
+							let Some(old_layer_id) = duplicate_layer.last().cloned() else {
+								continue;
+							};
 
 							// Iterate through each ID of the current duplicate layer
 							// If the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one
@@ -922,7 +924,7 @@ impl Document {
 			}
 			Operation::SetLayerName { path, name } => {
 				self.mark_as_dirty(&path)?;
-				let mut layer = self.layer_mut(&path)?;
+				let layer = self.layer_mut(&path)?;
 				layer.name = if name.as_str() == "" { None } else { Some(name) };
 
 				Some(vec![LayerChanged { path }])

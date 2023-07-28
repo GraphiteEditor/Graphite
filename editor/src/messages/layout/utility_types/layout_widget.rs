@@ -221,7 +221,7 @@ impl WidgetLayout {
 			return;
 		}
 		// Diff all of the children
-		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout.into_iter()).enumerate() {
+		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout).enumerate() {
 			widget_path.push(index);
 			current_child.diff(new_child, widget_path, widget_diffs);
 			widget_path.pop();
@@ -241,6 +241,12 @@ impl<'a> Iterator for WidgetIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(item) = self.current_slice.and_then(|slice| slice.first()) {
 			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
+
+			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = item {
+				self.stack.extend(p.options_widget.iter());
+				return self.next();
+			}
+
 			return Some(item);
 		}
 
@@ -276,6 +282,12 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some((first, rest)) = self.current_slice.take().and_then(|slice| slice.split_first_mut()) {
 			self.current_slice = Some(rest);
+
+			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = first {
+				self.stack.extend(p.options_widget.iter_mut());
+				return self.next();
+			}
+
 			return Some(first);
 		};
 
@@ -382,7 +394,7 @@ impl LayoutGroup {
 					return;
 				}
 				// Diff all of the children
-				for (index, (current_child, new_child)) in current_widgets.iter_mut().zip(new_widgets.into_iter()).enumerate() {
+				for (index, (current_child, new_child)) in current_widgets.iter_mut().zip(new_widgets).enumerate() {
 					widget_path.push(index);
 					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();
@@ -409,7 +421,7 @@ impl LayoutGroup {
 					return;
 				}
 				// Diff all of the children
-				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout.into_iter()).enumerate() {
+				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout).enumerate() {
 					widget_path.push(index);
 					current_child.diff(new_child, widget_path, widget_diffs);
 					widget_path.pop();

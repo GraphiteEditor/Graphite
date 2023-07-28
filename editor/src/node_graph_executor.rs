@@ -157,7 +157,7 @@ impl NodeRuntime {
 		let editor_api = WasmEditorApi {
 			font_cache: &self.font_cache,
 			image_frame,
-			application_io: &self.wasm_io.as_ref().unwrap(),
+			application_io: self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			imaginate_preferences: &self.imaginate_preferences,
 		};
@@ -185,7 +185,9 @@ impl NodeRuntime {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
 			if let Some(old_id) = old_id {
 				if old_id != surface_id {
-					self.wasm_io.as_ref().map(|io| io.destroy_surface(old_id));
+					if let Some(io) = self.wasm_io.as_ref() {
+						io.destroy_surface(old_id)
+					}
 				}
 			}
 		}
@@ -212,7 +214,7 @@ impl NodeRuntime {
 			graphic_group.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
 			render.format_svg(min, max);
-			info!("SVG {}", render.svg);
+			debug!("SVG {}", render.svg);
 
 			if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_path.get(node_path.len() - 2).copied()) {
 				let old_thumbnail = self.thumbnails.entry(layer_id).or_default().entry(node_id).or_default();
@@ -281,16 +283,16 @@ struct ExecutionContext {
 
 impl Default for NodeGraphExecutor {
 	fn default() -> Self {
-		let (request_sender, request_reciever) = std::sync::mpsc::channel();
-		let (response_sender, response_reciever) = std::sync::mpsc::channel();
+		let (request_sender, request_receiver) = std::sync::mpsc::channel();
+		let (response_sender, response_receiver) = std::sync::mpsc::channel();
 		NODE_RUNTIME.with(|runtime| {
-			runtime.borrow_mut().replace(NodeRuntime::new(request_reciever, response_sender));
+			runtime.borrow_mut().replace(NodeRuntime::new(request_receiver, response_sender));
 		});
 
 		Self {
 			futures: Default::default(),
 			sender: request_sender,
-			receiver: response_reciever,
+			receiver: response_receiver,
 			last_output_type: Default::default(),
 			thumbnails: Default::default(),
 		}
@@ -338,8 +340,10 @@ impl NodeGraphExecutor {
 		extract_data: F2,
 	) -> Option<U> {
 		let wrapping_document_node = network.nodes.get(node_path.last()?)?;
-		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else { return None; };
-		let introspection_node = find_node(&wrapped_network)?;
+		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else {
+			return None;
+		};
+		let introspection_node = find_node(wrapped_network)?;
 		let introspection = self.introspect_node(&[node_path, &[introspection_node]].concat())?;
 		let downcasted: &T = <dyn std::any::Any>::downcast_ref(introspection.as_ref())?;
 		Some(extract_data(downcasted))
@@ -419,7 +423,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
 			match response {
@@ -433,7 +437,7 @@ impl NodeGraphExecutor {
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
-					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
+					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses, execution_context.document_id)?;
 					responses.add(DocumentMessage::LayerChanged {
 						affected_layer_path: execution_context.layer_path,
 					});
@@ -452,7 +456,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
 			TaggedValue::VectorData(vector_data) => {
@@ -485,11 +489,30 @@ impl NodeGraphExecutor {
 				}
 			}
 			TaggedValue::Artboard(artboard) => {
-				info!("{artboard:#?}");
+				debug!("{artboard:#?}");
 				return Err("Artboard (see console)".to_string());
 			}
 			TaggedValue::GraphicGroup(graphic_group) => {
-				info!("{graphic_group:#?}");
+				debug!("{graphic_group:#?}");
+				use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, SvgRender};
+
+				// Setup rendering
+				let mut render = SvgRender::new();
+				let render_params = RenderParams::new(ViewMode::Normal, None, false);
+
+				// Render svg
+				graphic_group.render_svg(&mut render, &render_params);
+
+				// Conctenate the defs and the svg into one string
+				let mut svg = "<defs>".to_string();
+				svg.push_str(&render.svg_defs);
+				svg.push_str("</defs>");
+				use std::fmt::Write;
+				write!(svg, "{}", render.svg).unwrap();
+
+				// Send to frontend
+				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+
 				return Err("Graphic group (see console)".to_string());
 			}
 			_ => {

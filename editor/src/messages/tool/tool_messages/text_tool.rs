@@ -299,9 +299,27 @@ impl TextToolData {
 	}
 
 	fn extract_text_node_inputs(node: &DocumentNode) -> Option<(&String, &Font, f64)> {
-		let NodeInput::Value { tagged_value: TaggedValue::String(text), .. } = &node.inputs[1] else { return None; };
-		let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = &node.inputs[2] else { return None; };
-		let NodeInput::Value { tagged_value: TaggedValue::F64(font_size), .. } = &node.inputs[3] else { return None; };
+		let NodeInput::Value {
+			tagged_value: TaggedValue::String(text),
+			..
+		} = &node.inputs[1]
+		else {
+			return None;
+		};
+		let NodeInput::Value {
+			tagged_value: TaggedValue::Font(font),
+			..
+		} = &node.inputs[2]
+		else {
+			return None;
+		};
+		let NodeInput::Value {
+			tagged_value: TaggedValue::F64(font_size),
+			..
+		} = &node.inputs[3]
+		else {
+			return None;
+		};
 		Some((text, font, *font_size))
 	}
 
@@ -456,7 +474,9 @@ fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {
 }
 
 fn is_text_layer(document: &DocumentMessageHandler, layer_path: &[LayerId]) -> bool {
-	let Some(network) = get_network(layer_path, document) else { return false; };
+	let Some(network) = get_network(layer_path, document) else {
+		return false;
+	};
 	get_text_node_id(network).is_some()
 }
 

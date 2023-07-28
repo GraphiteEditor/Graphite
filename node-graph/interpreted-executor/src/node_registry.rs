@@ -1,4 +1,4 @@
-use graph_craft::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdNode;
 use graphene_core::quantization::{PackedPixel, QuantizationChannels};
@@ -464,7 +464,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 			(
 				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
-				|args: Vec<Arc<graph_craft::proto::NodeContainer>>| {
+				|args: Vec<graph_craft::proto::SharedNodeContainer>| {
 					Box::pin(async move {
 						use graphene_std::raster::ImaginateNode;
 						macro_rules! instanciate_imaginate_node {
@@ -539,7 +539,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: ImageFrame<Color>, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::GraphicGroup, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::Artboard, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
-		register_node!(graphene_core::ConstructArtboardNode<_, _, _>, input: graphene_core::GraphicGroup, params: [glam::IVec2, glam::IVec2, Color]),
+		register_node!(graphene_core::ConstructArtboardNode<_, _, _, _>, input: graphene_core::GraphicGroup, params: [glam::IVec2, glam::IVec2, Color, bool]),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {
