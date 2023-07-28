@@ -19,7 +19,7 @@ jobs:
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: 🔧 Clear wasm-bindgen cache
       run: rm -r ~/.cache/.wasm-pack
@@ -40,9 +40,9 @@ jobs:
           ---
     
     - name: 🔧 Set up Node
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v3
       with:
-        node-version: '16.x'
+        node-version: '16'
 
     - name: 🚧 Install Node dependencies
       run: |
@@ -114,7 +114,7 @@ jobs:
         #  runs-on: self-hosted
         #
         #  steps:
-        #  - uses: actions/checkout@v2
+        #  - uses: actions/checkout@v3
         #
         #  - name: 🧪 Run Rust miri
         #    run: |
@@ -133,7 +133,7 @@ jobs:
     continue-on-error: ${{ matrix.checks == 'crate security advisories' }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - uses: EmbarkStudios/cargo-deny-action@v1
       if: matrix.checks == 'crate security advisories'
