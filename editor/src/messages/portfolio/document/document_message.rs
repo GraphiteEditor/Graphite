@@ -124,6 +124,9 @@ pub enum DocumentMessage {
 		mouse: Option<(f64, f64)>,
 	},
 	Redo,
+	RenameDocument {
+		new_name: String,
+	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
 		new_name: String,
@@ -171,7 +174,9 @@ pub enum DocumentMessage {
 		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},
 	SetSnapping {
-		snap: bool,
+		snapping_enabled: Option<bool>,
+		bounding_box_snapping: Option<bool>,
+		node_snapping: Option<bool>,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

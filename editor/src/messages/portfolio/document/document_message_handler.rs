@@ -1,5 +1,5 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::DocumentRenderMode;
+use super::utility_types::misc::{DocumentRenderMode, SnappingOptions, SnappingState};
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::frontend::utility_types::ExportBounds;
@@ -7,6 +7,7 @@ use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::{CheckboxInput, TextLabel};
 use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
 use crate::messages::layout::utility_types::widgets::input_widgets::{
 	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
@@ -48,7 +49,8 @@ pub struct DocumentMessageHandler {
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
-	pub snapping_enabled: bool,
+	#[serde(skip)]
+	pub snapping_state: SnappingState,
 	pub overlays_visible: bool,
 
 	#[serde(skip)]
@@ -83,7 +85,7 @@ impl Default for DocumentMessageHandler {
 
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			snapping_enabled: true,
+			snapping_state: SnappingState::default(),
 			overlays_visible: true,
 
 			document_undo_history: VecDeque::new(),
@@ -195,6 +197,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
+					document_name: &self.name.as_str(),
 					artwork_document: &self.document_legacy,
 					artboard_document: &self.artboard_message_handler.artboards_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
@@ -206,7 +209,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor, document_id));
+				self.node_graph_handler
+					.process_message(message, responses, (&mut self.document_legacy, executor, document_id, self.name.as_str()));
 			}
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
@@ -657,6 +661,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(RenderDocument);
 				responses.add(FolderChanged { affected_folder_path: vec![] });
 			}
+			RenameDocument { new_name } => {
+				self.name = new_name;
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+			}
 			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
 				responses.add(FrontendMessage::UpdateDocumentArtwork {
@@ -845,8 +854,20 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let additional_layers = replacement_selected_layers;
 				responses.add_front(AddSelectedLayers { additional_layers });
 			}
-			SetSnapping { snap } => {
-				self.snapping_enabled = snap;
+			SetSnapping {
+				snapping_enabled,
+				bounding_box_snapping,
+				node_snapping,
+			} => {
+				if let Some(state) = snapping_enabled {
+					self.snapping_state.snapping_enabled = state
+				};
+				if let Some(state) = bounding_box_snapping {
+					self.snapping_state.bounding_box_snapping = state
+				}
+				if let Some(state) = node_snapping {
+					self.snapping_state.node_snapping = state
+				};
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1082,6 +1103,7 @@ impl DocumentMessageHandler {
 		let starting_root_transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document.document_legacy.root.transform = starting_root_transform;
 		document.artboard_message_handler.artboards_document.root.transform = starting_root_transform;
+
 		document
 	}
 
@@ -1553,17 +1575,88 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
 			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: self.snapping_enabled,
+				checked: snapping_state.snapping_enabled,
 				icon: "Snapping".into(),
 				tooltip: "Snapping".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
+				on_update: WidgetCallback::new(move |optional_input: &OptionalInput| {
+					let snapping_enabled = optional_input.checked;
+					DocumentMessage::SetSnapping {
+						snapping_enabled: Some(snapping_enabled),
+						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
+						node_snapping: Some(snapping_state.node_snapping),
+					}
+					.into()
+				}),
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
 				header: "Snapping".into(),
-				text: "Coming soon".into(),
+				text: "Select the vectors to snap to.".into(), // TODO: check whether this is an apt description
+				options_widget: vec![
+					LayoutGroup::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+								tooltip: SnappingOptions::BoundingBoxes.to_string(),
+								checked: snapping_state.bounding_box_snapping,
+								on_update: WidgetCallback::new(move |input: &CheckboxInput| {
+									DocumentMessage::SetSnapping {
+										snapping_enabled: None,
+										bounding_box_snapping: Some(input.checked),
+										node_snapping: None,
+									}
+									.into()
+								}),
+								..Default::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								direction: SeparatorDirection::Horizontal,
+								separator_type: SeparatorType::Unrelated,
+							})),
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: SnappingOptions::BoundingBoxes.to_string(),
+								table_align: false,
+								min_width: 60,
+								..Default::default()
+							})),
+							// adds appropriate space between row elements
+							WidgetHolder::new(Widget::Separator(Separator {
+								direction: SeparatorDirection::Vertical,
+								separator_type: SeparatorType::Related,
+							})),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+								checked: self.snapping_state.node_snapping,
+								tooltip: SnappingOptions::Points.to_string(),
+								on_update: WidgetCallback::new(|input: &CheckboxInput| {
+									DocumentMessage::SetSnapping {
+										snapping_enabled: None,
+										bounding_box_snapping: None,
+										node_snapping: Some(input.checked),
+									}
+									.into()
+								}),
+								..Default::default()
+							})),
+							WidgetHolder::new(Widget::Separator(Separator {
+								direction: SeparatorDirection::Horizontal,
+								separator_type: SeparatorType::Unrelated,
+							})),
+							WidgetHolder::new(Widget::TextLabel(TextLabel {
+								value: SnappingOptions::Points.to_string(),
+								table_align: false,
+								min_width: 60,
+								..Default::default()
+							})),
+						],
+					},
+				],
+
 				..Default::default()
 			})),
 			WidgetHolder::new(Widget::Separator(Separator {

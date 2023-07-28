@@ -21,6 +21,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: 🔧 Clear wasm-bindgen cache
+      run: rm -r ~/.cache/.wasm-pack
+
     - name: Comment deploy start
       if: github.event_name != 'push'
       uses: mshick/add-pr-comment@v2

@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
-use std::sync::Arc;
 
 use std::hash::Hash;
 use xxhash_rust::xxh3::Xxh3;
@@ -19,13 +18,16 @@ pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
+// TODO: is this safe? This is assumed to be send+sync.
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
 pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<Arc<NodeContainer>>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type SharedNodeContainer = std::rc::Rc<NodeContainer>;
+
+pub type NodeConstructor = for<'a> fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -64,9 +66,9 @@ impl core::fmt::Debug for NodeContainer {
 }
 
 impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> Arc<Self> {
+	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
 		let node = Box::leak(node);
-		Arc::new(Self { node })
+		Self { node }.into()
 	}
 
 	#[cfg(feature = "dealloc_nodes")]
@@ -89,7 +91,7 @@ impl core::fmt::Display for ProtoNetwork {
 		f.write_str("Proto Network with nodes: ")?;
 		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
 			f.write_str(&"\t".repeat(indent))?;
-			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else {
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)| *node_id == id) else {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;

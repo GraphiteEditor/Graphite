@@ -150,6 +150,9 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateDocumentNodeRender {
+		svg: String,
+	},
 	UpdateDocumentOverlays {
 		svg: String,
 	},
@@ -162,6 +165,9 @@ pub enum FrontendMessage {
 		position: (f64, f64),
 		size: (f64, f64),
 		multiplier: (f64, f64),
+	},
+	UpdateDocumentTransform {
+		transform: String,
 	},
 	UpdateEyedropperSamplingState {
 		#[serde(rename = "mousePosition")]

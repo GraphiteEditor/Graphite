@@ -111,7 +111,7 @@ impl DocumentNode {
 		P: Fn(String, usize) -> Option<NodeInput>,
 	{
 		for (index, input) in self.inputs.iter_mut().enumerate() {
-			let &mut NodeInput::Node{node_id: id, output_index, lambda} = input else {
+			let &mut NodeInput::Node { node_id: id, output_index, lambda } = input else {
 				continue;
 			};
 			if let Some(&new_id) = new_ids.get(&id) {
@@ -496,30 +496,15 @@ impl NodeNetwork {
 	///
 	/// Used for the properties panel and tools.
 	pub fn primary_flow(&self) -> impl Iterator<Item = (&DocumentNode, u64)> {
-		struct FlowIter<'a> {
-			stack: Vec<NodeId>,
-			network: &'a NodeNetwork,
-		}
-		impl<'a> Iterator for FlowIter<'a> {
-			type Item = (&'a DocumentNode, NodeId);
-			fn next(&mut self) -> Option<Self::Item> {
-				loop {
-					let node_id = self.stack.pop()?;
-					if let Some(document_node) = self.network.nodes.get(&node_id) {
-						self.stack.extend(
-							document_node
-						.inputs
-						.iter()
-						.take(1) // Only show the primary input
-						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
-						);
-						return Some((document_node, node_id));
-					};
-				}
-			}
-		}
 		FlowIter {
 			stack: self.outputs.iter().map(|output| output.node_id).collect(),
+			network: self,
+		}
+	}
+
+	pub fn primary_flow_from_opt(&self, id: Option<NodeId>) -> impl Iterator<Item = (&DocumentNode, u64)> {
+		FlowIter {
+			stack: id.map_or_else(|| self.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
 			network: self,
 		}
 	}
@@ -538,7 +523,7 @@ impl NodeNetwork {
 		while !dependencies.is_empty() {
 			let Some((&disconnected, _)) = dependencies.iter().find(|(_, l)| l.is_empty()) else {
 				error!("Dependencies {dependencies:?}");
-				return false
+				return false;
 			};
 			dependencies.remove(&disconnected);
 			for connections in dependencies.values_mut() {
@@ -546,6 +531,29 @@ impl NodeNetwork {
 			}
 		}
 		true
+	}
+}
+
+struct FlowIter<'a> {
+	stack: Vec<NodeId>,
+	network: &'a NodeNetwork,
+}
+impl<'a> Iterator for FlowIter<'a> {
+	type Item = (&'a DocumentNode, NodeId);
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			let node_id = self.stack.pop()?;
+			if let Some(document_node) = self.network.nodes.get(&node_id) {
+				self.stack.extend(
+					document_node
+						.inputs
+						.iter()
+						.take(1) // Only show the primary input
+						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
+				);
+				return Some((document_node, node_id));
+			};
+		}
 	}
 }
 
@@ -655,12 +663,10 @@ impl NodeNetwork {
 	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		self.resolve_extract_nodes();
-		let Some((id, mut node)) = self
-			.nodes
-			.remove_entry(&node) else {
-				warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
-				return;
-			};
+		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
+			warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
+			return;
+		};
 
 		if self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
@@ -837,7 +843,7 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			log::info!("extraction network: {:#?}", &self);
+			log::debug!("extraction network: {:#?}", &self);
 			if let DocumentNodeImplementation::Extract = node.implementation {
 				assert_eq!(node.inputs.len(), 1);
 				log::debug!("Resolving extract node {:?}", node);
