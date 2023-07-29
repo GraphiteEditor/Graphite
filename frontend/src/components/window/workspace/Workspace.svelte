@@ -125,7 +125,7 @@
 			</LayoutRow>
 			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
-				<Panel panelType="LayerTree" tabLabels={[{ name: "Layer Tree" }]} tabActiveIndex={0} />
+				<Panel panelType="LayerTree" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>

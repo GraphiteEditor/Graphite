@@ -26,13 +26,13 @@ Work in progress.
 		- Origin
 		- Transform
 		- Node-specific properties
-	- Layer Tree
+	- Layers
 		- Interface
 		- Compositing flow
 		- Groups
 		- Masks
 		- Isolation
-	- Layer Graph
+	- Graph
 		- Interface
 		- Layer/node equivalence
 		- Compositing flow

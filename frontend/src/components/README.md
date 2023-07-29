@@ -12,7 +12,7 @@ Useful containers that control the flow of content held within.
 
 ## Panels: `panels/`
 
-The dockable tabbed regions like the Document, Properties, Layer Tree, and Node Graph panels.
+The dockable tabbed regions like the Document, Properties, Layers, and Node Graph panels.
 
 ## Widgets: `widgets/`
 
