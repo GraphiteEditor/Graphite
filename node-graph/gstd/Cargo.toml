@@ -48,9 +48,6 @@ dyn-clone = "1.0"
 
 log = "0.4"
 bezier-rs = { path = "../../libraries/bezier-rs", features = ["serde"] }
-kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
-	"serde",
-] }
 glam = { version = "0.24", features = ["serde"] }
 node-macro = { path = "../node-macro" }
 xxhash-rust = { workspace = true }
