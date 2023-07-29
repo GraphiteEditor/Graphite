@@ -456,7 +456,7 @@ macro_rules! generate_imaginate_node {
 				use std::hash::Hasher;
 				use xxhash_rust::xxh3::Xxh3;
 				let mut hasher = Xxh3::new();
-				frame.hash(&mut hasher);
+				frame.image.hash(&mut hasher);
 				let hash =hasher.finish();
 
 				Box::pin(async move {
