@@ -1,11 +1,5 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{DocumentToolData, EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
-use serde::{Deserialize, Serialize};
+use super::tool_prelude::*;
+use crate::messages::tool::utility_types::DocumentToolData;
 
 #[derive(Default)]
 pub struct EyedropperTool {
@@ -87,58 +81,49 @@ impl Fsm for EyedropperToolFsmState {
 	type ToolData = EyedropperToolData;
 	type ToolOptions = ();
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		_tool_data: &mut Self::ToolData,
-		ToolActionHandlerData { global_tool_data, input, .. }: &mut ToolActionHandlerData,
-		_tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use EyedropperToolFsmState::*;
-		use EyedropperToolMessage::*;
+	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData { global_tool_data, input, .. } = tool_action_data;
 
-		if let ToolMessage::Eyedropper(event) = event {
-			match (self, event) {
-				// Ready -> Sampling
-				(Ready, mouse_down) | (Ready, mouse_down) if mouse_down == LeftPointerDown || mouse_down == RightPointerDown => {
-					update_cursor_preview(responses, input, global_tool_data, None);
+		let ToolMessage::Eyedropper(event) = event else{
+			return self;
+		};
+		match (self, event) {
+			// Ready -> Sampling
+			(EyedropperToolFsmState::Ready, mouse_down) if matches!(mouse_down, EyedropperToolMessage::LeftPointerDown | EyedropperToolMessage::RightPointerDown) => {
+				update_cursor_preview(responses, input, global_tool_data, None);
 
-					if mouse_down == LeftPointerDown {
-						SamplingPrimary
-					} else {
-						SamplingSecondary
-					}
+				if mouse_down == EyedropperToolMessage::LeftPointerDown {
+					EyedropperToolFsmState::SamplingPrimary
+				} else {
+					EyedropperToolFsmState::SamplingSecondary
 				}
-				// Sampling -> Sampling
-				(SamplingPrimary, PointerMove) | (SamplingSecondary, PointerMove) => {
-					if input.viewport_bounds.in_bounds(input.mouse.position) {
-						update_cursor_preview(responses, input, global_tool_data, None);
-					} else {
-						disable_cursor_preview(responses);
-					}
-
-					self
-				}
-				// Sampling -> Ready
-				(SamplingPrimary, mouse_up) | (SamplingSecondary, mouse_up) if mouse_up == LeftPointerUp || mouse_up == RightPointerUp => {
-					let set_color_choice = if self == SamplingPrimary { "Primary".to_string() } else { "Secondary".to_string() };
-					update_cursor_preview(responses, input, global_tool_data, Some(set_color_choice));
-					disable_cursor_preview(responses);
-
-					Ready
-				}
-				// Any -> Ready
-				(_, Abort) => {
-					disable_cursor_preview(responses);
-
-					Ready
-				}
-				// Ready -> Ready
-				_ => self,
 			}
-		} else {
-			self
+			// Sampling -> Sampling
+			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
+				if input.viewport_bounds.in_bounds(input.mouse.position) {
+					update_cursor_preview(responses, input, global_tool_data, None);
+				} else {
+					disable_cursor_preview(responses);
+				}
+
+				self
+			}
+			// Sampling -> Ready
+			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::LeftPointerUp) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::RightPointerUp) => {
+				let set_color_choice = if self == EyedropperToolFsmState::SamplingPrimary { "Primary" } else { "Secondary" }.to_string();
+				update_cursor_preview(responses, input, global_tool_data, Some(set_color_choice));
+				disable_cursor_preview(responses);
+
+				EyedropperToolFsmState::Ready
+			}
+			// Any -> Ready
+			(_, EyedropperToolMessage::Abort) => {
+				disable_cursor_preview(responses);
+
+				EyedropperToolFsmState::Ready
+			}
+			// Ready -> Ready
+			_ => self,
 		}
 	}
 

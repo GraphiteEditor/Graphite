@@ -1,17 +1,9 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
+use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::PathOutline;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::Operation;
-
-use glam::DAffine2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct FrameTool {
@@ -107,79 +99,70 @@ impl Fsm for NodeGraphToolFsmState {
 	type ToolData = NodeGraphToolData;
 	type ToolOptions = ();
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData { document, input, render_data, .. }: &mut ToolActionHandlerData,
-		_tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use FrameToolMessage::*;
-		use NodeGraphToolFsmState::*;
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData { document, input, render_data, .. } = tool_action_data;
 
 		let shape_data = &mut tool_data.data;
 
-		if let ToolMessage::Frame(event) = event {
-			match (self, event) {
-				(_, DocumentIsDirty | SelectionChanged) => {
-					tool_data.path_outlines.clear_selected(responses);
-					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+		let ToolMessage::Frame(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(_, FrameToolMessage::DocumentIsDirty | FrameToolMessage::SelectionChanged) => {
+				tool_data.path_outlines.clear_selected(responses);
+				tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
 
-					self
-				}
-				(Ready, DragStart) => {
-					tool_data.path_outlines.clear_selected(responses);
-
-					shape_data.start(responses, document, input, render_data);
-					responses.add(DocumentMessage::StartTransaction);
-					shape_data.path = Some(document.get_path_for_new_layer());
-					responses.add(DocumentMessage::DeselectAllLayers);
-
-					let network = node_graph::new_image_network(8, 0);
-
-					responses.add(Operation::AddFrame {
-						path: shape_data.path.clone().unwrap(),
-						insert_index: -1,
-						transform: DAffine2::ZERO.to_cols_array(),
-						network,
-					});
-
-					Drawing
-				}
-				(state, Resize { center, lock_ratio }) => {
-					let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
-					responses.try_add(message);
-
-					state
-				}
-				(Drawing, DragStop) => {
-					if let Some(layer_path) = &shape_data.path {
-						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
-					}
-
-					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					shape_data.cleanup(responses);
-
-					Ready
-				}
-				(Drawing, Abort) => {
-					responses.add(DocumentMessage::AbortTransaction);
-
-					shape_data.cleanup(responses);
-					tool_data.path_outlines.clear_selected(responses);
-
-					Ready
-				}
-				(_, Abort) => {
-					tool_data.path_outlines.clear_selected(responses);
-
-					Ready
-				}
-				_ => self,
+				self
 			}
-		} else {
-			self
+			(NodeGraphToolFsmState::Ready, FrameToolMessage::DragStart) => {
+				tool_data.path_outlines.clear_selected(responses);
+
+				shape_data.start(responses, document, input, render_data);
+				responses.add(DocumentMessage::StartTransaction);
+				shape_data.path = Some(document.get_path_for_new_layer());
+				responses.add(DocumentMessage::DeselectAllLayers);
+
+				let network = node_graph::new_image_network(8, 0);
+
+				responses.add(Operation::AddFrame {
+					path: shape_data.path.clone().unwrap(),
+					insert_index: -1,
+					transform: DAffine2::ZERO.to_cols_array(),
+					network,
+				});
+
+				NodeGraphToolFsmState::Drawing
+			}
+			(state, FrameToolMessage::Resize { center, lock_ratio }) => {
+				let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
+				responses.try_add(message);
+
+				state
+			}
+			(NodeGraphToolFsmState::Drawing, FrameToolMessage::DragStop) => {
+				if let Some(layer_path) = &shape_data.path {
+					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
+				}
+
+				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
+				shape_data.cleanup(responses);
+
+				NodeGraphToolFsmState::Ready
+			}
+			(NodeGraphToolFsmState::Drawing, FrameToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				shape_data.cleanup(responses);
+				tool_data.path_outlines.clear_selected(responses);
+
+				NodeGraphToolFsmState::Ready
+			}
+			(_, FrameToolMessage::Abort) => {
+				tool_data.path_outlines.clear_selected(responses);
+
+				NodeGraphToolFsmState::Ready
+			}
+			_ => self,
 		}
 	}
 

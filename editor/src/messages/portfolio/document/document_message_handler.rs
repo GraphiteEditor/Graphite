@@ -18,8 +18,9 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::blend_mode::BlendMode;
-use document_legacy::layers::folder_layer::FolderLayer;
+
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
@@ -211,7 +212,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses,
 					NodeGraphHandlerData {
 						document: &mut self.document_legacy,
-						executor,
 						document_id,
 						document_name: self.name.as_str(),
 						input: ipp,
@@ -315,6 +315,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			DeleteLayer { layer_path } => {
 				responses.add_front(DocumentOperation::DeleteLayer { path: layer_path.clone() });
+				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
 				responses.add_front(BroadcastEvent::ToolAbort);
 				responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path });
 			}
@@ -938,6 +939,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 				responses.add(DocumentMessage::CommitTransaction);
 			}
+			UpdateDocumentTransform { transform } => {
+				self.document_legacy.metadata.document_to_viewport = transform;
+				let transform = graphene_core::renderer::format_transform_matrix(transform);
+				responses.add(FrontendMessage::UpdateDocumentTransform { transform });
+			}
 			UpdateLayerMetadata { layer_path, layer_metadata } => {
 				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
@@ -997,6 +1003,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
+	pub fn network(&self) -> &NodeNetwork {
+		&self.document_legacy.document_network
+	}
 	pub fn rasterize_region_below_layer(&mut self, document_id: u64, layer_path: Vec<LayerId>, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		// Prepare the node graph input image
 
@@ -1117,7 +1126,7 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler) -> Self {
 		let mut document = Self { name, ..Self::default() };
 		let starting_root_transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
-		document.document_legacy.root.transform = starting_root_transform;
+		document.document_legacy.metadata.document_to_viewport = starting_root_transform;
 		document.artboard_message_handler.artboards_document.root.transform = starting_root_transform;
 
 		document
@@ -1221,13 +1230,14 @@ impl DocumentMessageHandler {
 			)
 	}
 
-	fn serialize_structure(&self, folder: &FolderLayer, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
+	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		for (id, layer) in folder.layer_ids.iter().zip(folder.layers()).rev() {
-			data.push(*id);
+		for layer_node in folder.children(&self.document_legacy.metadata) {
+			data.push(layer_node.to_node());
+			info!("Pushed child");
 			space += 1;
-			if let LayerDataType::Folder(ref folder) = layer.data {
-				path.push(*id);
+			if layer_node.has_children(&self.document_legacy.metadata) {
+				path.push(layer_node.to_node());
 				if self.layer_metadata(path).expanded {
 					structure.push(space);
 					self.serialize_structure(folder, structure, data, path);
@@ -1273,7 +1283,7 @@ impl DocumentMessageHandler {
 	/// ```
 	pub fn serialize_root(&self) -> Vec<u64> {
 		let (mut structure, mut data) = (vec![0], Vec::new());
-		self.serialize_structure(self.document_legacy.root.as_folder().unwrap(), &mut structure, &mut data, &mut vec![]);
+		self.serialize_structure(self.document_legacy.metadata.root(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
 		structure.extend(data);
 

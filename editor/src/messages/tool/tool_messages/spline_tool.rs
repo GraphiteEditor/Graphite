@@ -1,20 +1,12 @@
+use super::tool_prelude::*;
 use crate::consts::DRAG_THRESHOLD;
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::{LayerId, Operation};
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
-
-use glam::DVec2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct SplineTool {
@@ -128,33 +120,31 @@ impl LayoutHolder for SplineTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message {
-			match action {
-				SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				SplineOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				SplineOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				SplineOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				SplineOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				SplineOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			SplineOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			SplineOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			SplineOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			SplineOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			SplineOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -219,86 +209,85 @@ impl Fsm for SplineToolFsmState {
 		use SplineToolFsmState::*;
 		use SplineToolMessage::*;
 
-		let transform = document.document_legacy.root.transform;
+		let transform = document.document_legacy.metadata.document_to_viewport;
 
-		if let ToolMessage::Spline(event) = event {
-			match (self, event) {
-				(_, CanvasTransformed) => {
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
-					self
-				}
-				(Ready, DragStart) => {
-					responses.add(DocumentMessage::StartTransaction);
-					responses.add(DocumentMessage::DeselectAllLayers);
-					tool_data.path = Some(document.get_path_for_new_layer());
-
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-
-					let pos = transform.inverse().transform_point2(snapped_position);
-
-					tool_data.points.push(pos);
-					tool_data.next_point = pos;
-
-					tool_data.weight = tool_options.line_weight;
-
-					add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
-
-					Drawing
-				}
-				(Drawing, DragStop) => {
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					let pos = transform.inverse().transform_point2(snapped_position);
-
-					if let Some(last_pos) = tool_data.points.last() {
-						if last_pos.distance(pos) > DRAG_THRESHOLD {
-							tool_data.points.push(pos);
-							tool_data.next_point = pos;
-						}
-					}
-
-					responses.add(remove_preview(tool_data));
-					add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
-
-					Drawing
-				}
-				(Drawing, PointerMove) => {
-					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					let pos = transform.inverse().transform_point2(snapped_position);
-					tool_data.next_point = pos;
-
-					responses.add(remove_preview(tool_data));
-					add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
-
-					Drawing
-				}
-				(Drawing, Confirm) | (Drawing, Abort) => {
-					if tool_data.points.len() >= 2 {
-						responses.add(remove_preview(tool_data));
-						add_spline(tool_data, false, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
-						responses.add(DocumentMessage::CommitTransaction);
-					} else {
-						responses.add(DocumentMessage::AbortTransaction);
-					}
-
-					tool_data.path = None;
-					tool_data.points.clear();
-					tool_data.snap_manager.cleanup(responses);
-
-					Ready
-				}
-				(_, WorkingColorChanged) => {
-					responses.add(SplineToolMessage::UpdateOptions(SplineOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+		let ToolMessage::Spline(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(_, CanvasTransformed) => {
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				self
 			}
-		} else {
-			self
+			(Ready, DragStart) => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::DeselectAllLayers);
+				tool_data.path = Some(document.get_path_for_new_layer());
+
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+
+				let pos = transform.inverse().transform_point2(snapped_position);
+
+				tool_data.points.push(pos);
+				tool_data.next_point = pos;
+
+				tool_data.weight = tool_options.line_weight;
+
+				add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+
+				Drawing
+			}
+			(Drawing, DragStop) => {
+				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let pos = transform.inverse().transform_point2(snapped_position);
+
+				if let Some(last_pos) = tool_data.points.last() {
+					if last_pos.distance(pos) > DRAG_THRESHOLD {
+						tool_data.points.push(pos);
+						tool_data.next_point = pos;
+					}
+				}
+
+				responses.add(remove_preview(tool_data));
+				add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+
+				Drawing
+			}
+			(Drawing, PointerMove) => {
+				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let pos = transform.inverse().transform_point2(snapped_position);
+				tool_data.next_point = pos;
+
+				responses.add(remove_preview(tool_data));
+				add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+
+				Drawing
+			}
+			(Drawing, Confirm) | (Drawing, Abort) => {
+				if tool_data.points.len() >= 2 {
+					responses.add(remove_preview(tool_data));
+					add_spline(tool_data, false, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+					responses.add(DocumentMessage::CommitTransaction);
+				} else {
+					responses.add(DocumentMessage::AbortTransaction);
+				}
+
+				tool_data.path = None;
+				tool_data.points.clear();
+				tool_data.snap_manager.cleanup(responses);
+
+				Ready
+			}
+			(_, WorkingColorChanged) => {
+				responses.add(SplineToolMessage::UpdateOptions(SplineOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 

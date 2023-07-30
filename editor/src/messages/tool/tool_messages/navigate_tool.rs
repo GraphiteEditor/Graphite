@@ -1,12 +1,4 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
-use glam::DVec2;
-use serde::{Deserialize, Serialize};
+use super::tool_prelude::*;
 
 #[derive(Default)]
 pub struct NavigateTool {
@@ -112,59 +104,57 @@ impl Fsm for NavigateToolFsmState {
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		if let ToolMessage::Navigate(navigate) = message {
-			use NavigateToolMessage::*;
+		let ToolMessage::Navigate(navigate) = message else{
+			return self;
+		};
 
-			match navigate {
-				ClickZoom { zoom_in } => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
+		match navigate {
+			NavigateToolMessage::ClickZoom { zoom_in } => {
+				responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 
-					// Mouse has not moved from pointerdown to pointerup
-					if tool_data.drag_start == input.mouse.position {
-						responses.add_front(if zoom_in {
-							NavigationMessage::IncreaseCanvasZoom { center_on_mouse: true }
-						} else {
-							NavigationMessage::DecreaseCanvasZoom { center_on_mouse: true }
-						});
-					}
-
-					NavigateToolFsmState::Ready
-				}
-				PointerMove { snap_angle, snap_zoom } => {
-					responses.add_front(NavigationMessage::PointerMove {
-						snap_angle,
-						wait_for_snap_angle_release: false,
-						snap_zoom,
-						zoom_from_viewport: Some(tool_data.drag_start),
+				// Mouse has not moved from pointerdown to pointerup
+				if tool_data.drag_start == input.mouse.position {
+					responses.add_front(if zoom_in {
+						NavigationMessage::IncreaseCanvasZoom { center_on_mouse: true }
+					} else {
+						NavigationMessage::DecreaseCanvasZoom { center_on_mouse: true }
 					});
-					self
 				}
-				TranslateCanvasBegin => {
-					tool_data.drag_start = input.mouse.position;
-					responses.add_front(NavigationMessage::TranslateCanvasBegin);
-					NavigateToolFsmState::Panning
-				}
-				RotateCanvasBegin => {
-					tool_data.drag_start = input.mouse.position;
-					responses.add_front(NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false });
-					NavigateToolFsmState::Tilting
-				}
-				ZoomCanvasBegin => {
-					tool_data.drag_start = input.mouse.position;
-					responses.add_front(NavigationMessage::ZoomCanvasBegin);
-					NavigateToolFsmState::Zooming
-				}
-				TransformCanvasEnd => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
-					NavigateToolFsmState::Ready
-				}
-				Abort => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
-					NavigateToolFsmState::Ready
-				}
+
+				NavigateToolFsmState::Ready
 			}
-		} else {
-			self
+			NavigateToolMessage::PointerMove { snap_angle, snap_zoom } => {
+				responses.add_front(NavigationMessage::PointerMove {
+					snap_angle,
+					wait_for_snap_angle_release: false,
+					snap_zoom,
+					zoom_from_viewport: Some(tool_data.drag_start),
+				});
+				self
+			}
+			NavigateToolMessage::TranslateCanvasBegin => {
+				tool_data.drag_start = input.mouse.position;
+				responses.add_front(NavigationMessage::TranslateCanvasBegin);
+				NavigateToolFsmState::Panning
+			}
+			NavigateToolMessage::RotateCanvasBegin => {
+				tool_data.drag_start = input.mouse.position;
+				responses.add_front(NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false });
+				NavigateToolFsmState::Tilting
+			}
+			NavigateToolMessage::ZoomCanvasBegin => {
+				tool_data.drag_start = input.mouse.position;
+				responses.add_front(NavigationMessage::ZoomCanvasBegin);
+				NavigateToolFsmState::Zooming
+			}
+			NavigateToolMessage::TransformCanvasEnd => {
+				responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
+				NavigateToolFsmState::Ready
+			}
+			NavigateToolMessage::Abort => {
+				responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
+				NavigateToolFsmState::Ready
+			}
 		}
 	}
 
