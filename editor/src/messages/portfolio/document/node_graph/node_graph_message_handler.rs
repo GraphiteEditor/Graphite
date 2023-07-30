@@ -345,7 +345,8 @@ impl NodeGraphMessageHandler {
 			});
 			let primary_output = outputs.next();
 
-			let thumbnail_svg = executor.thumbnails.get(&layer_id).and_then(|thumbnails| thumbnails.get(id)).map(|svg| svg.to_string());
+			let graph_identifier = GraphIdentifier::new(layer_id);
+			let thumbnail_svg = executor.thumbnails.get(&graph_identifier).and_then(|thumbnails| thumbnails.get(id)).map(|svg| svg.to_string());
 
 			nodes.push(FrontendNode {
 				id: *id,
