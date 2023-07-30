@@ -52,7 +52,7 @@ pub struct NodeRuntime {
 	sender: InternalNodeGraphUpdateSender,
 	wasm_io: Option<WasmApplicationIo>,
 	imaginate_preferences: ImaginatePreferences,
-	pub(crate) thumbnails: HashMap<Option<LayerId>, HashMap<NodeId, SvgSegmentList>>,
+	pub(crate) thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
@@ -73,7 +73,7 @@ pub(crate) struct GenerationResponse {
 	generation_id: u64,
 	result: Result<TaggedValue, String>,
 	updates: VecDeque<Message>,
-	new_thumbnails: HashMap<Option<LayerId>, HashMap<NodeId, SvgSegmentList>>,
+	new_thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
 }
 
 enum NodeGraphUpdate {
@@ -224,7 +224,8 @@ impl NodeRuntime {
 			render.format_svg(min, max);
 
 			if let Some(node_id) = node_path.get(node_path.len() - 2).copied() {
-				let old_thumbnail = self.thumbnails.entry(layer_path.last().copied()).or_default().entry(node_id).or_default();
+				let graph_identifier = GraphIdentifier::new(layer_path.last().copied());
+				let old_thumbnail = self.thumbnails.entry(graph_identifier).or_default().entry(node_id).or_default();
 				if *old_thumbnail != render.svg {
 					*old_thumbnail = render.svg;
 					thumbnails_changed = true;
@@ -278,7 +279,7 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	// TODO: This is a memory leak since layers are never removed
 	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
-	pub(crate) thumbnails: HashMap<Option<LayerId>, HashMap<NodeId, SvgSegmentList>>,
+	pub(crate) thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
 	futures: HashMap<u64, ExecutionContext>,
 }
 
@@ -528,7 +529,7 @@ impl NodeGraphExecutor {
 
 	/// When a blob url for a thumbnail is loaded, update the state and the UI.
 	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, layer_id: Option<LayerId>, node_id: NodeId, responses: &mut VecDeque<Message>) {
-		if let Some(layer) = self.thumbnails.get_mut(&layer_id) {
+		if let Some(layer) = self.thumbnails.get_mut(&GraphIdentifier::new(layer_id)) {
 			if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
 				*segment = SvgSegment::String(blob_url);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
