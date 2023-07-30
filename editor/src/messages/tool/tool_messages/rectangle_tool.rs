@@ -1,17 +1,10 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
+use super::tool_prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use glam::DVec2;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct RectangleTool {
@@ -107,33 +100,32 @@ impl LayoutHolder for RectangleTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for RectangleTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Rectangle(RectangleToolMessage::UpdateOptions(action)) = message {
-			match action {
-				RectangleOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				RectangleOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				RectangleOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				RectangleOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				RectangleOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				RectangleOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Rectangle(RectangleToolMessage::UpdateOptions(action)) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
+		};
+
+		match action {
+			RectangleOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			RectangleOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			RectangleOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			RectangleOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			RectangleOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			RectangleOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -210,66 +202,66 @@ impl Fsm for RectangleToolFsmState {
 
 		let shape_data = &mut tool_data.data;
 
-		if let ToolMessage::Rectangle(event) = event {
-			match (self, event) {
-				(Drawing, CanvasTransformed) => {
-					tool_data.data.recalculate_snaps(document, input, render_data);
-					self
-				}
-				(Ready, DragStart) => {
-					shape_data.start(responses, document, input, render_data);
+		let ToolMessage::Rectangle(event) = event else {
+			return self;
+		};
 
-					let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-
-					let layer_path = document.get_path_for_new_layer();
-					responses.add(DocumentMessage::StartTransaction);
-					shape_data.path = Some(layer_path.clone());
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-
-					let fill_color = tool_options.fill.active_color();
-					responses.add(GraphOperationMessage::FillSet {
-						layer: layer_path.clone(),
-						fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-					});
-
-					responses.add(GraphOperationMessage::StrokeSet {
-						layer: layer_path,
-						stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-					});
-
-					Drawing
-				}
-				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
-						responses.add(message);
-					}
-
-					state
-				}
-				(Drawing, DragStop) => {
-					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					shape_data.cleanup(responses);
-
-					Ready
-				}
-				(Drawing, Abort) => {
-					responses.add(DocumentMessage::AbortTransaction);
-
-					shape_data.cleanup(responses);
-
-					Ready
-				}
-				(_, WorkingColorChanged) => {
-					responses.add(RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+		match (self, event) {
+			(Drawing, CanvasTransformed) => {
+				tool_data.data.recalculate_snaps(document, input, render_data);
+				self
 			}
-		} else {
-			self
+			(Ready, DragStart) => {
+				shape_data.start(responses, document, input, render_data);
+
+				let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+
+				let layer_path = document.get_path_for_new_layer();
+				responses.add(DocumentMessage::StartTransaction);
+				shape_data.path = Some(layer_path.clone());
+				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+				let fill_color = tool_options.fill.active_color();
+				responses.add(GraphOperationMessage::FillSet {
+					layer: layer_path.clone(),
+					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
+				});
+
+				responses.add(GraphOperationMessage::StrokeSet {
+					layer: layer_path,
+					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
+				});
+
+				Drawing
+			}
+			(state, Resize { center, lock_ratio }) => {
+				if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+					responses.add(message);
+				}
+
+				state
+			}
+			(Drawing, DragStop) => {
+				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
+				shape_data.cleanup(responses);
+
+				Ready
+			}
+			(Drawing, Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				shape_data.cleanup(responses);
+
+				Ready
+			}
+			(_, WorkingColorChanged) => {
+				responses.add(RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 

@@ -37,6 +37,12 @@ export class UpdateNodeTypes extends JsMessage {
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
+export class UpdateNodeThumbnail extends JsMessage {
+	readonly id!: bigint;
+
+	readonly value!: string;
+}
+
 export class UpdateNodeGraphSelection extends JsMessage {
 	@Type(() => BigInt)
 	readonly selected!: bigint[];
@@ -106,8 +112,6 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
-
-	readonly thumbnailSvg!: string | undefined;
 }
 
 export class FrontendNodeLink {
@@ -1435,6 +1439,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraph,
 	UpdateNodeGraphBarLayout,
 	UpdateNodeGraphSelection,
+	UpdateNodeThumbnail,
 	UpdateNodeTypes,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,

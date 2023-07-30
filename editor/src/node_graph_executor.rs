@@ -1,10 +1,12 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
 use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
-
+use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document_metadata::LayerNodeIdentifier;
+use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::{LayerId, Operation};
 
 use graph_craft::document::value::TaggedValue;
@@ -14,8 +16,9 @@ use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type, TypeDescriptor};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
 use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::renderer::{SvgSegment, SvgSegmentList};
+use graphene_core::renderer::{ClickTarget, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
+use graphene_core::transform::Transform;
 use graphene_core::vector::style::ViewMode;
 
 use graphene_core::{Color, SurfaceFrame, SurfaceId};
@@ -52,7 +55,9 @@ pub struct NodeRuntime {
 	sender: InternalNodeGraphUpdateSender,
 	wasm_io: Option<WasmApplicationIo>,
 	imaginate_preferences: ImaginatePreferences,
-	pub(crate) thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
+	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
+	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub(crate) transforms: HashMap<NodeId, DAffine2>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
@@ -73,7 +78,9 @@ pub(crate) struct GenerationResponse {
 	generation_id: u64,
 	result: Result<TaggedValue, String>,
 	updates: VecDeque<Message>,
-	new_thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
+	new_thumbnails: HashMap<NodeId, SvgSegmentList>,
+	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	new_transforms: HashMap<LayerNodeIdentifier, DAffine2>,
 }
 
 enum NodeGraphUpdate {
@@ -110,7 +117,9 @@ impl NodeRuntime {
 			imaginate_preferences: Default::default(),
 			thumbnails: Default::default(),
 			wasm_io: None,
-			canvas_cache: Default::default(),
+			canvas_cache: HashMap::new(),
+			click_targets: HashMap::new(),
+			transforms: HashMap::new(),
 		}
 	}
 	pub async fn run(&mut self) {
@@ -150,6 +159,8 @@ impl NodeRuntime {
 						result,
 						updates: responses,
 						new_thumbnails: self.thumbnails.clone(),
+						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
+						new_transforms: self.transforms.clone().into_iter().map(|(id, transform)| (LayerNodeIdentifier::new_unchecked(id), transform)).collect(),
 					};
 					self.sender.send_generation_response(response);
 				}
@@ -204,41 +215,60 @@ impl NodeRuntime {
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
 	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: Vec<Vec<u64>>, responses: &mut VecDeque<Message>) {
-		let mut thumbnails_changed: bool = false;
 		let mut image_data: Vec<_> = Vec::new();
 		for node_path in monitor_nodes {
-			let Some(value) = self.executor.introspect(&node_path).flatten() else {
-				warn!("No introspect");
+			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
+				warn!("Monitor node has invalid node id");
 				continue;
 			};
-			let Some(graphic_group) = value.downcast_ref::<graphene_core::GraphicGroup>() else {
-				warn!("Not graphic");
+			let Some(value) = self.executor.introspect(&node_path).flatten() else {
+				warn!("Failed to introspect monitor node for thumbnail");
+				continue;
+			};
+			let Some(graphic_element_data) = value.downcast_ref::<graphene_core::GraphicElementData>() else {
+				warn!("Failed to downcast thumbnail to graphic element data");
 				continue;
 			};
 			use graphene_core::renderer::*;
-			let bounds = graphic_group.bounding_box(DAffine2::IDENTITY);
+			let bounds = graphic_element_data.bounding_box(DAffine2::IDENTITY);
 			let render_params = RenderParams::new(ViewMode::Normal, bounds, true);
 			let mut render = SvgRender::new();
-			graphic_group.render_svg(&mut render, &render_params);
+			graphic_element_data.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
 			render.format_svg(min, max);
 
-			if let Some(node_id) = node_path.get(node_path.len() - 2).copied() {
-				let graph_identifier = GraphIdentifier::new(layer_path.last().copied());
-				let old_thumbnail = self.thumbnails.entry(graph_identifier).or_default().entry(node_id).or_default();
-				if *old_thumbnail != render.svg {
-					*old_thumbnail = render.svg;
-					thumbnails_changed = true;
-				}
+			let click_targets = self.click_targets.entry(node_id).or_default();
+			click_targets.clear();
+			graphic_element_data.add_click_targets(click_targets);
+
+			self.transforms.insert(node_id, graphic_element_data.transform());
+
+			let old_thumbnail = self.thumbnails.entry(node_id).or_default();
+			if *old_thumbnail != render.svg {
+				responses.add(FrontendMessage::UpdateDocumentLayerDetails {
+					data: LayerPanelEntry {
+						name: "Layer".to_string(),
+						tooltip: format!("Layer id: {node_id}"),
+						visible: true,
+						layer_type: LayerDataTypeDiscriminant::Layer,
+						layer_metadata: LayerMetadata::new(true),
+						path: vec![node_id],
+						thumbnail: render.svg.to_string(),
+					},
+				});
+				responses.add(FrontendMessage::UpdateNodeThumbnail {
+					id: node_id,
+					value: render.svg.to_string(),
+				});
+				*old_thumbnail = render.svg;
 			}
+
 			let resize = Some(DVec2::splat(100.));
 			let create_image_data = |(node_id, image)| NodeGraphExecutor::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok();
 			image_data.extend(render.image_data.into_iter().filter_map(create_image_data))
 		}
 		if !image_data.is_empty() {
 			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
-		} else if thumbnails_changed {
-			responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 		}
 	}
 }
@@ -279,7 +309,7 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	// TODO: This is a memory leak since layers are never removed
 	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
-	pub(crate) thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
+	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	futures: HashMap<u64, ExecutionContext>,
 }
 
@@ -408,7 +438,7 @@ impl NodeGraphExecutor {
 		// Get the node graph layer
 		let document = documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
 		let network = if layer_path.is_empty() {
-			document.document_legacy.document_network.clone()
+			document.network().clone()
 		} else {
 			let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 
@@ -431,7 +461,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentLegacy, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
 			match response {
@@ -440,12 +470,16 @@ impl NodeGraphExecutor {
 					result,
 					updates,
 					new_thumbnails,
+					new_click_targets,
+					new_transforms,
 				}) => {
 					self.thumbnails = new_thumbnails;
+					document.metadata.update_transforms(new_transforms);
+					document.metadata.update_click_targets(new_click_targets);
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
-					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses, execution_context.document_id)?;
+					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
 					responses.add(DocumentMessage::LayerChanged {
 						affected_layer_path: execution_context.layer_path,
 					});
@@ -464,7 +498,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, _transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
 			TaggedValue::VectorData(vector_data) => {
@@ -528,12 +562,17 @@ impl NodeGraphExecutor {
 	}
 
 	/// When a blob url for a thumbnail is loaded, update the state and the UI.
-	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, layer_id: Option<LayerId>, node_id: NodeId, responses: &mut VecDeque<Message>) {
-		if let Some(layer) = self.thumbnails.get_mut(&GraphIdentifier::new(layer_id)) {
-			if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
+	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, node_id: NodeId, responses: &mut VecDeque<Message>) {
+		for segment_list in self.thumbnails.values_mut() {
+			if let Some(segment) = segment_list.iter_mut().find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
 				*segment = SvgSegment::String(blob_url);
-				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+				responses.add(FrontendMessage::UpdateNodeThumbnail {
+					id: node_id,
+					value: segment_list.to_string(),
+				});
+				return;
 			}
 		}
+		warn!("Recieved blob url for invalid segment")
 	}
 }

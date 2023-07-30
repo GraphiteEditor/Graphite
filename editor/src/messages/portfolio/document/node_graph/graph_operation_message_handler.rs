@@ -1,10 +1,13 @@
 use super::{resolve_document_node_type, VectorDataModification};
 use crate::messages::prelude::*;
 
+use bezier_rs::Subpath;
 use document_legacy::document::Document;
+use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
 use graphene_core::Artboard;
@@ -24,22 +27,11 @@ struct ModifyInputsContext<'a> {
 	layer: &'a [LayerId],
 	outwards_links: HashMap<NodeId, Vec<NodeId>>,
 	layer_node: Option<NodeId>,
+	document_metadata: &'a mut DocumentMetadata,
 }
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
-	fn new(layer: &'a [LayerId], document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Option<Self> {
-		document.layer_mut(layer).ok().and_then(|layer| layer.as_layer_network_mut().ok()).map(|network| Self {
-			outwards_links: network.collect_outwards_links(),
-			network,
-			node_graph,
-			responses,
-			layer,
-			layer_node: None,
-		})
-	}
-
-	/// Get the node network from the document
-	fn new_doc(document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Self {
+	fn new(document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Self {
 		Self {
 			outwards_links: document.document_network.collect_outwards_links(),
 			network: &mut document.document_network,
@@ -47,15 +39,22 @@ impl<'a> ModifyInputsContext<'a> {
 			responses,
 			layer: &[],
 			layer_node: None,
+			document_metadata: &mut document.metadata,
 		}
 	}
 
-	fn locate_layer(&mut self, mut id: NodeId) -> Option<NodeId> {
-		while self.network.nodes.get(&id)?.name != "Layer" {
-			id = self.outwards_links.get(&id)?.first().copied()?;
+	/// Get the node network from the document
+	fn new_layer(layer: &'a [LayerId], document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Option<Self> {
+		let mut document = Self::new(document, node_graph, responses);
+		let Some(mut id) = layer.last().copied() else {
+			error!("Tried to modify root layer");
+			return None;
+		};
+		while document.network.nodes.get(&id)?.name != "Layer" {
+			id = document.outwards_links.get(&id)?.first().copied()?;
 		}
-		self.layer_node = Some(id);
-		Some(id)
+		document.layer_node = Some(id);
+		Some(document)
 	}
 
 	/// Updates the input of an existing node
@@ -64,8 +63,8 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut document_node.inputs);
 	}
 
-	pub fn insert_between(&mut self, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize) -> Option<NodeId> {
-		let id = generate_uuid();
+	pub fn insert_between(&mut self, id: NodeId, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize, shift_upstream: IVec2) -> Option<NodeId> {
+		assert!(!self.network.nodes.contains_key(&id), "Creating already existing node");
 		let pre_node = self.network.nodes.get_mut(&pre.node_id)?;
 		node.metadata.position = pre_node.metadata.position;
 
@@ -75,12 +74,13 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.network.nodes.insert(id, node);
 
-		self.shift_upstream(id, IVec2::new(-8, 0));
+		self.shift_upstream(id, shift_upstream);
 
 		Some(id)
 	}
 
 	pub fn insert_node_before(&mut self, new_id: NodeId, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
+		assert!(!self.network.nodes.contains_key(&new_id), "Creating already existing node");
 		let post_node = self.network.nodes.get_mut(&node_id)?;
 
 		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
@@ -90,32 +90,39 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
-	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId) -> Option<NodeId> {
-		let mut current_node = output_node_id;
-		let mut input_index = 0;
-		let mut current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
+	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, input_index: usize) -> Option<NodeId> {
+		assert!(!self.network.nodes.contains_key(&new_id), "Creating already existing layer");
 
-		while let NodeInput::Node { node_id, output_index, .. } = current_input {
+		let output = NodeOutput::new(output_node_id, input_index);
+		// Locate the node output of the first sibling layer to the new layer
+		let new_id = if let NodeInput::Node { node_id, output_index, .. } = &self.network.nodes.get(&output_node_id)?.inputs[input_index] {
 			let sibling_node = &self.network.nodes.get(node_id)?;
-			if sibling_node.name == "Layer" {
-				current_node = *node_id;
-				input_index = 7;
-				current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
+			let sibling_layer = if sibling_node.name == "Layer" {
+				// There is already a layer node
+				NodeOutput::new(*node_id, 0)
 			} else {
-				// Insert a layer node between the output and the new
-				let layer_node = resolve_document_node_type("Layer").expect("Layer node");
-				let node = layer_node.to_document_node_default_inputs([], DocumentNodeMetadata::default());
-				let node_id = self.insert_between(NodeOutput::new(*node_id, *output_index), NodeOutput::new(current_node, input_index), node, 0, 0)?;
-				current_node = node_id;
-				input_index = 7;
-				current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
-			}
+				// The user has connected another node to the output. Insert a layer node between the output and the node.
+				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+				let node_id = self.insert_between(generate_uuid(), NodeOutput::new(*node_id, *output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
+				NodeOutput::new(node_id, 0)
+			};
+
+			let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+			self.insert_between(new_id, sibling_layer, output, node, 7, 0, IVec2::new(-4, 3))
+		} else {
+			let layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
+			self.insert_node_before(new_id, output_node_id, input_index, layer_node, IVec2::new(-4, 3))
+		};
+
+		// Update the document metadata structure
+		if let Some(new_id) = new_id {
+			let parent = LayerNodeIdentifier::new(output_node_id, self.network);
+			let new_child = LayerNodeIdentifier::new(new_id, self.network);
+			parent.push_front_child(self.document_metadata, new_child);
+			self.responses.add(DocumentMessage::DocumentStructureChanged);
 		}
 
-		let layer_node = resolve_document_node_type("Layer").expect("Node").to_document_node_default_inputs([], Default::default());
-		let layer_node = self.insert_node_before(new_id, current_node, input_index, layer_node, IVec2::new(-4, 3))?;
-
-		Some(layer_node)
+		new_id
 	}
 
 	fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
@@ -129,7 +136,28 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
+		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		self.insert_node_before(generate_uuid(), layer, 0, artboard_node, IVec2::new(-8, 0))
+	}
+
+	fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
+		let shape = {
+			let node_type = resolve_document_node_type("Shape").expect("Shape node does not exist");
+			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], Default::default())
+		};
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
+		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
+		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
+
+		let stroke_id = generate_uuid();
+		self.insert_node_before(stroke_id, layer, 0, stroke, IVec2::new(-8, 0));
+		let fill_id = generate_uuid();
+		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
+		let transform_id = generate_uuid();
+		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
+		let shape_id = generate_uuid();
+		self.insert_node_before(shape_id, transform_id, 0, shape, IVec2::new(-8, 0));
+		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
 	fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
@@ -184,7 +212,6 @@ impl<'a> ModifyInputsContext<'a> {
 		} else {
 			self.modify_new_node(name, update_input);
 		}
-		self.node_graph.update_layer_path(Some(self.layer.to_vec()), self.responses);
 		self.node_graph.nested_path.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
@@ -354,13 +381,19 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut new_input = None;
 		let post_node = self.outwards_links.get(&id).and_then(|links| links.first().copied());
 		let mut delete_nodes = vec![id];
+		let mut is_artboard = false;
 		for (node, id) in self.network.primary_flow_from_opt(Some(id)) {
 			delete_nodes.push(id);
 			if node.name == "Artboard" {
 				new_input = Some(node.inputs[0].clone());
+				is_artboard = true;
 				break;
 			}
 		}
+		if !is_artboard {
+			LayerNodeIdentifier::new(id, self.network).delete(self.document_metadata);
+		}
+		self.responses.add(DocumentMessage::DocumentStructureChanged);
 
 		for node_id in delete_nodes {
 			self.network.nodes.remove(&node_id);
@@ -378,19 +411,19 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, (document, node_graph): (&mut Document, &mut NodeGraphMessageHandler)) {
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.fill_set(fill);
 				} else {
 					responses.add(Operation::SetLayerFill { path: layer, fill });
 				}
 			}
 			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
 				} else {
 					responses.add(Operation::SetLayerStroke { path: layer, stroke });
@@ -402,9 +435,9 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				let parent_transform = document.metadata.document_to_viewport * document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
 				let bounds = LayerBounds::new(document, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 
@@ -424,10 +457,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				let parent_transform = document.metadata.document_to_viewport * document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
 				let current_transform = document.layer(&layer).ok().map(|layer| layer.transform);
 				let bounds = LayerBounds::new(document, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 				let transform = transform.to_cols_array();
@@ -442,7 +475,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 
@@ -450,33 +483,38 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.brush_modify(strokes);
 				}
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
-				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id) {
+				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
 			}
+			GraphOperationMessage::NewVectorLayer { id, subpaths } => {
+				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+					modify_inputs.insert_vector_data(subpaths, layer);
+				}
+			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
-				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
-				if modify_inputs.locate_layer(id).is_some() {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&[id], document, node_graph, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
-			GraphOperationMessage::DeleteArtboard { id } => {
-				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
+			GraphOperationMessage::DeleteLayer { id } => {
+				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				modify_inputs.delete_layer(id);
 			}
 			GraphOperationMessage::ClearArtboards => {
-				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				let artboard_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.name == "Artboard").map(|(id, _)| *id).collect::<Vec<_>>();
 				for id in artboard_nodes {
 					modify_inputs.delete_layer(id);

@@ -232,6 +232,10 @@ pub enum FrontendMessage {
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
 	},
+	UpdateNodeThumbnail {
+		id: NodeId,
+		value: String,
+	},
 	UpdateNodeTypes {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
