@@ -29,6 +29,22 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
+/// Identifies a node graph, either the document graph or a node graph associated with a legacy layer.
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub enum GraphIdentifier {
+	DocumentGraph,
+	LayerGraph(LayerId),
+}
+
+impl GraphIdentifier {
+	pub const fn new(layer_id: Option<LayerId>) -> Self {
+		match layer_id {
+			Some(layer_id) => Self::LayerGraph(layer_id),
+			None => Self::DocumentGraph,
+		}
+	}
+}
+
 pub struct NodeRuntime {
 	pub(crate) executor: DynamicExecutor,
 	font_cache: FontCache,
@@ -36,7 +52,7 @@ pub struct NodeRuntime {
 	sender: InternalNodeGraphUpdateSender,
 	wasm_io: Option<WasmApplicationIo>,
 	imaginate_preferences: ImaginatePreferences,
-	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
+	pub(crate) thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
@@ -57,7 +73,7 @@ pub(crate) struct GenerationResponse {
 	generation_id: u64,
 	result: Result<TaggedValue, String>,
 	updates: VecDeque<Message>,
-	new_thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
+	new_thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
 }
 
 enum NodeGraphUpdate {
@@ -118,7 +134,13 @@ impl NodeRuntime {
 					path,
 					..
 				}) => {
-					let (network, monitor_nodes) = Self::wrap_network(graph);
+					let network = wrap_network_in_scope(graph);
+
+					let monitor_nodes = network
+						.recursive_nodes()
+						.filter(|node| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"))
+						.map(|node| node.path.clone().unwrap_or_default())
+						.collect();
 
 					let result = self.execute_network(&path, network, image_frame).await;
 					let mut responses = VecDeque::new();
@@ -133,20 +155,6 @@ impl NodeRuntime {
 				}
 			}
 		}
-	}
-
-	/// Wraps a network in a scope and returns the new network and the paths to the monitor nodes.
-	fn wrap_network(network: NodeNetwork) -> (NodeNetwork, Vec<Vec<NodeId>>) {
-		let scoped_network = wrap_network_in_scope(network);
-
-		//scoped_network.generate_node_paths(&[]);
-		let monitor_nodes = scoped_network
-			.recursive_nodes()
-			.filter(|(node, _, _)| node.implementation == DocumentNodeImplementation::proto("graphene_std::memo::MonitorNode<_>"))
-			.map(|(_, _, path)| path)
-			.collect();
-
-		(scoped_network, monitor_nodes)
 	}
 
 	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
@@ -216,8 +224,9 @@ impl NodeRuntime {
 			render.format_svg(min, max);
 			debug!("SVG {}", render.svg);
 
-			if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_path.get(node_path.len() - 2).copied()) {
-				let old_thumbnail = self.thumbnails.entry(layer_id).or_default().entry(node_id).or_default();
+			if let Some(node_id) = node_path.get(node_path.len() - 2).copied() {
+				let graph_identifier = GraphIdentifier::new(layer_path.last().copied());
+				let old_thumbnail = self.thumbnails.entry(graph_identifier).or_default().entry(node_id).or_default();
 				if *old_thumbnail != render.svg {
 					*old_thumbnail = render.svg;
 					thumbnails_changed = true;
@@ -271,7 +280,7 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	// TODO: This is a memory leak since layers are never removed
 	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
-	pub(crate) thumbnails: HashMap<LayerId, HashMap<NodeId, SvgSegmentList>>,
+	pub(crate) thumbnails: HashMap<GraphIdentifier, HashMap<NodeId, SvgSegmentList>>,
 	futures: HashMap<u64, ExecutionContext>,
 }
 
@@ -456,7 +465,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, _transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
 			TaggedValue::VectorData(vector_data) => {
@@ -494,7 +503,7 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::GraphicGroup(graphic_group) => {
 				debug!("{graphic_group:#?}");
-				use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, SvgRender};
+				use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 
 				// Setup rendering
 				let mut render = SvgRender::new();
@@ -523,8 +532,8 @@ impl NodeGraphExecutor {
 	}
 
 	/// When a blob url for a thumbnail is loaded, update the state and the UI.
-	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, layer_id: LayerId, node_id: NodeId, responses: &mut VecDeque<Message>) {
-		if let Some(layer) = self.thumbnails.get_mut(&layer_id) {
+	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, layer_id: Option<LayerId>, node_id: NodeId, responses: &mut VecDeque<Message>) {
+		if let Some(layer) = self.thumbnails.get_mut(&GraphIdentifier::new(layer_id)) {
 			if let Some(segment) = layer.values_mut().flat_map(|segments| segments.iter_mut()).find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
 				*segment = SvgSegment::String(blob_url);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });

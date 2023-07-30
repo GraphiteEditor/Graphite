@@ -201,7 +201,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
-					document_name: &self.name.as_str(),
+					document_name: self.name.as_str(),
 					artwork_document: &self.document_legacy,
 					artboard_document: &self.artboard_message_handler.artboards_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),

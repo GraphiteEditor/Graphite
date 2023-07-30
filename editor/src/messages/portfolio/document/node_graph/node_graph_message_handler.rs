@@ -2,7 +2,7 @@ pub use self::document_node_types::*;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use crate::node_graph_executor::NodeGraphExecutor;
+use crate::node_graph_executor::{GraphIdentifier, NodeGraphExecutor};
 
 use document_legacy::document::Document;
 use document_legacy::LayerId;
@@ -347,10 +347,8 @@ impl NodeGraphMessageHandler {
 				})
 				.collect();
 
-			let thumbnail_svg = layer_id
-				.and_then(|layer_id| executor.thumbnails.get(&layer_id))
-				.and_then(|layer| layer.get(id))
-				.map(|svg| svg.to_string());
+			let graph_identifier = GraphIdentifier::new(layer_id);
+			let thumbnail_svg = executor.thumbnails.get(&graph_identifier).and_then(|thumbnails| thumbnails.get(id)).map(|svg| svg.to_string());
 
 			nodes.push(FrontendNode {
 				id: *id,

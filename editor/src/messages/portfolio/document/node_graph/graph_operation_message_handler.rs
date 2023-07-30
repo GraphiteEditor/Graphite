@@ -80,19 +80,6 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(id)
 	}
 
-	pub fn insert_layer_below(&mut self, node_id: NodeId, input_index: usize) -> Option<NodeId> {
-		let layer_node = resolve_document_node_type("Layer").expect("Layer node");
-
-		let new_id = generate_uuid();
-		let post_node = self.network.nodes.get_mut(&node_id)?;
-		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
-		let document_node = layer_node.to_document_node_default_inputs([], DocumentNodeMetadata::position(post_node.metadata.position + IVec2::new(0, 2)));
-
-		self.network.nodes.insert(new_id, document_node);
-
-		Some(new_id)
-	}
-
 	pub fn insert_node_before(&mut self, new_id: NodeId, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
 		let post_node = self.network.nodes.get_mut(&node_id)?;
 
@@ -109,7 +96,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut current_input = &self.network.nodes.get(&current_node)?.inputs[input_index];
 
 		while let NodeInput::Node { node_id, output_index, .. } = current_input {
-			let mut sibling_node = &self.network.nodes.get(node_id)?;
+			let sibling_node = &self.network.nodes.get(node_id)?;
 			if sibling_node.name == "Layer" {
 				current_node = *node_id;
 				input_index = 7;
@@ -148,7 +135,7 @@ impl<'a> ModifyInputsContext<'a> {
 	fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
 		let mut shift_nodes = HashSet::new();
 		let mut stack = vec![node_id];
-		while let Some(node) = stack.pop() {
+		while let Some(node_id) = stack.pop() {
 			let Some(node) = self.network.nodes.get(&node_id) else { continue };
 			for input in &node.inputs {
 				let NodeInput::Node { node_id, .. } = input else { continue };
@@ -477,12 +464,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
-
-				//modify_inputs.brush_modify(strokes);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				let mut modify_inputs = ModifyInputsContext::new_doc(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.locate_layer(id) {
+				if modify_inputs.locate_layer(id).is_some() {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}

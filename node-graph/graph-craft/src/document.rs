@@ -887,24 +887,24 @@ impl NodeNetwork {
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter {
-		let nodes = self.nodes.iter().map(|(id, node)| (node, self, vec![*id])).collect();
+		let nodes = self.nodes.values().collect();
 		RecursiveNodeIter { nodes }
 	}
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
-	nodes: Vec<(&'a DocumentNode, &'a NodeNetwork, Vec<NodeId>)>,
+	nodes: Vec<&'a DocumentNode>,
 }
 
 impl<'a> Iterator for RecursiveNodeIter<'a> {
-	type Item = (&'a DocumentNode, &'a NodeNetwork, Vec<NodeId>);
+	type Item = &'a DocumentNode;
 	fn next(&mut self) -> Option<Self::Item> {
-		let (node, network, path) = self.nodes.pop()?;
+		let node = self.nodes.pop()?;
 		if let DocumentNodeImplementation::Network(network) = &node.implementation {
-			self.nodes.extend(network.nodes.iter().map(|(id, node)| (node, network, [path.as_slice(), &[*id]].concat())));
+			self.nodes.extend(network.nodes.values());
 		}
-		Some((node, network, path))
+		Some(node)
 	}
 }
 
