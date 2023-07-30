@@ -453,9 +453,7 @@ impl NodeNetwork {
 			return true;
 		}
 		// Get the outputs
-		let Some(mut stack) = self.outputs.iter().map(|&output| self.nodes.get(&output.node_id)).collect::<Option<Vec<_>>>() else {
-			return false;
-		};
+		let mut stack = self.outputs.iter().filter_map(|&output| self.nodes.get(&output.node_id)).collect::<Vec<_>>();
 		let mut already_visited = HashSet::new();
 		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
 

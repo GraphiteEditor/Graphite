@@ -4,7 +4,6 @@ use syn::{Path, PathArguments, PathSegment, Token};
 
 /// Returns `Ok(Vec<T>)` if all items are `Ok(T)`, else returns a combination of every error encountered (not just the first one)
 pub fn fold_error_iter<T>(iter: impl Iterator<Item = syn::Result<T>>) -> syn::Result<Vec<T>> {
-	#[allow(clippy::manual_try_fold)]
 	iter.fold(Ok(vec![]), |acc, x| match acc {
 		Ok(mut v) => x.map(|x| {
 			v.push(x);

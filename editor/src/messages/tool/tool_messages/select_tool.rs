@@ -1,19 +1,14 @@
 #![allow(clippy::too_many_arguments)]
+use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
@@ -21,8 +16,6 @@ use document_legacy::layers::layer_info::{Layer, LayerDataType};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 
-use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Default)]
@@ -446,268 +439,137 @@ impl Fsm for SelectToolFsmState {
 		use SelectToolFsmState::*;
 		use SelectToolMessage::*;
 
-		if let ToolMessage::Select(event) = event {
-			match (self, event) {
-				(_, DocumentIsDirty | SelectionChanged) => {
-					let selected_layers_count = document.selected_layers().count();
-					let selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
+		let ToolMessage::Select(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(_, DocumentIsDirty | SelectionChanged) => {
+				let selected_layers_count = document.selected_layers().count();
+				let selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 
-					if selected_layers_changed {
-						tool_data.selected_layers_count = selected_layers_count;
-						tool_data.selected_layers_changed = true;
-					} else {
-						tool_data.selected_layers_changed = false;
-					}
-
-					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
-						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
-						(Some(bounds), paths) => {
-							let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
-
-							bounding_box_overlays.bounds = bounds;
-							bounding_box_overlays.transform = DAffine2::IDENTITY;
-
-							bounding_box_overlays.transform(responses);
-
-							tool_data.bounding_box_overlays = Some(bounding_box_overlays);
-						}
-						(_, _) => {}
-					};
-
-					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
-					tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
-					tool_data.pivot.update_pivot(document, render_data, responses);
-
-					self
+				if selected_layers_changed {
+					tool_data.selected_layers_count = selected_layers_count;
+					tool_data.selected_layers_changed = true;
+				} else {
+					tool_data.selected_layers_changed = false;
 				}
-				(_, EditLayer) => {
-					// Setup required data for checking the clicked layer
-					let mouse_pos = input.mouse.position;
-					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
-					// Check the last (topmost) intersection layer
-					if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
-						if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
-							match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect_layer_path, tool_data, responses),
-								NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, responses),
-							}
+				match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
+					(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
+					(Some(bounds), paths) => {
+						let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
+
+						bounding_box_overlays.bounds = bounds;
+						bounding_box_overlays.transform = DAffine2::IDENTITY;
+
+						bounding_box_overlays.transform(responses);
+
+						tool_data.bounding_box_overlays = Some(bounding_box_overlays);
+					}
+					(_, _) => {}
+				};
+
+				tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+				tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
+				tool_data.pivot.update_pivot(document, render_data, responses);
+
+				self
+			}
+			(_, EditLayer) => {
+				// Setup required data for checking the clicked layer
+				let mouse_pos = input.mouse.position;
+				let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+				let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+
+				// Check the last (topmost) intersection layer
+				if let Some(intersect_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
+					if let Ok(intersect) = document.document_legacy.layer(intersect_layer_path) {
+						match tool_data.nested_selection_behavior {
+							NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect_layer_path, tool_data, responses),
+							NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, responses),
 						}
 					}
-
-					self
 				}
-				(Ready, DragStart { add_to_selection, select_deepest }) => {
-					tool_data.path_outlines.clear_hovered(responses);
 
-					tool_data.drag_start = input.mouse.position;
-					tool_data.drag_current = input.mouse.position;
+				self
+			}
+			(Ready, DragStart { add_to_selection, select_deepest }) => {
+				tool_data.path_outlines.clear_hovered(responses);
 
-					let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|bounding_box| {
-						let edges = bounding_box.check_selected_edges(input.mouse.position);
+				tool_data.drag_start = input.mouse.position;
+				tool_data.drag_current = input.mouse.position;
 
-						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
-							let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
-							bounding_box.opposite_pivot = selected_edges.calculate_pivot();
-							selected_edges
-						});
+				let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|bounding_box| {
+					let edges = bounding_box.check_selected_edges(input.mouse.position);
 
-						edges
+					bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
+						let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
+						bounding_box.opposite_pivot = selected_edges.calculate_pivot();
+						selected_edges
 					});
 
-					let rotating_bounds = tool_data
-						.bounding_box_overlays
-						.as_ref()
-						.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
-						.unwrap_or_default();
+					edges
+				});
 
-					let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
-					let quad = tool_data.selection_quad();
-					let mut intersection = document.document_legacy.intersects_quad_root(quad, render_data);
+				let rotating_bounds = tool_data
+					.bounding_box_overlays
+					.as_ref()
+					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
+					.unwrap_or_default();
 
-					// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
-					// If the user is dragging the rotate trigger, go into RotatingBounds mode.
-					// If the user clicks on a layer that is in their current selection, go into the dragging mode.
-					// If the user clicks on new shape, make that layer their new selection.
-					// Otherwise enter the box select mode
-					let state = if tool_data.pivot.is_over(input.mouse.position) {
-						responses.add(DocumentMessage::StartTransaction);
+				let mut selected: Vec<_> = document.selected_visible_layers().map(|path| path.to_vec()).collect();
+				let quad = tool_data.selection_quad();
+				let mut intersection = document.document_legacy.intersects_quad_root(quad, render_data);
 
-						tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
-						tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
+				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
+				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
+				// If the user clicks on new shape, make that layer their new selection.
+				// Otherwise enter the box select mode
+				let state = if tool_data.pivot.is_over(input.mouse.position) {
+					responses.add(DocumentMessage::StartTransaction);
 
-						DraggingPivot
-					} else if let Some(selected_edges) = dragging_bounds {
-						responses.add(DocumentMessage::StartTransaction);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-						let snap_x = selected_edges.2 || selected_edges.3;
-						let snap_y = selected_edges.0 || selected_edges.1;
+					DraggingPivot
+				} else if let Some(selected_edges) = dragging_bounds {
+					responses.add(DocumentMessage::StartTransaction);
 
-						tool_data
-							.snap_manager
-							.start_snap(document, input, document.bounding_boxes(Some(&selected), None, render_data), snap_x, snap_y);
-						tool_data
-							.snap_manager
-							.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
+					let snap_x = selected_edges.2 || selected_edges.3;
+					let snap_y = selected_edges.0 || selected_edges.1;
 
-						tool_data.layers_dragging = selected;
+					tool_data
+						.snap_manager
+						.start_snap(document, input, document.bounding_boxes(Some(&selected), None, render_data), snap_x, snap_y);
+					tool_data
+						.snap_manager
+						.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
 
-						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-							let document = &document.document_legacy;
+					tool_data.layers_dragging = selected;
 
-							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(
-								&mut bounds.original_transforms,
-								&mut bounds.center_of_transformation,
-								selected,
-								responses,
-								document,
-								None,
-								&ToolType::Select,
-							);
-							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
-						}
-
-						ResizingBounds
-					} else if rotating_bounds {
-						responses.add(DocumentMessage::StartTransaction);
-
-						if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-							let selected = selected.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(
-								&mut bounds.original_transforms,
-								&mut bounds.center_of_transformation,
-								&selected,
-								responses,
-								&document.document_legacy,
-								None,
-								&ToolType::Select,
-							);
-
-							bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
-						}
-
-						tool_data.layers_dragging = selected;
-
-						RotatingBounds
-					} else if intersection.last().map(|last| selected.iter().any(|selected_layer| last.starts_with(selected_layer))).unwrap_or(false)
-						&& tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest
-					{
-						responses.add(DocumentMessage::StartTransaction);
-
-						tool_data.layers_dragging = selected;
-
-						tool_data
-							.snap_manager
-							.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
-
-						Dragging
-					} else {
-						if !input.keyboard.get(add_to_selection as usize) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-							responses.add(DocumentMessage::DeselectAllLayers);
-							tool_data.layers_dragging.clear();
-						}
-
-						if let Some(intersection) = intersection.pop() {
-							tool_data.layer_selected_on_start = Some(intersection.clone());
-							selected = vec![intersection.clone()];
-
-							match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(document, selected, input, select_deepest, add_to_selection, tool_data, responses),
-								NestedSelectionBehavior::Deepest => drag_deepest_manipulation(responses, selected, tool_data, document, input, render_data),
-							}
-							Dragging
-						} else {
-							// Deselect all layers if using shallowest selection behavior
-							// Necessary since for shallowest mode, we need to know the current selected layers to determine the next
-							if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest {
-								responses.add(DocumentMessage::DeselectAllLayers);
-								tool_data.layers_dragging.clear();
-							}
-							tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
-							DrawingBox
-						}
-					};
-					tool_data.not_duplicated_layers = None;
-
-					state
-				}
-				(Dragging, PointerMove { axis_align, duplicate, .. }) => {
-					tool_data.is_dragging = true;
-					// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
-					responses.add_front(SelectToolMessage::DocumentIsDirty);
-
-					let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, tool_data.drag_start);
-
-					let mouse_delta = mouse_position - tool_data.drag_current;
-
-					let snap = tool_data
-						.layers_dragging
-						.iter()
-						.filter_map(|path| document.document_legacy.viewport_bounding_box(path, render_data).ok()?)
-						.flat_map(snapping::expand_bounds)
-						.collect();
-
-					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
-					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-					for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
-						responses.add_front(GraphOperationMessage::TransformChange {
-							layer: path.to_vec(),
-							transform: DAffine2::from_translation(mouse_delta + closest_move),
-							transform_in: TransformIn::Viewport,
-							skip_rerender: true,
-						});
-					}
-					tool_data.drag_current = mouse_position + closest_move;
-
-					if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
-						tool_data.start_duplicates(document, responses);
-					} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
-						tool_data.stop_duplicates(responses);
-					}
-
-					Dragging
-				}
-				(ResizingBounds, PointerMove { axis_align, center, .. }) => {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						if let Some(movement) = &mut bounds.selected_edges {
-							let (center, axis_align) = (input.keyboard.get(center as usize), input.keyboard.get(axis_align as usize));
+						let document = &document.document_legacy;
 
-							let mouse_position = input.mouse.position;
-
-							let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
-
-							let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
-							let (delta, mut _pivot) = movement.bounds_to_scale_transform(position, size);
-
-							let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
-							let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
-
-							selected.update_transforms(delta);
-						}
+						let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							selected,
+							responses,
+							document,
+							None,
+							&ToolType::Select,
+						);
+						bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 					}
+
 					ResizingBounds
-				}
-				(RotatingBounds, PointerMove { snap_angle, .. }) => {
+				} else if rotating_bounds {
+					responses.add(DocumentMessage::StartTransaction);
+
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						let angle = {
-							let start_offset = tool_data.drag_start - bounds.center_of_transformation;
-							let end_offset = input.mouse.position - bounds.center_of_transformation;
-
-							start_offset.angle_between(end_offset)
-						};
-
-						let snapped_angle = if input.keyboard.get(snap_angle as usize) {
-							let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
-							(angle / snap_resolution).round() * snap_resolution
-						} else {
-							angle
-						};
-
-						let delta = DAffine2::from_angle(snapped_angle);
-
-						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
+						let selected = selected.iter().collect::<Vec<_>>();
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -718,233 +580,363 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 
-						selected.update_transforms(delta);
+						bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
 					}
+
+					tool_data.layers_dragging = selected;
 
 					RotatingBounds
-				}
-				(DraggingPivot, PointerMove { .. }) => {
-					let mouse_position = input.mouse.position;
-					let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
-					tool_data.pivot.set_viewport_position(snapped_mouse_position, document, render_data, responses);
+				} else if intersection.last().map(|last| selected.iter().any(|selected_layer| last.starts_with(selected_layer))).unwrap_or(false)
+					&& tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest
+				{
+					responses.add(DocumentMessage::StartTransaction);
 
-					DraggingPivot
-				}
-				(DrawingBox, PointerMove { .. }) => {
-					tool_data.drag_current = input.mouse.position;
+					tool_data.layers_dragging = selected;
 
-					responses.add_front(DocumentMessage::Overlays(
-						Operation::SetLayerTransformInViewport {
-							path: tool_data.drag_box_overlay_layer.clone().unwrap(),
-							transform: transform_from_box(tool_data.drag_start, tool_data.drag_current, DAffine2::IDENTITY).to_cols_array(),
-						}
-						.into(),
-					));
-					DrawingBox
-				}
-				(Ready, PointerMove { .. }) => {
-					let mut cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+					tool_data
+						.snap_manager
+						.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 
-					// Dragging the pivot overrules the other operations
-					if tool_data.pivot.is_over(input.mouse.position) {
-						cursor = MouseCursorIcon::Move;
+					Dragging
+				} else {
+					if !input.keyboard.get(add_to_selection as usize) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						responses.add(DocumentMessage::DeselectAllLayers);
+						tool_data.layers_dragging.clear();
 					}
 
-					// Generate the select outline (but not if the user is going to use the bound overlays)
-					if cursor == MouseCursorIcon::Default {
-						tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
+					if let Some(intersection) = intersection.pop() {
+						tool_data.layer_selected_on_start = Some(intersection.clone());
+						selected = vec![intersection];
+
+						match tool_data.nested_selection_behavior {
+							NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(document, selected, input, select_deepest, add_to_selection, tool_data, responses),
+							NestedSelectionBehavior::Deepest => drag_deepest_manipulation(responses, selected, tool_data, document, input, render_data),
+						}
+						Dragging
 					} else {
-						tool_data.path_outlines.clear_hovered(responses);
-					}
-
-					if tool_data.cursor != cursor {
-						tool_data.cursor = cursor;
-						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
-					}
-
-					Ready
-				}
-				(Dragging, Enter) => {
-					rerender_selected_layers(tool_data, responses);
-
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
-					tool_data.snap_manager.cleanup(responses);
-					responses.add_front(response);
-
-					Ready
-				}
-				(Dragging, DragStop { remove_from_selection }) => {
-					rerender_selected_layers(tool_data, responses);
-
-					// Deselect layer if not snap dragging
-					if !tool_data.is_dragging && input.keyboard.get(remove_from_selection as usize) && tool_data.layer_selected_on_start.is_none() {
-						let quad = tool_data.selection_quad();
-						let intersection = document.document_legacy.intersects_quad_root(quad, render_data);
-
-						if let Some(path) = intersection.last() {
-							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(layer)).map(|path| path.to_vec()).collect();
-
+						// Deselect all layers if using shallowest selection behavior
+						// Necessary since for shallowest mode, we need to know the current selected layers to determine the next
+						if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest {
+							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
-							tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
-
-							responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 						}
+						tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
+						DrawingBox
 					}
+				};
+				tool_data.not_duplicated_layers = None;
 
-					tool_data.is_dragging = false;
-					tool_data.layer_selected_on_start = None;
+				state
+			}
+			(Dragging, PointerMove { axis_align, duplicate, .. }) => {
+				tool_data.is_dragging = true;
+				// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
+				responses.add_front(SelectToolMessage::DocumentIsDirty);
 
-					responses.add(DocumentMessage::CommitTransaction);
-					tool_data.snap_manager.cleanup(responses);
+				let mouse_position = axis_align_drag(input.keyboard.get(axis_align as usize), input.mouse.position, tool_data.drag_start);
 
-					Ready
-				}
-				(ResizingBounds, DragStop { .. } | Enter) => {
-					rerender_selected_layers(tool_data, responses);
+				let mouse_delta = mouse_position - tool_data.drag_current;
 
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
-					responses.add(response);
+				let snap = tool_data
+					.layers_dragging
+					.iter()
+					.filter_map(|path| document.document_legacy.viewport_bounding_box(path, render_data).ok()?)
+					.flat_map(snapping::expand_bounds)
+					.collect();
 
-					tool_data.snap_manager.cleanup(responses);
-
-					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
-					}
-
-					Ready
-				}
-				(RotatingBounds, DragStop { .. } | Enter) => {
-					rerender_selected_layers(tool_data, responses);
-
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
-					responses.add(response);
-
-					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-						bounds.original_transforms.clear();
-					}
-
-					Ready
-				}
-				(DraggingPivot, DragStop { .. } | Enter) => {
-					let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-						true => DocumentMessage::Undo,
-						false => DocumentMessage::CommitTransaction,
-					};
-					responses.add(response);
-
-					tool_data.snap_manager.cleanup(responses);
-
-					Ready
-				}
-				(DrawingBox, DragStop { .. } | Enter) => {
-					let quad = tool_data.selection_quad();
-					// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
-					tool_data.layers_dragging = document.document_legacy.intersects_quad_root(quad, render_data);
-					responses.add_front(DocumentMessage::AddSelectedLayers {
-						additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
+				let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
+				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+				for path in Document::shallowest_unique_layers(tool_data.layers_dragging.iter()) {
+					responses.add_front(GraphOperationMessage::TransformChange {
+						layer: path.to_vec(),
+						transform: DAffine2::from_translation(mouse_delta + closest_move),
+						transform_in: TransformIn::Viewport,
+						skip_rerender: true,
 					});
-					responses.add_front(DocumentMessage::Overlays(
-						Operation::DeleteLayer {
-							path: tool_data.drag_box_overlay_layer.take().unwrap(),
-						}
-						.into(),
-					));
-					Ready
 				}
-				(Ready, Enter) => {
-					let mut selected_layers = document.selected_layers();
+				tool_data.drag_current = mouse_position + closest_move;
 
-					if let Some(layer_path) = selected_layers.next() {
-						// Check that only one layer is selected
-						if selected_layers.next().is_none() {
-							if let Ok(layer) = document.document_legacy.layer(layer_path) {
-								if let Ok(network) = layer.as_layer_network() {
-									if network.nodes.values().any(|node| node.name == "Text") {
-										responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
-										responses.add(TextToolMessage::EditSelected);
-									}
+				if input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_none() {
+					tool_data.start_duplicates(document, responses);
+				} else if !input.keyboard.get(duplicate as usize) && tool_data.not_duplicated_layers.is_some() {
+					tool_data.stop_duplicates(responses);
+				}
+
+				Dragging
+			}
+			(ResizingBounds, PointerMove { axis_align, center, .. }) => {
+				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+					if let Some(movement) = &mut bounds.selected_edges {
+						let (center, axis_align) = (input.keyboard.get(center as usize), input.keyboard.get(axis_align as usize));
+
+						let mouse_position = input.mouse.position;
+
+						let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+
+						let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
+						let (delta, mut _pivot) = movement.bounds_to_scale_transform(position, size);
+
+						let selected = &tool_data.layers_dragging.iter().collect::<Vec<_>>();
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
+
+						selected.update_transforms(delta);
+					}
+				}
+				ResizingBounds
+			}
+			(RotatingBounds, PointerMove { snap_angle, .. }) => {
+				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+					let angle = {
+						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
+						let end_offset = input.mouse.position - bounds.center_of_transformation;
+
+						start_offset.angle_between(end_offset)
+					};
+
+					let snapped_angle = if input.keyboard.get(snap_angle as usize) {
+						let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
+						(angle / snap_resolution).round() * snap_resolution
+					} else {
+						angle
+					};
+
+					let delta = DAffine2::from_angle(snapped_angle);
+
+					let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
+					let mut selected = Selected::new(
+						&mut bounds.original_transforms,
+						&mut bounds.center_of_transformation,
+						&selected,
+						responses,
+						&document.document_legacy,
+						None,
+						&ToolType::Select,
+					);
+
+					selected.update_transforms(delta);
+				}
+
+				RotatingBounds
+			}
+			(DraggingPivot, PointerMove { .. }) => {
+				let mouse_position = input.mouse.position;
+				let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, render_data, responses);
+
+				DraggingPivot
+			}
+			(DrawingBox, PointerMove { .. }) => {
+				tool_data.drag_current = input.mouse.position;
+
+				responses.add_front(DocumentMessage::Overlays(
+					Operation::SetLayerTransformInViewport {
+						path: tool_data.drag_box_overlay_layer.clone().unwrap(),
+						transform: transform_from_box(tool_data.drag_start, tool_data.drag_current, DAffine2::IDENTITY).to_cols_array(),
+					}
+					.into(),
+				));
+				DrawingBox
+			}
+			(Ready, PointerMove { .. }) => {
+				let mut cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+
+				// Dragging the pivot overrules the other operations
+				if tool_data.pivot.is_over(input.mouse.position) {
+					cursor = MouseCursorIcon::Move;
+				}
+
+				// Generate the select outline (but not if the user is going to use the bound overlays)
+				if cursor == MouseCursorIcon::Default {
+					tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
+				} else {
+					tool_data.path_outlines.clear_hovered(responses);
+				}
+
+				if tool_data.cursor != cursor {
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+				}
+
+				Ready
+			}
+			(Dragging, Enter) => {
+				rerender_selected_layers(tool_data, responses);
+
+				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					true => DocumentMessage::Undo,
+					false => DocumentMessage::CommitTransaction,
+				};
+				tool_data.snap_manager.cleanup(responses);
+				responses.add_front(response);
+
+				Ready
+			}
+			(Dragging, DragStop { remove_from_selection }) => {
+				rerender_selected_layers(tool_data, responses);
+
+				// Deselect layer if not snap dragging
+				if !tool_data.is_dragging && input.keyboard.get(remove_from_selection as usize) && tool_data.layer_selected_on_start.is_none() {
+					let quad = tool_data.selection_quad();
+					let intersection = document.document_legacy.intersects_quad_root(quad, render_data);
+
+					if let Some(path) = intersection.last() {
+						let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(layer)).map(|path| path.to_vec()).collect();
+
+						tool_data.layers_dragging.clear();
+						tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
+
+						responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
+					}
+				}
+
+				tool_data.is_dragging = false;
+				tool_data.layer_selected_on_start = None;
+
+				responses.add(DocumentMessage::CommitTransaction);
+				tool_data.snap_manager.cleanup(responses);
+
+				Ready
+			}
+			(ResizingBounds, DragStop { .. } | Enter) => {
+				rerender_selected_layers(tool_data, responses);
+
+				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					true => DocumentMessage::Undo,
+					false => DocumentMessage::CommitTransaction,
+				};
+				responses.add(response);
+
+				tool_data.snap_manager.cleanup(responses);
+
+				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+					bounds.original_transforms.clear();
+				}
+
+				Ready
+			}
+			(RotatingBounds, DragStop { .. } | Enter) => {
+				rerender_selected_layers(tool_data, responses);
+
+				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					true => DocumentMessage::Undo,
+					false => DocumentMessage::CommitTransaction,
+				};
+				responses.add(response);
+
+				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+					bounds.original_transforms.clear();
+				}
+
+				Ready
+			}
+			(DraggingPivot, DragStop { .. } | Enter) => {
+				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					true => DocumentMessage::Undo,
+					false => DocumentMessage::CommitTransaction,
+				};
+				responses.add(response);
+
+				tool_data.snap_manager.cleanup(responses);
+
+				Ready
+			}
+			(DrawingBox, DragStop { .. } | Enter) => {
+				let quad = tool_data.selection_quad();
+				// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
+				tool_data.layers_dragging = document.document_legacy.intersects_quad_root(quad, render_data);
+				responses.add_front(DocumentMessage::AddSelectedLayers {
+					additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
+				});
+				responses.add_front(DocumentMessage::Overlays(
+					Operation::DeleteLayer {
+						path: tool_data.drag_box_overlay_layer.take().unwrap(),
+					}
+					.into(),
+				));
+				Ready
+			}
+			(Ready, Enter) => {
+				let mut selected_layers = document.selected_layers();
+
+				if let Some(layer_path) = selected_layers.next() {
+					// Check that only one layer is selected
+					if selected_layers.next().is_none() {
+						if let Ok(layer) = document.document_legacy.layer(layer_path) {
+							if let Ok(network) = layer.as_layer_network() {
+								if network.nodes.values().any(|node| node.name == "Text") {
+									responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
+									responses.add(TextToolMessage::EditSelected);
 								}
 							}
 						}
 					}
-
-					Ready
 				}
-				(Dragging, Abort) => {
-					rerender_selected_layers(tool_data, responses);
 
-					tool_data.snap_manager.cleanup(responses);
-					responses.add(DocumentMessage::Undo);
-
-					tool_data.path_outlines.clear_selected(responses);
-					tool_data.pivot.clear_overlays(responses);
-
-					Ready
-				}
-				(_, Abort) => {
-					if let Some(path) = tool_data.drag_box_overlay_layer.take() {
-						responses.add_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()))
-					};
-					if let Some(mut bounding_box_overlays) = tool_data.bounding_box_overlays.take() {
-						let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
-						let mut selected = Selected::new(
-							&mut bounding_box_overlays.original_transforms,
-							&mut bounding_box_overlays.opposite_pivot,
-							&selected,
-							responses,
-							&document.document_legacy,
-							None,
-							&ToolType::Select,
-						);
-
-						selected.revert_operation();
-
-						bounding_box_overlays.delete(responses);
-					}
-
-					tool_data.path_outlines.clear_hovered(responses);
-					tool_data.path_outlines.clear_selected(responses);
-					tool_data.pivot.clear_overlays(responses);
-
-					tool_data.snap_manager.cleanup(responses);
-					Ready
-				}
-				(_, Align { axis, aggregate }) => {
-					responses.add(DocumentMessage::AlignSelectedLayers { axis, aggregate });
-
-					self
-				}
-				(_, FlipHorizontal) => {
-					responses.add(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X });
-
-					self
-				}
-				(_, FlipVertical) => {
-					responses.add(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y });
-
-					self
-				}
-				(_, SetPivot { position }) => {
-					responses.add(DocumentMessage::StartTransaction);
-
-					let pos: Option<DVec2> = position.into();
-					tool_data.pivot.set_normalized_position(pos.unwrap(), document, render_data, responses);
-
-					self
-				}
-				_ => self,
+				Ready
 			}
-		} else {
-			self
+			(Dragging, Abort) => {
+				rerender_selected_layers(tool_data, responses);
+
+				tool_data.snap_manager.cleanup(responses);
+				responses.add(DocumentMessage::Undo);
+
+				tool_data.path_outlines.clear_selected(responses);
+				tool_data.pivot.clear_overlays(responses);
+
+				Ready
+			}
+			(_, Abort) => {
+				if let Some(path) = tool_data.drag_box_overlay_layer.take() {
+					responses.add_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()))
+				};
+				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_overlays.take() {
+					let selected = tool_data.layers_dragging.iter().collect::<Vec<_>>();
+					let mut selected = Selected::new(
+						&mut bounding_box_overlays.original_transforms,
+						&mut bounding_box_overlays.opposite_pivot,
+						&selected,
+						responses,
+						&document.document_legacy,
+						None,
+						&ToolType::Select,
+					);
+
+					selected.revert_operation();
+
+					bounding_box_overlays.delete(responses);
+				}
+
+				tool_data.path_outlines.clear_hovered(responses);
+				tool_data.path_outlines.clear_selected(responses);
+				tool_data.pivot.clear_overlays(responses);
+
+				tool_data.snap_manager.cleanup(responses);
+				Ready
+			}
+			(_, Align { axis, aggregate }) => {
+				responses.add(DocumentMessage::AlignSelectedLayers { axis, aggregate });
+
+				self
+			}
+			(_, FlipHorizontal) => {
+				responses.add(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X });
+
+				self
+			}
+			(_, FlipVertical) => {
+				responses.add(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y });
+
+				self
+			}
+			(_, SetPivot { position }) => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				let pos: Option<DVec2> = position.into();
+				tool_data.pivot.set_normalized_position(pos.unwrap(), document, render_data, responses);
+
+				self
+			}
+			_ => self,
 		}
 	}
 
@@ -1117,7 +1109,7 @@ fn drag_shallowest_manipulation(
 				combined_layers.push(incoming_layer_path_vector);
 			}
 			// Shared shallowest common folder of the combined layers
-			let shallowest_common_folder = document.document_legacy.shallowest_common_folder(combined_layers.iter().copied()).unwrap_or_default().to_vec();
+			let shallowest_common_folder = document.document_legacy.shallowest_common_folder(combined_layers.into_iter()).unwrap_or_default().to_vec();
 			let mut selected_layer_path_parent = shallowest_common_folder.to_vec();
 
 			// Determine if the incoming layer path is already selected
@@ -1175,12 +1167,12 @@ fn drag_shallowest_manipulation(
 				}
 			} else if selected_layers_count > 1 {
 				let direct_child = incoming_layer_path_vector
-					.iter()
-					.copied()
+					.into_iter()
 					.filter(|path| !shallowest_common_folder.contains(path))
 					.take(1)
+					.copied()
 					.collect::<Vec<_>>();
-				let already_selected_direct_child = selected_layers_collected.contains(&direct_child.clone().as_slice());
+				let already_selected_direct_child = selected_layers_collected.contains(&direct_child.as_slice());
 
 				// Update layer tree by filtering any duplicate layers (e.g. If a parent and one of its children are selected)
 				let mut replacement_selected_layers: Vec<Vec<u64>> = Vec::new();

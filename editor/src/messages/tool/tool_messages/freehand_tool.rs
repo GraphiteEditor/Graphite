@@ -1,14 +1,8 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
+use super::tool_prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
-use document_legacy::Operation;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
@@ -123,33 +117,31 @@ impl LayoutHolder for FreehandTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message {
-			match action {
-				FreehandOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				FreehandOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				FreehandOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				FreehandOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				FreehandOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				FreehandOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else{
+			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			FreehandOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			FreehandOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			FreehandOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			FreehandOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			FreehandOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			FreehandOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -191,74 +183,65 @@ impl Fsm for FreehandToolFsmState {
 	type ToolData = FreehandToolData;
 	type ToolOptions = FreehandOptions;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
 			document, global_tool_data, input, ..
-		}: &mut ToolActionHandlerData,
-		tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use FreehandToolFsmState::*;
-		use FreehandToolMessage::*;
+		} = tool_action_data;
 
-		let transform = document.document_legacy.root.transform;
+		let transform = document.document_legacy.metadata.document_to_viewport;
 
-		if let ToolMessage::Freehand(event) = event {
-			match (self, event) {
-				(Ready, DragStart) => {
-					responses.add(DocumentMessage::StartTransaction);
-					responses.add(DocumentMessage::DeselectAllLayers);
-					tool_data.path = Some(document.get_path_for_new_layer());
+		let ToolMessage::Freehand(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::DeselectAllLayers);
+				tool_data.path = Some(document.get_path_for_new_layer());
 
-					let pos = transform.inverse().transform_point2(input.mouse.position);
+				let pos = transform.inverse().transform_point2(input.mouse.position);
 
-					tool_data.points.push(pos);
+				tool_data.points.push(pos);
 
-					tool_data.weight = tool_options.line_weight;
+				tool_data.weight = tool_options.line_weight;
 
-					add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
+				add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
 
-					Drawing
-				}
-				(Drawing, PointerMove) => {
-					let pos = transform.inverse().transform_point2(input.mouse.position);
-
-					if tool_data.points.last() != Some(&pos) {
-						tool_data.points.push(pos);
-					}
-
-					add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
-
-					Drawing
-				}
-				(Drawing, DragStop) | (Drawing, Abort) => {
-					if tool_data.points.len() >= 2 {
-						responses.add(remove_preview(tool_data));
-						add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
-						responses.add(DocumentMessage::CommitTransaction);
-					} else {
-						responses.add(DocumentMessage::AbortTransaction);
-					}
-
-					tool_data.path = None;
-					tool_data.points.clear();
-
-					Ready
-				}
-				(_, FreehandToolMessage::WorkingColorChanged) => {
-					responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+				FreehandToolFsmState::Drawing
 			}
-		} else {
-			self
+			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
+				let pos = transform.inverse().transform_point2(input.mouse.position);
+
+				if tool_data.points.last() != Some(&pos) {
+					tool_data.points.push(pos);
+				}
+
+				add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
+
+				FreehandToolFsmState::Drawing
+			}
+			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop | FreehandToolMessage::Abort) => {
+				if tool_data.points.len() >= 2 {
+					responses.add(remove_preview(tool_data));
+					add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
+					responses.add(DocumentMessage::CommitTransaction);
+				} else {
+					responses.add(DocumentMessage::AbortTransaction);
+				}
+
+				tool_data.path = None;
+				tool_data.points.clear();
+
+				FreehandToolFsmState::Ready
+			}
+			(_, FreehandToolMessage::WorkingColorChanged) => {
+				responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 
@@ -277,7 +260,7 @@ impl Fsm for FreehandToolFsmState {
 }
 
 fn remove_preview(data: &FreehandToolData) -> Message {
-	Operation::DeleteLayer { path: data.path.clone().unwrap() }.into()
+	GraphOperationMessage::DeleteLayer { id: data.path.clone().unwrap()[0] }.into()
 }
 
 fn add_polyline(data: &FreehandToolData, stroke_color: Option<Color>, fill_color: Option<Color>, responses: &mut VecDeque<Message>) {

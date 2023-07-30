@@ -1,18 +1,10 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
+use super::tool_prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
-
-use glam::DVec2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct PolygonTool {
@@ -158,35 +150,33 @@ impl LayoutHolder for PolygonTool {
 }
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PolygonTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Polygon(PolygonToolMessage::UpdateOptions(action)) = message {
-			match action {
-				PolygonOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
-				PolygonOptionsUpdate::PrimitiveShapeType(primitive_shape_type) => self.options.primitive_shape_type = primitive_shape_type,
-				PolygonOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				PolygonOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				PolygonOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				PolygonOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				PolygonOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				PolygonOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Polygon(PolygonToolMessage::UpdateOptions(action)) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			PolygonOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
+			PolygonOptionsUpdate::PrimitiveShapeType(primitive_shape_type) => self.options.primitive_shape_type = primitive_shape_type,
+			PolygonOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			PolygonOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			PolygonOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			PolygonOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			PolygonOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			PolygonOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -232,87 +222,78 @@ impl Fsm for PolygonToolFsmState {
 	type ToolData = PolygonToolData;
 	type ToolOptions = PolygonOptions;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
 			document,
 			global_tool_data,
 			input,
 			render_data,
 			..
-		}: &mut ToolActionHandlerData,
-		tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use PolygonToolFsmState::*;
-		use PolygonToolMessage::*;
+		} = tool_action_data;
 
 		let polygon_data = &mut tool_data.data;
 
-		if let ToolMessage::Polygon(event) = event {
-			match (self, event) {
-				(Drawing, CanvasTransformed) => {
-					tool_data.data.recalculate_snaps(document, input, render_data);
-					self
-				}
-				(Ready, DragStart) => {
-					polygon_data.start(responses, document, input, render_data);
-					responses.add(DocumentMessage::StartTransaction);
-					let layer_path = document.get_path_for_new_layer();
-					polygon_data.path = Some(layer_path.clone());
-
-					let subpath = match tool_options.primitive_shape_type {
-						PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
-						PrimitiveShapeType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
-					};
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-
-					let fill_color = tool_options.fill.active_color();
-					responses.add(GraphOperationMessage::FillSet {
-						layer: layer_path.clone(),
-						fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-					});
-
-					responses.add(GraphOperationMessage::StrokeSet {
-						layer: layer_path,
-						stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-					});
-
-					Drawing
-				}
-				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = polygon_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
-						responses.add(message);
-					}
-
-					state
-				}
-				(Drawing, DragStop) => {
-					input.mouse.finish_transaction(polygon_data.viewport_drag_start(document), responses);
-					polygon_data.cleanup(responses);
-
-					Ready
-				}
-				(Drawing, Abort) => {
-					responses.add(DocumentMessage::AbortTransaction);
-
-					polygon_data.cleanup(responses);
-
-					Ready
-				}
-				(_, WorkingColorChanged) => {
-					responses.add(PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+		let ToolMessage::Polygon(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(PolygonToolFsmState::Drawing, PolygonToolMessage::CanvasTransformed) => {
+				tool_data.data.recalculate_snaps(document, input, render_data);
+				self
 			}
-		} else {
-			self
+			(PolygonToolFsmState::Ready, PolygonToolMessage::DragStart) => {
+				polygon_data.start(responses, document, input, render_data);
+				responses.add(DocumentMessage::StartTransaction);
+				let layer_path = document.get_path_for_new_layer();
+				polygon_data.path = Some(layer_path.clone());
+
+				let subpath = match tool_options.primitive_shape_type {
+					PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
+					PrimitiveShapeType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
+				};
+				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+				let fill_color = tool_options.fill.active_color();
+				responses.add(GraphOperationMessage::FillSet {
+					layer: layer_path.clone(),
+					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
+				});
+
+				responses.add(GraphOperationMessage::StrokeSet {
+					layer: layer_path,
+					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
+				});
+
+				PolygonToolFsmState::Drawing
+			}
+			(state, PolygonToolMessage::Resize { center, lock_ratio }) => {
+				if let Some(message) = polygon_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+					responses.add(message);
+				}
+
+				state
+			}
+			(PolygonToolFsmState::Drawing, PolygonToolMessage::DragStop) => {
+				input.mouse.finish_transaction(polygon_data.viewport_drag_start(document), responses);
+				polygon_data.cleanup(responses);
+
+				PolygonToolFsmState::Ready
+			}
+			(PolygonToolFsmState::Drawing, PolygonToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				polygon_data.cleanup(responses);
+
+				PolygonToolFsmState::Ready
+			}
+			(_, PolygonToolMessage::WorkingColorChanged) => {
+				responses.add(PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 
