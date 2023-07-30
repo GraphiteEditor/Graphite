@@ -24,6 +24,9 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
 
 				for bounds in bounds_of_viewports {
+					let new_size = bounds.size();
+					let existing_size = self.viewport_bounds.size();
+
 					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
 					self.viewport_bounds = bounds;
 
