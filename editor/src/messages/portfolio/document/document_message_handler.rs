@@ -370,6 +370,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				file_type,
 				scale_factor,
 				bounds,
+				transparent_background,
 			} => {
 				let old_transforms = self.remove_document_transform();
 
@@ -383,7 +384,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let size = bounds[1] - bounds[0];
 				let transform = (DAffine2::from_translation(bounds[0]) * DAffine2::from_scale(size)).inverse();
 
-				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
+				let document = self.render_document(size, transform, transparent_background, persistent_data, DocumentRenderMode::Root);
 
 				self.restore_document_transform(old_transforms);
 
@@ -1011,7 +1012,8 @@ impl DocumentMessageHandler {
 			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			// TODO: Test if this would be better to have a transparent background
+			let svg = self.render_document(size, transform.inverse(), false, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
 			self.restore_document_transform(old_transforms);
 
@@ -1053,7 +1055,7 @@ impl DocumentMessageHandler {
 		DocumentLegacy::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_document.root);
 	}
 
-	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
+	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, transparent_background: bool, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
 		// Render the document SVG code
 
 		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
@@ -1063,20 +1065,26 @@ impl DocumentMessageHandler {
 			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, &render_data).unwrap(), None),
 			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
 		};
-		let artboards = self.artboard_message_handler.artboards_document.render_root(&render_data);
+		let artboards = match transparent_background {
+			false => self.artboard_message_handler.artboards_document.render_root(&render_data),
+			true => "".into(),
+		};
 		let outside_artboards_color = outside.map_or_else(
 			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
 			|col| col.rgba_hex(),
 		);
-		let outside_artboards = format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color);
+		let outside_artboards = match transparent_background {
+			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color),
+			true => "".into(),
+		};
 		let matrix = transform
 			.to_cols_array()
 			.iter()
 			.enumerate()
 			.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
 		let svg = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
-			size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork
+			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{outside_artboards}<g transform="matrix({matrix})">{artboards}{artwork}</g></svg>"#,
+			size.x, size.y, "\n",
 		);
 
 		svg

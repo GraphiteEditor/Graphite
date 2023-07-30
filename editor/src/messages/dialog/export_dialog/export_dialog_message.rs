@@ -9,6 +9,7 @@ pub enum ExportDialogMessage {
 	FileName(String),
 	FileType(FileType),
 	ScaleFactor(f64),
+	TransparentBackground(bool),
 	ExportBounds(ExportBounds),
 
 	Submit,

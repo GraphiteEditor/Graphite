@@ -82,6 +82,7 @@ pub enum DocumentMessage {
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
+		transparent_background: bool,
 	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
