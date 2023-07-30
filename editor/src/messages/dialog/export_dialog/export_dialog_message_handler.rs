@@ -2,7 +2,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput, NumberInput, RadioEntryData, RadioInput, TextInput};
+use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, DropdownEntryData, DropdownInput, NumberInput, RadioEntryData, RadioInput, TextInput};
 use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType, TextLabel};
 use crate::messages::prelude::*;
 
@@ -15,6 +15,7 @@ pub struct ExportDialogMessageHandler {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
+	pub transparent_background: bool,
 	pub artboards: HashMap<LayerId, String>,
 	pub has_selection: bool,
 }
@@ -24,7 +25,8 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 		match message {
 			ExportDialogMessage::FileName(name) => self.file_name = name,
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
-			ExportDialogMessage::ScaleFactor(x) => self.scale_factor = x,
+			ExportDialogMessage::ScaleFactor(factor) => self.scale_factor = factor,
+			ExportDialogMessage::TransparentBackground(transparent_background) => self.transparent_background = transparent_background,
 			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
 
 			ExportDialogMessage::Submit => responses.add_front(DocumentMessage::ExportDocument {
@@ -32,6 +34,7 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 				file_type: self.file_type,
 				scale_factor: self.scale_factor,
 				bounds: self.bounds,
+				transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
 			}),
 		}
 
@@ -120,6 +123,24 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			})),
 		];
 
+		let transparent_background = vec![
+			WidgetHolder::new(Widget::TextLabel(TextLabel {
+				value: "Transparency".into(),
+				table_align: true,
+				..Default::default()
+			})),
+			WidgetHolder::new(Widget::Separator(Separator {
+				separator_type: SeparatorType::Unrelated,
+				direction: SeparatorDirection::Horizontal,
+			})),
+			WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
+				checked: self.transparent_background,
+				disabled: self.file_type == FileType::Jpg,
+				on_update: WidgetCallback::new(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground(value.checked).into()),
+				..Default::default()
+			})),
+		];
+
 		let resolution = vec![
 			WidgetHolder::new(Widget::TextLabel(TextLabel {
 				value: "Scale Factor".into(),
@@ -174,6 +195,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 			LayoutGroup::Row { widgets: export_type },
 			LayoutGroup::Row { widgets: resolution },
 			LayoutGroup::Row { widgets: export_area },
+			LayoutGroup::Row { widgets: transparent_background },
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
