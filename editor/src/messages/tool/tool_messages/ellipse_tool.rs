@@ -1,18 +1,10 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
+use super::tool_prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
-
-use glam::DVec2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct EllipseTool {
@@ -120,33 +112,31 @@ impl LayoutHolder for EllipseTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EllipseTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Ellipse(EllipseToolMessage::UpdateOptions(action)) = message {
-			match action {
-				EllipseOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				EllipseOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				EllipseOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				EllipseOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				EllipseOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				EllipseOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Ellipse(EllipseToolMessage::UpdateOptions(action)) = message else{
+			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			EllipseOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			EllipseOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			EllipseOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			EllipseOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			EllipseOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			EllipseOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -192,88 +182,79 @@ impl Fsm for EllipseToolFsmState {
 	type ToolData = EllipseToolData;
 	type ToolOptions = EllipseToolOptions;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
 			document,
 			global_tool_data,
 			input,
 			render_data,
 			..
-		}: &mut ToolActionHandlerData,
-		tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use EllipseToolFsmState::*;
-		use EllipseToolMessage::*;
+		} = tool_action_data;
 
 		let shape_data = &mut tool_data.data;
 
-		if let ToolMessage::Ellipse(event) = event {
-			match (self, event) {
-				(Drawing, CanvasTransformed) => {
-					tool_data.data.recalculate_snaps(document, input, render_data);
-					self
-				}
-				(Ready, DragStart) => {
-					shape_data.start(responses, document, input, render_data);
-					responses.add(DocumentMessage::StartTransaction);
-
-					// Create a new layer path for this shape
-					let layer_path = document.get_path_for_new_layer();
-					shape_data.path = Some(layer_path.clone());
-
-					// Create a new ellipse vector shape
-					let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
-					let manipulator_groups = subpath.manipulator_groups().to_vec();
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-					graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
-
-					let fill_color = tool_options.fill.active_color();
-					responses.add(GraphOperationMessage::FillSet {
-						layer: layer_path.clone(),
-						fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-					});
-
-					responses.add(GraphOperationMessage::StrokeSet {
-						layer: layer_path,
-						stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-					});
-
-					Drawing
-				}
-				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
-						responses.add(message);
-					}
-
-					state
-				}
-				(Drawing, DragStop) => {
-					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					shape_data.cleanup(responses);
-
-					Ready
-				}
-				(Drawing, Abort) => {
-					responses.add(DocumentMessage::AbortTransaction);
-					shape_data.cleanup(responses);
-
-					Ready
-				}
-				(_, WorkingColorChanged) => {
-					responses.add(EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+		let ToolMessage::Ellipse(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(EllipseToolFsmState::Drawing, EllipseToolMessage::CanvasTransformed) => {
+				tool_data.data.recalculate_snaps(document, input, render_data);
+				self
 			}
-		} else {
-			self
+			(EllipseToolFsmState::Ready, EllipseToolMessage::DragStart) => {
+				shape_data.start(responses, document, input, render_data);
+				responses.add(DocumentMessage::StartTransaction);
+
+				// Create a new layer path for this shape
+				let layer_path = document.get_path_for_new_layer();
+				shape_data.path = Some(layer_path.clone());
+
+				// Create a new ellipse vector shape
+				let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
+				let manipulator_groups = subpath.manipulator_groups().to_vec();
+				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+				graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
+
+				let fill_color = tool_options.fill.active_color();
+				responses.add(GraphOperationMessage::FillSet {
+					layer: layer_path.clone(),
+					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
+				});
+
+				responses.add(GraphOperationMessage::StrokeSet {
+					layer: layer_path,
+					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
+				});
+
+				EllipseToolFsmState::Drawing
+			}
+			(state, EllipseToolMessage::Resize { center, lock_ratio }) => {
+				if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+					responses.add(message);
+				}
+
+				state
+			}
+			(EllipseToolFsmState::Drawing, EllipseToolMessage::DragStop) => {
+				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
+				shape_data.cleanup(responses);
+
+				EllipseToolFsmState::Ready
+			}
+			(EllipseToolFsmState::Drawing, EllipseToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				shape_data.cleanup(responses);
+
+				EllipseToolFsmState::Ready
+			}
+			(_, EllipseToolMessage::WorkingColorChanged) => {
+				responses.add(EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 

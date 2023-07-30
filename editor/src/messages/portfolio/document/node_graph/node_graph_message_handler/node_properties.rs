@@ -708,12 +708,7 @@ pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let color = color_widget(document_node, node_id, index, name, ColorInput::default(), true);
-
-		color
-	};
-	vec![operand("Color", 0)]
+	vec![color_widget(document_node, node_id, 0, "Color", ColorInput::default(), true)]
 }
 
 pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -760,21 +755,11 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let blend_mode = blend_mode(document_node, node_id, index, name, true);
-
-		blend_mode
-	};
-	vec![operand("Blend Mode", 0)]
+	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
 }
 
 pub fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let color_channel = color_channel(document_node, node_id, index, name, true);
-
-		color_channel
-	};
-	vec![operand("Channel", 0)]
+	vec![color_channel(document_node, node_id, 0, "Channel", true)]
 }
 
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

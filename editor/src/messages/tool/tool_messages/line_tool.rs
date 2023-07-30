@@ -1,21 +1,12 @@
+use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::LayerId;
 use graphene_core::vector::style::Stroke;
 use graphene_core::Color;
-
-use glam::DVec2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct LineTool {
@@ -112,26 +103,24 @@ impl LayoutHolder for LineTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message {
-			match action {
-				LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				LineOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				LineOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				LineOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			LineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			LineOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			LineOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			LineOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -162,8 +151,8 @@ enum LineToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
-	drag_start: ViewportPosition,
-	drag_current: ViewportPosition,
+	drag_start: DVec2,
+	drag_current: DVec2,
 	angle: f64,
 	weight: f64,
 	path: Option<Vec<LayerId>>,
@@ -174,76 +163,70 @@ impl Fsm for LineToolFsmState {
 	type ToolData = LineToolData;
 	type ToolOptions = LineOptions;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
 			document,
 			global_tool_data,
 			input,
 			render_data,
 			..
-		}: &mut ToolActionHandlerData,
-		tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use LineToolFsmState::*;
-		use LineToolMessage::*;
+		} = tool_action_data;
 
-		if let ToolMessage::Line(event) = event {
-			match (self, event) {
-				(Ready, DragStart) => {
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-					tool_data.drag_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+		let ToolMessage::Line(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
+				let viewport_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				tool_data.drag_start = document.document_legacy.metadata.document_to_viewport.inverse().transform_point2(viewport_start);
 
-					responses.add(DocumentMessage::StartTransaction);
-					let layer_path = document.get_path_for_new_layer();
-					tool_data.path = Some(layer_path.clone());
-					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-					responses.add(GraphOperationMessage::StrokeSet {
-						layer: layer_path,
-						stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-					});
+				let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
 
-					tool_data.weight = tool_options.line_weight;
+				responses.add(DocumentMessage::StartTransaction);
+				let layer_path = document.get_path_for_new_layer();
+				tool_data.path = Some(layer_path.clone());
+				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+				responses.add(GraphOperationMessage::StrokeSet {
+					layer: layer_path,
+					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
+				});
 
-					Drawing
-				}
-				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
-					tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				tool_data.weight = tool_options.line_weight;
 
-					let keyboard = &input.keyboard;
-					responses.add(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
-
-					Drawing
-				}
-				(Drawing, DragStop) => {
-					tool_data.snap_manager.cleanup(responses);
-					input.mouse.finish_transaction(tool_data.drag_start, responses);
-					tool_data.path = None;
-					Ready
-				}
-				(Drawing, Abort) => {
-					tool_data.snap_manager.cleanup(responses);
-					responses.add(DocumentMessage::AbortTransaction);
-					tool_data.path = None;
-					Ready
-				}
-				(_, WorkingColorChanged) => {
-					responses.add(LineToolMessage::UpdateOptions(LineOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+				LineToolFsmState::Drawing
 			}
-		} else {
-			self
+			(LineToolFsmState::Drawing, LineToolMessage::Redraw { center, snap_angle, lock_angle }) => {
+				tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+
+				let keyboard = &input.keyboard;
+				let transform = document.document_legacy.metadata.document_to_viewport;
+				responses.add(generate_transform(tool_data, transform, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+
+				LineToolFsmState::Drawing
+			}
+			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
+				tool_data.snap_manager.cleanup(responses);
+				input.mouse.finish_transaction(tool_data.drag_start, responses);
+				tool_data.path = None;
+				LineToolFsmState::Ready
+			}
+			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
+				tool_data.snap_manager.cleanup(responses);
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.path = None;
+				LineToolFsmState::Ready
+			}
+			(_, LineToolMessage::WorkingColorChanged) => {
+				responses.add(LineToolMessage::UpdateOptions(LineOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 
@@ -270,8 +253,8 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(tool_data: &mut LineToolData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
-	let mut start = tool_data.drag_start;
+fn generate_transform(tool_data: &mut LineToolData, document_to_viewport: DAffine2, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
+	let mut start = document_to_viewport.transform_point2(tool_data.drag_start);
 	let line_vector = tool_data.drag_current - start;
 
 	let mut angle = -line_vector.angle_between(DVec2::X);

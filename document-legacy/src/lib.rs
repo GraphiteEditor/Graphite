@@ -6,6 +6,7 @@ pub mod boolean_ops;
 /// Contains constant values used by this crate.
 pub mod consts;
 pub mod document;
+pub mod document_metadata;
 /// Defines errors that can occur when using this crate.
 pub mod error;
 /// Utilities for computing intersections.

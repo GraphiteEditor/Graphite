@@ -655,8 +655,8 @@
 					</svg>
 				</div>
 				<div class="thumbnail">
-					{#if node.thumbnailSvg}
-						{@html node.thumbnailSvg}
+					{#if $nodeGraph.thumbnails.has(node.id)}
+						{@html $nodeGraph.thumbnails.get(node.id) }
 					{/if}
 					{#if node.primaryOutput}
 						<svg
@@ -705,7 +705,7 @@
 				class:selected={selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={node.disabled}
-				class:is-layer={node.thumbnailSvg !== undefined}
+				class:is-layer={node.displayName === "Layer"}
 				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
@@ -1172,6 +1172,10 @@
 
 						.expand-arrow {
 							margin-right: 4px;
+						}
+						svg {
+							width: 30px;
+							height: 20px;
 						}
 					}
 				}

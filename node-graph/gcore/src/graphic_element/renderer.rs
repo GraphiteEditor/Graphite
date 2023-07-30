@@ -1,10 +1,55 @@
 use crate::raster::{Image, ImageFrame};
-use crate::{uuid::generate_uuid, vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
-use quad::Quad;
+use crate::uuid::{generate_uuid, ManipulatorGroupId};
+use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
+use bezier_rs::Subpath;
+pub use quad::Quad;
 
 use glam::{DAffine2, DVec2};
 
 mod quad;
+
+/// Represents a clickable target for the layer
+#[derive(Clone, Debug)]
+pub struct ClickTarget {
+	pub subpath: bezier_rs::Subpath<ManipulatorGroupId>,
+	pub stroke_width: f64,
+}
+
+impl ClickTarget {
+	/// Does the click target intersect the rectangle
+	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
+		let quad = layer_transform.inverse() * document_quad;
+
+		// Check if outlines intersect
+		if self
+			.subpath
+			.iter()
+			.any(|path_segment| quad.bezier_lines().any(|line| !path_segment.intersections(&line, None, None).is_empty()))
+		{
+			return true;
+		}
+		// Check if selection is entirely within the shape
+		if self.subpath.closed() && self.subpath.contains_point(quad.center()) {
+			return true;
+		}
+
+		// Check if shape is entirely within selection
+		self.subpath
+			.manipulator_groups()
+			.first()
+			.map(|group| group.anchor)
+			.map(|shape_point| quad.contains(shape_point))
+			.unwrap_or_default()
+	}
+
+	/// Does the click target intersect the point (accounting for stroke size)
+	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
+		// Allows for selecting lines
+		// TODO: actual intersection of stroke
+		let inflated_quad = Quad::from_box([point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)]);
+		self.intersect_rectangle(inflated_quad, layer_transform)
+	}
+}
 
 /// Mutable state used whilst rendering to an SVG
 pub struct SvgRender {
@@ -109,6 +154,7 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
 }
 
 impl GraphicElementRendered for GraphicGroup {
@@ -118,6 +164,7 @@ impl GraphicElementRendered for GraphicGroup {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.iter().filter_map(|element| element.graphic_element_data.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
+	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 impl GraphicElementRendered for VectorData {
@@ -139,6 +186,14 @@ impl GraphicElementRendered for VectorData {
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform(self.transform * transform)
+	}
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
+		let update_closed = |mut subpath: bezier_rs::Subpath<ManipulatorGroupId>| {
+			subpath.set_closed(self.style.fill().is_some());
+			subpath
+		};
+		click_targets.extend(self.subpaths.iter().cloned().map(update_closed).map(|subpath| ClickTarget { stroke_width, subpath }))
 	}
 }
 
@@ -195,7 +250,15 @@ impl GraphicElementRendered for Artboard {
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
-		[self.graphic_group.bounding_box(transform), Some(artboard_bounds)].into_iter().flatten().reduce(Quad::combine_bounds)
+		if self.clip {
+			Some(artboard_bounds)
+		} else {
+			[self.graphic_group.bounding_box(transform), Some(artboard_bounds)].into_iter().flatten().reduce(Quad::combine_bounds)
+		}
+	}
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let subpath = Subpath::new_rect(self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2());
+		click_targets.push(ClickTarget { stroke_width: 0., subpath });
 	}
 }
 
@@ -215,6 +278,10 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let transform = self.transform * transform;
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+	}
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		click_targets.push(ClickTarget { subpath, stroke_width: 0. });
 	}
 }
 
@@ -236,6 +303,16 @@ impl GraphicElementRendered for GraphicElementData {
 			GraphicElementData::Text(_) => todo!("Bounds of a text GraphicElementData"),
 			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
 			GraphicElementData::Artboard(artboard) => artboard.bounding_box(transform),
+		}
+	}
+
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		match self {
+			GraphicElementData::VectorShape(vector_data) => vector_data.add_click_targets(click_targets),
+			GraphicElementData::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
+			GraphicElementData::Text(_) => todo!("click target for text GraphicElementData"),
+			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
+			GraphicElementData::Artboard(artboard) => artboard.add_click_targets(click_targets),
 		}
 	}
 }

@@ -17,7 +17,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
 
-use glam::DAffine2;
 use std::sync::Arc;
 
 #[derive(Debug, Default)]
@@ -510,7 +509,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				resolution,
 			} => {
 				if let Some(node_id) = node_id {
-					self.executor.insert_thumbnail_blob_url(blob_url, layer_path.last().copied(), node_id, responses);
+					self.executor.insert_thumbnail_blob_url(blob_url, node_id, responses);
 					return;
 				}
 				let message = DocumentMessage::SetImageBlobUrl {
@@ -698,8 +697,12 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		let transform = self.active_document().map(|document| document.document_legacy.root.transform).unwrap_or(DAffine2::IDENTITY);
-		self.executor.poll_node_graph_evaluation(transform, responses).unwrap_or_else(|e| {
+		let Some(active_document) = 	self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
+			warn!("Polling node graph with no document");
+			return;
+		};
+
+		self.executor.poll_node_graph_evaluation(&mut active_document.document_legacy, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {}", e);
 		});
 	}

@@ -1,27 +1,21 @@
+use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::tool::tool_messages::pen_tool::graph_modification_utils::NodeGraphLayer;
 
 use bezier_rs::Subpath;
+use document_legacy::document::Document;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeInput;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 use graphene_core::Color;
-
-use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -144,33 +138,31 @@ impl LayoutHolder for PenTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message {
-			match action {
-				PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				PenOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				PenOptionsUpdate::StrokeColor(color) => {
-					self.options.stroke.custom_color = color;
-					self.options.stroke.color_type = ToolColorType::Custom;
-				}
-				PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				PenOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.stroke.primary_working_color = primary;
-					self.options.stroke.secondary_working_color = secondary;
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			PenOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			PenOptionsUpdate::StrokeColor(color) => {
+				self.options.stroke.custom_color = color;
+				self.options.stroke.color_type = ToolColorType::Custom;
+			}
+			PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			PenOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.stroke.primary_working_color = primary;
+				self.options.stroke.secondary_working_color = secondary;
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -227,7 +219,7 @@ impl PenToolData {
 		self.subpath_index = subpath_index;
 
 		// Stop the handles on the first point from mirroring
-		let Some(subpaths) = get_subpaths(layer, document) else { return };
+		let Some(subpaths) = get_subpaths (LayerNodeIdentifier::from_path(layer, document.network()), &document.document_legacy) else { return };
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
 		let Some(last_handle) = (if from_start { manipulator_groups.first() } else { manipulator_groups.last() }) else {
 			return;
@@ -257,7 +249,7 @@ impl PenToolData {
 		let layer_path = document.get_path_for_new_layer();
 
 		// Get the position and set properties
-		let transform = document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).unwrap_or_default();
+		let transform = document.document_legacy.metadata.document_to_viewport * document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).unwrap_or_default();
 		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
 		let start_position = transform.inverse().transform_point2(snapped_position);
 		self.weight = line_weight;
@@ -286,7 +278,7 @@ impl PenToolData {
 	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) -> Option<()> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(layer_path, document)?[self.subpath_index];
+		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -327,7 +319,7 @@ impl PenToolData {
 
 		// The overlay system cannot detect deleted points so we must just delete all the overlays
 		for layer_path in document.all_layers() {
-			shape_overlay.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
+			shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
 		}
 
 		self.should_mirror = false;
@@ -337,7 +329,7 @@ impl PenToolData {
 	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(layer_path, document)?[self.subpath_index];
+		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -394,7 +386,7 @@ impl PenToolData {
 
 			// Clean up overlays
 			for layer_path in document.all_layers() {
-				shape_overlay.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
+				shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
 			}
 
 			// Clean up tool data
@@ -415,7 +407,7 @@ impl PenToolData {
 	fn drag_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(layer_path, document)?[self.subpath_index];
+		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group
 		let manipulator_groups = subpath.manipulator_groups();
@@ -468,7 +460,7 @@ impl PenToolData {
 	fn place_anchor(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(layer_path, document)?[self.subpath_index];
+		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -513,7 +505,7 @@ impl PenToolData {
 	fn finish_transaction(&mut self, fsm: PenToolFsmState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Option<DocumentMessage> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(layer_path, document)?[self.subpath_index];
+		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
 
 		// Abort if only one manipulator group has been placed
 		if fsm == PenToolFsmState::PlacingAnchor && subpath.len() < 3 {
@@ -560,11 +552,8 @@ impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 	type ToolOptions = PenOptions;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
 			document,
 			global_tool_data,
 			input,
@@ -572,10 +561,8 @@ impl Fsm for PenToolFsmState {
 			shape_editor,
 			shape_overlay,
 			..
-		}: &mut ToolActionHandlerData,
-		tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
+		} = tool_action_data;
+
 		let mut transform = tool_data.path.as_ref().and_then(|path| document.document_legacy.multiply_transforms(path).ok()).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
@@ -591,117 +578,118 @@ impl Fsm for PenToolFsmState {
 			transform = DAffine2::IDENTITY;
 		}
 
-		if let ToolMessage::Pen(event) = event {
-			match (self, event) {
-				(_, PenToolMessage::CanvasTransformed) => {
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
-					self
-				}
-				(_, PenToolMessage::DocumentIsDirty) => {
-					// When the document has moved / needs to be redraw, re-render the overlays
-					// TODO the overlay system should probably receive this message instead of the tool
-					for layer_path in document.selected_visible_layers() {
-						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
-					}
-					self
-				}
-				(_, PenToolMessage::SelectionChanged) => {
-					// Set the previously selected layers to invisible
-					for layer_path in document.all_layers() {
-						shape_overlay.layer_overlay_visibility(&document.document_legacy, layer_path.to_vec(), false, responses);
-					}
+		transform = document.document_legacy.metadata.document_to_viewport * transform;
 
-					// Redraw the overlays of the newly selected layers
-					for layer_path in document.selected_visible_layers() {
-						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
-					}
-					self
-				}
-				(_, PenToolMessage::WorkingColorChanged) => {
-					responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
-					responses.add(DocumentMessage::StartTransaction);
-
-					// Initialize snapping
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-
-					// Disable this tool's mirroring
-					tool_data.should_mirror = false;
-
-					// Perform extension of an existing path
-					if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
-						tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
-					} else {
-						tool_data.create_new_path(
-							document,
-							tool_options.line_weight,
-							tool_options.stroke.active_color(),
-							tool_options.fill.active_color(),
-							input,
-							responses,
-						);
-					}
-
-					// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
-					PenToolFsmState::DraggingHandle
-				}
-				(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
-					tool_data.check_break(document, transform, shape_overlay, responses);
-					PenToolFsmState::DraggingHandle
-				}
-				(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
-					tool_data.should_mirror = true;
-					tool_data.finish_placing_handle(document, transform, shape_overlay, responses).unwrap_or(PenToolFsmState::PlacingAnchor)
-				}
-				(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
-					let modifiers = ModifierState {
-						snap_angle: input.keyboard.key(snap_angle),
-						lock_angle: input.keyboard.key(lock_angle),
-						break_handle: input.keyboard.key(break_handle),
-					};
-					tool_data.drag_handle(document, transform, input.mouse.position, modifiers, responses).unwrap_or(PenToolFsmState::Ready)
-				}
-				(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
-					let modifiers = ModifierState {
-						snap_angle: input.keyboard.key(snap_angle),
-						lock_angle: input.keyboard.key(lock_angle),
-						break_handle: input.keyboard.key(break_handle),
-					};
-					tool_data
-						.place_anchor(document, transform, input.mouse.position, modifiers, responses)
-						.unwrap_or(PenToolFsmState::Ready)
-				}
-				(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
-					// Abort or commit the transaction to the undo history
-					let message = tool_data.finish_transaction(self, document, responses).unwrap_or(DocumentMessage::AbortTransaction);
-					responses.add(message);
-
-					// Clean up overlays
-					for layer_path in document.all_layers() {
-						shape_overlay.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
-					}
-					tool_data.path = None;
-					tool_data.snap_manager.cleanup(responses);
-
-					PenToolFsmState::Ready
-				}
-				(_, PenToolMessage::Abort) => {
-					// Clean up overlays
-					for layer_path in document.all_layers() {
-						shape_overlay.clear_subpath_overlays(&document.document_legacy, layer_path.to_vec(), responses);
-					}
-					self
-				}
-				_ => self,
+		let ToolMessage::Pen(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(_, PenToolMessage::CanvasTransformed) => {
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				self
 			}
-		} else {
-			self
+			(_, PenToolMessage::DocumentIsDirty) => {
+				// When the document has moved / needs to be redraw, re-render the overlays
+				// TODO the overlay system should probably receive this message instead of the tool
+				for layer in document.document_legacy.metadata.selected_layers() {
+					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
+				}
+				self
+			}
+			(_, PenToolMessage::SelectionChanged) => {
+				// Set the previously selected layers to invisible
+				for layer in document.document_legacy.metadata.all_layers() {
+					shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
+				}
+
+				// Redraw the overlays of the newly selected layers
+				for layer in document.document_legacy.metadata.selected_layers() {
+					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
+				}
+				self
+			}
+			(_, PenToolMessage::WorkingColorChanged) => {
+				responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				// Initialize snapping
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+
+				// Disable this tool's mirroring
+				tool_data.should_mirror = false;
+
+				// Perform extension of an existing path
+				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+					tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
+				} else {
+					tool_data.create_new_path(
+						document,
+						tool_options.line_weight,
+						tool_options.stroke.active_color(),
+						tool_options.fill.active_color(),
+						input,
+						responses,
+					);
+				}
+
+				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
+				PenToolFsmState::DraggingHandle
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
+				tool_data.check_break(document, transform, shape_overlay, responses);
+				PenToolFsmState::DraggingHandle
+			}
+			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
+				tool_data.should_mirror = true;
+				tool_data.finish_placing_handle(document, transform, shape_overlay, responses).unwrap_or(PenToolFsmState::PlacingAnchor)
+			}
+			(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
+				let modifiers = ModifierState {
+					snap_angle: input.keyboard.key(snap_angle),
+					lock_angle: input.keyboard.key(lock_angle),
+					break_handle: input.keyboard.key(break_handle),
+				};
+				tool_data.drag_handle(document, transform, input.mouse.position, modifiers, responses).unwrap_or(PenToolFsmState::Ready)
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
+				let modifiers = ModifierState {
+					snap_angle: input.keyboard.key(snap_angle),
+					lock_angle: input.keyboard.key(lock_angle),
+					break_handle: input.keyboard.key(break_handle),
+				};
+				tool_data
+					.place_anchor(document, transform, input.mouse.position, modifiers, responses)
+					.unwrap_or(PenToolFsmState::Ready)
+			}
+			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
+				// Abort or commit the transaction to the undo history
+				let message = tool_data.finish_transaction(self, document, responses).unwrap_or(DocumentMessage::AbortTransaction);
+				responses.add(message);
+
+				// Clean up overlays
+				for layer_path in document.all_layers() {
+					shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
+				}
+				tool_data.path = None;
+				tool_data.snap_manager.cleanup(responses);
+
+				PenToolFsmState::Ready
+			}
+			(_, PenToolMessage::Abort) => {
+				// Clean up overlays
+				for layer_path in document.all_layers() {
+					shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
+				}
+				self
+			}
+			_ => self,
 		}
 	}
 
@@ -772,7 +760,7 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 			continue;
 		};
 
-		let subpaths = get_subpaths(layer_path, document)?;
+		let subpaths = get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?;
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			if subpath.closed() {
 				continue;
@@ -794,22 +782,25 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 	best
 }
 
-fn get_subpaths<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler) -> Option<&'a Vec<Subpath<ManipulatorGroupId>>> {
-	let layer = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_layer().ok())?;
-	let network = &layer.network;
-	for (node, _node_id) in network.primary_flow() {
-		if node.name == "Shape" {
-			let subpaths_input = node.inputs.get(0)?;
-			let NodeInput::Value {
-				tagged_value: TaggedValue::Subpaths(subpaths),
-				..
-			} = subpaths_input
-			else {
-				continue;
-			};
-
-			return Some(subpaths);
-		}
+pub fn get_subpaths(layer: LayerNodeIdentifier, document: &Document) -> Option<&Vec<Subpath<ManipulatorGroupId>>> {
+	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document)?.find_input("Shape", 0)? {
+		Some(subpaths)
+	} else {
+		None
 	}
-	None
+}
+
+pub fn get_mirror_handles(layer: LayerNodeIdentifier, document: &Document) -> Option<&Vec<ManipulatorGroupId>> {
+	if let TaggedValue::ManipulatorGroupIds(mirror_handles) = NodeGraphLayer::new(layer, document)?.find_input("Shape", 1)? {
+		Some(mirror_handles)
+	} else {
+		None
+	}
+}
+
+pub fn get_manipulator_groups(subpaths: &[Subpath<ManipulatorGroupId>]) -> impl Iterator<Item = &bezier_rs::ManipulatorGroup<ManipulatorGroupId>> + DoubleEndedIterator {
+	subpaths.iter().flat_map(|subpath| subpath.manipulator_groups())
+}
+pub fn get_manipulator_from_id(subpaths: &[Subpath<ManipulatorGroupId>], id: ManipulatorGroupId) -> Option<&bezier_rs::ManipulatorGroup<ManipulatorGroupId>> {
+	subpaths.iter().find_map(|subpath| subpath.manipulator_from_id(id))
 }

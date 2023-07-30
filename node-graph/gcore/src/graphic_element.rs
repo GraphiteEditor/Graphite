@@ -97,6 +97,13 @@ fn construct_layer<Data: Into<GraphicElementData>>(
 	stack
 }
 
+pub struct ToGraphicElementData {}
+
+#[node_fn(ToGraphicElementData)]
+fn to_graphic_element_data<Data: Into<GraphicElementData>>(graphic_element_data: Data) -> GraphicElementData {
+	graphic_element_data.into()
+}
+
 pub struct ConstructArtboardNode<Location, Dimensions, Background, Clip> {
 	location: Location,
 	dimensions: Dimensions,
