@@ -1,3 +1,4 @@
+use crate::document_metadata::DocumentMetadata;
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -28,6 +29,8 @@ pub struct Document {
 	pub state_identifier: DefaultHasher,
 	#[serde(default)]
 	pub document_network: graph_craft::document::NodeNetwork,
+	#[serde(skip)]
+	pub metadata: DocumentMetadata,
 	#[serde(default)]
 	pub commit_hash: String,
 }
@@ -56,6 +59,7 @@ impl Default for Document {
 				network.push_node(node, false);
 				network
 			},
+			metadata: Default::default(),
 			commit_hash: String::new(),
 		}
 	}

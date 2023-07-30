@@ -8,6 +8,7 @@ import {
 	type FrontendNodeType,
 	UpdateNodeGraph,
 	UpdateNodeTypes,
+	UpdateNodeThumbnail,
 	UpdateZoomWithScroll,
 } from "@graphite/wasm-communication/messages";
 
@@ -18,6 +19,7 @@ export function createNodeGraphState(editor: Editor) {
 		links: [] as FrontendNodeLink[],
 		nodeTypes: [] as FrontendNodeType[],
 		zoomWithScroll: false as boolean,
+		thumbnails: new Map<bigint, string>(),
 	});
 
 	// Set up message subscriptions on creation
@@ -25,12 +27,25 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.nodes = updateNodeGraph.nodes;
 			state.links = updateNodeGraph.links;
+			let newThumbnails = new Map<bigint, string>();
+			state.nodes.forEach((node) => {
+				const thumbnail = state.thumbnails.get(node.id);
+				if (thumbnail)
+					newThumbnails.set(node.id, thumbnail);
+			});
+			state.thumbnails = newThumbnails;
 			return state;
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeTypes, (updateNodeTypes) => {
 		update((state) => {
 			state.nodeTypes = updateNodeTypes.nodeTypes;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
+		update((state) => {
+			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
 			return state;
 		});
 	});

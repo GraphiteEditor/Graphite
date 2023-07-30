@@ -5,6 +5,7 @@ use glam::DVec2;
 use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
+use crate::GraphicElementData;
 use crate::Node;
 
 pub trait Transform {
@@ -40,6 +41,52 @@ impl<P: Pixel> Transform for &ImageFrame<P> {
 impl<P: Pixel> TransformMut for ImageFrame<P> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
+	}
+}
+impl Transform for GraphicElementData {
+	fn transform(&self) -> DAffine2 {
+		match self {
+			GraphicElementData::VectorShape(vector_shape) => vector_shape.transform(),
+			GraphicElementData::ImageFrame(image_frame) => image_frame.transform(),
+			GraphicElementData::Text(_) => todo!("Transform of text"),
+			GraphicElementData::GraphicGroup(_graphic_group) => DAffine2::IDENTITY,
+			GraphicElementData::Artboard(_artboard) => DAffine2::IDENTITY,
+		}
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		match self {
+			GraphicElementData::VectorShape(vector_shape) => vector_shape.local_pivot(pivot),
+			GraphicElementData::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
+			GraphicElementData::Text(_) => todo!("Transform of text"),
+			GraphicElementData::GraphicGroup(_graphic_group) => pivot,
+			GraphicElementData::Artboard(_artboard) => pivot,
+		}
+	}
+	fn decompose_scale(&self) -> DVec2 {
+		let standard = || {
+			DVec2::new(
+				self.transform().transform_vector2((1., 0.).into()).length(),
+				self.transform().transform_vector2((0., 1.).into()).length(),
+			)
+		};
+		match self {
+			GraphicElementData::VectorShape(vector_shape) => vector_shape.decompose_scale(),
+			GraphicElementData::ImageFrame(image_frame) => image_frame.decompose_scale(),
+			GraphicElementData::Text(_) => todo!("Transform of text"),
+			GraphicElementData::GraphicGroup(_graphic_group) => standard(),
+			GraphicElementData::Artboard(_artboard) => standard(),
+		}
+	}
+}
+impl TransformMut for GraphicElementData {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		match self {
+			GraphicElementData::VectorShape(vector_shape) => vector_shape.transform_mut(),
+			GraphicElementData::ImageFrame(image_frame) => image_frame.transform_mut(),
+			GraphicElementData::Text(_) => todo!("Transform of text"),
+			GraphicElementData::GraphicGroup(_graphic_group) => todo!("Mutable transform of graphic group"),
+			GraphicElementData::Artboard(_artboard) => todo!("Mutable transform of artboard"),
+		}
 	}
 }
 

@@ -303,7 +303,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		#[cfg(feature = "quantization")]
 		buffers: vec![width_uniform.clone(), storage_buffer.clone(), quantization_uniform.clone()],
 		#[cfg(not(feature = "quantization"))]
-		buffers: vec![width_uniform.clone(), storage_buffer.clone()],
+		buffers: vec![width_uniform, storage_buffer],
 	};
 
 	let shader = gpu_executor::Shader {
@@ -318,13 +318,13 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		shader: shader.into(),
 		entry_point: "eval".to_string(),
 		bind_group: bind_group.into(),
-		output_buffer: output_buffer.clone(),
+		output_buffer,
 	};
 	log::debug!("created pipeline");
 
 	ComputePass {
 		pipeline_layout: pipeline,
-		readback_buffer: Some(readback_buffer.clone()),
+		readback_buffer: Some(readback_buffer),
 	}
 }
 /*

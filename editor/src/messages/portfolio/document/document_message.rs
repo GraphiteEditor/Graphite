@@ -195,6 +195,9 @@ pub enum DocumentMessage {
 		folder_path: Vec<LayerId>,
 	},
 	UngroupSelectedLayers,
+	UpdateDocumentTransform {
+		transform: glam::DAffine2,
+	},
 	UpdateLayerMetadata {
 		layer_path: Vec<LayerId>,
 		layer_metadata: LayerMetadata,
