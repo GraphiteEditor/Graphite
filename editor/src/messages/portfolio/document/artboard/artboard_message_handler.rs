@@ -3,7 +3,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::layers::style::{self, Fill, RenderData, ViewMode};
+use document_legacy::layers::style::{self, Fill};
 use document_legacy::DocumentResponse;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
@@ -20,7 +20,7 @@ pub struct ArtboardMessageHandler {
 
 impl MessageHandler<ArtboardMessage, &PersistentData> for ArtboardMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: ArtboardMessage, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
+	fn process_message(&mut self, message: ArtboardMessage, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData) {
 		use ArtboardMessage::*;
 
 		#[remain::sorted]

@@ -482,8 +482,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				blob_url,
 				resolution,
 			} => {
-				if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_id) {
-					self.executor.insert_thumbnail_blob_url(blob_url, layer_id, node_id, responses);
+				if let Some(node_id) = node_id {
+					self.executor.insert_thumbnail_blob_url(blob_url, layer_path.last().copied(), node_id, responses);
 					return;
 				}
 				let message = DocumentMessage::SetImageBlobUrl {
