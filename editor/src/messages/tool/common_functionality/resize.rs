@@ -20,7 +20,7 @@ impl Resize {
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
 		self.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-		let root_transform = document.document_legacy.root.transform;
+		let root_transform = document.document_legacy.metadata.document_to_viewport;
 		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
 	}
 
@@ -32,7 +32,7 @@ impl Resize {
 
 	/// Calculate the drag start position in viewport space.
 	pub fn viewport_drag_start(&self, document: &DocumentMessageHandler) -> DVec2 {
-		let root_transform = document.document_legacy.root.transform;
+		let root_transform = document.document_legacy.metadata.document_to_viewport;
 		root_transform.transform_point2(self.drag_start)
 	}
 

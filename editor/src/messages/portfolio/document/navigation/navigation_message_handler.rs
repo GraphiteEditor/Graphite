@@ -9,8 +9,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::document::Document;
-use document_legacy::Operation as DocumentOperation;
-use graphene_core::renderer::format_transform_matrix;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -346,21 +344,9 @@ impl NavigationMessageHandler {
 	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
 		let half_viewport = viewport_bounds.size() / 2.;
 		let scaled_half_viewport = half_viewport / self.snapped_scale();
-		responses.add(DocumentOperation::SetLayerTransform {
-			path: vec![],
-			transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
-		});
 
-		responses.add(ArtboardMessage::DispatchOperation(
-			DocumentOperation::SetLayerTransform {
-				path: vec![],
-				transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
-			}
-			.into(),
-		));
-		let transform = format_transform_matrix(self.calculate_offset_transform(scaled_half_viewport));
-		responses.add(FrontendMessage::UpdateDocumentTransform { transform });
-		// TODO: Artboard pos
+		let transform = self.calculate_offset_transform(scaled_half_viewport);
+		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 
 	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {

@@ -1,15 +1,9 @@
 #![allow(clippy::too_many_arguments)]
-
+use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::new_text_network;
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::Layer;
@@ -20,9 +14,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::text::{load_face, Font};
 use graphene_core::Color;
-
-use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct TextTool {
@@ -154,32 +145,30 @@ impl LayoutHolder for TextTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message {
-			match action {
-				TextOptionsUpdate::Font { family, style } => {
-					self.options.font_name = family;
-					self.options.font_style = style;
-
-					self.send_layout(responses, LayoutTarget::ToolOptions);
-				}
-				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
-				TextOptionsUpdate::FillColor(color) => {
-					self.options.fill.custom_color = color;
-					self.options.fill.color_type = ToolColorType::Custom;
-				}
-				TextOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				TextOptionsUpdate::WorkingColors(primary, secondary) => {
-					self.options.fill.primary_working_color = primary;
-					self.options.fill.secondary_working_color = secondary;
-				}
-			}
-
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-
+		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
+		};
+		match action {
+			TextOptionsUpdate::Font { family, style } => {
+				self.options.font_name = family;
+				self.options.font_style = style;
+
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
+			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
+			TextOptionsUpdate::FillColor(color) => {
+				self.options.fill.custom_color = color;
+				self.options.fill.color_type = ToolColorType::Custom;
+			}
+			TextOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			TextOptionsUpdate::WorkingColors(primary, secondary) => {
+				self.options.fill.primary_working_color = primary;
+				self.options.fill.secondary_working_color = secondary;
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -503,88 +492,87 @@ impl Fsm for TextToolFsmState {
 			render_data,
 			..
 		} = transition_data;
-		if let ToolMessage::Text(event) = event {
-			match (self, event) {
-				(TextToolFsmState::Editing, TextToolMessage::DocumentIsDirty) => {
-					responses.add(FrontendMessage::DisplayEditableTextboxTransform {
-						transform: document.document_legacy.multiply_transforms(&tool_data.layer_path).ok().unwrap_or_default().to_cols_array(),
-					});
-					tool_data.update_bounds_overlay(document, render_data, responses);
-					TextToolFsmState::Editing
-				}
-				(state, TextToolMessage::DocumentIsDirty) => {
-					update_overlays(document, tool_data, responses, render_data);
-
-					state
-				}
-				(state, TextToolMessage::Interact) => {
-					tool_data.editing_text = Some(EditingText {
-						text: String::new(),
-						transform: DAffine2::from_translation(input.mouse.position),
-						font_size: tool_options.font_size as f64,
-						font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
-						color: tool_options.fill.active_color(),
-					});
-					tool_data.new_text = String::new();
-					tool_data.layer_path = document.get_path_for_new_layer();
-
-					tool_data.interact(state, input.mouse.position, document, render_data, responses)
-				}
-				(state, TextToolMessage::EditSelected) => {
-					if let Some(layer_path) = can_edit_selected(document) {
-						tool_data.start_editing_layer(&layer_path, state, document, render_data, responses);
-						return TextToolFsmState::Editing;
-					}
-
-					state
-				}
-				(state, TextToolMessage::Abort) => {
-					if state == TextToolFsmState::Editing {
-						tool_data.set_editing(false, render_data, responses);
-					}
-
-					resize_overlays(&mut tool_data.overlays, responses, 0);
-
-					TextToolFsmState::Ready
-				}
-				(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
-					responses.add(FrontendMessage::TriggerTextCommit);
-
-					TextToolFsmState::Editing
-				}
-				(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-					let layer_path = tool_data.layer_path.clone();
-					let network = get_network(&layer_path, document).unwrap();
-					tool_data.fix_text_bounds(&new_text, document, render_data, responses);
-					responses.add(NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path: vec![get_text_node_id(network).unwrap()],
-						input_index: 1,
-						value: TaggedValue::String(new_text),
-					});
-
-					tool_data.set_editing(false, render_data, responses);
-
-					resize_overlays(&mut tool_data.overlays, responses, 0);
-
-					TextToolFsmState::Ready
-				}
-				(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
-					tool_data.new_text = new_text;
-					tool_data.update_bounds_overlay(document, render_data, responses);
-					TextToolFsmState::Editing
-				}
-				(_, TextToolMessage::WorkingColorChanged) => {
-					responses.add(TextToolMessage::UpdateOptions(TextOptionsUpdate::WorkingColors(
-						Some(global_tool_data.primary_color),
-						Some(global_tool_data.secondary_color),
-					)));
-					self
-				}
-				_ => self,
+		let ToolMessage::Text(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(TextToolFsmState::Editing, TextToolMessage::DocumentIsDirty) => {
+				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
+					transform: document.document_legacy.multiply_transforms(&tool_data.layer_path).ok().unwrap_or_default().to_cols_array(),
+				});
+				tool_data.update_bounds_overlay(document, render_data, responses);
+				TextToolFsmState::Editing
 			}
-		} else {
-			self
+			(state, TextToolMessage::DocumentIsDirty) => {
+				update_overlays(document, tool_data, responses, render_data);
+
+				state
+			}
+			(state, TextToolMessage::Interact) => {
+				tool_data.editing_text = Some(EditingText {
+					text: String::new(),
+					transform: DAffine2::from_translation(input.mouse.position),
+					font_size: tool_options.font_size as f64,
+					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
+					color: tool_options.fill.active_color(),
+				});
+				tool_data.new_text = String::new();
+				tool_data.layer_path = document.get_path_for_new_layer();
+
+				tool_data.interact(state, input.mouse.position, document, render_data, responses)
+			}
+			(state, TextToolMessage::EditSelected) => {
+				if let Some(layer_path) = can_edit_selected(document) {
+					tool_data.start_editing_layer(&layer_path, state, document, render_data, responses);
+					return TextToolFsmState::Editing;
+				}
+
+				state
+			}
+			(state, TextToolMessage::Abort) => {
+				if state == TextToolFsmState::Editing {
+					tool_data.set_editing(false, render_data, responses);
+				}
+
+				resize_overlays(&mut tool_data.overlays, responses, 0);
+
+				TextToolFsmState::Ready
+			}
+			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
+				responses.add(FrontendMessage::TriggerTextCommit);
+
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
+				let layer_path = tool_data.layer_path.clone();
+				let network = get_network(&layer_path, document).unwrap();
+				tool_data.fix_text_bounds(&new_text, document, render_data, responses);
+				responses.add(NodeGraphMessage::SetQualifiedInputValue {
+					layer_path,
+					node_path: vec![get_text_node_id(network).unwrap()],
+					input_index: 1,
+					value: TaggedValue::String(new_text),
+				});
+
+				tool_data.set_editing(false, render_data, responses);
+
+				resize_overlays(&mut tool_data.overlays, responses, 0);
+
+				TextToolFsmState::Ready
+			}
+			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
+				tool_data.new_text = new_text;
+				tool_data.update_bounds_overlay(document, render_data, responses);
+				TextToolFsmState::Editing
+			}
+			(_, TextToolMessage::WorkingColorChanged) => {
+				responses.add(TextToolMessage::UpdateOptions(TextOptionsUpdate::WorkingColors(
+					Some(global_tool_data.primary_color),
+					Some(global_tool_data.secondary_color),
+				)));
+				self
+			}
+			_ => self,
 		}
 	}
 
