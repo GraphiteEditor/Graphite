@@ -4791,8 +4791,8 @@ dependencies = [
 
 [[package]]
 name = "specta"
-version = "1.0.4"
-source = "git+https://github.com/0HyperCube/specta.git?rev=d28cd72ea4ea2f6eaa85e0622d3a98340dbb43d3#d28cd72ea4ea2f6eaa85e0622d3a98340dbb43d3"
+version = "1.0.5"
+source = "git+https://github.com/0HyperCube/specta.git?rev=c47a22b4c0863d27bc47529f300de3969480c66d#c47a22b4c0863d27bc47529f300de3969480c66d"
 dependencies = [
  "document-features",
  "glam",
@@ -4807,8 +4807,8 @@ dependencies = [
 
 [[package]]
 name = "specta-macros"
-version = "1.0.4"
-source = "git+https://github.com/0HyperCube/specta.git?rev=d28cd72ea4ea2f6eaa85e0622d3a98340dbb43d3#d28cd72ea4ea2f6eaa85e0622d3a98340dbb43d3"
+version = "1.0.5"
+source = "git+https://github.com/0HyperCube/specta.git?rev=c47a22b4c0863d27bc47529f300de3969480c66d#c47a22b4c0863d27bc47529f300de3969480c66d"
 dependencies = [
  "Inflector",
  "itertools",

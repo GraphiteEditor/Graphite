@@ -1,7 +1,5 @@
 use crate::application::{commit_info_localized, release_series};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
-use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 /// A dialog for displaying information on [BuildMetadata] viewable via *Help* > *About Graphite* in the menu bar.
@@ -19,34 +17,17 @@ impl PropertyHolder for AboutGraphiteDialog {
 		];
 		let link_widgets = links
 			.into_iter()
-			.map(|(label, url)| {
-				WidgetHolder::new(Widget::TextButton(TextButton {
-					label: label.to_string(),
-					on_update: WidgetCallback::new(|_| FrontendMessage::TriggerVisitLink { url: url.to_string() }.into()),
-					..Default::default()
-				}))
-			})
+			.map(|(label, url)| TextButton::new(label).on_update(|_| FrontendMessage::TriggerVisitLink { url: url.to_string() }.into()).widget_holder())
 			.collect();
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Graphite".to_string(),
-					bold: true,
-					..Default::default()
-				}))],
+				widgets: vec![TextLabel::new("Graphite".to_string()).bold(true).widget_holder()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: release_series(),
-					..Default::default()
-				}))],
+				widgets: vec![TextLabel::new(release_series()).widget_holder()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: commit_info_localized(self.localized_commit_date.as_str()),
-					multiline: true,
-					..Default::default()
-				}))],
+				widgets: vec![TextLabel::new(commit_info_localized(&self.localized_commit_date)).multiline(true).widget_holder()],
 			},
 			LayoutGroup::Row { widgets: link_widgets },
 		]))
