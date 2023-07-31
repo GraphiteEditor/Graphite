@@ -35,6 +35,7 @@
 	},
 	"devDependencies": {
 		"@parcel/config-default": "^2.8.3",
+		"@parcel/packager-raw-url": "^2.8.3",
 		"@parcel/transformer-inline-string": "^2.8.3",
 		"@parcel/transformer-webmanifest": "^2.8.3",
 		"@types/license-checker-webpack-plugin": "^0.2.1",
@@ -43,17 +44,17 @@
 		"buffer": "^5.7.1",
 		"concurrently": "^8.0.1",
 		"license-checker-webpack-plugin": "^0.2.1",
-		"parcel-transformer-svelte3-plus": "^0.2.9",
 		"parcel": "^2.8.3",
+		"parcel-transformer-svelte3-plus": "^0.2.9",
 		"postcss": "^8.4.23",
 		"process": "^0.11.10",
 		"sass": "^1.62.1",
-		"svelte-preprocess": "^5.0.3",
 		"svelte": "^3.58.0",
+		"svelte-preprocess": "^5.0.3",
 		"ts-node": "^10.9.1",
 		"typescript": "^5.0.4",
-		"webpack-cli": "^5.0.2",
-		"webpack": "^5.81.0"
+		"webpack": "^5.81.0",
+		"webpack-cli": "^5.0.2"
 	},
 	"optionalDependencies": {
 		"wasm-pack": "0.12.1"
