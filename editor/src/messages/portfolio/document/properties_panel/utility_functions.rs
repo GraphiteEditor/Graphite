@@ -69,11 +69,11 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			IconLabel::new("NodeArtboard").tooltip("Artboard").widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(layer.name.clone().unwrap_or_else(|| "Untitled Artboard".to_string()))
 				.on_update(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),
 		],
 	}];
@@ -91,11 +91,11 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("Location").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						NumberInput::new(Some(layer.transform.x() + pivot.x))
 							.label("X")
 							.unit(" px")
@@ -107,7 +107,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 								.into()
 							})
 							.widget_holder(),
-						WidgetHolder::related_separator(),
+						Separator::new(SeparatorType::Related).widget_holder(),
 						NumberInput::new(Some(layer.transform.y() + pivot.y))
 							.label("Y")
 							.unit(" px")
@@ -124,15 +124,15 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("Dimensions").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::related_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Related).widget_holder(),
 						CheckboxInput::new(layer.preserve_aspect)
 							.icon("Link")
 							.tooltip("Preserve Aspect Ratio")
 							.on_update(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into())
 							.widget_holder(),
-						WidgetHolder::related_separator(),
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Related).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						NumberInput::new(Some(layer.bounding_transform(&render_data).scale_x()))
 							.label("W")
 							.unit(" px")
@@ -146,7 +146,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 								.into()
 							})
 							.widget_holder(),
-						WidgetHolder::related_separator(),
+						Separator::new(SeparatorType::Related).widget_holder(),
 						NumberInput::new(Some(layer.bounding_transform(&render_data).scale_y()))
 							.label("H")
 							.unit(" px")
@@ -165,11 +165,11 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 				LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("Background").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						ColorInput::new(Some(*color))
 							.on_update(|text_input: &ColorInput| {
 								let fill = if let Some(value) = text_input.value { value } else { Color::TRANSPARENT };
@@ -208,11 +208,11 @@ pub fn register_artwork_layer_properties(
 				LayerDataType::Shape(_) => IconLabel::new("NodeShape").tooltip("Shape").widget_holder(),
 				LayerDataType::Layer(_) => IconLabel::new("Layer").tooltip("Layer").widget_holder(),
 			},
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()))
 				.on_update(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),
 		],
 	}];
@@ -266,11 +266,11 @@ pub fn register_document_graph_properties(mut context: NodePropertiesContext, no
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			IconLabel::new("File").tooltip("Document").widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(document_name)
 				.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),
 		],
 	}];
@@ -294,11 +294,11 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Location").widget_holder(),
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					PivotAssist::new(layer.pivot.into())
 						.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
 						.widget_holder(),
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(layer.transform.x() + pivot.x))
 						.label("X")
 						.unit(" px")
@@ -310,7 +310,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 							.into()
 						})
 						.widget_holder(),
-					WidgetHolder::related_separator(),
+					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(layer.transform.y() + pivot.y))
 						.label("Y")
 						.unit(" px")
@@ -327,11 +327,11 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Rotation").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(layer.transform.rotation() * 180. / PI))
 						.unit("°")
 						.mode(NumberInputMode::Range)
@@ -350,15 +350,15 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Scale").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::related_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
 					CheckboxInput::new(layer.preserve_aspect)
 						.icon("Link")
 						.tooltip("Preserve Aspect Ratio")
 						.on_update(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into())
 						.widget_holder(),
-					WidgetHolder::related_separator(),
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(layer.transform.scale_x()))
 						.label("X")
 						.unit("")
@@ -370,7 +370,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 							.into()
 						})
 						.widget_holder(),
-					WidgetHolder::related_separator(),
+					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(layer.transform.scale_y()))
 						.label("Y")
 						.unit("")
@@ -387,11 +387,11 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Dimensions").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(layer.bounding_transform(&render_data).scale_x()))
 						.label("W")
 						.unit(" px")
@@ -403,7 +403,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 							.into()
 						})
 						.widget_holder(),
-					WidgetHolder::related_separator(),
+					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(layer.bounding_transform(&render_data).scale_y()))
 						.label("H")
 						.unit(" px")
@@ -433,11 +433,11 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 	LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Gradient Type").widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
 				RadioEntryData::new("linear")
 					.label("Linear")
@@ -475,11 +475,11 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		TextLabel::new(value)
 			.tooltip("Adjustable by dragging the gradient stops in the viewport with the Gradient tool active")
 			.widget_holder(),
-		WidgetHolder::unrelated_separator(),
-		WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-		WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-		WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-		WidgetHolder::unrelated_separator(),
+		Separator::new(SeparatorType::Unrelated).widget_holder(),
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+		Separator::new(SeparatorType::Unrelated).widget_holder(),
 		ColorInput::new(gradient_clone.positions[position].1)
 			.on_update(move |text_input: &ColorInput| {
 				let mut new_gradient = (*gradient_clone).clone();
@@ -499,7 +499,7 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		};
 
 		skip_separator = true;
-		widgets.push(WidgetHolder::related_separator());
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		widgets.push(IconButton::new("Remove", 16).tooltip("Remove this gradient stop").on_update(on_update).widget_holder());
 	}
 	// Add button
@@ -522,7 +522,7 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		};
 
 		if !skip_separator {
-			widgets.push(WidgetHolder::related_separator());
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		}
 		widgets.push(IconButton::new("Add", 16).tooltip("Add a gradient stop after this").on_update(on_update).widget_holder());
 	}
@@ -539,11 +539,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 				LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("Color").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						ColorInput::new(if let Fill::Solid(color) = fill { Some(*color) } else { None })
 							.on_update(|text_input: &ColorInput| {
 								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
@@ -555,11 +555,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 				LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						TextButton::new("Use Gradient")
 							.tooltip("Change this fill from a solid color to a gradient")
 							.on_update(move |_: &TextButton| {
@@ -595,11 +595,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 				layout.push(LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						TextButton::new("Invert")
 							.icon(Some("Swap".into()))
 							.tooltip("Reverse the order of each color stop")
@@ -615,11 +615,11 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 				layout.push(LayoutGroup::Row {
 					widgets: vec![
 						TextLabel::new("").widget_holder(),
-						WidgetHolder::unrelated_separator(),
-						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-						WidgetHolder::unrelated_separator(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+						Separator::new(SeparatorType::Unrelated).widget_holder(),
 						TextButton::new("Use Solid Color")
 							.tooltip("Change this fill from a gradient to a solid color, keeping the 0% stop color")
 							.on_update(move |_: &TextButton| {
@@ -657,11 +657,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Color").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					ColorInput::new(stroke.color())
 						.on_update(move |text_input: &ColorInput| {
 							internal_stroke1
@@ -675,11 +675,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Weight").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(stroke.weight()))
 						.is_integer(false)
 						.min(0.)
@@ -696,11 +696,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Dash Lengths").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					TextInput::new(stroke.dash_lengths())
 						.centered(true)
 						.on_update(move |text_input: &TextInput| {
@@ -715,11 +715,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Dash Offset").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(stroke.dash_offset()))
 						.is_integer(true)
 						.min(0.)
@@ -736,11 +736,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Line Cap").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					RadioInput::new(vec![
 						RadioEntryData::new("Butt").on_update(move |_| {
 							PropertiesPanelMessage::ModifyStroke {
@@ -768,11 +768,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Line Join").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					RadioInput::new(vec![
 						RadioEntryData::new("Miter").on_update(move |_| {
 							PropertiesPanelMessage::ModifyStroke {
@@ -801,11 +801,11 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 			LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Miter Limit").widget_holder(),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(stroke.line_join_miter_limit() as f64))
 						.is_integer(true)
 						.min(0.)

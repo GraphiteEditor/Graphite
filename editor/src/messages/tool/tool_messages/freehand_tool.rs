@@ -105,7 +105,7 @@ impl PropertyHolder for FreehandTool {
 			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value)).into(),
 		);
 
-		widgets.push(WidgetHolder::section_separator());
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -114,7 +114,7 @@ impl PropertyHolder for FreehandTool {
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value)).into(),
 		));
-		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))

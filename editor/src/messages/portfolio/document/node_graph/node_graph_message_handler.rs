@@ -197,7 +197,7 @@ impl NodeGraphMessageHandler {
 		self.widgets[0] = LayoutGroup::Row {
 			widgets: vec![
 				IconLabel::new(icon).tooltip(tooltip).widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				BreadcrumbTrailButtons::new(path.clone())
 					.on_update(move |input: &u64| {
 						NodeGraphMessage::ExitNestedNetwork {

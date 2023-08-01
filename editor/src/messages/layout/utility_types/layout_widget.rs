@@ -456,24 +456,10 @@ impl WidgetHolder {
 	pub fn new(widget: Widget) -> Self {
 		Self { widget_id: generate_uuid(), widget }
 	}
-	pub fn section_separator() -> Self {
-		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Section).widget_holder()
-	}
-	pub fn unrelated_separator() -> Self {
-		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Unrelated).widget_holder()
-	}
-	pub fn related_separator() -> Self {
-		Separator::new(SeparatorDirection::Horizontal, SeparatorType::Related).widget_holder()
-	}
-	pub fn text_widget(text: impl Into<String>) -> Self {
-		TextLabel::new(text).widget_holder()
-	}
-	pub fn bold_text(text: impl Into<String>) -> Self {
-		TextLabel::new(text).bold(true).widget_holder()
-	}
+
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
-		// If there have been changes to the acutal widget (not just the id)
+		// If there have been changes to the actual widget (not just the id)
 		if self.widget != new.widget {
 			// We should update to the new widget value as well as a new widget id
 			*self = new.clone();

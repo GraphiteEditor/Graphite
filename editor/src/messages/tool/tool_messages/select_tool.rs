@@ -133,13 +133,13 @@ impl PropertyHolder for SelectTool {
 					.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
 					.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
 					.disabled(deactivate_pivot)
 					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
 					.widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
 					.disabled(deactivate_alignment)
@@ -173,7 +173,7 @@ impl PropertyHolder for SelectTool {
 						.into()
 					})
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("AlignTop", 24)
 					.tooltip("Align Top")
 					.disabled(deactivate_alignment)
@@ -207,9 +207,9 @@ impl PropertyHolder for SelectTool {
 						.into()
 					})
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				PopoverButton::new("Align", "Coming soon").widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("FlipHorizontal", 24)
 					.tooltip("Flip Horizontal")
 					.on_update(|_| SelectToolMessage::FlipHorizontal.into())
@@ -218,9 +218,9 @@ impl PropertyHolder for SelectTool {
 					.tooltip("Flip Vertical")
 					.on_update(|_| SelectToolMessage::FlipVertical.into())
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				PopoverButton::new("Flip", "Coming soon").widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("BooleanUnion", 24)
 					.tooltip("Boolean Union (coming soon)")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
@@ -241,7 +241,7 @@ impl PropertyHolder for SelectTool {
 					.tooltip("Boolean Difference (coming soon)")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
 			],
 		}]))

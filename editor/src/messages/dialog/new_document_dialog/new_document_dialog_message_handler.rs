@@ -55,7 +55,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 
 		let name = vec![
 			TextLabel::new("Name").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(&self.name)
 				.on_update(|text_input: &TextInput| NewDocumentDialogMessage::Name(text_input.value.clone()).into())
 				.widget_holder(),
@@ -63,7 +63,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 
 		let infinite = vec![
 			TextLabel::new("Infinite Canvas").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into())
 				.widget_holder(),
@@ -71,7 +71,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 
 		let scale = vec![
 			TextLabel::new("Dimensions").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(self.dimensions.x as f64))
 				.label("W")
 				.unit(" px")
@@ -81,7 +81,7 @@ impl PropertyHolder for NewDocumentDialogMessageHandler {
 				.min_width(100)
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX(number_input.value.unwrap()).into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.dimensions.y as f64))
 				.label("H")
 				.unit(" px")

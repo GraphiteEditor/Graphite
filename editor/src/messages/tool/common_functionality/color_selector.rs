@@ -1,5 +1,5 @@
 use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, IconButton, RadioEntryData, RadioInput, TextLabel, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::Message;
 
 use graphene_core::Color;
@@ -71,16 +71,16 @@ impl ToolColorOptions {
 		let mut widgets = vec![TextLabel::new(label_text).widget_holder()];
 
 		if !color_allow_none {
-			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		} else {
 			let reset = IconButton::new("CloseX", 12)
 				.disabled(self.custom_color.is_none() && self.color_type == ToolColorType::Custom)
 				.tooltip("Clear Color")
 				.on_update(reset_callback);
 
-			widgets.push(WidgetHolder::related_separator());
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 			widgets.push(reset.widget_holder());
-			widgets.push(WidgetHolder::related_separator());
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		};
 
 		let entries = vec![
@@ -97,7 +97,7 @@ impl ToolColorOptions {
 		.collect();
 		let radio = RadioInput::new(entries).selected_index(self.color_type.clone() as u32).widget_holder();
 		widgets.push(radio);
-		widgets.push(WidgetHolder::related_separator());
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
 		let color_input = ColorInput::new(self.active_color()).allow_none(color_allow_none).on_update(color_callback);
 		widgets.push(color_input.widget_holder());

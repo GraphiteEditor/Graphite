@@ -125,14 +125,20 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.min(1.)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
 		.widget_holder();
-	vec![font, WidgetHolder::related_separator(), style, WidgetHolder::related_separator(), size]
+	vec![
+		font,
+		Separator::new(SeparatorType::Related).widget_holder(),
+		style,
+		Separator::new(SeparatorType::Related).widget_holder(),
+		size,
+	]
 }
 
 impl PropertyHolder for TextTool {
 	fn properties(&self) -> Layout {
 		let mut widgets = create_text_widgets(self);
 
-		widgets.push(WidgetHolder::section_separator());
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",

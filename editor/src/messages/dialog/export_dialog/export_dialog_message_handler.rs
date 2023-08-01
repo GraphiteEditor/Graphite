@@ -45,7 +45,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 	fn properties(&self) -> Layout {
 		let file_name = vec![
 			TextLabel::new("File Name").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(&self.file_name)
 				.on_update(|text_input: &TextInput| ExportDialogMessage::FileName(text_input.value.clone()).into())
 				.widget_holder(),
@@ -58,7 +58,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 
 		let export_type = vec![
 			TextLabel::new("File Type").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries).selected_index(self.file_type as u32).widget_holder(),
 		];
 
@@ -76,13 +76,13 @@ impl PropertyHolder for ExportDialogMessageHandler {
 
 		let export_area = vec![
 			TextLabel::new("Bounds").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
 		];
 
 		let transparent_background = vec![
 			TextLabel::new("Transparency").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
 				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground(value.checked).into())
@@ -91,7 +91,7 @@ impl PropertyHolder for ExportDialogMessageHandler {
 
 		let resolution = vec![
 			TextLabel::new("Scale Factor").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit(" ")
 				.min(0.)

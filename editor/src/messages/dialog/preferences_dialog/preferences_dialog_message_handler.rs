@@ -30,7 +30,7 @@ impl PreferencesDialogMessageHandler {
 		let zoom_with_scroll = vec![
 			TextLabel::new("Input").min_width(60).italic(true).widget_holder(),
 			TextLabel::new("Zoom with Scroll").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.zoom_with_scroll)
 				.tooltip("Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)")
 				.on_update(|checkbox_input: &CheckboxInput| {
@@ -45,7 +45,7 @@ impl PreferencesDialogMessageHandler {
 		let imaginate_server_hostname = vec![
 			TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
 			TextLabel::new("Server Hostname").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(&preferences.imaginate_server_hostname)
 				.min_width(200)
 				.on_update(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into())
@@ -55,7 +55,7 @@ impl PreferencesDialogMessageHandler {
 		let imaginate_refresh_frequency = vec![
 			TextLabel::new("").min_width(60).widget_holder(),
 			TextLabel::new("Refresh Frequency").table_align(true).widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(preferences.imaginate_refresh_frequency))
 				.unit(" seconds")
 				.min(0.)

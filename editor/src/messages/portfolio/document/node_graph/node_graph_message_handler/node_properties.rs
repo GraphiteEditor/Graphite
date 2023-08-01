@@ -18,7 +18,7 @@ use graphene_core::{Cow, Type, TypeDescriptor};
 use glam::{DVec2, IVec2};
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
-	let widget = WidgetHolder::text_widget(text);
+	let widget = TextLabel::new(text).widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
 
@@ -54,10 +54,10 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 
 fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	widgets.extend_from_slice(&[
-		WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-		WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-		WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-		WidgetHolder::unrelated_separator(), // TODO: This last one is the separator after the 24px assist.
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: This last one is the separator after the 24px assist.
 	]);
 }
 
@@ -65,8 +65,8 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	let input = document_node.inputs.get(index).expect("A widget failed to be built because its node's input index is invalid.");
 	let mut widgets = vec![
 		expose_widget(node_id, index, data_type, input.is_exposed()),
-		WidgetHolder::unrelated_separator(),
-		WidgetHolder::text_widget(name),
+		Separator::new(SeparatorType::Unrelated).widget_holder(),
+		TextLabel::new(name).widget_holder(),
 	];
 	if blank_assist {
 		add_blank_assist(&mut widgets);
@@ -84,7 +84,7 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	} = &document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(x.clone())
 				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.widget_holder(),
@@ -102,7 +102,7 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	} = &document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextAreaInput::new(x.clone())
 				.on_update(update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.widget_holder(),
@@ -120,7 +120,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	} = &document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(*x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
 				.widget_holder(),
@@ -140,13 +140,13 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	} = document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(vec2.x))
 				.label(x)
 				.unit(unit)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(vec2.y))
 				.label(y)
 				.unit(unit)
@@ -161,14 +161,14 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, vec2.y));
 		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(vec2.x, input.value.unwrap() as i32));
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(vec2.x as f64))
 				.int()
 				.label(x)
 				.unit(unit)
 				.on_update(update_value(update_x, node_id, index))
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(vec2.y as f64))
 				.int()
 				.label(y)
@@ -200,7 +200,7 @@ fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	} = &document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			text_props
 				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
@@ -221,18 +221,18 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	} = &document_node.inputs[index]
 	{
 		first_widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
 				.on_update(update_value(from_font_input, node_id, index))
 				.widget_holder(),
 		]);
 		second_widgets = Some(vec![
 			TextLabel::new("").widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
 				.is_style_picker(true)
 				.on_update(update_value(from_font_input, node_id, index))
@@ -251,7 +251,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	} = document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
 				.value(Some(x))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
@@ -263,7 +263,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	} = document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
@@ -275,7 +275,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	} = document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap()) as f32), node_id, index))
@@ -300,7 +300,10 @@ fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name:
 		}
 		let entries = vec![entries];
 
-		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
@@ -323,7 +326,10 @@ fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 			})
 			.collect();
 
-		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder()]);
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
 }
@@ -344,7 +350,7 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usiz
 		let entries = vec![entries];
 
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
 		]);
 	}
@@ -363,7 +369,10 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: u64, index: usize, nam
 			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::LineCap(val), node_id, index)))
 			.collect();
 
-		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), RadioInput::new(entries).selected_index(line_cap as u32).widget_holder()]);
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(line_cap as u32).widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -380,7 +389,10 @@ fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::LineJoin(val), node_id, index)))
 			.collect();
 
-		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), RadioInput::new(entries).selected_index(line_join as u32).widget_holder()]);
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(line_join as u32).widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -398,7 +410,7 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) ->
 		];
 
 		widgets.extend_from_slice(&[
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries)
 				.selected_index(match fill_type {
 					FillType::None | FillType::Solid => 0,
@@ -422,7 +434,10 @@ fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize
 			RadioEntryData::new("Radial").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
 		];
 
-		widgets.extend_from_slice(&[WidgetHolder::unrelated_separator(), RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder()]);
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -440,7 +455,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 	};
 	let color = ColorInput::new(positions[index].1).on_update(update_value(on_update, node_id, input_index));
 	add_blank_assist(row);
-	row.push(WidgetHolder::unrelated_separator());
+	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	row.push(color.widget_holder());
 
 	let mut skip_separator = false;
@@ -456,7 +471,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 		};
 
 		skip_separator = true;
-		row.push(WidgetHolder::related_separator());
+		row.push(Separator::new(SeparatorType::Related).widget_holder());
 		row.push(
 			IconButton::new("Remove", 16)
 				.tooltip("Remove this gradient stop")
@@ -488,7 +503,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 		};
 
 		if !skip_separator {
-			row.push(WidgetHolder::related_separator());
+			row.push(Separator::new(SeparatorType::Related).widget_holder());
 		}
 		row.push(
 			IconButton::new("Add", 16)
@@ -501,7 +516,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 
 fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, name: &str, node_id: u64, input_index: usize) {
 	let mut widgets = vec![expose_widget(node_id, input_index, FrontendGraphDataType::General, document_node.inputs[input_index].is_exposed())];
-	widgets.push(WidgetHolder::unrelated_separator());
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::GradientPositions(gradient_positions),
 		exposed: false,
@@ -532,7 +547,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 			widgets.push(TextLabel::new("").widget_holder());
 			add_blank_assist(&mut widgets);
 		}
-		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(invert);
 
 		rows.push(LayoutGroup::Row { widgets });
@@ -548,7 +563,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
 		if let &TaggedValue::Color(x) = tagged_value {
 			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				color_props
 					.value(Some(x as Color))
 					.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
@@ -556,7 +571,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 			])
 		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
 			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				color_props
 					.value(x)
 					.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value), node_id, index))
@@ -568,7 +583,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 }
 /// Properties for the input node, with information describing how frames work and a refresh button
 pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let information = WidgetHolder::text_widget("The graph's input frame is the rasterized artwork under the layer");
+	let information = TextLabel::new("The graph's input frame is the rasterized artwork under the layer").widget_holder();
 	let layer_path = context.layer_path.to_vec();
 	let refresh_button = TextButton::new("Refresh Input")
 		.tooltip("Refresh the artwork under the layer")
@@ -656,7 +671,7 @@ pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, contex
 	vec![
 		LayoutGroup::Row { widgets: vec![label] },
 		LayoutGroup::Row {
-			widgets: vec![download_button, WidgetHolder::related_separator(), copy_button],
+			widgets: vec![download_button, Separator::new(SeparatorType::Related).widget_holder(), copy_button],
 		},
 	]
 }
@@ -746,7 +761,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 
 	// Output channel choice
 	let output_channel_index = 18;
-	let mut output_channel = vec![WidgetHolder::text_widget("Output Channel"), WidgetHolder::unrelated_separator()];
+	let mut output_channel = vec![TextLabel::new("Output Channel").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
 	add_blank_assist(&mut output_channel);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::RedGreenBlue(choice),
@@ -802,7 +817,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Colors choice
 	let colors_index = 38;
-	let mut colors = vec![WidgetHolder::text_widget("Colors"), WidgetHolder::unrelated_separator()];
+	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
 	add_blank_assist(&mut colors);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::SelectiveColorChoice(choice),
@@ -852,7 +867,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	// Mode
 	let mode_index = 1;
 	let mut mode = start_widgets(document_node, node_id, mode_index, "Mode", FrontendGraphDataType::General, true);
-	mode.push(WidgetHolder::unrelated_separator());
+	mode.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::RelativeAbsolute(relative_or_absolute),
 		exposed: false,
@@ -934,7 +949,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			exposed: false,
 		} = document_node.inputs[pivot_index]
 		{
-			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.push(
 				PivotAssist::new(pivot.into())
 					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
@@ -957,7 +972,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		} = document_node.inputs[index]
 		{
 			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				NumberInput::new(Some(val.to_degrees().into()))
 					.unit("°")
 					.mode(NumberInputMode::Range)
@@ -1024,15 +1039,15 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		let server_status = context.persistent_data.imaginate.server_status();
 		let status_text = server_status.to_text();
 		let mut widgets = vec![
-			WidgetHolder::text_widget("Server"),
-			WidgetHolder::unrelated_separator(),
+			TextLabel::new("Server").widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("Settings", 24)
 				.tooltip("Preferences: Imaginate")
 				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
 				.widget_holder(),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status_text),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new(status_text).bold(true).widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			IconButton::new("Reload", 24)
 				.tooltip("Refresh connection status")
 				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
@@ -1040,7 +1055,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		];
 		if let ImaginateServerStatus::Unavailable | ImaginateServerStatus::Failed(_) = server_status {
 			widgets.extend([
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				TextButton::new("Server Help")
 					.tooltip("Learn how to connect Imaginate to an image generation server")
 					.on_update(|_| {
@@ -1079,13 +1094,13 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let progress = {
 		let status = imaginate_status.to_text();
 		let widgets = vec![
-			WidgetHolder::text_widget("Progress"),
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-			WidgetHolder::unrelated_separator(),
-			WidgetHolder::bold_text(status.as_ref()),
+			TextLabel::new("Progress").widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new(status.as_ref()).bold(true).widget_holder(),
 		];
 		LayoutGroup::Row { widgets }.with_tooltip(match imaginate_status {
 			ImaginateStatus::Failed(_) => status.as_ref(),
@@ -1094,12 +1109,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	};
 
 	let image_controls = {
-		let mut widgets = vec![WidgetHolder::text_widget("Image"), WidgetHolder::unrelated_separator()];
+		let mut widgets = vec![TextLabel::new("Image").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
 		let assist_separators = [
-			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
+			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
 
 		match &imaginate_status {
@@ -1149,7 +1164,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						}
 					})
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
@@ -1161,7 +1176,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						}
 					})
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				TextButton::new("Clear")
 					.tooltip("Remove generated image from the layer frame")
 					.disabled(!matches!(imaginate_status, ImaginateStatus::ReadyDone))
@@ -1189,7 +1204,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		} = &document_node.inputs[seed_index]
 		{
 			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("Regenerate", 24)
 					.tooltip("Set a new random seed")
 					.on_update({
@@ -1205,7 +1220,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						}
 					})
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				NumberInput::new(Some(seed))
 					.int()
 					.min(-((1u64 << f64::MANTISSA_DIGITS) as f64))
@@ -1244,7 +1259,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("Rescale", 24)
 					.tooltip("Set the layer dimensions to this resolution")
 					.on_update(move |_| {
@@ -1255,7 +1270,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						.into()
 					})
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
 					.icon("Edit12px")
 					.tooltip({
@@ -1277,7 +1292,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						resolution_index,
 					))
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				NumberInput::new(Some(vec2.x))
 					.label("W")
 					.min(64.)
@@ -1290,7 +1305,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						resolution_index,
 					))
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(vec2.y))
 					.label("H")
 					.min(64.)
@@ -1334,7 +1349,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let entries = vec![entries];
 
 			widgets.extend_from_slice(&[
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).widget_holder(),
 			]);
 		}
@@ -1400,7 +1415,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
 			let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
 
-			widgets.push(WidgetHolder::unrelated_separator());
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			if !transform_not_connected {
 				widgets.push(
 					LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
@@ -1445,7 +1460,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			} = &document_node.inputs[inpaint_index]
 			{
 				widgets.extend_from_slice(&[
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					RadioInput::new(
 						[(true, "Inpaint"), (false, "Outpaint")]
 							.into_iter()
@@ -1487,7 +1502,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				let entries = vec![entries];
 
 				widgets.extend_from_slice(&[
-					WidgetHolder::unrelated_separator(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					DropdownInput::new(entries).selected_index(Some(starting_fill as u32)).widget_holder(),
 				]);
 			}

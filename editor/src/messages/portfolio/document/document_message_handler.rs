@@ -1609,9 +1609,9 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
-							WidgetHolder::unrelated_separator(),
+							Separator::new(SeparatorType::Unrelated).widget_holder(),
 							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(false).min_width(60).widget_holder(),
-							WidgetHolder::related_separator(),
+							Separator::new(SeparatorType::Related).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
@@ -1627,25 +1627,25 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
-							WidgetHolder::unrelated_separator(),
+							Separator::new(SeparatorType::Unrelated).widget_holder(),
 							TextLabel::new(SnappingOptions::Points.to_string()).table_align(false).min_width(60).widget_holder(),
 						],
 					},
 				])
 				.widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			OptionalInput::new(true, "Grid")
 				.tooltip("Grid")
 				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into())
 				.widget_holder(),
 			PopoverButton::new("Grid", "Coming soon").widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			OptionalInput::new(self.overlays_visible, "Overlays")
 				.tooltip("Overlays")
 				.on_update(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
-			WidgetHolder::unrelated_separator(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
 				RadioEntryData::default()
 					.value("normal")
@@ -1669,7 +1669,7 @@ impl DocumentMessageHandler {
 			})
 			.widget_holder(),
 			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
-			WidgetHolder::section_separator(),
+			Separator::new(SeparatorType::Section).widget_holder(),
 			IconButton::new("ZoomIn", 24)
 				.tooltip("Zoom In")
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom))
@@ -1685,7 +1685,7 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
 				.on_update(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.navigation_handler.snapped_scale() * 100.))
 				.unit("%")
 				.min(0.000001)
@@ -1705,7 +1705,7 @@ impl DocumentMessageHandler {
 		let rotation_value = self.navigation_handler.snapped_angle() / (std::f64::consts::PI / 180.);
 		if rotation_value.abs() > 0.00001 {
 			widgets.extend([
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(rotation_value))
 					.unit("°")
 					.step(15.)
@@ -1719,7 +1719,7 @@ impl DocumentMessageHandler {
 			]);
 		}
 		widgets.extend([
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new(
 				"Canvas Navigation",
 				"Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.",
@@ -1744,7 +1744,7 @@ impl DocumentMessageHandler {
 					.draw_icon( true)
 					.interactive( false) // TODO: set to true when dialogs are not spawned
 					.widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 			],
 		}]);
 
@@ -1819,7 +1819,7 @@ impl DocumentMessageHandler {
 					.disabled(blend_mode.is_none() && !blend_mode_is_mixed)
 					.draw_icon(false)
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(opacity.map(|opacity| opacity * 100.))
 					.label("Opacity")
 					.unit("%")
@@ -1838,7 +1838,7 @@ impl DocumentMessageHandler {
 						}
 					})
 					.widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("Folder", 24)
 					.tooltip("New Folder")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))

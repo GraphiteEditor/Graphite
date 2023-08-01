@@ -150,7 +150,7 @@ impl PropertyHolder for BrushTool {
 				.unit(" px")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.options.hardness))
 				.label("Hardness")
 				.min(0.)
@@ -158,7 +158,7 @@ impl PropertyHolder for BrushTool {
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.options.flow))
 				.label("Flow")
 				.min(1.)
@@ -166,7 +166,7 @@ impl PropertyHolder for BrushTool {
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 				.widget_holder(),
-			WidgetHolder::related_separator(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.options.spacing))
 				.label("Spacing")
 				.min(1.)
@@ -176,7 +176,7 @@ impl PropertyHolder for BrushTool {
 				.widget_holder(),
 		];
 
-		widgets.push(WidgetHolder::section_separator());
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
@@ -184,7 +184,7 @@ impl PropertyHolder for BrushTool {
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(self.options.draw_mode as u32).widget_holder());
 
-		widgets.push(WidgetHolder::section_separator());
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
@@ -194,7 +194,7 @@ impl PropertyHolder for BrushTool {
 			|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into(),
 		));
 
-		widgets.push(WidgetHolder::related_separator());
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
 		let blend_mode_entries: Vec<Vec<_>> = EXPOSED_BLEND_MODES
 			.iter()

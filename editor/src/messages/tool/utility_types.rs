@@ -256,7 +256,7 @@ impl PropertyHolder for ToolData {
 				}
 			}).collect::<Vec<_>>())
 			.flat_map(|group| {
-				let separator = std::iter::once(Separator::new(SeparatorDirection::Vertical, SeparatorType::Section).widget_holder());
+				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
 						.disabled( false)
