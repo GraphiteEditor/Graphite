@@ -544,13 +544,13 @@ impl TypingContext {
 		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
 
 		if matches!(input, Type::Generic(_)) {
-			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
+			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", &input, node.identifier));
 		}
 		if parameters.iter().any(|p| {
 			matches!(p,
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
-			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
+			return Err(format!("Generic types are not supported in parameters: {:?} occurred in {:?}", parameters, node.identifier));
 		}
 		fn covariant(from: &Type, to: &Type) -> bool {
 			match (from, to) {
