@@ -5,19 +5,12 @@ use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, 
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{CheckboxInput, TextLabel};
-use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{
-	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
-};
-use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
-use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -1589,11 +1582,9 @@ impl DocumentMessageHandler {
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
 		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: snapping_state.snapping_enabled,
-				icon: "Snapping".into(),
-				tooltip: "Snapping".into(),
-				on_update: WidgetCallback::new(move |optional_input: &OptionalInput| {
+			OptionalInput::new(snapping_state.snapping_enabled, "Snapping")
+				.tooltip("Snapping")
+				.on_update(move |optional_input: &OptionalInput| {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
@@ -1601,261 +1592,159 @@ impl DocumentMessageHandler {
 						node_snapping: Some(snapping_state.node_snapping),
 					}
 					.into()
-				}),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Snapping".into(),
-				text: "Select the vectors to snap to.".into(), // TODO: check whether this is an apt description
-				options_widget: vec![
+				})
+				.widget_holder(),
+			PopoverButton::new("Snapping", "Snap customization settings")
+				.options_widget(vec![
 					LayoutGroup::Row {
 						widgets: vec![
-							WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-								tooltip: SnappingOptions::BoundingBoxes.to_string(),
-								checked: snapping_state.bounding_box_snapping,
-								on_update: WidgetCallback::new(move |input: &CheckboxInput| {
+							CheckboxInput::new(snapping_state.bounding_box_snapping)
+								.tooltip(SnappingOptions::BoundingBoxes.to_string())
+								.on_update(move |input: &CheckboxInput| {
 									DocumentMessage::SetSnapping {
 										snapping_enabled: None,
 										bounding_box_snapping: Some(input.checked),
 										node_snapping: None,
 									}
 									.into()
-								}),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								direction: SeparatorDirection::Horizontal,
-								separator_type: SeparatorType::Unrelated,
-							})),
-							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: SnappingOptions::BoundingBoxes.to_string(),
-								table_align: false,
-								min_width: 60,
-								..Default::default()
-							})),
-							// adds appropriate space between row elements
-							WidgetHolder::new(Widget::Separator(Separator {
-								direction: SeparatorDirection::Vertical,
-								separator_type: SeparatorType::Related,
-							})),
+								})
+								.widget_holder(),
+							WidgetHolder::unrelated_separator(),
+							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(false).min_width(60).widget_holder(),
+							WidgetHolder::related_separator(),
 						],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-								checked: self.snapping_state.node_snapping,
-								tooltip: SnappingOptions::Points.to_string(),
-								on_update: WidgetCallback::new(|input: &CheckboxInput| {
+							CheckboxInput::new(self.snapping_state.node_snapping)
+								.tooltip(SnappingOptions::Points.to_string())
+								.on_update(|input: &CheckboxInput| {
 									DocumentMessage::SetSnapping {
 										snapping_enabled: None,
 										bounding_box_snapping: None,
 										node_snapping: Some(input.checked),
 									}
 									.into()
-								}),
-								..Default::default()
-							})),
-							WidgetHolder::new(Widget::Separator(Separator {
-								direction: SeparatorDirection::Horizontal,
-								separator_type: SeparatorType::Unrelated,
-							})),
-							WidgetHolder::new(Widget::TextLabel(TextLabel {
-								value: SnappingOptions::Points.to_string(),
-								table_align: false,
-								min_width: 60,
-								..Default::default()
-							})),
+								})
+								.widget_holder(),
+							WidgetHolder::unrelated_separator(),
+							TextLabel::new(SnappingOptions::Points.to_string()).table_align(false).min_width(60).widget_holder(),
 						],
 					},
-				],
-
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: true,
-				icon: "Grid".into(),
-				tooltip: "Grid".into(),
-				on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Grid".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: self.overlays_visible,
-				icon: "Overlays".into(),
-				tooltip: "Overlays".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Overlays".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: match self.view_mode {
-					ViewMode::Normal => 0,
-					_ => 1,
-				},
-				entries: vec![
-					RadioEntryData {
-						value: "normal".into(),
-						icon: "ViewModeNormal".into(),
-						tooltip: "View Mode: Normal".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
-						..RadioEntryData::default()
-					},
-					RadioEntryData {
-						value: "outline".into(),
-						icon: "ViewModeOutline".into(),
-						tooltip: "View Mode: Outline".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
-						..RadioEntryData::default()
-					},
-					RadioEntryData {
-						value: "pixels".into(),
-						icon: "ViewModePixels".into(),
-						tooltip: "View Mode: Pixels".into(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
-						..RadioEntryData::default()
-					},
-				],
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "View Mode".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Section,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "ZoomIn".into(),
-				tooltip: "Zoom In".into(),
-				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
-				on_update: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
-				..IconButton::default()
-			})),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "ZoomOut".into(),
-				tooltip: "Zoom Out".into(),
-				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
-				on_update: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
-				..IconButton::default()
-			})),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "ZoomReset".into(),
-				tooltip: "Zoom to 100%".into(),
-				tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-				on_update: WidgetCallback::new(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
-				..IconButton::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: "%".into(),
-				value: Some(self.navigation_handler.snapped_scale() * 100.),
-				min: Some(0.000001),
-				max: Some(1000000.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				])
+				.widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			OptionalInput::new(true, "Grid")
+				.tooltip("Grid")
+				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into())
+				.widget_holder(),
+			PopoverButton::new("Grid", "Coming soon").widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			OptionalInput::new(self.overlays_visible, "Overlays")
+				.tooltip("Overlays")
+				.on_update(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.widget_holder(),
+			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
+			WidgetHolder::unrelated_separator(),
+			RadioInput::new(vec![
+				RadioEntryData::default()
+					.value("normal")
+					.icon("ViewModeNormal")
+					.tooltip("View Mode: Normal")
+					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
+				RadioEntryData::default()
+					.value("outline")
+					.icon("ViewModeOutline")
+					.tooltip("View Mode: Outline")
+					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
+				RadioEntryData::default()
+					.value("pixels")
+					.icon("ViewModePixels")
+					.tooltip("View Mode: Pixels")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+			])
+			.selected_index(match self.view_mode {
+				ViewMode::Normal => 0,
+				_ => 1,
+			})
+			.widget_holder(),
+			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
+			WidgetHolder::section_separator(),
+			IconButton::new("ZoomIn", 24)
+				.tooltip("Zoom In")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom))
+				.on_update(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
+			IconButton::new("ZoomOut", 24)
+				.tooltip("Zoom Out")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom))
+				.on_update(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
+			IconButton::new("ZoomReset", 24)
+				.tooltip("Zoom to 100%")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
+				.on_update(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into())
+				.widget_holder(),
+			WidgetHolder::related_separator(),
+			NumberInput::new(Some(self.navigation_handler.snapped_scale() * 100.))
+				.unit("%")
+				.min(0.000001)
+				.max(1000000.)
+				.mode_increment()
+				.on_update(|number_input: &NumberInput| {
 					NavigationMessage::SetCanvasZoom {
 						zoom_factor: number_input.value.unwrap() / 100.,
 					}
 					.into()
-				}),
-				increment_behavior: NumberInputIncrementBehavior::Callback,
-				increment_callback_decrease: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
-				increment_callback_increase: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
-				..NumberInput::default()
-			})),
+				})
+				.increment_behavior(NumberInputIncrementBehavior::Callback)
+				.increment_callback_decrease(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
+				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
 		];
 		let rotation_value = self.navigation_handler.snapped_angle() / (std::f64::consts::PI / 180.);
 		if rotation_value.abs() > 0.00001 {
 			widgets.extend([
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Related,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					unit: "°".into(),
-					value: Some(rotation_value),
-					step: 15.,
-					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				WidgetHolder::related_separator(),
+				NumberInput::new(Some(rotation_value))
+					.unit("°")
+					.step(15.)
+					.on_update(|number_input: &NumberInput| {
 						NavigationMessage::SetCanvasRotation {
 							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
 						.into()
-					}),
-					..NumberInput::default()
-				})),
+					})
+					.widget_holder(),
 			]);
 		}
 		widgets.extend([
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Canvas Navigation".into(),
-				text: "Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.".into(),
-				..Default::default()
-			})),
+			WidgetHolder::related_separator(),
+			PopoverButton::new(
+				"Canvas Navigation",
+				"Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.",
+			)
+			.widget_holder(),
 		]);
 		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-					entries: vec![vec![
-						DropdownEntryData {
-							label: DocumentMode::DesignMode.to_string(),
-							icon: DocumentMode::DesignMode.icon_name(),
-							..DropdownEntryData::default()
-						},
-						DropdownEntryData {
-							label: DocumentMode::SelectMode.to_string(),
-							icon: DocumentMode::SelectMode.icon_name(),
-							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-							..DropdownEntryData::default()
-						},
-						DropdownEntryData {
-							label: DocumentMode::GuideMode.to_string(),
-							icon: DocumentMode::GuideMode.icon_name(),
-							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
-							..DropdownEntryData::default()
-						},
-					]],
-					selected_index: Some(self.document_mode as u32),
-					draw_icon: true,
-					interactive: false, // TODO: set to true when dialogs are not spawned
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Section,
-					direction: SeparatorDirection::Horizontal,
-				})),
+				DropdownInput::new(
+					vec![vec![
+						DropdownEntryData::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
+						DropdownEntryData::new(DocumentMode::SelectMode.to_string())
+							.icon(DocumentMode::SelectMode.icon_name())
+							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+						DropdownEntryData::new(DocumentMode::GuideMode.to_string())
+							.icon(DocumentMode::GuideMode.icon_name())
+							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+					]])
+					.selected_index( Some(self.document_mode as u32))
+					.draw_icon( true)
+					.interactive( false) // TODO: set to true when dialogs are not spawned
+					.widget_holder(),
+				WidgetHolder::section_separator(),
 			],
 		}]);
 
@@ -1914,11 +1803,10 @@ impl DocumentMessageHandler {
 			.map(|modes| {
 				modes
 					.iter()
-					.map(|mode| DropdownEntryData {
-						label: mode.to_string(),
-						value: mode.to_string(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
-						..Default::default()
+					.map(|mode| {
+						DropdownEntryData::new(mode.to_string())
+							.value(mode.to_string())
+							.on_update(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into())
 					})
 					.collect()
 			})
@@ -1926,57 +1814,41 @@ impl DocumentMessageHandler {
 
 		let layer_tree_options = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-					entries: blend_mode_menu_entries,
-					selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
-					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
-					draw_icon: false,
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Related,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					label: "Opacity".into(),
-					unit: "%".into(),
-					display_decimal_places: 2,
-					disabled: opacity.is_none() && !opacity_is_mixed,
-					value: opacity.map(|opacity| opacity * 100.),
-					min: Some(0.),
-					max: Some(100.),
-					range_min: Some(0.),
-					range_max: Some(100.),
-					mode: NumberInputMode::Range,
-					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				DropdownInput::new(blend_mode_menu_entries)
+					.selected_index(blend_mode.map(|blend_mode| blend_mode as u32))
+					.disabled(blend_mode.is_none() && !blend_mode_is_mixed)
+					.draw_icon(false)
+					.widget_holder(),
+				WidgetHolder::related_separator(),
+				NumberInput::new(opacity.map(|opacity| opacity * 100.))
+					.label("Opacity")
+					.unit("%")
+					.display_decimal_places(2)
+					.disabled(opacity.is_none() && !opacity_is_mixed)
+					.min(0.)
+					.max(100.)
+					.range_min(Some(0.))
+					.range_max(Some(100.))
+					.mode(NumberInputMode::Range)
+					.on_update(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {
 							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
 						} else {
 							Message::NoOp
 						}
-					}),
-					..NumberInput::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Section,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "Folder".into(),
-					tooltip: "New Folder".into(),
-					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "Trash".into(),
-					tooltip: "Delete Selected".into(),
-					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
-					..Default::default()
-				})),
+					})
+					.widget_holder(),
+				WidgetHolder::section_separator(),
+				IconButton::new("Folder", 24)
+					.tooltip("New Folder")
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+					.on_update(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into())
+					.widget_holder(),
+				IconButton::new("Trash", 24)
+					.tooltip("Delete Selected")
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+					.widget_holder(),
 			],
 		}]);
 

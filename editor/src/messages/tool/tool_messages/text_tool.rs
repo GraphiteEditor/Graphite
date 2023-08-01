@@ -4,9 +4,8 @@ use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::new_text_network;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -99,34 +98,26 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
-	let font = FontInput {
-		is_style_picker: false,
-		font_family: tool.options.font_name.clone(),
-		font_style: tool.options.font_style.clone(),
-		on_update: WidgetCallback::new(|font_input: &FontInput| {
+	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
+		.is_style_picker(false)
+		.on_update(|font_input: &FontInput| {
 			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 				family: font_input.font_family.clone(),
 				style: font_input.font_style.clone(),
 			})
 			.into()
-		}),
-		..Default::default()
-	}
-	.widget_holder();
-	let style = FontInput {
-		is_style_picker: true,
-		font_family: tool.options.font_name.clone(),
-		font_style: tool.options.font_style.clone(),
-		on_update: WidgetCallback::new(|font_input: &FontInput| {
+		})
+		.widget_holder();
+	let style = FontInput::new(&tool.options.font_name, &tool.options.font_style)
+		.is_style_picker(true)
+		.on_update(|font_input: &FontInput| {
 			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 				family: font_input.font_family.clone(),
 				style: font_input.font_style.clone(),
 			})
 			.into()
-		}),
-		..Default::default()
-	}
-	.widget_holder();
+		})
+		.widget_holder();
 	let size = NumberInput::new(Some(tool.options.font_size as f64))
 		.unit(" px")
 		.label("Size")
@@ -146,9 +137,9 @@ impl PropertyHolder for TextTool {
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
-			WidgetCallback::new(|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into()),
+			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			WidgetCallback::new(|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value)).into()),
+			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value)).into(),
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -177,10 +168,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 				}
 			}
 
-			responses.add(LayoutMessage::SendLayout {
-				layout: self.properties(),
-				layout_target: LayoutTarget::ToolOptions,
-			});
+			self.register_properties(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}

@@ -7,11 +7,8 @@ use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::button_widgets::IconButton;
-use crate::messages::layout::utility_types::widgets::input_widgets::SwatchPairInput;
-use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -144,29 +141,20 @@ impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::SwatchPairInput(SwatchPairInput {
-					primary: self.primary_color,
-					secondary: self.secondary_color,
-				}))],
+				widgets: vec![SwatchPairInput::new(self.primary_color, self.secondary_color).widget_holder()],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 16,
-						icon: "Swap".into(),
-						tooltip: "Swap".into(),
-						tooltip_shortcut: action_keys!(ToolMessageDiscriminant::SwapColors),
-						on_update: WidgetCallback::new(|_| ToolMessage::SwapColors.into()),
-						..Default::default()
-					})),
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						size: 16,
-						icon: "WorkingColors".into(),
-						tooltip: "Reset".into(),
-						tooltip_shortcut: action_keys!(ToolMessageDiscriminant::ResetColors),
-						on_update: WidgetCallback::new(|_| ToolMessage::ResetColors.into()),
-						..Default::default()
-					})),
+					IconButton::new("Swap", 16)
+						.tooltip("Swap")
+						.tooltip_shortcut(action_keys!(ToolMessageDiscriminant::SwapColors))
+						.on_update(|_| ToolMessage::SwapColors.into())
+						.widget_holder(),
+					IconButton::new("WorkingColors", 16)
+						.tooltip("Reset")
+						.tooltip_shortcut(action_keys!(ToolMessageDiscriminant::ResetColors))
+						.on_update(|_| ToolMessage::ResetColors.into())
+						.widget_holder(),
 				],
 			},
 		]);
@@ -259,36 +247,29 @@ impl PropertyHolder for ToolData {
 			.iter()
 			.map(|tool_group| tool_group.iter().map(|tool_availability| {
 				match tool_availability {
-					ToolAvailability::Available(tool) => ToolEntry {
-						tooltip: tool.tooltip(),
-						tooltip_shortcut: action_keys!(tool_type_to_activate_tool_message(tool.tool_type())),
-						icon_name: tool.icon_name(),
-						tool_type: tool.tool_type(),
-					},
+					ToolAvailability::Available(tool) => ToolEntry::new( tool.tool_type(),  tool.icon_name())
+						.tooltip( tool.tooltip())
+						.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type())))
+
+					,
 					ToolAvailability::ComingSoon(tool) => tool.clone(),
 				}
 			}).collect::<Vec<_>>())
 			.flat_map(|group| {
-				let separator = std::iter::once(WidgetHolder::new(Widget::Separator(Separator {
-					direction: SeparatorDirection::Vertical,
-					separator_type: SeparatorType::Section,
-				})));
+				let separator = std::iter::once(Separator::new(SeparatorDirection::Vertical, SeparatorType::Section).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
-					WidgetHolder::new(Widget::IconButton(IconButton {
-						icon: icon_name,
-						size: 32,
-						disabled: false,
-						active: self.active_tool_type == tool_type,
-						tooltip: tooltip.clone(),
-						tooltip_shortcut,
-						on_update: WidgetCallback::new(move |_| {
+					IconButton::new(icon_name, 32)
+						.disabled( false)
+						.active( self.active_tool_type == tool_type)
+						.tooltip( tooltip.clone())
+						.tooltip_shortcut(tooltip_shortcut)
+						.on_update(move |_| {
 							if !tooltip.contains("Coming Soon") {
 								ToolMessage::ActivateTool { tool_type }.into()
 							} else {
 								DialogMessage::RequestComingSoonDialog { issue: None }.into()
 							}
-						}),
-					}))
+						}).widget_holder()
 				});
 
 				separator.chain(buttons)
@@ -303,12 +284,15 @@ impl PropertyHolder for ToolData {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, WidgetBuilder)]
+#[widget_builder(not_widget_holder)]
 pub struct ToolEntry {
+	#[widget_builder(constructor)]
+	pub tool_type: ToolType,
+	#[widget_builder(constructor)]
+	pub icon_name: String,
 	pub tooltip: String,
 	pub tooltip_shortcut: Option<ActionKeys>,
-	pub icon_name: String,
-	pub tool_type: ToolType,
 }
 
 #[derive(Debug)]
@@ -346,9 +330,10 @@ impl ToolFsmState {
 }
 
 #[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, specta::Type)]
 pub enum ToolType {
 	// General tool group
+	#[default]
 	Select,
 	Artboard,
 	Navigate,
@@ -412,36 +397,11 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::Available(Box::<frame_tool::FrameTool>::default()),
 			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
-			ToolAvailability::ComingSoon(ToolEntry {
-				tool_type: ToolType::Heal,
-				icon_name: "RasterHealTool".into(),
-				tooltip: "Coming Soon: Heal Tool (J)".into(),
-				tooltip_shortcut: None,
-			}),
-			ToolAvailability::ComingSoon(ToolEntry {
-				tool_type: ToolType::Clone,
-				icon_name: "RasterCloneTool".into(),
-				tooltip: "Coming Soon: Clone Tool (C)".into(),
-				tooltip_shortcut: None,
-			}),
-			ToolAvailability::ComingSoon(ToolEntry {
-				tool_type: ToolType::Patch,
-				icon_name: "RasterPatchTool".into(),
-				tooltip: "Coming Soon: Patch Tool".into(),
-				tooltip_shortcut: None,
-			}),
-			ToolAvailability::ComingSoon(ToolEntry {
-				tool_type: ToolType::Detail,
-				icon_name: "RasterDetailTool".into(),
-				tooltip: "Coming Soon: Detail Tool (D)".into(),
-				tooltip_shortcut: None,
-			}),
-			ToolAvailability::ComingSoon(ToolEntry {
-				tool_type: ToolType::Relight,
-				icon_name: "RasterRelightTool".into(),
-				tooltip: "Coming Soon: Relight Tool (O)".into(),
-				tooltip_shortcut: None,
-			}),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterHealTool").tooltip("Coming Soon: Heal Tool (J)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Clone, "RasterCloneTool").tooltip("Coming Soon: Clone Tool (C)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip("Coming Soon: Patch Tool")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Detail, "RasterDetailTool").tooltip("Coming Soon: Detail Tool (D)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Relight, "RasterRelightTool").tooltip("Coming Soon: Relight Tool (O)")),
 		],
 	]
 }

@@ -452,6 +452,7 @@ pub struct WidgetHolder {
 }
 
 impl WidgetHolder {
+	#[deprecated(since = "0.0.0", note = "Please use the builder pattern, e.g. TextLabel::new(\"hello\").widget_holder()")]
 	pub fn new(widget: Widget) -> Self {
 		Self { widget_id: generate_uuid(), widget }
 	}

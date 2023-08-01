@@ -4,11 +4,8 @@ use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
-use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
@@ -222,11 +219,7 @@ impl PropertyHolder for SelectTool {
 					.on_update(|_| SelectToolMessage::FlipVertical.into())
 					.widget_holder(),
 				WidgetHolder::related_separator(),
-				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					header: "Flip".into(),
-					text: "Coming soon".into(),
-					..Default::default()
-				})),
+				PopoverButton::new("Flip", "Coming soon").widget_holder(),
 				WidgetHolder::section_separator(),
 				IconButton::new("BooleanUnion", 24)
 					.tooltip("Boolean Union (coming soon)")

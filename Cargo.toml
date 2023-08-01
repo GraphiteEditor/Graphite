@@ -28,7 +28,7 @@ resolver = "2"
 exclude = ["node-graph/gpu-compiler"]
 
 [workspace.dependencies]
-specta = { git = "https://github.com/0HyperCube/specta.git", rev = "d28cd72ea4ea2f6eaa85e0622d3a98340dbb43d3", features = [
+specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c0863d27bc47529f300de3969480c66d", features = [
 	"glam",
 ] }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }

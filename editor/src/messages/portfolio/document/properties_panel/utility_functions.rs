@@ -1,11 +1,7 @@
 use super::utility_types::TransformOp;
 use crate::application::generate_uuid;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
 use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::assist_widgets::PivotAssist;
-use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton, TextButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{CheckboxInput, ColorInput, NumberInput, NumberInputMode, RadioEntryData, RadioInput, TextInput};
-use crate::messages::layout::utility_types::widgets::label_widgets::{IconLabel, TextLabel};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodePropertiesContext;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -72,23 +68,13 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
-			WidgetHolder::new(Widget::IconLabel(IconLabel {
-				icon: "NodeArtboard".into(),
-				tooltip: "Artboard".into(),
-				..Default::default()
-			})),
+			IconLabel::new("NodeArtboard").tooltip("Artboard").widget_holder(),
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: layer.name.clone().unwrap_or_else(|| "Untitled Artboard".to_string()),
-				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
-				..Default::default()
-			})),
+			TextInput::new(layer.name.clone().unwrap_or_else(|| "Untitled Artboard".to_string()))
+				.on_update(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into())
+				.widget_holder(),
 			WidgetHolder::related_separator(),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Additional Options".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
+			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),
 		],
 	}];
 
@@ -104,113 +90,92 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 			layout: vec![
 				LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Location".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("Location").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.transform.x() + pivot.x),
-							label: "X".into(),
-							unit: " px".into(),
-							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						NumberInput::new(Some(layer.transform.x() + pivot.x))
+							.label("X")
+							.unit(" px")
+							.on_update(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap() - pivot.x,
 									transform_op: TransformOp::X,
 								}
 								.into()
-							}),
-							..NumberInput::default()
-						})),
+							})
+							.widget_holder(),
 						WidgetHolder::related_separator(),
-						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.transform.y() + pivot.y),
-							label: "Y".into(),
-							unit: " px".into(),
-							on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+						NumberInput::new(Some(layer.transform.y() + pivot.y))
+							.label("Y")
+							.unit(" px")
+							.on_update(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap() - pivot.y,
 									transform_op: TransformOp::Y,
 								}
 								.into()
-							}),
-							..NumberInput::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				},
 				LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Dimensions".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("Dimensions").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::related_separator(),
-						WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-							checked: layer.preserve_aspect,
-							icon: "Link".into(),
-							tooltip: "Preserve Aspect Ratio".into(),
-							on_update: WidgetCallback::new(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
-							..Default::default()
-						})),
+						CheckboxInput::new(layer.preserve_aspect)
+							.icon("Link")
+							.tooltip("Preserve Aspect Ratio")
+							.on_update(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into())
+							.widget_holder(),
 						WidgetHolder::related_separator(),
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(&render_data).scale_x()),
-							label: "W".into(),
-							unit: " px".into(),
-							is_integer: true,
-							min: Some(1.),
-							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						NumberInput::new(Some(layer.bounding_transform(&render_data).scale_x()))
+							.label("W")
+							.unit(" px")
+							.is_integer(true)
+							.min(1.)
+							.on_update(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Width,
 								}
 								.into()
-							}),
-							..NumberInput::default()
-						})),
+							})
+							.widget_holder(),
 						WidgetHolder::related_separator(),
-						WidgetHolder::new(Widget::NumberInput(NumberInput {
-							value: Some(layer.bounding_transform(&render_data).scale_y()),
-							label: "H".into(),
-							unit: " px".into(),
-							is_integer: true,
-							min: Some(1.),
-							on_update: WidgetCallback::new(|number_input: &NumberInput| {
+						NumberInput::new(Some(layer.bounding_transform(&render_data).scale_y()))
+							.label("H")
+							.unit(" px")
+							.is_integer(true)
+							.min(1.)
+							.on_update(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
 									transform_op: TransformOp::Height,
 								}
 								.into()
-							}),
-							..NumberInput::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				},
 				LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Background".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("Background").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::ColorInput(ColorInput {
-							value: Some(*color),
-							on_update: WidgetCallback::new(|text_input: &ColorInput| {
+						ColorInput::new(Some(*color))
+							.on_update(|text_input: &ColorInput| {
 								let fill = if let Some(value) = text_input.value { value } else { Color::TRANSPARENT };
 								PropertiesPanelMessage::ModifyFill { fill: Fill::Solid(fill) }.into()
-							}),
-							..Default::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				},
 			],
@@ -239,34 +204,16 @@ pub fn register_artwork_layer_properties(
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
-				LayerDataType::Folder(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "Folder".into(),
-					tooltip: "Folder".into(),
-					..Default::default()
-				})),
-				LayerDataType::Shape(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "NodeShape".into(),
-					tooltip: "Shape".into(),
-					..Default::default()
-				})),
-				LayerDataType::Layer(_) => WidgetHolder::new(Widget::IconLabel(IconLabel {
-					icon: "Layer".into(),
-					tooltip: "Layer".into(),
-					..Default::default()
-				})),
+				LayerDataType::Folder(_) => IconLabel::new("Folder").tooltip("Folder").widget_holder(),
+				LayerDataType::Shape(_) => IconLabel::new("NodeShape").tooltip("Shape").widget_holder(),
+				LayerDataType::Layer(_) => IconLabel::new("Layer").tooltip("Layer").widget_holder(),
 			},
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::TextInput(TextInput {
-				value: layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()),
-				on_update: WidgetCallback::new(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into()),
-				..Default::default()
-			})),
+			TextInput::new(layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()))
+				.on_update(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into())
+				.widget_holder(),
 			WidgetHolder::related_separator(),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Additional Options".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
+			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),
 		],
 	}];
 
@@ -346,158 +293,128 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 		layout: vec![
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Location".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Location").widget_holder(),
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::PivotAssist(PivotAssist {
-						position: layer.pivot.into(),
-						on_update: WidgetCallback::new(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into()),
-						..Default::default()
-					})),
+					PivotAssist::new(layer.pivot.into())
+						.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+						.widget_holder(),
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.x() + pivot.x),
-						label: "X".into(),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+					NumberInput::new(Some(layer.transform.x() + pivot.x))
+						.label("X")
+						.unit(" px")
+						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() - pivot.x,
 								transform_op: TransformOp::X,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 					WidgetHolder::related_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.y() + pivot.y),
-						label: "Y".into(),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+					NumberInput::new(Some(layer.transform.y() + pivot.y))
+						.label("Y")
+						.unit(" px")
+						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() - pivot.y,
 								transform_op: TransformOp::Y,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Rotation".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Rotation").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.rotation() * 180. / PI),
-						unit: "°".into(),
-						mode: NumberInputMode::Range,
-						range_min: Some(-180.),
-						range_max: Some(180.),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					NumberInput::new(Some(layer.transform.rotation() * 180. / PI))
+						.unit("°")
+						.mode(NumberInputMode::Range)
+						.range_min(Some(-180.))
+						.range_max(Some(180.))
+						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() / 180. * PI,
 								transform_op: TransformOp::Rotation,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Scale".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Scale").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::related_separator(),
-					WidgetHolder::new(Widget::CheckboxInput(CheckboxInput {
-						checked: layer.preserve_aspect,
-						icon: "Link".into(),
-						tooltip: "Preserve Aspect Ratio".into(),
-						on_update: WidgetCallback::new(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into()),
-						..Default::default()
-					})),
+					CheckboxInput::new(layer.preserve_aspect)
+						.icon("Link")
+						.tooltip("Preserve Aspect Ratio")
+						.on_update(|input: &CheckboxInput| PropertiesPanelMessage::ModifyPreserveAspect { preserve_aspect: input.checked }.into())
+						.widget_holder(),
 					WidgetHolder::related_separator(),
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.scale_x()),
-						label: "X".into(),
-						unit: "".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					NumberInput::new(Some(layer.transform.scale_x()))
+						.label("X")
+						.unit("")
+						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::ScaleX,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 					WidgetHolder::related_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.transform.scale_y()),
-						label: "Y".into(),
-						unit: "".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					NumberInput::new(Some(layer.transform.scale_y()))
+						.label("Y")
+						.unit("")
+						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::ScaleY,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Dimensions".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Dimensions").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(&render_data).scale_x()),
-						label: "W".into(),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					NumberInput::new(Some(layer.bounding_transform(&render_data).scale_x()))
+						.label("W")
+						.unit(" px")
+						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Width,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 					WidgetHolder::related_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(layer.bounding_transform(&render_data).scale_y()),
-						label: "H".into(),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(|number_input: &NumberInput| {
+					NumberInput::new(Some(layer.bounding_transform(&render_data).scale_y()))
+						.label("H")
+						.unit(" px")
+						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
 								transform_op: TransformOp::Height,
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 		],
@@ -515,45 +432,34 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 	cloned_gradient_radial.gradient_type = GradientType::Radial;
 	LayoutGroup::Row {
 		widgets: vec![
-			WidgetHolder::new(Widget::TextLabel(TextLabel {
-				value: "Gradient Type".into(),
-				..TextLabel::default()
-			})),
+			TextLabel::new("Gradient Type").widget_holder(),
 			WidgetHolder::unrelated_separator(),
 			WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 			WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 			WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 			WidgetHolder::unrelated_separator(),
-			WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index,
-				entries: vec![
-					RadioEntryData {
-						value: "linear".into(),
-						label: "Linear".into(),
-						tooltip: "Linear gradient changes colors from one side to the other along a line".into(),
-						on_update: WidgetCallback::new(move |_| {
-							PropertiesPanelMessage::ModifyFill {
-								fill: Fill::Gradient(cloned_gradient_linear.clone()),
-							}
-							.into()
-						}),
-						..RadioEntryData::default()
-					},
-					RadioEntryData {
-						value: "radial".into(),
-						label: "Radial".into(),
-						tooltip: "Radial gradient changes colors from the inside to the outside of a circular area".into(),
-						on_update: WidgetCallback::new(move |_| {
-							PropertiesPanelMessage::ModifyFill {
-								fill: Fill::Gradient(cloned_gradient_radial.clone()),
-							}
-							.into()
-						}),
-						..RadioEntryData::default()
-					},
-				],
-				..Default::default()
-			})),
+			RadioInput::new(vec![
+				RadioEntryData::new("linear")
+					.label("Linear")
+					.tooltip("Linear gradient changes colors from one side to the other along a line")
+					.on_update(move |_| {
+						PropertiesPanelMessage::ModifyFill {
+							fill: Fill::Gradient(cloned_gradient_linear.clone()),
+						}
+						.into()
+					}),
+				RadioEntryData::new("radial")
+					.label("Radial")
+					.tooltip("Radial gradient changes colors from the inside to the outside of a circular area")
+					.on_update(move |_| {
+						PropertiesPanelMessage::ModifyFill {
+							fill: Fill::Gradient(cloned_gradient_radial.clone()),
+						}
+						.into()
+					}),
+			])
+			.selected_index(selected_index)
+			.widget_holder(),
 		],
 	}
 }
@@ -566,49 +472,39 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 
 	let value = format!("Gradient: {:.0}%", gradient_clone.positions[position].0 * 100.);
 	let mut widgets = vec![
-		WidgetHolder::new(Widget::TextLabel(TextLabel {
-			value,
-			tooltip: "Adjustable by dragging the gradient stops in the viewport with the Gradient tool active".into(),
-			..TextLabel::default()
-		})),
+		TextLabel::new(value)
+			.tooltip("Adjustable by dragging the gradient stops in the viewport with the Gradient tool active")
+			.widget_holder(),
 		WidgetHolder::unrelated_separator(),
 		WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 		WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 		WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 		WidgetHolder::unrelated_separator(),
-		WidgetHolder::new(Widget::ColorInput(ColorInput {
-			value: gradient_clone.positions[position].1,
-			on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+		ColorInput::new(gradient_clone.positions[position].1)
+			.on_update(move |text_input: &ColorInput| {
 				let mut new_gradient = (*gradient_clone).clone();
 				new_gradient.positions[position].1 = text_input.value;
 				send_fill_message(new_gradient)
-			}),
-			..ColorInput::default()
-		})),
+			})
+			.widget_holder(),
 	];
 
 	let mut skip_separator = false;
 	// Remove button
 	if gradient.positions.len() != position + 1 && position != 0 {
-		let on_update = WidgetCallback::new(move |_| {
+		let on_update = move |_: &IconButton| {
 			let mut new_gradient = (*gradient_3).clone();
 			new_gradient.positions.remove(position);
 			send_fill_message(new_gradient)
-		});
+		};
 
 		skip_separator = true;
 		widgets.push(WidgetHolder::related_separator());
-		widgets.push(WidgetHolder::new(Widget::IconButton(IconButton {
-			icon: "Remove".to_string(),
-			tooltip: "Remove this gradient stop".to_string(),
-			size: 16,
-			on_update,
-			..Default::default()
-		})));
+		widgets.push(IconButton::new("Remove", 16).tooltip("Remove this gradient stop").on_update(on_update).widget_holder());
 	}
 	// Add button
 	if gradient.positions.len() != position + 1 {
-		let on_update = WidgetCallback::new(move |_| {
+		let on_update = move |_: &IconButton| {
 			let mut gradient = (*gradient_2).clone();
 
 			let get_color = |index: usize| match (gradient.positions[index].1, gradient.positions.get(index + 1).and_then(|x| x.1)) {
@@ -623,18 +519,12 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 			gradient.positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
 			send_fill_message(gradient)
-		});
+		};
 
 		if !skip_separator {
 			widgets.push(WidgetHolder::related_separator());
 		}
-		widgets.push(WidgetHolder::new(Widget::IconButton(IconButton {
-			icon: "Add".to_string(),
-			tooltip: "Add a gradient stop after this".to_string(),
-			size: 16,
-			on_update,
-			..Default::default()
-		})));
+		widgets.push(IconButton::new("Add", 16).tooltip("Add a gradient stop after this").on_update(on_update).widget_holder());
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -648,40 +538,31 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 			layout: vec![
 				LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "Color".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("Color").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::ColorInput(ColorInput {
-							value: if let Fill::Solid(color) = fill { Some(*color) } else { None },
-							on_update: WidgetCallback::new(|text_input: &ColorInput| {
+						ColorInput::new(if let Fill::Solid(color) = fill { Some(*color) } else { None })
+							.on_update(|text_input: &ColorInput| {
 								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
 								PropertiesPanelMessage::ModifyFill { fill }.into()
-							}),
-							..ColorInput::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				},
 				LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Use Gradient".into(),
-							tooltip: "Change this fill from a solid color to a gradient".into(),
-							on_update: WidgetCallback::new(move |_: &TextButton| {
+						TextButton::new("Use Gradient")
+							.tooltip("Change this fill from a solid color to a gradient")
+							.on_update(move |_: &TextButton| {
 								let (r, g, b, _) = initial_color.components();
 								let opposite_color = Color::from_rgbaf32(1. - r, 1. - g, 1. - b, 1.).unwrap();
 
@@ -697,9 +578,8 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 									)),
 								}
 								.into()
-							}),
-							..TextButton::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				},
 			],
@@ -714,51 +594,41 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 				layout.extend((0..gradient.positions.len()).map(|pos| node_gradient_color(gradient, pos)));
 				layout.push(LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Invert".into(),
-							icon: Some("Swap".into()),
-							tooltip: "Reverse the order of each color stop".into(),
-							on_update: WidgetCallback::new(move |_: &TextButton| {
+						TextButton::new("Invert")
+							.icon(Some("Swap".into()))
+							.tooltip("Reverse the order of each color stop")
+							.on_update(move |_: &TextButton| {
 								let mut new_gradient = cloned_gradient.clone();
 								new_gradient.positions = new_gradient.positions.iter().map(|(distance, color)| (1. - distance, *color)).collect();
 								new_gradient.positions.reverse();
 								PropertiesPanelMessage::ModifyFill { fill: Fill::Gradient(new_gradient) }.into()
-							}),
-							..TextButton::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				});
 				layout.push(LayoutGroup::Row {
 					widgets: vec![
-						WidgetHolder::new(Widget::TextLabel(TextLabel {
-							value: "".into(),
-							..TextLabel::default()
-						})),
+						TextLabel::new("").widget_holder(),
 						WidgetHolder::unrelated_separator(),
 						WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 						WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 						WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						WidgetHolder::unrelated_separator(),
-						WidgetHolder::new(Widget::TextButton(TextButton {
-							label: "Use Solid Color".into(),
-							tooltip: "Change this fill from a gradient to a solid color, keeping the 0% stop color".into(),
-							on_update: WidgetCallback::new(move |_: &TextButton| {
+						TextButton::new("Use Solid Color")
+							.tooltip("Change this fill from a gradient to a solid color, keeping the 0% stop color")
+							.on_update(move |_: &TextButton| {
 								PropertiesPanelMessage::ModifyFill {
 									fill: Fill::Solid(first_color.unwrap_or_default()),
 								}
 								.into()
-							}),
-							..TextButton::default()
-						})),
+							})
+							.widget_holder(),
 					],
 				});
 				layout
@@ -786,226 +656,167 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 		layout: vec![
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Color".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Color").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::ColorInput(ColorInput {
-						value: stroke.color(),
-						on_update: WidgetCallback::new(move |text_input: &ColorInput| {
+					ColorInput::new(stroke.color())
+						.on_update(move |text_input: &ColorInput| {
 							internal_stroke1
 								.clone()
 								.with_color(&text_input.value)
 								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
-						}),
-						..ColorInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Weight".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Weight").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.weight()),
-						is_integer: false,
-						min: Some(0.),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+					NumberInput::new(Some(stroke.weight()))
+						.is_integer(false)
+						.min(0.)
+						.unit(" px")
+						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
 								stroke: internal_stroke2.clone().with_weight(number_input.value.unwrap()),
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Dash Lengths".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Dash Lengths").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::TextInput(TextInput {
-						value: stroke.dash_lengths(),
-						centered: true,
-						on_update: WidgetCallback::new(move |text_input: &TextInput| {
+					TextInput::new(stroke.dash_lengths())
+						.centered(true)
+						.on_update(move |text_input: &TextInput| {
 							internal_stroke3
 								.clone()
 								.with_dash_lengths(&text_input.value)
 								.map_or(PropertiesPanelMessage::ResendActiveProperties.into(), |stroke| PropertiesPanelMessage::ModifyStroke { stroke }.into())
-						}),
-						..Default::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Dash Offset".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Dash Offset").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.dash_offset()),
-						is_integer: true,
-						min: Some(0.),
-						unit: " px".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+					NumberInput::new(Some(stroke.dash_offset()))
+						.is_integer(true)
+						.min(0.)
+						.unit(" px")
+						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
 								stroke: internal_stroke4.clone().with_dash_offset(number_input.value.unwrap()),
 							}
 							.into()
+						})
+						.widget_holder(),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					TextLabel::new("Line Cap").widget_holder(),
+					WidgetHolder::unrelated_separator(),
+					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
+					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
+					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
+					WidgetHolder::unrelated_separator(),
+					RadioInput::new(vec![
+						RadioEntryData::new("Butt").on_update(move |_| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke6.clone().with_line_cap(LineCap::Butt),
+							}
+							.into()
 						}),
-						..NumberInput::default()
-					})),
+						RadioEntryData::new("Round").on_update(move |_| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke7.clone().with_line_cap(LineCap::Round),
+							}
+							.into()
+						}),
+						RadioEntryData::new("Square").on_update(move |_| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke8.clone().with_line_cap(LineCap::Square),
+							}
+							.into()
+						}),
+					])
+					.selected_index(stroke.line_cap_index())
+					.widget_holder(),
 				],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Line Cap".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Line Join").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::RadioInput(RadioInput {
-						selected_index: stroke.line_cap_index(),
-						entries: vec![
-							RadioEntryData {
-								label: "Butt".into(),
-								on_update: WidgetCallback::new(move |_| {
-									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke6.clone().with_line_cap(LineCap::Butt),
-									}
-									.into()
-								}),
-								..RadioEntryData::default()
-							},
-							RadioEntryData {
-								label: "Round".into(),
-								on_update: WidgetCallback::new(move |_| {
-									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke7.clone().with_line_cap(LineCap::Round),
-									}
-									.into()
-								}),
-								..RadioEntryData::default()
-							},
-							RadioEntryData {
-								label: "Square".into(),
-								on_update: WidgetCallback::new(move |_| {
-									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke8.clone().with_line_cap(LineCap::Square),
-									}
-									.into()
-								}),
-								..RadioEntryData::default()
-							},
-						],
-						..Default::default()
-					})),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Line Join".into(),
-						..TextLabel::default()
-					})),
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
-					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
-					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::RadioInput(RadioInput {
-						selected_index: stroke.line_join_index(),
-						entries: vec![
-							RadioEntryData {
-								label: "Miter".into(),
-								on_update: WidgetCallback::new(move |_| {
-									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke9.clone().with_line_join(LineJoin::Miter),
-									}
-									.into()
-								}),
-								..RadioEntryData::default()
-							},
-							RadioEntryData {
-								label: "Bevel".into(),
-								on_update: WidgetCallback::new(move |_| {
-									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke10.clone().with_line_join(LineJoin::Bevel),
-									}
-									.into()
-								}),
-								..RadioEntryData::default()
-							},
-							RadioEntryData {
-								label: "Round".into(),
-								on_update: WidgetCallback::new(move |_| {
-									PropertiesPanelMessage::ModifyStroke {
-										stroke: internal_stroke11.clone().with_line_join(LineJoin::Round),
-									}
-									.into()
-								}),
-								..RadioEntryData::default()
-							},
-						],
-						..Default::default()
-					})),
+					RadioInput::new(vec![
+						RadioEntryData::new("Miter").on_update(move |_| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke9.clone().with_line_join(LineJoin::Miter),
+							}
+							.into()
+						}),
+						RadioEntryData::new("Bevel").on_update(move |_| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke10.clone().with_line_join(LineJoin::Bevel),
+							}
+							.into()
+						}),
+						RadioEntryData::new("Round").on_update(move |_| {
+							PropertiesPanelMessage::ModifyStroke {
+								stroke: internal_stroke11.clone().with_line_join(LineJoin::Round),
+							}
+							.into()
+						}),
+					])
+					.selected_index(stroke.line_join_index())
+					.widget_holder(),
 				],
 			},
 			// TODO: Gray out this row when Line Join isn't set to Miter
 			LayoutGroup::Row {
 				widgets: vec![
-					WidgetHolder::new(Widget::TextLabel(TextLabel {
-						value: "Miter Limit".into(),
-						..TextLabel::default()
-					})),
+					TextLabel::new("Miter Limit").widget_holder(),
 					WidgetHolder::unrelated_separator(),
 					WidgetHolder::unrelated_separator(), // TODO: These three separators add up to 24px,
 					WidgetHolder::unrelated_separator(), // TODO: which is the width of the Assist area.
 					WidgetHolder::unrelated_separator(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					WidgetHolder::unrelated_separator(),
-					WidgetHolder::new(Widget::NumberInput(NumberInput {
-						value: Some(stroke.line_join_miter_limit() as f64),
-						is_integer: true,
-						min: Some(0.),
-						unit: "".into(),
-						on_update: WidgetCallback::new(move |number_input: &NumberInput| {
+					NumberInput::new(Some(stroke.line_join_miter_limit() as f64))
+						.is_integer(true)
+						.min(0.)
+						.unit("")
+						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
 								stroke: internal_stroke5.clone().with_line_join_miter_limit(number_input.value.unwrap()),
 							}
 							.into()
-						}),
-						..NumberInput::default()
-					})),
+						})
+						.widget_holder(),
 				],
 			},
 		],

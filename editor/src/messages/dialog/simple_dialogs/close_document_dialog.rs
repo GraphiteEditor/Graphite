@@ -1,7 +1,5 @@
 use crate::messages::broadcast::broadcast_event::BroadcastEvent;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
-use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 /// A dialog for confirming the closing a document with unsaved changes.
@@ -15,51 +13,34 @@ impl PropertyHolder for CloseDocumentDialog {
 		let document_id = self.document_id;
 
 		let button_widgets = vec![
-			WidgetHolder::new(Widget::TextButton(TextButton {
-				label: "Save".to_string(),
-				min_width: 96,
-				emphasized: true,
-				on_update: WidgetCallback::new(|_| {
+			TextButton::new("Save")
+				.min_width(96)
+				.emphasized(true)
+				.on_update(|_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![DocumentMessage::SaveDocument.into()],
 					}
 					.into()
-				}),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::TextButton(TextButton {
-				label: "Discard".to_string(),
-				min_width: 96,
-				on_update: WidgetCallback::new(move |_| {
+				})
+				.widget_holder(),
+			TextButton::new("Discard")
+				.min_width(96)
+				.on_update(move |_| {
 					DialogMessage::CloseDialogAndThen {
 						followups: vec![BroadcastEvent::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
 					}
 					.into()
-				}),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::TextButton(TextButton {
-				label: "Cancel".to_string(),
-				min_width: 96,
-				on_update: WidgetCallback::new(|_| FrontendMessage::DisplayDialogDismiss.into()),
-				..Default::default()
-			})),
+				})
+				.widget_holder(),
+			TextButton::new("Cancel").min_width(96).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: "Save changes before closing?".to_string(),
-					bold: true,
-					..Default::default()
-				}))],
+				widgets: vec![TextLabel::new("Save changes before closing?").bold(true).widget_holder()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![WidgetHolder::new(Widget::TextLabel(TextLabel {
-					value: self.document_name.clone(),
-					multiline: true,
-					..Default::default()
-				}))],
+				widgets: vec![TextLabel::new(&self.document_name).multiline(true).widget_holder()],
 			},
 			LayoutGroup::Row { widgets: button_widgets },
 		]))
