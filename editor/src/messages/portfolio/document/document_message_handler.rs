@@ -1594,7 +1594,7 @@ impl DocumentMessageHandler {
 					.into()
 				})
 				.widget_holder(),
-			PopoverButton::new("Snapping", "Snap customisation settings")
+			PopoverButton::new("Snapping", "Snap customization settings")
 				.options_widget(vec![
 					LayoutGroup::Row {
 						widgets: vec![

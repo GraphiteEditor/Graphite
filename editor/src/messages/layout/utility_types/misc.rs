@@ -10,21 +10,21 @@ pub enum LayoutTarget {
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
-	/// Options for opacity seen at the top of the layer tree panel.
+	/// Options for opacity seen at the top of the Layers panel.
 	LayerTreeOptions,
-	/// The dropdown menu at the very top of the application.
+	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
-	/// Bar at the top of the node graph containing the location and the preview and hide buttons.
+	/// Bar at the top of the node graph containing the location and the 'preview' and 'hide' buttons.
 	NodeGraphBar,
-	/// The bar at the top of the properties panel containing the layer name and icon.
+	/// The bar at the top of the Properties panel containing the layer name and icon.
 	PropertiesOptions,
-	/// The body of the properties panel containing many colapsable sections.
+	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesSections,
-	/// The bar directly above the canvas, left alligned and to the right of the document mode dropdown.
+	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
 	ToolShelf,
-	/// The color swatch for the working colors and a flip and reset button found at the bottom of the tool buttons.
+	/// The color swatch for the working colors and a flip and reset button found at the bottom of the tool shelf.
 	WorkingColors,
 
 	// KEEP THIS ENUM LAST
