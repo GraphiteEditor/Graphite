@@ -282,7 +282,7 @@ mod test {
 		editor.draw_rect(100., 200., 300., 400.);
 
 		editor.select_primary_color(Color::BLUE);
-		editor.draw_shape(10., 1200., 1300., 400.);
+		editor.draw_polygon(10., 1200., 1300., 400.);
 
 		editor.select_primary_color(Color::GREEN);
 		editor.draw_ellipse(104., 1200., 1300., 400.);

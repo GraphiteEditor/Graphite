@@ -348,7 +348,7 @@ pub enum ToolType {
 	Line,
 	Rectangle,
 	Ellipse,
-	Shape,
+	Polygon,
 	Text,
 
 	// Raster tool group
@@ -388,7 +388,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::Available(Box::<line_tool::LineTool>::default()),
 			ToolAvailability::Available(Box::<rectangle_tool::RectangleTool>::default()),
 			ToolAvailability::Available(Box::<ellipse_tool::EllipseTool>::default()),
-			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
+			ToolAvailability::Available(Box::<polygon_tool::PolygonTool>::default()),
 			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
 		vec![
@@ -423,7 +423,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Line(_) => ToolType::Line,
 		ToolMessage::Rectangle(_) => ToolType::Rectangle,
 		ToolMessage::Ellipse(_) => ToolType::Ellipse,
-		ToolMessage::Shape(_) => ToolType::Shape,
+		ToolMessage::Polygon(_) => ToolType::Polygon,
 		ToolMessage::Text(_) => ToolType::Text,
 
 		// Raster tool group
@@ -460,7 +460,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Line => ToolMessageDiscriminant::ActivateToolLine,
 		ToolType::Rectangle => ToolMessageDiscriminant::ActivateToolRectangle,
 		ToolType::Ellipse => ToolMessageDiscriminant::ActivateToolEllipse,
-		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
+		ToolType::Polygon => ToolMessageDiscriminant::ActivateToolPolygon,
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
 
 		// Raster tool group
@@ -582,14 +582,14 @@ mod tool_crash_on_layer_delete_tests {
 
 	use test_case::test_case;
 
-	#[test_case(ToolType::Pen; "while using pen tool")]
-	#[test_case(ToolType::Freehand; "while using freehand tool")]
-	#[test_case(ToolType::Spline; "while using spline tool")]
-	#[test_case(ToolType::Line; "while using line tool")]
-	#[test_case(ToolType::Rectangle; "while using rectangle tool")]
-	#[test_case(ToolType::Ellipse; "while using ellipse tool")]
-	#[test_case(ToolType::Shape; "while using shape tool")]
-	#[test_case(ToolType::Path; "while using path tool")]
+	#[test_case(ToolType::Pen; "while using Pen tool")]
+	#[test_case(ToolType::Freehand; "while using Freehand tool")]
+	#[test_case(ToolType::Spline; "while using Spline tool")]
+	#[test_case(ToolType::Line; "while using Line tool")]
+	#[test_case(ToolType::Rectangle; "while using Rectangle tool")]
+	#[test_case(ToolType::Ellipse; "while using Ellipse tool")]
+	#[test_case(ToolType::Polygon; "while using Polygon tool")]
+	#[test_case(ToolType::Path; "while using Path tool")]
 	fn should_not_crash_when_layer_is_deleted(tool: ToolType) {
 		set_uuid_seed(0);
 		let mut test_editor = Editor::new();

@@ -20,7 +20,7 @@ use std::fmt::Write;
 pub enum LayerDataType {
 	/// A layer that wraps a [FolderLayer] struct.
 	Folder(FolderLayer),
-	/// A layer that wraps a [ShapeLayer] struct.
+	/// A layer that wraps a [ShapeLayer] struct. Still used by the overlays system, but will be removed in the future.
 	Shape(ShapeLayer),
 	/// A layer that wraps an [LayerLayer] struct.
 	Layer(LayerLayer),
@@ -438,7 +438,7 @@ impl Layer {
 	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Folder(f) => Ok(f),
-			_ => Err(DocumentError::NotAFolder),
+			_ => Err(DocumentError::NotFolder),
 		}
 	}
 
@@ -461,7 +461,7 @@ impl Layer {
 	pub fn as_folder(&self) -> Result<&FolderLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Folder(f) => Ok(f),
-			_ => Err(DocumentError::NotAFolder),
+			_ => Err(DocumentError::NotFolder),
 		}
 	}
 
@@ -470,7 +470,7 @@ impl Layer {
 	pub fn as_layer_network_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
 		match &mut self.data {
 			LayerDataType::Layer(layer) => Ok(&mut layer.network),
-			_ => Err(DocumentError::NotNodeGraph),
+			_ => Err(DocumentError::NotLayer),
 		}
 	}
 
@@ -479,14 +479,14 @@ impl Layer {
 	pub fn as_layer_network(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
 		match &self.data {
 			LayerDataType::Layer(layer) => Ok(&layer.network),
-			_ => Err(DocumentError::NotNodeGraph),
+			_ => Err(DocumentError::NotLayer),
 		}
 	}
 
 	pub fn as_layer(&self) -> Result<&LayerLayer, DocumentError> {
 		match &self.data {
 			LayerDataType::Layer(layer) => Ok(layer),
-			_ => Err(DocumentError::NotNodeGraph),
+			_ => Err(DocumentError::NotLayer),
 		}
 	}
 

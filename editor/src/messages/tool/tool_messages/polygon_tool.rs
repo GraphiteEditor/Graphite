@@ -15,13 +15,13 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
-pub struct ShapeTool {
-	fsm_state: ShapeToolFsmState,
-	tool_data: ShapeToolData,
-	options: ShapeOptions,
+pub struct PolygonTool {
+	fsm_state: PolygonToolFsmState,
+	tool_data: PolygonToolData,
+	options: PolygonOptions,
 }
 
-pub struct ShapeOptions {
+pub struct PolygonOptions {
 	line_weight: f64,
 	fill: ToolColorOptions,
 	stroke: ToolColorOptions,
@@ -29,7 +29,7 @@ pub struct ShapeOptions {
 	primitive_shape_type: PrimitiveShapeType,
 }
 
-impl Default for ShapeOptions {
+impl Default for PolygonOptions {
 	fn default() -> Self {
 		Self {
 			vertices: 5,
@@ -42,9 +42,9 @@ impl Default for ShapeOptions {
 }
 
 #[remain::sorted]
-#[impl_message(Message, ToolMessage, Shape)]
+#[impl_message(Message, ToolMessage, Polygon)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
-pub enum ShapeToolMessage {
+pub enum PolygonToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
@@ -58,7 +58,7 @@ pub enum ShapeToolMessage {
 		center: Key,
 		lock_ratio: Key,
 	},
-	UpdateOptions(ShapeOptionsUpdate),
+	UpdateOptions(PolygonOptionsUpdate),
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
@@ -69,7 +69,7 @@ pub enum PrimitiveShapeType {
 
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
-pub enum ShapeOptionsUpdate {
+pub enum PolygonOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
 	LineWeight(f64),
@@ -80,15 +80,15 @@ pub enum ShapeOptionsUpdate {
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
-impl ToolMetadata for ShapeTool {
+impl ToolMetadata for PolygonTool {
 	fn icon_name(&self) -> String {
-		"VectorShapeTool".into()
+		"VectorPolygonTool".into()
 	}
 	fn tooltip(&self) -> String {
-		"Shape Tool".into()
+		"Polygon Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
-		ToolType::Shape
+		ToolType::Polygon
 	}
 }
 
@@ -99,14 +99,14 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.min(3.)
 		.max(1000.)
 		.mode(NumberInputMode::Increment)
-		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
+		.on_update(|number_input: &NumberInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
 		.widget_holder()
 }
 
 fn create_star_option_widget(primitive_shape_type: PrimitiveShapeType) -> WidgetHolder {
 	let entries = vec![
-		RadioEntryData::new("Polygon").on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
-		RadioEntryData::new("Star").on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
+		RadioEntryData::new("Polygon").on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
+		RadioEntryData::new("Star").on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
 	];
 	RadioInput::new(entries).selected_index(primitive_shape_type as u32).widget_holder()
 }
@@ -116,11 +116,11 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
 
-impl LayoutHolder for ShapeTool {
+impl LayoutHolder for PolygonTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
 			create_star_option_widget(self.options.primitive_shape_type),
@@ -133,9 +133,9 @@ impl LayoutHolder for ShapeTool {
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(color.value)).into(),
+			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(None)).into(),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColorType(color_type.clone())).into()),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value)).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
@@ -143,9 +143,9 @@ impl LayoutHolder for ShapeTool {
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(color.value)).into(),
+			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(None)).into(),
+			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColorType(color_type.clone())).into()),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value)).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -153,24 +153,24 @@ impl LayoutHolder for ShapeTool {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PolygonTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message {
+		if let ToolMessage::Polygon(PolygonToolMessage::UpdateOptions(action)) = message {
 			match action {
-				ShapeOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
-				ShapeOptionsUpdate::PrimitiveShapeType(primitive_shape_type) => self.options.primitive_shape_type = primitive_shape_type,
-				ShapeOptionsUpdate::FillColor(color) => {
+				PolygonOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
+				PolygonOptionsUpdate::PrimitiveShapeType(primitive_shape_type) => self.options.primitive_shape_type = primitive_shape_type,
+				PolygonOptionsUpdate::FillColor(color) => {
 					self.options.fill.custom_color = color;
 					self.options.fill.color_type = ToolColorType::Custom;
 				}
-				ShapeOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-				ShapeOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-				ShapeOptionsUpdate::StrokeColor(color) => {
+				PolygonOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+				PolygonOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+				PolygonOptionsUpdate::StrokeColor(color) => {
 					self.options.stroke.custom_color = color;
 					self.options.stroke.color_type = ToolColorType::Custom;
 				}
-				ShapeOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-				ShapeOptionsUpdate::WorkingColors(primary, secondary) => {
+				PolygonOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+				PolygonOptionsUpdate::WorkingColors(primary, secondary) => {
 					self.options.stroke.primary_working_color = primary;
 					self.options.stroke.secondary_working_color = secondary;
 					self.options.fill.primary_working_color = primary;
@@ -187,13 +187,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 	}
 
 	fn actions(&self) -> ActionList {
-		use ShapeToolFsmState::*;
+		use PolygonToolFsmState::*;
 
 		match self.fsm_state {
-			Ready => actions!(ShapeToolMessageDiscriminant;
+			Ready => actions!(PolygonToolMessageDiscriminant;
 				DragStart,
 			),
-			Drawing => actions!(ShapeToolMessageDiscriminant;
+			Drawing => actions!(PolygonToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				Resize,
@@ -202,31 +202,31 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 	}
 }
 
-impl ToolTransition for ShapeTool {
+impl ToolTransition for PolygonTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			tool_abort: Some(ShapeToolMessage::Abort.into()),
-			working_color_changed: Some(ShapeToolMessage::WorkingColorChanged.into()),
+			tool_abort: Some(PolygonToolMessage::Abort.into()),
+			working_color_changed: Some(PolygonToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum ShapeToolFsmState {
+enum PolygonToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
 }
 
 #[derive(Clone, Debug, Default)]
-struct ShapeToolData {
+struct PolygonToolData {
 	data: Resize,
 }
 
-impl Fsm for ShapeToolFsmState {
-	type ToolData = ShapeToolData;
-	type ToolOptions = ShapeOptions;
+impl Fsm for PolygonToolFsmState {
+	type ToolData = PolygonToolData;
+	type ToolOptions = PolygonOptions;
 
 	fn transition(
 		self,
@@ -242,18 +242,18 @@ impl Fsm for ShapeToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use ShapeToolFsmState::*;
-		use ShapeToolMessage::*;
+		use PolygonToolFsmState::*;
+		use PolygonToolMessage::*;
 
-		let shape_data = &mut tool_data.data;
+		let polygon_data = &mut tool_data.data;
 
-		if let ToolMessage::Shape(event) = event {
+		if let ToolMessage::Polygon(event) = event {
 			match (self, event) {
 				(Ready, DragStart) => {
-					shape_data.start(responses, document, input, render_data);
+					polygon_data.start(responses, document, input, render_data);
 					responses.add(DocumentMessage::StartTransaction);
 					let layer_path = document.get_path_for_new_layer();
-					shape_data.path = Some(layer_path.clone());
+					polygon_data.path = Some(layer_path.clone());
 
 					let subpath = match tool_options.primitive_shape_type {
 						PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
@@ -275,27 +275,27 @@ impl Fsm for ShapeToolFsmState {
 					Drawing
 				}
 				(state, Resize { center, lock_ratio }) => {
-					if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+					if let Some(message) = polygon_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
 						responses.add(message);
 					}
 
 					state
 				}
 				(Drawing, DragStop) => {
-					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					shape_data.cleanup(responses);
+					input.mouse.finish_transaction(polygon_data.viewport_drag_start(document), responses);
+					polygon_data.cleanup(responses);
 
 					Ready
 				}
 				(Drawing, Abort) => {
 					responses.add(DocumentMessage::AbortTransaction);
 
-					shape_data.cleanup(responses);
+					polygon_data.cleanup(responses);
 
 					Ready
 				}
 				(_, WorkingColorChanged) => {
-					responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::WorkingColors(
+					responses.add(PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::WorkingColors(
 						Some(global_tool_data.primary_color),
 						Some(global_tool_data.secondary_color),
 					)));
@@ -310,12 +310,12 @@ impl Fsm for ShapeToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			ShapeToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Shape"),
+			PolygonToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
 				HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect").prepend_plus(),
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			ShapeToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")])]),
+			PolygonToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

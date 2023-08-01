@@ -67,7 +67,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			#[remain::unsorted]
 			ToolMessage::ActivateToolEllipse => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolShape => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }),
+			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
 			#[remain::unsorted]
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
@@ -282,7 +282,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			ActivateToolLine,
 			ActivateToolRectangle,
 			ActivateToolEllipse,
-			ActivateToolShape,
+			ActivateToolPolygon,
 
 			ActivateToolBrush,
 			ActivateToolImaginate,

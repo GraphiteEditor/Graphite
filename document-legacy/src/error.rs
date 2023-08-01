@@ -6,10 +6,8 @@ pub enum DocumentError {
 	LayerNotFound(Vec<LayerId>),
 	InvalidPath,
 	IndexOutOfBounds,
-	NotAFolder,
-	NonReorderableSelection,
+	NotFolder,
 	NotShape,
-	NotText,
-	NotNodeGraph,
+	NotLayer,
 	InvalidFile(String),
 }

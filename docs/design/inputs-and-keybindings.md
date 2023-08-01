@@ -95,7 +95,7 @@ Spline Tool       | <kbd> </kbd> | <kbd>P</kbd>                               | 
 Line Tool         | <kbd>L</kbd> | <kbd>U</kbd>                               | <kbd>\\</kbd>                 | **<kbd>L</kbd>** | <kbd>P</kbd>                  |          |          |
 Rectangle Tool    | <kbd>M</kbd> | <kbd>U</kbd>/**<kbd>M</kbd>**              | **<kbd>M</kbd>**              | <kbd>R</kbd>     | **<kbd>M</kbd>**              |          |          |
 Ellipse Tool      | <kbd>E</kbd> | <kbd>U</kbd>/<kbd>M</kbd>                  | <kbd>L</kbd>                  | **<kbd>E</kbd>** | <kbd>M</kbd>                  |          |          |
-Shape Tool        | <kbd>Y</kbd> | <kbd>U</kbd>                               |                               | **<kbd>Y</kbd>** |                               |          |          |
+Polygon Tool      | <kbd>Y</kbd> | <kbd>U</kbd>                               |                               | **<kbd>Y</kbd>** |                               |          |          |
 Text Tool         | <kbd>T</kbd> | **<kbd>T</kbd>**                           | **<kbd>T</kbd>**              | **<kbd>T</kbd>** | **<kbd>T</kbd>**              |          |          |
 Brush Tool        | <kbd>B</kbd> | **<kbd>B</kbd>**                           | **<kbd>B</kbd>**              |                  | **<kbd>B</kbd>**              |          |          |
 Heal Tool         | <kbd>J</kbd> | **<kbd>J</kbd>**                           |                               |                  |                               |          |          |
@@ -138,7 +138,7 @@ Excluding mouse inputs and modifier keys.
 
 ##### Ellipse Tool
 
-##### Shape Tool
+##### Polygon Tool
 
 ##### Text Tool
 
