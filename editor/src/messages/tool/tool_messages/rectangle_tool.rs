@@ -1,6 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -77,8 +76,8 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl PropertyHolder for RectangleTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for RectangleTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
@@ -126,7 +125,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Rectang
 				}
 			}
 
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}

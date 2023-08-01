@@ -1,6 +1,5 @@
 use super::utility_types::TransformOp;
 use crate::application::generate_uuid;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodePropertiesContext;
 use crate::messages::portfolio::utility_types::PersistentData;

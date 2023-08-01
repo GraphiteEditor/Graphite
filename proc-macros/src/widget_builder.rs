@@ -40,7 +40,7 @@ fn extract_ident(field: &Field) -> syn::Result<&Ident> {
 
 /// Find the type passed into the builder and the right hand side of the assignment.
 ///
-/// Applies special behaviour for easier String and WidgetCallback assignment.
+/// Applies special behavior for easier String and WidgetCallback assignment.
 fn find_type_and_assignment(field: &Field) -> syn::Result<(TokenStream2, TokenStream2)> {
 	let field_ty = &field.ty;
 	let field_ident = extract_ident(field)?;

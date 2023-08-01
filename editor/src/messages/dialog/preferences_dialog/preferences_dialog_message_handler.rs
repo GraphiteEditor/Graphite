@@ -1,4 +1,3 @@
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -12,21 +11,21 @@ impl MessageHandler<PreferencesDialogMessage, &PreferencesMessageHandler> for Pr
 			PreferencesDialogMessage::Confirm => {}
 		}
 
-		self.register_properties(responses, LayoutTarget::DialogDetails, preferences);
+		self.send_layout(responses, LayoutTarget::DialogDetails, preferences);
 	}
 
 	advertise_actions! {PreferencesDialogUpdate;}
 }
 
 impl PreferencesDialogMessageHandler {
-	pub fn register_properties(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
+	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
 		responses.add(LayoutMessage::SendLayout {
-			layout: self.properties(preferences),
+			layout: self.layout(preferences),
 			layout_target,
 		})
 	}
 
-	fn properties(&self, preferences: &PreferencesMessageHandler) -> Layout {
+	fn layout(&self, preferences: &PreferencesMessageHandler) -> Layout {
 		let zoom_with_scroll = vec![
 			TextLabel::new("Input").min_width(60).italic(true).widget_holder(),
 			TextLabel::new("Zoom with Scroll").table_align(true).widget_holder(),

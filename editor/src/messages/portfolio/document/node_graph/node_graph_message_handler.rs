@@ -160,7 +160,7 @@ impl NodeGraphMessageHandler {
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(WidgetLayout::new(self.widgets.to_vec())),
-			layout_target: crate::messages::layout::utility_types::misc::LayoutTarget::NodeGraphBar,
+			layout_target: LayoutTarget::NodeGraphBar,
 		});
 	}
 

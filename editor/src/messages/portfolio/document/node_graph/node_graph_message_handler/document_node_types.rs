@@ -1,6 +1,6 @@
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
-use crate::messages::layout::utility_types::layout_widget::LayoutGroup;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::concrete;

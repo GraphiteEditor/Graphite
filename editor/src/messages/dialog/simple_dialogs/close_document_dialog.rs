@@ -8,8 +8,8 @@ pub struct CloseDocumentDialog {
 	pub document_id: u64,
 }
 
-impl PropertyHolder for CloseDocumentDialog {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for CloseDocumentDialog {
+	fn layout(&self) -> Layout {
 		let document_id = self.document_id;
 
 		let button_widgets = vec![

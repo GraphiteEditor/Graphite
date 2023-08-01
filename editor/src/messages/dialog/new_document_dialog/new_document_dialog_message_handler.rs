@@ -1,4 +1,3 @@
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -43,14 +42,14 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			}
 		}
 
-		self.register_properties(responses, LayoutTarget::DialogDetails);
+		self.send_layout(responses, LayoutTarget::DialogDetails);
 	}
 
 	advertise_actions! {NewDocumentDialogUpdate;}
 }
 
-impl PropertyHolder for NewDocumentDialogMessageHandler {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for NewDocumentDialogMessageHandler {
+	fn layout(&self) -> Layout {
 		let title = vec![TextLabel::new("New document").bold(true).widget_holder()];
 
 		let name = vec![

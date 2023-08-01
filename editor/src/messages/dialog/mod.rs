@@ -1,6 +1,6 @@
 //! Handles modal dialogs that appear as floating menus in the center of the editor window.
 //!
-//! Dialogs are represented as structs that implement the `PropertyHolder` trait.
+//! Dialogs are represented as structs that implement the `LayoutHolder` trait.
 //!
 //! To open a dialog, call the function `register_properties` on the dialog struct with `responses` and the `LayoutTarget::DialogDetails` enum variant.
 //! Then dialog can be opened by sending the `FrontendMessage::DisplayDialog` message;

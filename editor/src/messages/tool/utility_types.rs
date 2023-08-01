@@ -7,7 +7,6 @@ use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -52,8 +51,8 @@ impl<'a> ToolActionHandlerData<'a> {
 	}
 }
 
-pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + PropertyHolder + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
@@ -241,8 +240,8 @@ impl ToolData {
 	}
 }
 
-impl PropertyHolder for ToolData {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for ToolData {
+	fn layout(&self) -> Layout {
 		let tool_groups_layout = list_tools_in_groups()
 			.iter()
 			.map(|tool_group| tool_group.iter().map(|tool_availability| {

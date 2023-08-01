@@ -1,7 +1,5 @@
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, PropertyHolder};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::menu_widgets::{MenuBarEntry, MenuBarEntryChildren, MenuLayout};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
@@ -18,7 +16,7 @@ impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 
 		#[remain::sorted]
 		match message {
-			SendLayout => self.register_properties(responses, LayoutTarget::MenuBar),
+			SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
 	}
 
@@ -27,8 +25,8 @@ impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
 	}
 }
 
-impl PropertyHolder for MenuBarMessageHandler {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for MenuBarMessageHandler {
+	fn layout(&self) -> Layout {
 		let no_active_document = self.no_active_document;
 		let menu_bar_entries = vec![
 			MenuBarEntry {

@@ -7,8 +7,8 @@ pub struct ErrorDialog {
 	pub description: String,
 }
 
-impl PropertyHolder for ErrorDialog {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for ErrorDialog {
+	fn layout(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
 				widgets: vec![TextLabel::new(&self.title).bold(true).widget_holder()],

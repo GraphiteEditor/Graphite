@@ -7,8 +7,8 @@ pub struct AboutGraphiteDialog {
 	pub localized_commit_date: String,
 }
 
-impl PropertyHolder for AboutGraphiteDialog {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for AboutGraphiteDialog {
+	fn layout(&self) -> Layout {
 		let links = [
 			("Website", "https://graphite.rs"),
 			("Credits", "https://github.com/GraphiteEditor/Graphite/graphs/contributors"),

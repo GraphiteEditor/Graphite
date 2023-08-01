@@ -1,8 +1,5 @@
-use super::utility_types::layout_widget::{LayoutGroup, WidgetDiff, WidgetHolder};
-use super::utility_types::misc::LayoutTarget;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
-use crate::messages::layout::utility_types::layout_widget::{DiffUpdate, Widget};
-use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use document_legacy::LayerId;
@@ -68,7 +65,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				// Resend that diff
 				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
 			}
-			SendLayout { layout, layout_target } => self.send_layout(layout_target, layout, responses, &action_input_mapping),
+			SendLayout { layout, layout_target } => self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping),
 			UpdateLayout { layout_target, widget_id, value } => {
 				// Look up the layout
 				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
@@ -243,7 +240,13 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 
 impl LayoutMessageHandler {
 	/// Diff the update and send to the frontend where necessary
-	fn send_layout(&mut self, layout_target: LayoutTarget, new_layout: Layout, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	fn diff_and_send_layout_to_frontend(
+		&mut self,
+		layout_target: LayoutTarget,
+		new_layout: Layout,
+		responses: &mut VecDeque<Message>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
+	) {
 		// We don't diff the menu bar layout yet.
 		if matches!(new_layout, Layout::MenuLayout(_)) {
 			// Skip update if the same

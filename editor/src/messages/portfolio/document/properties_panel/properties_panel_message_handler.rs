@@ -1,7 +1,6 @@
 use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties, register_document_graph_properties};
 use super::utility_types::PropertiesPanelMessageHandlerData;
-use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::properties_panel::utility_functions::apply_transform_operation;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::portfolio::utility_types::PersistentData;

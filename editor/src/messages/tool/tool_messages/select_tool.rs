@@ -4,7 +4,6 @@ use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -112,8 +111,8 @@ impl ToolMetadata for SelectTool {
 	}
 }
 
-impl PropertyHolder for SelectTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for SelectTool {
+	fn layout(&self) -> Layout {
 		let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
 			.iter()
 			.map(|mode| {
@@ -259,7 +258,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
 		}
 	}

@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -48,7 +48,11 @@ impl ToolMetadata for NavigateTool {
 	}
 }
 
-impl PropertyHolder for NavigateTool {}
+impl LayoutHolder for NavigateTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NavigateTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {

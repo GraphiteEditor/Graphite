@@ -70,7 +70,11 @@ impl ToolMetadata for PathTool {
 	}
 }
 
-impl PropertyHolder for PathTool {}
+impl LayoutHolder for PathTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {

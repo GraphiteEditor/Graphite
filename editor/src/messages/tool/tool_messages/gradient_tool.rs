@@ -103,8 +103,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 	);
 }
 
-impl PropertyHolder for GradientTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for GradientTool {
+	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
 			RadioEntryData::new("Linear")
 				.value("linear")

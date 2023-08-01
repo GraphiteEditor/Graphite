@@ -2,7 +2,7 @@ use crate::application::generate_uuid;
 use crate::consts::SELECTION_TOLERANCE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -73,7 +73,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 	);
 }
 
-impl PropertyHolder for ArtboardTool {}
+impl LayoutHolder for ArtboardTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
 
 impl ToolTransition for ArtboardTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {

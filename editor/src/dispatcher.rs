@@ -255,7 +255,7 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::application::Editor;
-	use crate::messages::layout::utility_types::layout_widget::DiffUpdate;
+	use crate::messages::layout::utility_types::widget_prelude::*;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::prelude::*;
 	use crate::test_utils::EditorTestUtils;
@@ -549,8 +549,7 @@ mod test {
 	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
 	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {
-		use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget};
-		use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+		use crate::messages::layout::utility_types::widget_prelude::*;
 
 		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();

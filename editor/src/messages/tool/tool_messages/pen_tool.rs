@@ -1,7 +1,6 @@
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
@@ -114,8 +113,8 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl PropertyHolder for PenTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for PenTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
@@ -163,7 +162,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				}
 			}
 
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}

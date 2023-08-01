@@ -1,7 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::transform_utils::get_current_transform;
 use crate::messages::prelude::*;
@@ -141,8 +139,8 @@ impl ToolMetadata for BrushTool {
 	}
 }
 
-impl PropertyHolder for BrushTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for BrushTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = vec![
 			NumberInput::new(Some(self.options.diameter))
 				.label("Diameter")
@@ -236,7 +234,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 						self.options.diameter = (self.options.diameter / change.abs()).round() * change.abs() + change;
 					}
 					self.options.diameter = self.options.diameter.max(1.);
-					self.register_properties(responses, LayoutTarget::ToolOptions);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 				BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
 				BrushToolMessageOptionsUpdate::DrawMode(draw_mode) => self.options.draw_mode = draw_mode,
@@ -254,7 +252,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 				}
 			}
 
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}

@@ -1,6 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -99,7 +98,7 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.int()
 		.min(3.)
 		.max(1000.)
-		.mode(crate::messages::layout::utility_types::widget_prelude::NumberInputMode::Increment)
+		.mode(NumberInputMode::Increment)
 		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
 		.widget_holder()
 }
@@ -121,8 +120,8 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl PropertyHolder for ShapeTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for ShapeTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = vec![
 			create_star_option_widget(self.options.primitive_shape_type),
 			Separator::new(SeparatorType::Related).widget_holder(),
@@ -179,7 +178,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 				}
 			}
 
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}

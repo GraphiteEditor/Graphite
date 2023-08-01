@@ -8,8 +8,8 @@ pub struct ComingSoonDialog {
 	pub issue: Option<i32>,
 }
 
-impl PropertyHolder for ComingSoonDialog {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for ComingSoonDialog {
+	fn layout(&self) -> Layout {
 		let mut details = "This feature is not implemented yet".to_string();
 
 		let mut buttons = vec![TextButton::new("OK")

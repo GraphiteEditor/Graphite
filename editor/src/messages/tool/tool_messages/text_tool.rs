@@ -4,7 +4,6 @@ use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::new_text_network;
 use crate::messages::prelude::*;
@@ -134,8 +133,8 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 	]
 }
 
-impl PropertyHolder for TextTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for TextTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = create_text_widgets(self);
 
 		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
@@ -160,7 +159,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 					self.options.font_name = family;
 					self.options.font_style = style;
 
-					self.register_properties(responses, LayoutTarget::ToolOptions);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 				TextOptionsUpdate::FillColor(color) => {
@@ -174,7 +173,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 				}
 			}
 
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}

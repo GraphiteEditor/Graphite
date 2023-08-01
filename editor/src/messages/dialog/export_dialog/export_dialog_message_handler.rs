@@ -1,5 +1,4 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -35,14 +34,14 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 			}),
 		}
 
-		self.register_properties(responses, LayoutTarget::DialogDetails);
+		self.send_layout(responses, LayoutTarget::DialogDetails);
 	}
 
 	advertise_actions! {ExportDialogUpdate;}
 }
 
-impl PropertyHolder for ExportDialogMessageHandler {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for ExportDialogMessageHandler {
+	fn layout(&self) -> Layout {
 		let file_name = vec![
 			TextLabel::new("File Name").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),

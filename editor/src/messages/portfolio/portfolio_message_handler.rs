@@ -3,8 +3,7 @@ use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
@@ -138,7 +137,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document_name: target_document.name.clone(),
 						document_id,
 					};
-					dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					dialog.send_layout(responses, LayoutTarget::DialogDetails);
 					responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
 
 					// Select the document being closed

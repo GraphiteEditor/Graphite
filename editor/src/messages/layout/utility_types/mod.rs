@@ -1,5 +1,4 @@
 pub mod layout_widget;
-pub mod misc;
 pub mod widgets;
 
 pub mod widget_prelude {

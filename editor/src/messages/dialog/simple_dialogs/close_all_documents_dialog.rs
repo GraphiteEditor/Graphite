@@ -4,8 +4,8 @@ use crate::messages::prelude::*;
 /// A dialog for confirming the closing of all documents viewable via `file -> close all` in the menu bar.
 pub struct CloseAllDocumentsDialog;
 
-impl PropertyHolder for CloseAllDocumentsDialog {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for CloseAllDocumentsDialog {
+	fn layout(&self) -> Layout {
 		let discard = TextButton::new("Discard All")
 			.min_width(96)
 			.on_update(|_| {
