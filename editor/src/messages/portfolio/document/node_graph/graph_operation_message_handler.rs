@@ -307,9 +307,9 @@ impl<'a> ModifyInputsContext<'a> {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 
-		self.modify_inputs("Path Generator", false, |inputs| {
+		self.modify_inputs("Shape", false, |inputs| {
 			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
-				panic!("Path generator does not have subpath and mirror angle inputs");
+				panic!("Shape does not have subpath and mirror angle inputs");
 			};
 
 			let NodeInput::Value {

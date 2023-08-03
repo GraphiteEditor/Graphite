@@ -790,7 +790,7 @@ fn get_subpaths<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler
 	let layer = document.document_legacy.layer(layer_path).ok().and_then(|layer| layer.as_layer().ok())?;
 	let network = &layer.network;
 	for (node, _node_id) in network.primary_flow() {
-		if node.name == "Path Generator" {
+		if node.name == "Shape" {
 			let subpaths_input = node.inputs.get(0)?;
 			let NodeInput::Value {
 				tagged_value: TaggedValue::Subpaths(subpaths),

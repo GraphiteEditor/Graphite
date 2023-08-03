@@ -28,6 +28,10 @@ resolver = "2"
 exclude = ["node-graph/gpu-compiler"]
 
 [workspace.dependencies]
+# We are using this fork because:
+# - They specify glam=0.22 whereas we use glam=0.24 so the encoding doesn't work.
+# - Their current release doesn't allow doc comments and produces a compile error.
+# See: https://github.com/GraphiteEditor/Graphite/pull/1346/files/a2206401b5b4cf669e71df57f6c95c67336802c8#r1280201659
 specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c0863d27bc47529f300de3969480c66d", features = [
 	"glam",
 ] }
