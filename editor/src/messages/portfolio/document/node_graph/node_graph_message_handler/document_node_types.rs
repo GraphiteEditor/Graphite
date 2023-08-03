@@ -1680,7 +1680,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("hello world".to_string()), false),
 				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
-				DocumentInputType::value("Size", TaggedValue::F32(24.), false),
+				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_section_font,
@@ -2020,7 +2020,7 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network
 }
 
-pub fn new_text_network(text: String, font: Font, size: f32) -> NodeNetwork {
+pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
@@ -2037,7 +2037,7 @@ pub fn new_text_network(text: String, font: Font, size: f32) -> NodeNetwork {
 				NodeInput::Network(concrete!(WasmEditorApi)),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F32(size), false),
+				NodeInput::value(TaggedValue::F64(size), false),
 			],
 			DocumentNodeMetadata::position((0, 4)),
 		),
