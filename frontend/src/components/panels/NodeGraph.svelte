@@ -32,8 +32,8 @@
 	let selected: bigint[] = [];
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	let selectIfNotDragged: undefined | bigint = undefined;
-	let linkInProgressFromConnector: HTMLDivElement | undefined = undefined;
-	let linkInProgressToConnector: HTMLDivElement | DOMRect | undefined = undefined;
+	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
+	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
 	let nodeLinkPaths: [string, string][] = [];
 	let searchTerm = "";
@@ -108,7 +108,7 @@
 		return Array.from(categories);
 	}
 
-	function createLinkPathInProgress(linkInProgressFromConnector?: HTMLDivElement, linkInProgressToConnector?: HTMLDivElement | DOMRect): [string, string] | undefined {
+	function createLinkPathInProgress(linkInProgressFromConnector?: SVGSVGElement, linkInProgressToConnector?: SVGSVGElement | DOMRect): [string, string] | undefined {
 		if (linkInProgressFromConnector && linkInProgressToConnector && nodesContainer) {
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, false, false);
 		}
@@ -125,7 +125,7 @@
 		await refreshLinks();
 	}
 
-	function resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodePrimaryOutput: HTMLDivElement | undefined; nodePrimaryInput: HTMLDivElement | undefined } {
+	function resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
 		const outputIndex = Number(link.linkStartOutputIndex);
 		const inputIndex = Number(link.linkEndInputIndex);
 
@@ -133,9 +133,9 @@
 
 		const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
 
-		const nodePrimaryOutput = nodeOutputConnectors?.[outputIndex] as HTMLDivElement | undefined;
-		const nodePrimaryInput = nodeInputConnectors?.[inputIndex] as HTMLDivElement | undefined;
-		return { nodePrimaryOutput, nodePrimaryInput };
+		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
+		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
+		return { nodeOutput, nodeInput };
 	}
 
 	async function refreshLinks(): Promise<void> {
@@ -146,11 +146,11 @@
 
 		const links = $nodeGraph.links;
 		nodeLinkPaths = links.flatMap((link, index) => {
-			const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, theNodesContainer);
-			if (!nodePrimaryInput || !nodePrimaryOutput) return [];
+			const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
 
-			return [createWirePath(nodePrimaryOutput, nodePrimaryInput.getBoundingClientRect(), false, false)];
+			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), false, false)];
 		});
 	}
 
@@ -204,8 +204,8 @@
 		return `M${locations[0].x},${locations[0].y} C${locations[1].x},${locations[1].y} ${locations[2].x},${locations[2].y} ${locations[3].x},${locations[3].y}`;
 	}
 
-	function createWirePath(outputPort: HTMLDivElement, inputPort: HTMLDivElement | DOMRect, verticalOut: boolean, verticalIn: boolean): [string, string] {
-		const inputPortRect = inputPort instanceof HTMLDivElement ? inputPort.getBoundingClientRect() : inputPort;
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): [string, string] {
+		const inputPortRect = inputPort instanceof DOMRect ?  inputPort:inputPort.getBoundingClientRect();
 
 		const pathString = buildWirePathString(outputPort.getBoundingClientRect(), inputPortRect, verticalOut, verticalIn);
 		const dataType = outputPort.getAttribute("data-datatype") || "general";
@@ -272,7 +272,7 @@
 	function pointerDown(e: PointerEvent) {
 		const [lmb, rmb] = [e.button === 0, e.button === 2];
 
-		const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
+		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeId = node?.getAttribute("data-node") || undefined;
 		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
@@ -320,9 +320,9 @@
 					const links = $nodeGraph.links;
 					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
 					const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
-					linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as HTMLDivElement | undefined;
+					linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
 					const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
-					linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
+					linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
 					disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
 					refreshLinks();
 				}
@@ -383,7 +383,7 @@
 			transform.y += e.movementY / transform.scale;
 		} else if (linkInProgressFromConnector) {
 			const target = e.target as Element | undefined;
-			const dot = (target?.closest(`[data-port="input"]`) || undefined) as HTMLDivElement | undefined;
+			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
 			if (dot) {
 				linkInProgressToConnector = dot;
 			} else {
@@ -408,7 +408,7 @@
 		}
 		disconnecting = undefined;
 
-		if (linkInProgressToConnector instanceof HTMLDivElement && linkInProgressFromConnector) {
+		if (linkInProgressToConnector instanceof SVGSVGElement && linkInProgressFromConnector) {
 			const outputNode = linkInProgressFromConnector.closest("[data-node]");
 			const inputNode = linkInProgressToConnector.closest("[data-node]");
 
@@ -455,10 +455,10 @@
 
 					// Find the link that the node has been dragged on top of
 					const link = $nodeGraph.links.find((link): boolean => {
-						const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, theNodesContainer);
-						if (!nodePrimaryInput || !nodePrimaryOutput) return false;
+						const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+						if (!nodeInput || !nodeOutput) return false;
 
-						const wireCurveLocations = buildWirePathLocations(nodePrimaryOutput.getBoundingClientRect(), nodePrimaryInput.getBoundingClientRect(), false, false);
+						const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
 
 						const selectedNodeBounds = selectedNode.getBoundingClientRect();
 						const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
@@ -510,12 +510,12 @@
 	}
 
 	onMount(() => {
-		const outputPort1 = document.querySelectorAll(`[data-port="output"]`)[4] as HTMLDivElement | undefined;
-		const inputPort1 = document.querySelectorAll(`[data-port="input"]`)[1] as HTMLDivElement | undefined;
+		const outputPort1 = document.querySelectorAll(`[data-port="output"]`)[4] as SVGSVGElement | undefined;
+		const inputPort1 = document.querySelectorAll(`[data-port="input"]`)[1] as SVGSVGElement | undefined;
 		if (outputPort1 && inputPort1) createWirePath(outputPort1, inputPort1.getBoundingClientRect(), true, true);
 
-		const outputPort2 = document.querySelectorAll(`[data-port="output"]`)[6] as HTMLDivElement | undefined;
-		const inputPort2 = document.querySelectorAll(`[data-port="input"]`)[3] as HTMLDivElement | undefined;
+		const outputPort2 = document.querySelectorAll(`[data-port="output"]`)[6] as SVGSVGElement | undefined;
+		const inputPort2 = document.querySelectorAll(`[data-port="input"]`)[3] as SVGSVGElement | undefined;
 		if (outputPort2 && inputPort2) createWirePath(outputPort2, inputPort2.getBoundingClientRect(), true, false);
 
 		editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
@@ -599,6 +599,20 @@
 					data-node={node.id}
 				>
 					<div class="node-chain" />
+					<!-- Layer input port (from left) -->
+					<div class="input ports">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port"
+							data-port="input"
+							data-datatype={node.primaryInput}
+							style:--data-color={`var(--color-data-${node.primaryInput})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					</div>
 					<div class="thumbnail">
 						{@html node.thumbnailSvg}
 						<svg
@@ -627,20 +641,7 @@
 					<div class="details">
 						<TextLabel>{node.displayName}</TextLabel>
 					</div>
-					<!-- Layer input port (from left) -->
-					<div class="input ports">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port"
-							data-port="input"
-							data-datatype={node.primaryInput}
-							style:--data-color={`var(--color-data-${node.primaryInput})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
-						>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-						</svg>
-					</div>
+					
 					<svg class="border-mask" width="0" height="0">
 						<defs>
 							<clipPath id={clipPathId}>
