@@ -80,7 +80,10 @@ pub struct FrontendNode {
 	pub primary_input: Option<FrontendGraphDataType>,
 	#[serde(rename = "exposedInputs")]
 	pub exposed_inputs: Vec<NodeGraphInput>,
-	pub outputs: Vec<NodeGraphOutput>, // TODO: Break this apart into `primary_output` and `exposed_outputs`
+	#[serde(rename = "primaryOutput")]
+	pub primary_output: Option<NodeGraphOutput>,
+	#[serde(rename = "exposedOutputs")]
+	pub exposed_outputs: Vec<NodeGraphOutput>,
 	pub position: (i32, i32),
 	pub disabled: bool,
 	pub previewed: bool,
@@ -336,14 +339,11 @@ impl NodeGraphMessageHandler {
 				})
 				.collect();
 
-			let outputs = node_type
-				.outputs
-				.iter()
-				.map(|output_type| NodeGraphOutput {
-					data_type: output_type.data_type,
-					name: output_type.name.to_string(),
-				})
-				.collect();
+			let mut outputs = node_type.outputs.iter().map(|output_type| NodeGraphOutput {
+				data_type: output_type.data_type,
+				name: output_type.name.to_string(),
+			});
+			let primary_output = outputs.next();
 
 			let graph_identifier = GraphIdentifier::new(layer_id);
 			let thumbnail_svg = executor.thumbnails.get(&graph_identifier).and_then(|thumbnails| thumbnails.get(id)).map(|svg| svg.to_string());
@@ -353,7 +353,8 @@ impl NodeGraphMessageHandler {
 				display_name: node.name.clone(),
 				primary_input,
 				exposed_inputs,
-				outputs,
+				primary_output,
+				exposed_outputs: outputs.collect::<Vec<_>>(),
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),

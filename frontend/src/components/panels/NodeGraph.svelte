@@ -23,6 +23,8 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
+	type LinkPath = { pathString: string; dataType: string; thick: boolean };
+
 	let graph: LayoutRow | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
@@ -35,7 +37,7 @@
 	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
 	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
-	let nodeLinkPaths: [string, string][] = [];
+	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
 	let nodeListLocation: { x: number; y: number } | undefined = undefined;
 
@@ -108,14 +110,19 @@
 		return Array.from(categories);
 	}
 
-	function createLinkPathInProgress(linkInProgressFromConnector?: SVGSVGElement, linkInProgressToConnector?: SVGSVGElement | DOMRect): [string, string] | undefined {
+	function createLinkPathInProgress(linkInProgressFromConnector?: SVGSVGElement, linkInProgressToConnector?: SVGSVGElement | DOMRect): LinkPath | undefined {
 		if (linkInProgressFromConnector && linkInProgressToConnector && nodesContainer) {
-			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, false, false);
+			const from = connectorToNodeIndex(linkInProgressFromConnector);
+			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
+
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.displayName === "Layer";
+			const linkEnd = $nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.displayName === "Layer" && to?.index !== 0;
+			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
 	}
 
-	function createLinkPaths(linkPathInProgress: [string, string] | undefined, nodeLinkPaths: [string, string][]): [string, string][] {
+	function createLinkPaths(linkPathInProgress: LinkPath | undefined, nodeLinkPaths: LinkPath[]): LinkPath[] {
 		const optionalTuple = linkPathInProgress ? [linkPathInProgress] : [];
 		return [...optionalTuple, ...nodeLinkPaths];
 	}
@@ -149,8 +156,10 @@
 			const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
 			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.displayName === "Layer";
+			const linkEnd = $nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.displayName === "Layer" && link.linkEndInputIndex !== 0n;
 
-			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), false, false)];
+			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
 	}
 
@@ -204,13 +213,13 @@
 		return `M${locations[0].x},${locations[0].y} C${locations[1].x},${locations[1].y} ${locations[2].x},${locations[2].y} ${locations[3].x},${locations[3].y}`;
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): [string, string] {
-		const inputPortRect = inputPort instanceof DOMRect ?  inputPort:inputPort.getBoundingClientRect();
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
+		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
 
 		const pathString = buildWirePathString(outputPort.getBoundingClientRect(), inputPortRect, verticalOut, verticalIn);
 		const dataType = outputPort.getAttribute("data-datatype") || "general";
 
-		return [pathString, dataType];
+		return { pathString, dataType, thick: verticalIn && verticalOut };
 	}
 
 	function scroll(e: WheelEvent) {
@@ -314,17 +323,19 @@
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 				// Set the link to draw from the input that a previous link was on
-				if (inputIndex !== undefined && nodeId) {
+				if (inputIndex !== undefined && nodeId !== undefined) {
 					const nodeIdInt = BigInt(nodeId);
 					const inputIndexInt = BigInt(inputIndex);
 					const links = $nodeGraph.links;
 					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-					const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
-					linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
-					const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
-					linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
-					disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
-					refreshLinks();
+					if (linkIndex !== -1) {
+						const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+						linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
+						const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
+						linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
+						disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
+						refreshLinks();
+					}
 				}
 			}
 
@@ -400,6 +411,23 @@
 		}
 	}
 
+	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
+		const node = svg.closest("[data-node]");
+
+		if (!node) return undefined;
+		const nodeIdAttribute = node.getAttribute("data-node");
+		if (!nodeIdAttribute) return undefined;
+		const nodeId = BigInt(nodeIdAttribute);
+
+		const inputPortElements = Array.from(node.querySelectorAll(`[data-port="input"]`));
+		const outputPortElements = Array.from(node.querySelectorAll(`[data-port="output"]`));
+		const inputNodeConnectionIndexSearch = inputPortElements.includes(svg) ? inputPortElements.indexOf(svg) : outputPortElements.indexOf(svg);
+		const index = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+
+		if (nodeId !== undefined && index !== undefined) return { nodeId, index };
+		else return undefined;
+	}
+
 	function pointerUp(e: PointerEvent) {
 		panning = false;
 
@@ -409,25 +437,13 @@
 		disconnecting = undefined;
 
 		if (linkInProgressToConnector instanceof SVGSVGElement && linkInProgressFromConnector) {
-			const outputNode = linkInProgressFromConnector.closest("[data-node]");
-			const inputNode = linkInProgressToConnector.closest("[data-node]");
+			const from = connectorToNodeIndex(linkInProgressFromConnector);
+			const to = connectorToNodeIndex(linkInProgressToConnector);
 
-			const outputConnectedNodeID = outputNode?.getAttribute("data-node") ?? undefined;
-			const inputConnectedNodeID = inputNode?.getAttribute("data-node") ?? undefined;
-
-			if (outputNode && inputNode && outputConnectedNodeID && inputConnectedNodeID) {
-				const inputNodeInPorts = Array.from(inputNode.querySelectorAll(`[data-port="input"]`));
-				const outputNodeInPorts = Array.from(outputNode.querySelectorAll(`[data-port="output"]`));
-
-				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(linkInProgressToConnector);
-				const outputNodeConnectionIndexSearch = outputNodeInPorts.indexOf(linkInProgressFromConnector);
-
-				const inputNodeConnectionIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
-				const outputNodeConnectionIndex = outputNodeConnectionIndexSearch > -1 ? outputNodeConnectionIndexSearch : undefined;
-
-				if (inputNodeConnectionIndex !== undefined && outputNodeConnectionIndex !== undefined) {
-					editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), outputNodeConnectionIndex, BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
-				}
+			if (from !== undefined && to !== undefined) {
+				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
+				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
+				editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x || draggingNodes.startY === e.y) {
@@ -497,27 +513,20 @@
 		nodeListLocation = undefined;
 	}
 
-	function buildBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, outputsIncludingPrimary: number): string {
-		const nodeHeight = Math.max(1 + parameters, outputsIncludingPrimary) * 24;
+	function buildBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
+		const nodeHeight = Math.max(1 + parameters, 1 + exposedOutputs) * 24;
 
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 		if (primaryInputExists) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
 		for (let i = 0; i < parameters; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
-		for (let i = 0; i < outputsIncludingPrimary; i++) boxes.push({ x: nodeWidth - 8, y: 4 + i * 24, width: 16, height: 16 });
+		if (primaryOutputExists) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
+		for (let i = 0; i < exposedOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
 		const rectangles = boxes.map((box) => `M${box.x},${box.y} L${box.x + box.width},${box.y} L${box.x + box.width},${box.y + box.height} L${box.x},${box.y + box.height}z`);
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
 	onMount(() => {
-		const outputPort1 = document.querySelectorAll(`[data-port="output"]`)[4] as SVGSVGElement | undefined;
-		const inputPort1 = document.querySelectorAll(`[data-port="input"]`)[1] as SVGSVGElement | undefined;
-		if (outputPort1 && inputPort1) createWirePath(outputPort1, inputPort1.getBoundingClientRect(), true, true);
-
-		const outputPort2 = document.querySelectorAll(`[data-port="output"]`)[6] as SVGSVGElement | undefined;
-		const inputPort2 = document.querySelectorAll(`[data-port="input"]`)[3] as SVGSVGElement | undefined;
-		if (outputPort2 && inputPort2) createWirePath(outputPort2, inputPort2.getBoundingClientRect(), true, false);
-
 		editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
 			selected = updateNodeGraphSelection.selected;
 		});
@@ -576,16 +585,21 @@
 		<!-- Node connection links -->
 		<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
 			<svg>
-				{#each linkPaths as [pathString, dataType]}
-					<path d={pathString} style:--data-color={`var(--color-data-${dataType})`} style:--data-color-dim={`var(--color-data-${dataType}-dim)`} />
+				{#each linkPaths as { pathString, dataType, thick }}
+					<path
+						d={pathString}
+						style:--data-line-width={`${thick ? 5 : 2}px`}
+						style:--data-color={`var(--color-data-${dataType})`}
+						style:--data-color-dim={`var(--color-data-${dataType}-dim)`}
+					/>
 				{/each}
 			</svg>
 		</div>
 		<!-- Layers and nodes -->
 		<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 			<!-- Layers -->
-			{#each $nodeGraph.nodes.filter((node) => node.thumbnailSvg !== undefined) as node (String(node.id))}
-				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.outputs.slice(1)]}
+			{#each $nodeGraph.nodes.filter((node) => node.displayName === "Layer") as node (String(node.id))}
+				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 				{@const clipPathId = `${Math.random()}`.substring(2)}
 				{@const stackDatainput = node.exposedInputs[0]}
 				<div
@@ -615,17 +629,19 @@
 					</div>
 					<div class="thumbnail">
 						{@html node.thumbnailSvg}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port top"
-							data-port="output"
-							data-datatype={node.outputs[0].dataType}
-							style:--data-color={`var(--color-data-${node.outputs[0].dataType})`}
-							style:--data-color-dim={`var(--color-data-${node.outputs[0].dataType}-dim)`}
-						>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-						</svg>
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="port top"
+								data-port="output"
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							>
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							</svg>
+						{/if}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
@@ -641,19 +657,19 @@
 					<div class="details">
 						<TextLabel>{node.displayName}</TextLabel>
 					</div>
-					
+
 					<svg class="border-mask" width="0" height="0">
 						<defs>
 							<clipPath id={clipPathId}>
-								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.outputs.length)} />
+								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs)} />
 							</clipPath>
 						</defs>
 					</svg>
 				</div>
 			{/each}
 			<!-- Nodes -->
-			{#each $nodeGraph.nodes.filter((node) => node.thumbnailSvg === undefined) as node (String(node.id))}
-				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.outputs.slice(1)]}
+			{#each $nodeGraph.nodes.filter((node) => node.displayName !== "Layer") as node (String(node.id))}
+				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 				{@const clipPathId = `${Math.random()}`.substring(2)}
 				<div
 					class="node"
@@ -715,20 +731,20 @@
 					</div>
 					<!-- Output ports -->
 					<div class="output ports">
-						{#if node.outputs.length > 0}
+						{#if node.primaryOutput}
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="port"
 								data-port="output"
-								data-datatype={node.outputs[0].dataType}
-								style:--data-color={`var(--color-data-${node.outputs[0].dataType})`}
-								style:--data-color-dim={`var(--color-data-${node.outputs[0].dataType}-dim)`}
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 							</svg>
 						{/if}
-						{#each node.outputs.slice(1) as parameter}
+						{#each node.exposedOutputs as parameter}
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
@@ -745,7 +761,10 @@
 					<svg class="border-mask" width="0" height="0">
 						<defs>
 							<clipPath id={clipPathId}>
-								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.outputs.length)} />
+								<path
+									clip-rule="evenodd"
+									d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+								/>
 							</clipPath>
 						</defs>
 					</svg>
@@ -873,7 +892,7 @@
 					path {
 						fill: none;
 						stroke: var(--data-color-dim);
-						stroke-width: 2px;
+						stroke-width: var(--data-line-width);
 					}
 				}
 			}
@@ -1022,6 +1041,7 @@
 							position: absolute;
 							margin: auto;
 							inset: 1px;
+							pointer-events: none;
 						}
 
 						.port {
