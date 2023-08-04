@@ -1662,7 +1662,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Path Generator",
+			name: "Shape",
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 			inputs: vec![
@@ -1998,7 +1998,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 }
 
 pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
+	let path_generator = resolve_document_node_type("Shape").expect("Shape node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");

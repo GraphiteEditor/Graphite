@@ -96,7 +96,9 @@ export class FrontendNode {
 
 	readonly exposedInputs!: NodeGraphInput[];
 
-	readonly outputs!: NodeGraphOutput[];
+	readonly primaryOutput!: NodeGraphOutput | undefined;
+
+	readonly exposedOutputs!: NodeGraphOutput[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;

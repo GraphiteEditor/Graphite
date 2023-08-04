@@ -49,7 +49,7 @@
 			margin-bottom: 4px;
 			border: 0;
 			border-radius: 4px;
-			background: var(--color-5-dullgray);
+			background: var(--color-2-mildblack);
 
 			.expand-arrow {
 				width: 8px;
@@ -87,7 +87,7 @@
 			}
 
 			&:hover {
-				background: var(--color-6-lowergray);
+				background: var(--color-4-dimgray);
 
 				.expand-arrow::after {
 					background: var(--icon-expand-collapse-arrow-hover);
@@ -98,7 +98,7 @@
 				}
 
 				+ .body {
-					border: 1px solid var(--color-6-lowergray);
+					border: 1px solid var(--color-4-dimgray);
 				}
 			}
 		}
@@ -108,7 +108,7 @@
 			padding-top: 1px;
 			margin-top: -1px;
 			margin-bottom: 4px;
-			border: 1px solid var(--color-5-dullgray);
+			border: 1px solid var(--color-2-mildblack);
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 

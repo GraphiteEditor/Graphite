@@ -285,12 +285,12 @@
 		</LayoutCol>
 		<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
 			{#if !isNone}
-				<div class="selection-pincers" style:top={`${(1 - hue) * 100}%`} />
+				<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
 			{/if}
 		</LayoutCol>
 		<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
 			{#if !isNone}
-				<div class="selection-pincers" style:top={`${(1 - alpha) * 100}%`} />
+				<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
 			{/if}
 		</LayoutCol>
 		<LayoutCol class="details">
@@ -434,11 +434,12 @@
 			background-blend-mode: screen;
 			background: linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
 				linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%), linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
-			--selection-pincers-color: var(--hue-color-contrasting);
+			--selection-needle-color: var(--hue-color-contrasting);
 		}
 
 		.alpha-picker {
 			background: linear-gradient(to bottom, var(--opaque-color), transparent);
+			--selection-needle-color: var(--new-color-contrasting);
 
 			&::before {
 				content: "";
@@ -450,7 +451,6 @@
 				background-size: var(--color-transparent-checkered-background-size);
 				background-position: var(--color-transparent-checkered-background-position);
 			}
-			--selection-pincers-color: var(--new-color-contrasting);
 		}
 
 		.selection-circle {
@@ -475,7 +475,7 @@
 			}
 		}
 
-		.selection-pincers {
+		.selection-needle {
 			position: absolute;
 			top: 0%;
 			width: 100%;
@@ -489,7 +489,7 @@
 				left: 0;
 				border-style: solid;
 				border-width: 4px 0 4px 4px;
-				border-color: transparent transparent transparent var(--selection-pincers-color);
+				border-color: transparent transparent transparent var(--selection-needle-color);
 			}
 
 			&::after {
@@ -499,7 +499,7 @@
 				right: 0;
 				border-style: solid;
 				border-width: 4px 4px 4px 0;
-				border-color: transparent var(--selection-pincers-color) transparent transparent;
+				border-color: transparent var(--selection-needle-color) transparent transparent;
 			}
 		}
 
