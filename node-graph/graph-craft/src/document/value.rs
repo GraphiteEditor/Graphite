@@ -55,7 +55,6 @@ pub enum TaggedValue {
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
-	#[cfg_attr(feature = "serde", serde(skip))]
 	BrushCache(BrushCache),
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
@@ -294,7 +293,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Ok(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::text::Font>() => Ok(TaggedValue::Font(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
-			x if x == TypeId::of::<Vec<BrushCache>>() => Ok(TaggedValue::BrushCache(*downcast(input).unwrap())),
+			x if x == TypeId::of::<BrushCache>() => Ok(TaggedValue::BrushCache(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Ok(TaggedValue::Segments(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Ok(TaggedValue::DocumentNode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Ok(TaggedValue::GraphicGroup(*downcast(input).unwrap())),

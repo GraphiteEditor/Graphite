@@ -23,7 +23,7 @@ struct BrushCacheImpl {
 	last_stroke_texture: ImageFrame<Color>,
 
 	// A cache for brush textures.
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	brush_texture_cache: HashMap<BrushStyle, Image<Color>>,
 }
 
@@ -99,6 +99,7 @@ pub struct BrushPlan {
 	pub first_stroke_point_skip: usize,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, DynAny, Default)]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
