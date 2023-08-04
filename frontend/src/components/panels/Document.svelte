@@ -144,7 +144,7 @@
 	export function updateDocumentOverlays(svg: string) {
 		overlaysSvg = svg;
 	}
-	
+
 	export function updateDocumentArtboards(svg: string) {
 		artboardSvg = svg;
 		rasterizedCanvas = undefined;
@@ -525,6 +525,7 @@
 
 		.shelf-and-viewport {
 			.shelf {
+				width: 32px;
 				flex: 0 0 auto;
 
 				.tools {

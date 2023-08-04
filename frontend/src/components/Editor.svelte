@@ -187,8 +187,6 @@
 		.scrollable-y {
 			// Firefox (standardized in CSS, but less capable)
 			scrollbar-width: thin;
-			scrollbar-width: 6px;
-			scrollbar-gutter: 6px;
 			scrollbar-color: var(--color-5-dullgray) transparent;
 
 			&:not(:hover) {
@@ -234,24 +232,15 @@
 		}
 
 		.scrollable-x.scrollable-y {
-			// Standard
 			overflow: auto;
-			// WebKit
-			overflow: overlay;
 		}
 
 		.scrollable-x:not(.scrollable-y) {
-			// Standard
 			overflow: auto hidden;
-			// WebKit
-			overflow-x: overlay;
 		}
 
 		.scrollable-y:not(.scrollable-x) {
-			// Standard
 			overflow: hidden auto;
-			// WebKit
-			overflow-y: overlay;
 		}
 	}
 

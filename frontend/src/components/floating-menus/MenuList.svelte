@@ -200,7 +200,7 @@
 	bind:this={self}
 >
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
-	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using $refs. -->
+	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using `self`. -->
 	<LayoutCol
 		bind:this={scroller}
 		scrollableY={scrollableY && virtualScrollingEntryHeight !== 0}
