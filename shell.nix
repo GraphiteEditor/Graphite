@@ -50,6 +50,14 @@ in
       pkgs.webkitgtk
 
       pkgs.pkg-config
+
+      # Use Mold as a Linke
+      pkgs.mold
     ];
+
+    # Hacky way to run cago through Mold
+    shellHook = ''
+    alias cargo='mold --run cargo'
+    '';
   }
 
