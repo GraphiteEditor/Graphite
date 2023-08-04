@@ -439,6 +439,7 @@
 
 		.alpha-picker {
 			background: linear-gradient(to bottom, var(--opaque-color), transparent);
+			--selection-needle-color: var(--new-color-contrasting);
 
 			&::before {
 				content: "";
@@ -450,7 +451,6 @@
 				background-size: var(--color-transparent-checkered-background-size);
 				background-position: var(--color-transparent-checkered-background-position);
 			}
-			--selection-needle-color: var(--new-color-contrasting);
 		}
 
 		.selection-circle {

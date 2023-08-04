@@ -2,17 +2,8 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import type { IconName } from "@graphite/utility-functions/icons";
-
-	import {
-		UpdateNodeGraphSelection,
-		type FrontendNodeLink,
-		type FrontendNodeType,
-		type FrontendNode,
-		FrontendGraphDataType,
-		NodeGraphInput,
-		NodeGraphOutput,
-	} from "@graphite/wasm-communication/messages";
-
+	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeLink, FrontendNodeType, FrontendNode } from "@graphite/wasm-communication/messages";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -590,9 +581,77 @@
 				{/each}
 			</svg>
 		</div>
-		<!-- Nodes -->
-		<div class="nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
-			{#each $nodeGraph.nodes as node (String(node.id))}
+		<!-- Layers and nodes -->
+		<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
+			<!-- Layers -->
+			{#each $nodeGraph.nodes.filter((node) => node.thumbnailSvg !== undefined) as node (String(node.id))}
+				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.outputs.slice(1)]}
+				{@const clipPathId = `${Math.random()}`.substring(2)}
+				{@const stackDatainput = node.exposedInputs[0]}
+				<div
+					class="layer"
+					class:selected={selected.includes(node.id)}
+					class:previewed={node.previewed}
+					class:disabled={node.disabled}
+					style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
+					style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					data-node={node.id}
+				>
+					<div class="node-chain" />
+					<div class="thumbnail">
+						{@html node.thumbnailSvg}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port top"
+							data-port="output"
+							data-datatype={node.outputs[0].dataType}
+							style:--data-color={`var(--color-data-${node.outputs[0].dataType})`}
+							style:--data-color-dim={`var(--color-data-${node.outputs[0].dataType}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port bottom"
+							data-port="input"
+							data-datatype={stackDatainput.dataType}
+							style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
+							style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					</div>
+					<div class="details">
+						<TextLabel>{node.displayName}</TextLabel>
+					</div>
+					<!-- Layer input port (from left) -->
+					<div class="input ports">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port"
+							data-port="input"
+							data-datatype={node.primaryInput}
+							style:--data-color={`var(--color-data-${node.primaryInput})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.outputs.length)} />
+							</clipPath>
+						</defs>
+					</svg>
+				</div>
+			{/each}
+			<!-- Nodes -->
+			{#each $nodeGraph.nodes.filter((node) => node.thumbnailSvg === undefined) as node (String(node.id))}
 				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.outputs.slice(1)]}
 				{@const clipPathId = `${Math.random()}`.substring(2)}
 				<div
@@ -608,11 +667,7 @@
 				>
 					<!-- Primary row -->
 					<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
-						{#if node.thumbnailSvg}
-							{@html node.thumbnailSvg}
-						{:else}
-							<IconLabel icon={nodeIcon(node.displayName)} />
-						{/if}
+						<IconLabel icon={nodeIcon(node.displayName)} />
 						<TextLabel>{node.displayName}</TextLabel>
 					</div>
 					<!-- Parameter rows -->
@@ -798,7 +853,7 @@
 			}
 		}
 
-		.nodes,
+		.layers-and-nodes,
 		.wires {
 			position: absolute;
 			width: 100%;
@@ -822,16 +877,14 @@
 				}
 			}
 
-			&.nodes {
+			&.layers-and-nodes {
+				.layer,
 				.node {
 					position: absolute;
 					display: flex;
-					flex-direction: column;
-					min-width: 120px;
-					border-radius: 2px;
-					left: calc((var(--offset-left) + 0.5) * 24px);
-					top: calc((var(--offset-top) - 0.5) * 24px);
 					backdrop-filter: blur(8px) brightness(100% - 33%);
+					left: calc(var(--offset-left) * 24px);
+					top: calc(var(--offset-top) * 24px);
 
 					&::after {
 						content: "";
@@ -841,10 +894,177 @@
 						left: 0;
 						width: 100%;
 						height: 100%;
-						border: 1px solid var(--color-data-vector-dim);
-						border-radius: 2px;
 						pointer-events: none;
 						clip-path: var(--clip-path-id);
+					}
+
+					.border-mask {
+						position: absolute;
+						top: 0;
+					}
+
+					&.selected {
+						.primary {
+							background: rgba(255, 255, 255, 0.15);
+						}
+
+						.parameters {
+							background: rgba(255, 255, 255, 0.1);
+						}
+					}
+
+					&.disabled {
+						background: var(--color-3-darkgray);
+						color: var(--color-a-softgray);
+
+						.icon-label {
+							fill: var(--color-a-softgray);
+						}
+
+						.expand-arrow::after {
+							background: var(--icon-expand-collapse-arrow-disabled);
+						}
+					}
+
+					&.previewed::after {
+						border: 1px dashed var(--color-data-vector);
+					}
+
+					.ports {
+						position: absolute;
+
+						&.input {
+							left: -3px;
+						}
+
+						&.output {
+							right: -5px;
+						}
+					}
+
+					.port {
+						fill: var(--data-color);
+						// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
+						margin: calc(24px - 8px) 0;
+						width: 8px;
+						height: 8px;
+
+						&:first-of-type {
+							margin-top: calc((24px - 8px) / 2);
+						}
+
+						&:last-of-type {
+							margin-bottom: calc((24px - 8px) / 2);
+						}
+					}
+
+					.expand-arrow {
+						width: 16px;
+						height: 16px;
+						margin: 0;
+						padding: 0;
+						position: relative;
+						flex: 0 0 auto;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+
+						&::after {
+							content: "";
+							position: absolute;
+							width: 8px;
+							height: 8px;
+							background: var(--icon-expand-collapse-arrow);
+						}
+
+						&:hover::after {
+							background: var(--icon-expand-collapse-arrow-hover);
+						}
+					}
+
+					.expanded .expand-arrow::after {
+						transform: rotate(90deg);
+					}
+				}
+
+				.layer {
+					border-radius: 8px;
+					min-width: 216px;
+
+					&::after {
+						border: 1px solid var(--color-5-dullgray);
+						border-radius: 8px;
+					}
+
+					.node-chain {
+						width: 36px;
+					}
+
+					.thumbnail {
+						background: var(--color-2-mildblack);
+						border: 1px solid var(--color-data-vector-dim);
+						border-radius: 2px;
+						position: relative;
+						box-sizing: border-box;
+						width: 72px;
+						height: 48px;
+
+						&::before {
+							content: "";
+							background: var(--color-transparent-checkered-background);
+							background-size: var(--color-transparent-checkered-background-size);
+							background-position: var(--color-transparent-checkered-background-position);
+						}
+
+						&::before,
+						svg:not(.port) {
+							position: absolute;
+							margin: auto;
+							inset: 1px;
+						}
+
+						.port {
+							position: absolute;
+							margin: 0 auto;
+							left: 0;
+							right: 0;
+
+							&.top {
+								top: -12px;
+							}
+
+							&.bottom {
+								bottom: -12px;
+							}
+						}
+					}
+
+					.details {
+						margin-left: 12px;
+
+						.text-label {
+							line-height: 48px;
+						}
+					}
+
+					.input.ports,
+					.input.ports .port {
+						position: absolute;
+						margin: auto 0;
+						top: 0;
+						bottom: 0;
+					}
+				}
+
+				.node {
+					flex-direction: column;
+					border-radius: 2px;
+					min-width: 120px;
+					top: calc((var(--offset-top) + 0.5) * 24px);
+
+					&::after {
+						border: 1px solid var(--color-data-vector-dim);
+						border-radius: 2px;
 					}
 
 					.primary {
@@ -907,101 +1127,6 @@
 						&::after {
 							right: 0;
 						}
-					}
-
-					.border-mask {
-						position: absolute;
-						top: 0;
-					}
-
-					&.selected {
-						.primary {
-							background: rgba(255, 255, 255, 0.15);
-						}
-
-						.parameters {
-							background: rgba(255, 255, 255, 0.1);
-						}
-					}
-
-					&.disabled {
-						background: var(--color-3-darkgray);
-						color: var(--color-a-softgray);
-
-						.icon-label {
-							fill: var(--color-a-softgray);
-						}
-
-						.expand-arrow::after {
-							background: var(--icon-expand-collapse-arrow-disabled);
-						}
-					}
-
-					&.previewed::after {
-						border: 1px dashed var(--color-data-vector);
-					}
-
-					.ports {
-						position: absolute;
-
-						&.input {
-							left: -3px;
-						}
-
-						&.output {
-							right: -5px;
-						}
-
-						.port {
-							fill: var(--data-color);
-							// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
-							margin: calc(24px - 8px) 0;
-							width: 8px;
-							height: 8px;
-
-							&:first-of-type {
-								margin-top: calc((24px - 8px) / 2);
-							}
-
-							&:last-of-type {
-								margin-bottom: calc((24px - 8px) / 2);
-							}
-						}
-					}
-
-					.expand-arrow {
-						width: 16px;
-						height: 16px;
-						margin: 0;
-						padding: 0;
-						position: relative;
-						flex: 0 0 auto;
-						display: flex;
-						align-items: center;
-						justify-content: center;
-
-						&::after {
-							content: "";
-							position: absolute;
-							width: 8px;
-							height: 8px;
-							background: var(--icon-expand-collapse-arrow);
-						}
-
-						&:hover::after {
-							background: var(--icon-expand-collapse-arrow-hover);
-						}
-					}
-
-					.expanded .expand-arrow::after {
-						transform: rotate(90deg);
-					}
-				}
-
-				.node.is-layer {
-					.primary svg {
-						width: 24px;
-						height: 24px;
 					}
 				}
 			}
