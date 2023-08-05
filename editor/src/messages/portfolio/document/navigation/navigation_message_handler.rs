@@ -3,7 +3,7 @@ use crate::consts::{
 	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::{ViewportBounds, ViewportPosition};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -124,13 +124,13 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				snap_zoom,
 				zoom_from_viewport,
 			} => {
-				if self.panning {
+				if self.panning && !self.tilting && !self.zooming {
 					let delta = ipp.mouse.position - self.mouse_position;
 
 					responses.add(TranslateCanvas { delta });
 				}
 
-				if self.tilting {
+				if self.tilting && !self.panning && !self.zooming {
 					let new_snap = ipp.keyboard.get(snap_angle as usize);
 					if !(wait_for_snap_angle_release && new_snap && !self.snap_tilt_released) {
 						// When disabling snap, keep the viewed rotation as it was previously.
@@ -151,7 +151,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 					responses.add(SetCanvasRotation { angle_radians: self.tilt + rotation });
 				}
 
-				if self.zooming {
+				if self.zooming && !self.panning && !self.tilting {
 					let zoom_start = self.snapped_scale();
 
 					let new_snap = ipp.keyboard.get(snap_zoom as usize);
@@ -188,7 +188,9 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 						mouse: None,
 						label: String::from("Snap 15°"),
 						plus: false,
-					}])]),
+					}]),
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])
+					]),
 				});
 
 				self.tilting = true;
@@ -232,7 +234,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
-				responses.add(FrontendMessage::UpdateInputHints { hint_data: HintData(Vec::new()) });
+				responses.add(FrontendMessage::UpdateInputHints {hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])])});
 
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
@@ -271,7 +273,9 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 						mouse: None,
 						label: String::from("Snap Increments"),
 						plus: false,
-					}])]),
+					}]),
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])
+					]),
 				});
 
 				self.zooming = true;

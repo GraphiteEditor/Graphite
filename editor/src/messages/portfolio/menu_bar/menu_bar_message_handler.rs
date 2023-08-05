@@ -250,11 +250,35 @@ impl LayoutHolder for MenuBarMessageHandler {
 			MenuBarEntry::new_root(
 				"View".into(),
 				no_active_document,
-				MenuBarEntryChildren(vec![vec![
+				MenuBarEntryChildren(vec![
+					vec![
 					MenuBarEntry {
-						label: "Zoom to Selected".into(),
-						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
-						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+						label: "Pan".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::TranslateCanvasBegin),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::TranslateCanvasBegin.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
+					vec![
+					MenuBarEntry {
+						label: "Tilt".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::RotateCanvasBegin),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::RotateCanvasBegin.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					},
+					MenuBarEntry {
+						label: "Reset Tilt".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::SetCanvasRotation),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::SetCanvasRotation { angle_radians: 0.into() }.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					},],
+					vec![
+					MenuBarEntry {
+						label: "Zoom".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::ZoomCanvasBegin),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::ZoomCanvasBegin.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					},
@@ -278,8 +302,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
-					},
-				]]),
+					},],
+					vec![
+					MenuBarEntry {
+						label: "Frame Selected".into(),
+						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}]]),
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),
