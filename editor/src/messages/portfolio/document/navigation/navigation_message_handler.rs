@@ -182,14 +182,15 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			RotateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Snap 15°"),
-						plus: false,
-					}]),
-					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+							key_groups_mac: None,
+							mouse: None,
+							label: String::from("Snap 15°"),
+							plus: false,
+						}]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
 					]),
 				});
 
@@ -234,7 +235,9 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
-				responses.add(FrontendMessage::UpdateInputHints {hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])])});
+				responses.add(FrontendMessage::UpdateInputHints {
+					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])]),
+				});
 
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
@@ -267,14 +270,15 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			ZoomCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Snap Increments"),
-						plus: false,
-					}]),
-					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+							key_groups_mac: None,
+							mouse: None,
+							label: String::from("Snap Increments"),
+							plus: false,
+						}]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
 					]),
 				});
 
