@@ -994,6 +994,59 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	vec![translation, rotation, scale]
 }
 
+pub fn flip_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
+		let pivot_index = 5;
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::DVec2(pivot),
+			exposed: false,
+		} = document_node.inputs[pivot_index]
+		{
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(
+				PivotAssist::new(pivot.into())
+					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.widget_holder(),
+			);
+		} else {
+			add_blank_assist(widgets);
+		}
+	};
+	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", translation_assist);
+
+	let rotation = {
+		let index = 2;
+
+		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
+
+		if let NodeInput::Value {
+			tagged_value: TaggedValue::F32(val),
+			exposed: false,
+		} = document_node.inputs[index]
+		{
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				NumberInput::new(Some(val.to_degrees().into()))
+					.unit("°")
+					.mode(NumberInputMode::Range)
+					.range_min(Some(-180.))
+					.range_max(Some(180.))
+					.on_update(update_value(
+						|number_input: &NumberInput| TaggedValue::F32((number_input.value.unwrap() as f32).to_radians()),
+						node_id,
+						index,
+					))
+					.widget_holder(),
+			]);
+		}
+
+		LayoutGroup::Row { widgets }
+	};
+
+	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
+	vec![translation, rotation, scale]
+}
+
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
 	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
