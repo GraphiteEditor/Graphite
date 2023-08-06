@@ -173,7 +173,7 @@ impl NodeRuntime {
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile_single(scoped_network, true)?;
+		let proto_network = c.compile_single(scoped_network)?;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network).await {

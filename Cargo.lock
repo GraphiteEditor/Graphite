@@ -1940,9 +1940,9 @@ dependencies = [
  "graphene-core",
  "log",
  "num-traits",
+ "rustc-hash",
  "serde",
  "specta",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -2024,6 +2024,7 @@ dependencies = [
  "log",
  "node-macro",
  "reqwest",
+ "rustc-hash",
  "serde",
  "serde_json",
  "tempfile",
@@ -2037,7 +2038,6 @@ dependencies = [
  "wgpu-executor",
  "wgpu-types",
  "winit",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -6887,12 +6887,6 @@ name = "xml-rs"
 version = "0.8.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a56c84a8ccd4258aed21c92f70c0f6dea75356b6892ae27c24139da456f9336"
-
-[[package]]
-name = "xxhash-rust"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "735a71d46c4d68d71d4b24d03fdc2b98e38cea81730595801db779c04fe80d70"
 
 [[package]]
 name = "zbus"

@@ -26,7 +26,7 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> compilation_client::Shader {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
-	let proto_networks: Vec<_> = compiler.compile(network.clone(), true).collect();
+	let proto_networks: Vec<_> = compiler.compile(network.clone()).collect();
 
 	for network in proto_networks.iter() {
 		typing_context.update(network).expect("Failed to type check network");
@@ -229,7 +229,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone(), true).collect();
+	let proto_networks = compiler.compile(network.clone()).collect();
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
 		proto_networks,
@@ -442,7 +442,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone(), true).collect();
+	let proto_networks = compiler.compile(network.clone()).collect();
 	log::debug!("compiling shader");
 
 	let shader = compilation_client::compile(

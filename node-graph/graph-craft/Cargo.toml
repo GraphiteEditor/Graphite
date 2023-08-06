@@ -25,4 +25,4 @@ specta.workspace = true
 
 bytemuck = {version = "1.8"  }
 anyhow = "1.0.66"
-xxhash-rust = {workspace = true}
+rustc-hash = {workspace = true}
