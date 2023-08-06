@@ -1704,20 +1704,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Flip",
-			category: "Transform",
-			identifier: NodeImplementation::proto("graphene_core::transform::FlipNode<_, _, _, _, _, _>"),
-			inputs: vec![
-				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Flip Direction", TaggedValue::FlipDirection(FlipDirection::Horizontal), false),
-				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
-			],
-			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
-			properties: node_properties::flip_properties,
-			..Default::default()
-		},
-		DocumentNodeType {
 			name: "SetTransform",
 			category: "Transform",
 			identifier: NodeImplementation::proto("graphene_core::transform::SetTransformNode<_>"),
@@ -1726,6 +1712,23 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Flip",
+			category: "Transform",
+			identifier: NodeImplementation::proto("graphene_core::transform::FlipNode<_, _, _, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Flip Direction", TaggedValue::FlipDirection(FlipDirection::Horizontal), false),
+				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
+				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
+				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
+			],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
+			properties: node_properties::flip_properties,
 			..Default::default()
 		},
 		DocumentNodeType {

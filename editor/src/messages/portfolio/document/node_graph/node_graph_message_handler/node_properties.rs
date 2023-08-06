@@ -1003,14 +1003,16 @@ pub fn flip_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let entries = [("Horizontal", FlipDirection::Horizontal), ("Vertical", FlipDirection::Vertical)]
-			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::FlipDirection(val), node_id, index)))
-			.collect();
+		let directions = [("Horizontal", FlipDirection::Horizontal), ("Vertical", FlipDirection::Vertical)];
+		let mut entries = Vec::with_capacity(directions.len());
+		for (name, direction) in directions {
+			entries.push(DropdownEntryData::new(name).on_update(update_value(move |_| TaggedValue::FlipDirection(direction), node_id, index)));
+		}
+		let entries = vec![entries];
 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(flip_direction as u32).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(flip_direction as u32)).widget_holder(),
 		]);
 	}
 	vec![LayoutGroup::Row { widgets }]

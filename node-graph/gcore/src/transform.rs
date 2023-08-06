@@ -91,6 +91,18 @@ pub(crate) fn transform_vector_data<Data: TransformMut>(mut data: Data, translat
 	data
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct SetTransformNode<TransformInput> {
+	pub(crate) transform: TransformInput,
+}
+
+#[node_macro::node_fn(SetTransformNode)]
+pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(mut data: Data, transform: TransformInput) -> Data {
+	let data_transform = data.transform_mut();
+	*data_transform = transform.transform();
+	data
+}
+
 /// The flip direction of a flip node.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
@@ -113,25 +125,13 @@ pub struct FlipNode<Horizontal, Translation, Rotation, Scale, Shear, Pivot> {
 pub(crate) fn flip_vector_data<Data: TransformMut>(mut data: Data, flip_direction: FlipDirection, translate: DVec2, rotate: f32, scale: DVec2, shear: DVec2, pivot: DVec2) -> Data {
 	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
 	let new_scale = match flip_direction {
-		FlipDirection::Horizontal => scale * DVec2::NEG_X,
-		FlipDirection::Vertical => scale * DVec2::NEG_Y,
+		FlipDirection::Horizontal => scale * DVec2::new(-1.0, 1.0),
+		FlipDirection::Vertical => scale * DVec2::new(1.0, -1.0),
 	};
 
 	let modification = pivot * DAffine2::from_scale_angle_translation(new_scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 
-	data
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct SetTransformNode<TransformInput> {
-	pub(crate) transform: TransformInput,
-}
-
-#[node_macro::node_fn(SetTransformNode)]
-pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(mut data: Data, transform: TransformInput) -> Data {
-	let data_transform = data.transform_mut();
-	*data_transform = transform.transform();
 	data
 }
