@@ -13,6 +13,7 @@ use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
+use graphene_core::transform::FlipDirection;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
@@ -1705,12 +1706,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Flip",
 			category: "Transform",
-			identifier: NodeImplementation::proto("graphene_core::transform::FlipNode<_, _, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::transform::FlipNode<_, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
-				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
+				DocumentInputType::value("Flip Direction", TaggedValue::FlipDirection(FlipDirection::Horizontal), false),
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
 			],

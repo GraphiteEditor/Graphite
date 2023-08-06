@@ -6,6 +6,7 @@ use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::Then;
+use graphene_core::transform::FlipDirection;
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::VectorData;
@@ -520,9 +521,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f32, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f32, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::TransformNode<_, _, _, _, _>, input: WasmSurfaceHandleFrame, params: [DVec2, f32, DVec2, DVec2, DVec2]),
-		register_node!(graphene_core::transform::FlipNode<_, _, _, _, _>, input: VectorData, params: [DVec2, f32, DVec2, DVec2, DVec2]),
-		register_node!(graphene_core::transform::FlipNode<_, _, _, _, _>, input: ImageFrame<Color>, params: [DVec2, f32, DVec2, DVec2, DVec2]),
-		register_node!(graphene_core::transform::FlipNode<_, _, _, _, _>, input: WasmSurfaceHandleFrame, params: [DVec2, f32, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::FlipNode<_, _, _, _, _, _>, input: VectorData, params: [FlipDirection, DVec2, f32, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::FlipNode<_, _, _, _, _, _>, input: ImageFrame<Color>, params: [FlipDirection, DVec2, f32, DVec2, DVec2, DVec2]),
+		register_node!(graphene_core::transform::FlipNode<_, _, _, _, _, _>, input: WasmSurfaceHandleFrame, params: [FlipDirection, DVec2, f32, DVec2, DVec2, DVec2]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [VectorData]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [DAffine2]),

@@ -12,6 +12,7 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
+use graphene_core::transform::FlipDirection;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::{Cow, Type, TypeDescriptor};
 
@@ -995,56 +996,24 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn flip_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
-		let pivot_index = 5;
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(pivot),
-			exposed: false,
-		} = document_node.inputs[pivot_index]
-		{
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-			widgets.push(
-				PivotAssist::new(pivot.into())
-					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
-					.widget_holder(),
-			);
-		} else {
-			add_blank_assist(widgets);
-		}
-	};
-	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", translation_assist);
+	let index = 1;
+	let mut widgets = start_widgets(document_node, node_id, index, "Flip Direction", FrontendGraphDataType::General, true);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::FlipDirection(flip_direction),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = [("Horizontal", FlipDirection::Horizontal), ("Vertical", FlipDirection::Vertical)]
+			.into_iter()
+			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::FlipDirection(val), node_id, index)))
+			.collect();
 
-	let rotation = {
-		let index = 2;
-
-		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::F32(val),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(val.to_degrees().into()))
-					.unit("°")
-					.mode(NumberInputMode::Range)
-					.range_min(Some(-180.))
-					.range_max(Some(180.))
-					.on_update(update_value(
-						|number_input: &NumberInput| TaggedValue::F32((number_input.value.unwrap() as f32).to_radians()),
-						node_id,
-						index,
-					))
-					.widget_holder(),
-			]);
-		}
-
-		LayoutGroup::Row { widgets }
-	};
-
-	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
-	vec![translation, rotation, scale]
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(flip_direction as u32).widget_holder(),
+		]);
+	}
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
