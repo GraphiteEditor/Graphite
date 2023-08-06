@@ -94,7 +94,7 @@ fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn E
 	let network = &node_graph.network;
 	let wrapped_network = wrap_network_in_scope(network.clone());
 	let compiler = Compiler {};
-	let protograph = compiler.compile_single(wrapped_network, true)?;
+	let protograph = compiler.compile_single(wrapped_network)?;
 	let executor = block_on(DynamicExecutor::new(protograph))?;
 	Ok(executor)
 }

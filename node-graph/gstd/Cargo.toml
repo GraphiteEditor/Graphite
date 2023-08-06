@@ -50,7 +50,7 @@ log = "0.4"
 bezier-rs = { path = "../../libraries/bezier-rs", features = ["serde"] }
 glam = { version = "0.24", features = ["serde"] }
 node-macro = { path = "../node-macro" }
-xxhash-rust = { workspace = true }
+rustc-hash = { workspace = true }
 serde_json = "1.0.96"
 reqwest = { version = "0.11.18", features = ["rustls", "rustls-tls", "json"] }
 futures = "0.3.28"

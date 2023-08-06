@@ -454,8 +454,7 @@ macro_rules! generate_imaginate_node {
 				$(let $val = self.$val.eval(());)*
 
 				use std::hash::Hasher;
-				use xxhash_rust::xxh3::Xxh3;
-				let mut hasher = Xxh3::new();
+				let mut hasher = rustc_hash::FxHasher::default();
 				frame.image.hash(&mut hasher);
 				let hash =hasher.finish();
 
