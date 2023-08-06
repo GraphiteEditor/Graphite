@@ -462,26 +462,31 @@ impl ProtoNetwork {
 
 	fn reorder_ids(&mut self) {
 		let order = self.topological_sort();
-		// Map of node ids to indexes (which become the node ids as they are inserted into the borrow stack)
-		let lookup: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
-		self.nodes = order
-			.iter()
-			.enumerate()
-			.map(|(pos, id)| {
-				let node = self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()).1;
-				(pos as NodeId, node)
-			})
-			.collect();
-		self.replace_node_references(&lookup, false);
-		assert_eq!(order.len(), self.nodes.len());
-	}
 
-	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>, skip_lambdas: bool) {
-		self.nodes.iter_mut().for_each(|(_, node)| {
-			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"), skip_lambdas);
+		// Map of node ids to their current index in the nodes vector
+		let current_positions: HashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
+
+		// Map of node ids to their new index based on topological order
+		let new_positions: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
+
+		// Create a new nodes vector based on the topological order
+		let mut new_nodes = Vec::with_capacity(order.len());
+		for (index, &id) in order.iter().enumerate() {
+			let current_pos = *current_positions.get(&id).unwrap();
+			new_nodes.push((index as NodeId, self.nodes[current_pos].1.clone()));
+		}
+
+		// Update node references to reflect the new order
+		new_nodes.iter_mut().for_each(|(_, node)| {
+			node.map_ids(|id| *new_positions.get(&id).expect("node not found in lookup table"), false);
 		});
-		self.inputs = self.inputs.iter().filter_map(|id| lookup.get(id).copied()).collect();
-		self.output = *lookup.get(&self.output).unwrap();
+
+		// Update the nodes vector and other references
+		self.nodes = new_nodes;
+		self.inputs = self.inputs.iter().filter_map(|id| new_positions.get(id).copied()).collect();
+		self.output = *new_positions.get(&self.output).unwrap();
+
+		assert_eq!(order.len(), self.nodes.len());
 	}
 }
 
@@ -733,9 +738,9 @@ mod test {
 				16203111412429166836,
 				8181436982058796771,
 				10130798762907147404,
-				17935543851162289159,
-				14501854043195917537,
-				6942061105770367512
+				1082623390433068677,
+				4567264975997576294,
+				8215587082195034469
 			]
 		);
 	}
