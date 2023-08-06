@@ -1,5 +1,5 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::transform_utils::get_current_transform;
 use crate::messages::prelude::*;
@@ -433,7 +433,10 @@ impl Fsm for BrushToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			BrushToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Stroke")])]),
+			BrushToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),
+				HintGroup(vec![HintInfo::keys([Key::BracketLeft, Key::BracketRight], "Shrink/Grow Brush")]),
+			]),
 			BrushToolFsmState::Drawing => HintData(vec![]),
 		};
 
