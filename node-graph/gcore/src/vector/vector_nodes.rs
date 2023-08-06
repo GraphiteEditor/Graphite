@@ -71,3 +71,15 @@ fn set_vector_data_stroke(
 	});
 	vector_data
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepeatNode<Direction, Count> {
+	direction: Direction,
+	count: Count,
+}
+
+#[node_macro::node_fn(RepeatNode)]
+fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
+	// repeat the vector data
+	vector_data
+}
