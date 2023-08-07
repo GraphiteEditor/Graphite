@@ -1755,7 +1755,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Direction", TaggedValue::DVec2((0., 1.).into()), false),
+				DocumentInputType::value("Direction", TaggedValue::DVec2((100., 0.).into()), false),
 				DocumentInputType::value("Count", TaggedValue::U32(10), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
