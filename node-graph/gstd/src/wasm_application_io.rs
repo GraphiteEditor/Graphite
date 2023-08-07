@@ -40,7 +40,7 @@ pub struct WasmApplicationIo {
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(feature = "wgpu")]
+		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).unwrap();
 			let function = js_sys::Function::try_from(&request_adapter).unwrap();
@@ -52,6 +52,8 @@ impl WasmApplicationIo {
 		} else {
 			None
 		};
+		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
+		let executor = None;
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: RefCell::new(0),
