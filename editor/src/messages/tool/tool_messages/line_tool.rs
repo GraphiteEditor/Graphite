@@ -144,7 +144,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 impl ToolTransition for LineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: None,
+			canvas_transformed: Some(LineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(LineToolMessage::Abort.into()),
 			working_color_changed: Some(LineToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -167,6 +167,7 @@ struct LineToolData {
 	weight: f64,
 	path: Option<Vec<LayerId>>,
 	snap_manager: SnapManager,
+	canvas_has_transformed: bool,
 }
 
 impl Fsm for LineToolFsmState {
@@ -192,6 +193,12 @@ impl Fsm for LineToolFsmState {
 
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
+				(_, CanvasTransformed) => {
+					warn!("line canvas transformed");
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+					tool_data.canvas_has_transformed = true;
+					self
+				}
 				(Ready, DragStart) => {
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
@@ -213,10 +220,17 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
-					tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					// shift to snap position if no transformation has occured
+					if !tool_data.canvas_has_transformed {
+						tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+						let keyboard = &input.keyboard;
 
-					let keyboard = &input.keyboard;
-					responses.add(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+						responses.add(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+					} else {
+						warn!("transformed");
+						// revert bool state for further redraws
+						tool_data.canvas_has_transformed = false;
+					}
 
 					Drawing
 				}
