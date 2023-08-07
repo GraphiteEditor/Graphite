@@ -212,6 +212,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
 				responses.add(BroadcastEvent::DocumentIsDirty);
+				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
 				self.snap_tilt = false;

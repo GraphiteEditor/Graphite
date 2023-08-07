@@ -44,6 +44,10 @@ impl Default for LineOptions {
 pub enum LineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	DocumentIsDirty,
+	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	WorkingColorChanged,
@@ -140,6 +144,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 impl ToolTransition for LineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: None,
 			tool_abort: Some(LineToolMessage::Abort.into()),
 			working_color_changed: Some(LineToolMessage::WorkingColorChanged.into()),
 			..Default::default()
