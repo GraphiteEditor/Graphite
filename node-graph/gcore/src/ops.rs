@@ -1,8 +1,9 @@
-use core::marker::PhantomData;
-use core::ops::{Add, Mul};
-
 use crate::Node;
+use core::marker::PhantomData;
+use core::ops::{Add, Div, Mul, Rem, Sub};
+use num_traits::Pow;
 
+// Add
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AddNode;
 
@@ -30,16 +31,149 @@ where
 	first + second
 }
 
-pub struct MulParameterNode<Second> {
+// Subtract
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct SubtractNode;
+
+impl<'i, L: Sub<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for SubtractNode {
+	type Output = <L as Sub<R>>::Output;
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
+		input.0 - input.1
+	}
+}
+
+impl SubtractNode {
+	pub const fn new() -> Self {
+		Self
+	}
+}
+
+pub struct SubtractParameterNode<Second> {
 	second: Second,
 }
 
-#[node_macro::node_fn(MulParameterNode)]
+#[node_macro::node_fn(SubtractParameterNode)]
+fn flat_map<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
+where
+	U: Sub<T>,
+{
+	first - second
+}
+
+// Divide
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct DivideNode;
+
+impl<'i, L: Div<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for DivideNode {
+	type Output = <L as Div<R>>::Output;
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
+		input.0 / input.1
+	}
+}
+
+impl DivideNode {
+	pub const fn new() -> Self {
+		Self
+	}
+}
+
+pub struct DivideParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(DivideParameterNode)]
+fn flat_map<U, T>(first: U, second: T) -> <U as Div<T>>::Output
+where
+	U: Div<T>,
+{
+	first / second
+}
+
+// Multiply
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct MultiplyNode;
+
+impl<'i, L: Mul<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for MultiplyNode {
+	type Output = <L as Mul<R>>::Output;
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
+		input.0 * input.1
+	}
+}
+
+impl MultiplyNode {
+	pub const fn new() -> Self {
+		Self
+	}
+}
+
+pub struct MultiplyParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MultiplyParameterNode)]
 fn flat_map<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
 where
 	U: Mul<T>,
 {
 	first * second
+}
+
+// Exponent
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct ExponentNode;
+
+impl<'i, L: Pow<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for ExponentNode {
+	type Output = <L as Pow<R>>::Output;
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
+		input.0.pow(input.1)
+	}
+}
+
+impl ExponentNode {
+	pub const fn new() -> Self {
+		Self
+	}
+}
+
+pub struct ExponentParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(ExponentParameterNode)]
+fn flat_map<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
+where
+	U: Pow<T>,
+{
+	first.pow(second)
+}
+
+// Modulo
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct ModuloNode;
+
+impl<'i, L: Rem<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for ModuloNode {
+	type Output = <L as Rem<R>>::Output;
+	fn eval(&'i self, input: (L, R)) -> Self::Output {
+		input.0 % input.1
+	}
+}
+
+impl ModuloNode {
+	pub const fn new() -> Self {
+		Self
+	}
+}
+
+pub struct ModuloParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(ModuloParameterNode)]
+fn flat_map<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
+where
+	U: Rem<T>,
+{
+	first % second
 }
 
 #[cfg(feature = "std")]
