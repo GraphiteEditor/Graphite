@@ -37,6 +37,8 @@ const EXPOSED_BLEND_MODES: &[&[BlendMode]] = {
 	]
 };
 
+const BRUSH_MAX_SIZE: f64 = 5000.;
+
 fn blend_mode_dropdown_idx(target_blend_mode: BlendMode) -> Option<u32> {
 	let mut i = 0;
 	for group in EXPOSED_BLEND_MODES {
@@ -145,6 +147,7 @@ impl LayoutHolder for BrushTool {
 			NumberInput::new(Some(self.options.diameter))
 				.label("Diameter")
 				.min(1.)
+				.max(BRUSH_MAX_SIZE) /* Anything bigger would cause the application to be unresponsive and eventually die */
 				.unit(" px")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
 				.widget_holder(),
@@ -153,6 +156,7 @@ impl LayoutHolder for BrushTool {
 				.label("Hardness")
 				.min(0.)
 				.max(100.)
+				.mode_range()
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
 				.widget_holder(),
@@ -161,6 +165,7 @@ impl LayoutHolder for BrushTool {
 				.label("Flow")
 				.min(1.)
 				.max(100.)
+				.mode_range()
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
 				.widget_holder(),
@@ -169,6 +174,7 @@ impl LayoutHolder for BrushTool {
 				.label("Spacing")
 				.min(1.)
 				.max(100.)
+				.mode_range()
 				.unit("%")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap())).into())
 				.widget_holder(),

@@ -58,6 +58,7 @@ impl PreferencesDialogMessageHandler {
 			NumberInput::new(Some(preferences.imaginate_refresh_frequency))
 				.unit(" seconds")
 				.min(0.)
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.min_width(200)
 				.on_update(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into())
 				.widget_holder(),

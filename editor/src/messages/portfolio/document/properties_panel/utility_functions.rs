@@ -98,6 +98,8 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 						NumberInput::new(Some(layer.transform.x() + pivot.x))
 							.label("X")
 							.unit(" px")
+							.min(1.)
+							.max(std::i32::MAX as f64)
 							.on_update(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap() - pivot.x,
@@ -110,6 +112,8 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 						NumberInput::new(Some(layer.transform.y() + pivot.y))
 							.label("Y")
 							.unit(" px")
+							.min(1.)
+							.max(std::i32::MAX as f64)
 							.on_update(move |number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap() - pivot.y,
@@ -137,6 +141,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							.unit(" px")
 							.is_integer(true)
 							.min(1.)
+							.max(std::i32::MAX as f64)
 							.on_update(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
@@ -151,6 +156,7 @@ pub fn register_artboard_layer_properties(layer: &Layer, responses: &mut VecDequ
 							.unit(" px")
 							.is_integer(true)
 							.min(1.)
+							.max(std::i32::MAX as f64)
 							.on_update(|number_input: &NumberInput| {
 								PropertiesPanelMessage::ModifyTransform {
 									value: number_input.value.unwrap(),
@@ -301,6 +307,8 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					NumberInput::new(Some(layer.transform.x() + pivot.x))
 						.label("X")
 						.unit(" px")
+						.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() - pivot.x,
@@ -313,6 +321,8 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					NumberInput::new(Some(layer.transform.y() + pivot.y))
 						.label("Y")
 						.unit(" px")
+						.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap() - pivot.y,
@@ -361,6 +371,8 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					NumberInput::new(Some(layer.transform.scale_x()))
 						.label("X")
 						.unit("")
+						.min(0.)
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
@@ -373,6 +385,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					NumberInput::new(Some(layer.transform.scale_y()))
 						.label("Y")
 						.unit("")
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
@@ -394,6 +407,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					NumberInput::new(Some(layer.bounding_transform(&render_data).scale_x()))
 						.label("W")
 						.unit(" px")
+						.max((1u64 << f64::MANTISSA_DIGITS) as f64)
 						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
@@ -406,6 +420,7 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 					NumberInput::new(Some(layer.bounding_transform(&render_data).scale_y()))
 						.label("H")
 						.unit(" px")
+						.max((1u64 << f64::MANTISSA_DIGITS) as f64)
 						.on_update(|number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyTransform {
 								value: number_input.value.unwrap(),
@@ -682,6 +697,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					NumberInput::new(Some(stroke.weight()))
 						.is_integer(false)
 						.min(0.)
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.unit(" px")
 						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
@@ -722,6 +738,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					NumberInput::new(Some(stroke.dash_offset()))
 						.is_integer(true)
 						.min(0.)
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.unit(" px")
 						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
@@ -808,6 +825,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					NumberInput::new(Some(stroke.line_join_miter_limit() as f64))
 						.is_integer(true)
 						.min(0.)
+						.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 						.unit("")
 						.on_update(move |number_input: &NumberInput| {
 							PropertiesPanelMessage::ModifyStroke {
