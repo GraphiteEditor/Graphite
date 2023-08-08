@@ -32,22 +32,6 @@ where
 }
 
 // Subtract
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct SubtractNode;
-
-impl<'i, L: Sub<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for SubtractNode {
-	type Output = <L as Sub<R>>::Output;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0 - input.1
-	}
-}
-
-impl SubtractNode {
-	pub const fn new() -> Self {
-		Self
-	}
-}
-
 pub struct SubtractParameterNode<Second> {
 	second: Second,
 }
@@ -61,22 +45,6 @@ where
 }
 
 // Divide
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct DivideNode;
-
-impl<'i, L: Div<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for DivideNode {
-	type Output = <L as Div<R>>::Output;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0 / input.1
-	}
-}
-
-impl DivideNode {
-	pub const fn new() -> Self {
-		Self
-	}
-}
-
 pub struct DivideParameterNode<Second> {
 	second: Second,
 }
@@ -90,22 +58,6 @@ where
 }
 
 // Multiply
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct MultiplyNode;
-
-impl<'i, L: Mul<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for MultiplyNode {
-	type Output = <L as Mul<R>>::Output;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0 * input.1
-	}
-}
-
-impl MultiplyNode {
-	pub const fn new() -> Self {
-		Self
-	}
-}
-
 pub struct MultiplyParameterNode<Second> {
 	second: Second,
 }
@@ -119,26 +71,6 @@ where
 }
 
 // Exponent
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct ExponentNode;
-
-impl<'i, L: Pow<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for ExponentNode {
-	type Output = <L as Pow<R>>::Output;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0.pow(input.1)
-	}
-}
-
-impl ExponentNode {
-	pub const fn new() -> Self {
-		Self
-	}
-}
-
-pub struct ExponentParameterNode<Second> {
-	second: Second,
-}
-
 #[node_macro::node_fn(ExponentParameterNode)]
 fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
 where
@@ -148,22 +80,6 @@ where
 }
 
 // Modulo
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct ModuloNode;
-
-impl<'i, L: Rem<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for ModuloNode {
-	type Output = <L as Rem<R>>::Output;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0 % input.1
-	}
-}
-
-impl ModuloNode {
-	pub const fn new() -> Self {
-		Self
-	}
-}
-
 pub struct ModuloParameterNode<Second> {
 	second: Second,
 }
