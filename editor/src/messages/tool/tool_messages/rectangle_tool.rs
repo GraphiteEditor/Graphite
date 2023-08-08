@@ -53,6 +53,8 @@ pub enum RectangleOptionsUpdate {
 pub enum RectangleToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	WorkingColorChanged,
@@ -164,6 +166,7 @@ impl ToolMetadata for RectangleTool {
 impl ToolTransition for RectangleTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(RectangleToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
 			working_color_changed: Some(RectangleToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -208,6 +211,10 @@ impl Fsm for RectangleToolFsmState {
 
 		if let ToolMessage::Rectangle(event) = event {
 			match (self, event) {
+				(Drawing, CanvasTransformed) => {
+					tool_data.data.recalculate_snaps(responses, document, input, render_data);
+					self
+				}
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
 

@@ -47,6 +47,8 @@ impl Default for PolygonOptions {
 pub enum PolygonToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	WorkingColorChanged,
@@ -205,6 +207,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Polygon
 impl ToolTransition for PolygonTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(PolygonToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(PolygonToolMessage::Abort.into()),
 			working_color_changed: Some(PolygonToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -249,6 +252,10 @@ impl Fsm for PolygonToolFsmState {
 
 		if let ToolMessage::Polygon(event) = event {
 			match (self, event) {
+				(Drawing, CanvasTransformed) => {
+					tool_data.data.recalculate_snaps(responses, document, input, render_data);
+					self
+				}
 				(Ready, DragStart) => {
 					polygon_data.start(responses, document, input, render_data);
 					responses.add(DocumentMessage::StartTransaction);
