@@ -89,7 +89,6 @@ fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32)
 	let direction = inverse.transform_vector2(direction);
 	for i in 0..count {
 		let transform = DAffine2::from_translation(direction * i as f64);
-		log::debug!("transform: {:?}", transform);
 		for mut subpath in subpaths.clone() {
 			subpath.apply_transform(transform);
 			new_subpaths.push(subpath);
