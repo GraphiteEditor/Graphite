@@ -1874,6 +1874,20 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
+      ..Default::default()
+		},
+    DocumentNodeType {
+			name: "Circular Repeat",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::CircularRepeatNode<_, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Rotation Offset", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(5.), false),
+				DocumentInputType::value("Count", TaggedValue::U32(10), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::circle_repeat_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
