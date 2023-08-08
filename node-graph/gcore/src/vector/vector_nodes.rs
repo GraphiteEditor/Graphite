@@ -99,3 +99,15 @@ fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32)
 	vector_data.subpaths = new_subpaths;
 	vector_data
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct BoundingBoxNode;
+
+#[node_macro::node_fn(BoundingBoxNode)]
+fn generate_bounding_box(mut vector_data: VectorData) -> VectorData {
+	let bounding_box = vector_data.bounding_box().unwrap();
+	VectorData::from_subpaths(vec![Subpath::new_rect(
+		vector_data.transform.transform_point2(bounding_box[0]),
+		vector_data.transform.transform_point2(bounding_box[1]),
+	)])
+}
