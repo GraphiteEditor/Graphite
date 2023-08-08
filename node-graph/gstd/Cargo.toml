@@ -77,6 +77,8 @@ features = [
 	"CanvasRenderingContext2d",
 	"ImageData",
 	"Document",
+	"Navigator",
+	"Gpu",
 	"HtmlCanvasElement",
 	"ImageBitmapRenderingContext",
 ]
