@@ -567,6 +567,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>, input: VectorData, params: [graphene_core::vector::style::FillType, Option<graphene_core::Color>, graphene_core::vector::style::GradientType, DVec2, DVec2, DAffine2, Vec<(f64, Option<graphene_core::Color>)>]),
 		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [Option<graphene_core::Color>, f32, Vec<f32>, f32, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f32]),
 		register_node!(graphene_core::vector::RepeatNode<_, _>, input: VectorData, params: [DVec2, u32]),
+		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
+		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
