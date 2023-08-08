@@ -674,7 +674,6 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		}
-		log::debug!("Flattening node {:?}", &node.name);
 
 		// replace value inputs with value nodes
 		for input in &mut node.inputs {
@@ -843,10 +842,8 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			log::debug!("extraction network: {:#?}", &self);
 			if let DocumentNodeImplementation::Extract = node.implementation {
 				assert_eq!(node.inputs.len(), 1);
-				log::debug!("Resolving extract node {:?}", node);
 				let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
 					panic!("Extract node has no input, inputs: {:?}", node.inputs);
 				};
@@ -866,7 +863,6 @@ impl NodeNetwork {
 						*input = NodeInput::Network(generic!(T))
 					}
 				}
-				log::debug!("Extract node {:?} resolved to {:?}", node, input_node);
 				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
 			}
 		}

@@ -406,7 +406,17 @@
 			if (draggingNodes.roundX !== deltaX || draggingNodes.roundY !== deltaY) {
 				draggingNodes.roundX = deltaX;
 				draggingNodes.roundY = deltaY;
-				refreshLinks();
+
+				let stop = false;
+				const refresh = () => {
+					if (!stop) refreshLinks();
+					requestAnimationFrame(refresh);
+				};
+				refresh();
+				const DRAG_SMOOTHING_TIME = 0.1;
+				setTimeout(() => {
+					stop = true;
+				}, DRAG_SMOOTHING_TIME * 1000 + 10);
 			}
 		}
 	}
@@ -550,7 +560,7 @@
 			"--dot-radius": `${dotRadius}px`,
 		}}
 	>
-		<img src="https://files.keavon.com/-/MountainousDroopyBlueshark/flyover.jpg" />
+		<!-- <img src="https://files.keavon.com/-/MountainousDroopyBlueshark/flyover.jpg" /> -->
 		<div class="fade-artwork" />
 		<!-- Right click menu for adding nodes -->
 		{#if nodeListLocation}
@@ -902,9 +912,14 @@
 				.node {
 					position: absolute;
 					display: flex;
-					backdrop-filter: blur(8px) brightness(100% - 33%);
 					left: calc(var(--offset-left) * 24px);
 					top: calc(var(--offset-top) * 24px);
+					transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
+					// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
+					// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
+					// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
+					backdrop-filter: blur(4px);
+					background: rgba(0, 0, 0, 0.33);
 
 					&::after {
 						content: "";
@@ -1038,10 +1053,12 @@
 
 						&::before,
 						svg:not(.port) {
+							pointer-events: none;
 							position: absolute;
 							margin: auto;
 							inset: 1px;
-							pointer-events: none;
+							width: 100%;
+							height: 100%;
 						}
 
 						.port {

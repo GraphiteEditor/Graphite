@@ -35,7 +35,7 @@ exclude = ["node-graph/gpu-compiler"]
 specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c0863d27bc47529f300de3969480c66d", features = [
 	"glam",
 ] }
-xxhash-rust = { version = "0.8", features = ["xxh3"] }
+rustc-hash = "1.1.0"
 
 [profile.dev.package.graphite-editor]
 opt-level = 1
