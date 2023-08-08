@@ -1,6 +1,7 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
 use crate::{Color, Node};
+use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
@@ -69,5 +70,32 @@ fn set_vector_data_stroke(
 		line_join,
 		line_join_miter_limit: miter_limit as f64,
 	});
+	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepeatNode<Direction, Count> {
+	direction: Direction,
+	count: Count,
+}
+
+#[node_macro::node_fn(RepeatNode)]
+fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
+	// repeat the vector data
+	let VectorData { subpaths, transform, .. } = &vector_data;
+
+	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(subpaths.len() * count as usize);
+	let inverse = transform.inverse();
+	let direction = inverse.transform_vector2(direction);
+	for i in 0..count {
+		let transform = DAffine2::from_translation(direction * i as f64);
+		log::debug!("transform: {:?}", transform);
+		for mut subpath in subpaths.clone() {
+			subpath.apply_transform(transform);
+			new_subpaths.push(subpath);
+		}
+	}
+
+	vector_data.subpaths = new_subpaths;
 	vector_data
 }
