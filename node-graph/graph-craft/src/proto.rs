@@ -307,7 +307,7 @@ impl ProtoNetwork {
 		let outwards_edges = self.collect_outwards_edges();
 
 		for index in 0..self.nodes.len() {
-			let Some(sni) = self.nodes[index].1.stable_node_id()  else {
+			let Some(sni) = self.nodes[index].1.stable_node_id() else {
 				panic!("failed to generate stable node id for node {:#?}", self.nodes[index].1);
 			};
 			self.replace_node_id(&outwards_edges, index as NodeId, sni, false);
