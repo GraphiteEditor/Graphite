@@ -1870,7 +1870,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Bounding Box",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::BoundingBoxNode<>"),
+			identifier: NodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
