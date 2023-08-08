@@ -146,7 +146,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Color",
 			category: "Inputs",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Value", TaggedValue::Color(Color::WHITE), false)],
+			inputs: vec![DocumentInputType::value("Value", TaggedValue::OptionalColor(None), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Color)],
 			properties: node_properties::color_properties,
 			..Default::default()
