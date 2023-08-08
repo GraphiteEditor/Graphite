@@ -71,6 +71,10 @@ where
 }
 
 // Exponent
+pub struct ExponentParameterNode<Second> {
+	second: Second,
+}
+
 #[node_macro::node_fn(ExponentParameterNode)]
 fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
 where
