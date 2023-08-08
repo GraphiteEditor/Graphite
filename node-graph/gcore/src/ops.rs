@@ -37,7 +37,7 @@ pub struct SubtractParameterNode<Second> {
 }
 
 #[node_macro::node_fn(SubtractParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
+fn sub<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
 where
 	U: Sub<T>,
 {
@@ -50,7 +50,7 @@ pub struct DivideParameterNode<Second> {
 }
 
 #[node_macro::node_fn(DivideParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Div<T>>::Output
+fn div<U, T>(first: U, second: T) -> <U as Div<T>>::Output
 where
 	U: Div<T>,
 {
@@ -63,7 +63,7 @@ pub struct MultiplyParameterNode<Second> {
 }
 
 #[node_macro::node_fn(MultiplyParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
+fn mul<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
 where
 	U: Mul<T>,
 {
@@ -89,7 +89,7 @@ pub struct ModuloParameterNode<Second> {
 }
 
 #[node_macro::node_fn(ModuloParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
+fn mod<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
 where
 	U: Rem<T>,
 {
