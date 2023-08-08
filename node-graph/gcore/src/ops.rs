@@ -140,7 +140,7 @@ pub struct ExponentParameterNode<Second> {
 }
 
 #[node_macro::node_fn(ExponentParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
+fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
 where
 	U: Pow<T>,
 {
