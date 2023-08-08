@@ -1673,6 +1673,13 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
+pub fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", add_blank_assist);
+	let count = number_widget(document_node, node_id, 2, "Count", NumberInput::default().min(1.), true);
+
+	vec![direction, LayoutGroup::Row { widgets: count }]
+}
+
 /// Fill Node Widgets LayoutGroup
 pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_type_index = 1;

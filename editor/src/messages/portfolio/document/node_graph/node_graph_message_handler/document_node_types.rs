@@ -1855,6 +1855,19 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Repeat",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Direction", TaggedValue::DVec2((100., 0.).into()), false),
+				DocumentInputType::value("Count", TaggedValue::U32(10), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::repeat_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Image Segmentation",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode<_>"),

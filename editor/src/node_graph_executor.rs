@@ -522,7 +522,7 @@ impl NodeGraphExecutor {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
-				return Err("Graphic group (see console)".to_string());
+				//return Err("Graphic group (see console)".to_string());
 			}
 			_ => {
 				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));
