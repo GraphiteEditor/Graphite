@@ -89,7 +89,7 @@ pub struct ModuloParameterNode<Second> {
 }
 
 #[node_macro::node_fn(ModuloParameterNode)]
-fn mod<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
+fn modulo<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
 where
 	U: Rem<T>,
 {
