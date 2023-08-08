@@ -2,9 +2,6 @@ use glam::DAffine2;
 
 use glam::DVec2;
 
-use dyn_any::{DynAny, StaticType};
-use serde::{Deserialize, Serialize};
-
 use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
@@ -103,17 +100,10 @@ pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(mut d
 	data
 }
 
-/// The flip direction of a flip node.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
-pub enum FlipDirection {
-	Horizontal,
-	Vertical,
-}
-
 #[derive(Debug, Clone, Copy)]
-pub struct FlipNode<Horizontal, Translation, Rotation, Scale, Shear, Pivot> {
-	pub(crate) flip_direction: Horizontal,
+pub struct FlipNode<FlipX, FlipY, Translation, Rotation, Scale, Shear, Pivot> {
+	pub(crate) flip_x: FlipX,
+	pub(crate) flip_y: FlipY,
 	pub(crate) translate: Translation,
 	pub(crate) rotate: Rotation,
 	pub(crate) scale: Scale,
@@ -122,12 +112,15 @@ pub struct FlipNode<Horizontal, Translation, Rotation, Scale, Shear, Pivot> {
 }
 
 #[node_macro::node_fn(FlipNode)]
-pub(crate) fn flip_vector_data<Data: TransformMut>(mut data: Data, flip_direction: FlipDirection, translate: DVec2, rotate: f32, scale: DVec2, shear: DVec2, pivot: DVec2) -> Data {
+pub(crate) fn flip_vector_data<Data: TransformMut>(mut data: Data, flip_x: bool, flip_y: bool, translate: DVec2, rotate: f32, scale: DVec2, shear: DVec2, pivot: DVec2) -> Data {
 	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
-	let new_scale = match flip_direction {
-		FlipDirection::Horizontal => scale * DVec2::new(-1.0, 1.0),
-		FlipDirection::Vertical => scale * DVec2::new(1.0, -1.0),
-	};
+	let mut new_scale = scale;
+	if flip_x {
+		new_scale.x *= -1.0;
+	}
+	if flip_y {
+		new_scale.y *= -1.0;
+	}
 
 	let modification = pivot * DAffine2::from_scale_angle_translation(new_scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
 	let data_transform = data.transform_mut();

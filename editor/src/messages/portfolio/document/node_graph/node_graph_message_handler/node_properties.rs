@@ -12,7 +12,6 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
-use graphene_core::transform::FlipDirection;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::{Cow, Type, TypeDescriptor};
 
@@ -996,26 +995,9 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn flip_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let index = 1;
-	let mut widgets = start_widgets(document_node, node_id, index, "Flip Direction", FrontendGraphDataType::General, true);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::FlipDirection(flip_direction),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		let directions = [("Horizontal", FlipDirection::Horizontal), ("Vertical", FlipDirection::Vertical)];
-		let mut entries = Vec::with_capacity(directions.len());
-		for (name, direction) in directions {
-			entries.push(DropdownEntryData::new(name).on_update(update_value(move |_| TaggedValue::FlipDirection(direction), node_id, index)));
-		}
-		let entries = vec![entries];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(flip_direction as u32)).widget_holder(),
-		]);
-	}
-	vec![LayoutGroup::Row { widgets }]
+	let flip_x = bool_widget(document_node, node_id, 1, "FlipX", true);
+	let flip_y = bool_widget(document_node, node_id, 2, "FlipY", true);
+	vec![LayoutGroup::Row { widgets: flip_x }, LayoutGroup::Row { widgets: flip_y }]
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

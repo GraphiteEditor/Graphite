@@ -62,7 +62,6 @@ pub enum TaggedValue {
 	Artboard(graphene_core::Artboard),
 	IVec2(glam::IVec2),
 	SurfaceFrame(graphene_core::SurfaceFrame),
-	FlipDirection(graphene_core::transform::FlipDirection),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -129,7 +128,6 @@ impl Hash for TaggedValue {
 			Self::Artboard(artboard) => artboard.hash(state),
 			Self::IVec2(v) => v.hash(state),
 			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
-			Self::FlipDirection(direction) => direction.hash(state),
 		}
 	}
 }
@@ -183,7 +181,6 @@ impl<'a> TaggedValue {
 			TaggedValue::Artboard(x) => Box::new(x),
 			TaggedValue::IVec2(x) => Box::new(x),
 			TaggedValue::SurfaceFrame(x) => Box::new(x),
-			TaggedValue::FlipDirection(x) => Box::new(x),
 		}
 	}
 
@@ -250,7 +247,6 @@ impl<'a> TaggedValue {
 			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
 			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
-			TaggedValue::FlipDirection(_) => concrete!(graphene_core::transform::FlipDirection),
 		}
 	}
 
@@ -308,7 +304,6 @@ impl<'a> TaggedValue {
 				let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
 			}
-			x if x == TypeId::of::<graphene_core::transform::FlipDirection>() => Ok(TaggedValue::FlipDirection(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}
