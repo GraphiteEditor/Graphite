@@ -125,6 +125,33 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeType>> = once_
 fn static_nodes() -> Vec<DocumentNodeType> {
 	vec![
 		DocumentNodeType {
+			name: "Boolean",
+			category: "Inputs",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Bool", TaggedValue::Bool(true), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Boolean)],
+			properties: node_properties::boolean_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Value",
+			category: "Inputs",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Value", TaggedValue::F32(0.), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
+			properties: node_properties::value_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Color",
+			category: "Inputs",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Value", TaggedValue::OptionalColor(None), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Color)],
+			properties: node_properties::color_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Identity",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
@@ -663,6 +690,24 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::grayscale_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Color Channel",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			properties: node_properties::color_channel_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Blend Mode",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![DocumentInputType::value("Mode", TaggedValue::BlendMode(BlendMode::Normal), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			properties: node_properties::blend_mode_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -1645,11 +1690,71 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("Input", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Addend", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Addend", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::add_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Subtract",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Subtrahend", TaggedValue::F32(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::subtract_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Divide",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::DivideParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Divisor", TaggedValue::F32(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::divide_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Multiply",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::MultiplyParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Multiplicand", TaggedValue::F32(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::multiply_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Exponent",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::ExponentParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Power", TaggedValue::F32(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::exponent_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Modulo",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::ModuloParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Modulus", TaggedValue::F32(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::modulo_properties,
 			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),

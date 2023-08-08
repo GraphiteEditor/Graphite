@@ -1,8 +1,9 @@
-use core::marker::PhantomData;
-use core::ops::{Add, Mul};
-
 use crate::Node;
+use core::marker::PhantomData;
+use core::ops::{Add, Div, Mul, Rem, Sub};
+use num_traits::Pow;
 
+// Add
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AddNode;
 
@@ -30,16 +31,69 @@ where
 	first + second
 }
 
-pub struct MulParameterNode<Second> {
+// Subtract
+pub struct SubtractParameterNode<Second> {
 	second: Second,
 }
 
-#[node_macro::node_fn(MulParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
+#[node_macro::node_fn(SubtractParameterNode)]
+fn sub<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
+where
+	U: Sub<T>,
+{
+	first - second
+}
+
+// Divide
+pub struct DivideParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(DivideParameterNode)]
+fn div<U, T>(first: U, second: T) -> <U as Div<T>>::Output
+where
+	U: Div<T>,
+{
+	first / second
+}
+
+// Multiply
+pub struct MultiplyParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MultiplyParameterNode)]
+fn mul<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
 where
 	U: Mul<T>,
 {
 	first * second
+}
+
+// Exponent
+pub struct ExponentParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(ExponentParameterNode)]
+fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
+where
+	U: Pow<T>,
+{
+	first.pow(second)
+}
+
+// Modulo
+pub struct ModuloParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(ModuloParameterNode)]
+fn modulo<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
+where
+	U: Rem<T>,
+{
+	first % second
 }
 
 #[cfg(feature = "std")]
