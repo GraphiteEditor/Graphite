@@ -1,3 +1,7 @@
+.page {
+	overflow: hidden;
+}
+
 #logo {
 	display: flex;
 
@@ -23,7 +27,7 @@
 }
 
 #quick-links {
-	margin-bottom: calc(120 * var(--variable-px));
+	margin-top: calc(80 * var(--variable-px));
 	display: flex;
 	gap: calc(var(--font-size-link) * 0.8);
 	flex-wrap: wrap;
@@ -41,8 +45,14 @@
 }
 
 #hero-message {
-	@media screen and (max-width: 1400px) {
-		p {
+	h1 {
+		font-size: var(--font-size-intro-heading);
+	}
+
+	p {
+		font-size: var(--font-size-intro-body);
+
+		@media screen and (max-width: 1400px) {
 			max-width: unset !important;
 		}
 	}
@@ -80,162 +90,13 @@
 	}
 }
 
-#screenshots {
-	transform: translate(0);
-
-	.carousel {
-		display: flex;
-		white-space: nowrap;
-		touch-action: pan-y pinch-zoom;
-		cursor: grab;
-
-		img {
-			position: relative;
-			display: inline-block;
-			width: 100%;
-			flex: 0 0 auto;
-			padding: 0 20px;
-
-			&:first-child {
-				margin-left: -20px;
-			}
-
-			&:last-child {
-				margin-right: -20px;
-			}
-		}
-	}
-
-	&:not(.dragging) .carousel img {
-		transition: transform 500ms;
-	}
-
-	.carousel:not(.torn) {
-		overflow: hidden;
-	}
-
-	.carousel.torn {
-		position: fixed;
-		top: 0;
-		z-index: -1;
-		// Torn edge mask
-		-webkit-mask-repeat: no-repeat;
-		mask-repeat: no-repeat;
-		-webkit-mask-size: contain;
-		mask-size: contain;
-
-		&.left {
-			padding-left: 80px;
-			margin-left: -80px;
-			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
-			mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
-			-webkit-mask-position: top left;
-			mask-position: top left;
-		}
-
-		&.right {
-			padding-right: 120px;
-			margin-right: -120px;
-			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png");
-			mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png");
-			-webkit-mask-position: top right;
-			mask-position: top right;
-		}
-	}
-
-	.screenshot-details {
-		display: flex;
-		margin: 20px 0;
-		gap: 20px 40px;
-
-		@media screen and (max-width: 800px) {
-			flex-wrap: wrap;
-			justify-content: center;
-		}
-
-		.carousel-controls {
-			display: flex;
-			align-items: center;
-
-			button {
-				outline: none;
-				background: none;
-				border: none;
-				padding: 0;
-				color: inherit;
-				cursor: pointer;
-
-				svg {
-					display: block;
-				}
-
-				+ button {
-					margin-left: 20px;
-				}
-			}
-
-			.direction {
-				fill: currentColor;
-			}
-
-			.dot {
-				width: 16px;
-				height: 16px;
-				box-sizing: border-box;
-				border-radius: 50%;
-				border: var(--border-thickness) solid currentColor;
-
-				&.active {
-					border: none;
-					background: var(--color-crimson);
-				}
-			}
-		}
-
-		.screenshot-description {
-			display: flex;
-			align-items: center;
-			min-height: calc(2em * 1.5);
-
-			p + p {
-				margin: 0;
-			}
-
-			p:not(.active) {
-				display: none;
-			}
-		}
-	}
-
-	@media screen and (max-width: 1000px) {
-		margin-left: calc(-1 * var(--page-edge-padding));
-		margin-right: calc(-1 * var(--page-edge-padding));
-
-		.screenshot-details {
-			margin-left: var(--page-edge-padding);
-			margin-right: var(--page-edge-padding);
-		}
-
-		hr {
-			width: calc(100% - (32px + var(--page-edge-padding)) * 2);
-			margin-left: auto;
-			margin-right: auto;
-		}
-	}
-
-	// 1600px is var(--max-width)
-	@media screen and (max-width: 1600px) {
-		.carousel.torn {
-			display: none;
-		}
-	}
-}
-
-#demo-video {
-	max-width: 1000px;
+#graphite-tomorrow > img {
+	margin: 16px 0;
 }
 
 #disciplines {
+	align-items: center;
+
 	.informational-group {
 		margin-top: 0;
 
@@ -245,7 +106,145 @@
 	}
 }
 
+// #node-graph {
+// 	#node-graph-intro {
+// 		.section {
+// 			align-items: center;
+// 		}
+
+// 		~ section {
+// 			margin-top: calc(80 * var(--variable-px));
+// 		}
+// 	}
+// }
+
+#vector-art {
+	.section {
+		align-items: center;
+
+		.background-video {
+			position: relative;
+			font-size: 0;
+			
+			video {
+				max-width: Min(100%, 1280px);
+			}
+
+			// Uses a white border over the video to cover up the edges of the video which, due to a Chrome rendering bug, displays black edges sometimes when scrolling
+			&::after {
+				content: "";
+				position: absolute;
+				inset: 0;
+				border: 2px solid white;
+				pointer-events: none;
+			}
+		}
+		
+		.download-artwork {
+			display: flex;
+			align-items: center;
+
+			img {
+				width: 128px;
+				height: 128px;
+				border: 12px solid var(--color-walnut);
+				vertical-align: top;
+			}
+
+			span {
+				margin-left: 40px;
+			}
+		}
+	}
+}
+
+#imaginate {
+	#imaginate-intro {
+		.alternating-text {
+			position: relative;
+
+			span {
+				// Move left by half (since it's centered) the average (half the 74px difference) of the variance in word lengths
+				margin-left: calc(-1.54em / 2 / 2);
+				opacity: 0;
+				$alternate-duration: 15s;
+				$alternate-words: 5;
+				animation: $alternate-duration infinite linear 0s fade-word;
+
+				// The 1st child is the widest
+				&:not(:nth-child(1)) {
+					position: absolute;
+					right: 0;
+				}
+
+				@for $i from 1 through $alternate-words {
+					&:nth-child(#{$i}) {
+						animation-delay: ($alternate-duration / $alternate-words * ($i - 1));
+					}
+				}
+
+				@keyframes fade-word {
+					// Fade in at the start (which begins staggered on each item by `animation-delay`)
+					#{0.0%} { opacity: 0; }
+					#{2.5%} { opacity: 1; }
+					// Remain visible for this item's slice of time, then fade out
+					#{0.0% + 100% / ($alternate-words + 1)} { opacity: 1; }
+					#{2.5% + 100% / ($alternate-words + 1)} { opacity: 0; }
+				}
+			}
+		}
+
+		.section {
+			align-items: center;
+		}
+
+		~ section {
+			margin-top: calc(80 * var(--variable-px));
+		}
+	}
+
+	.image-comparison {
+		aspect-ratio: 1;
+		max-width: Min(100%, 512px);
+	}
+
+	// #imaginate-creative-concepts-carousel {
+	// 	margin-top: 20px;
+
+	// 	.screenshot-details {
+	// 		justify-content: center;
+	// 	}
+
+	// 	+ blockquote {
+	// 		margin-top: 0;
+	// 	}
+	// }
+}
+
+.feature-explainer {
+	margin-top: 40px;
+
+	.diptych {
+		width: 100%;
+
+		.section {
+			justify-content: center;
+			align-items: center;
+
+			h2 {
+				text-align: center;
+			}
+		}
+	}
+
+	.section {
+		flex: 1 1 calc(50% - (80 * var(--variable-px)) / 2);
+	}
+}
+
 #community {
+	background-color: var(--color-lime);
+
 	#newsletter {
 		#newsletter-success {
 			background: var(--color-crimson);
@@ -276,6 +275,10 @@
 				gap: 20px;
 				flex: 100000 1 0;
 
+				div {
+					min-height: auto;
+				}
+
 				@media screen and (max-width: 1200px) {
 					flex-direction: column;
 					flex: 1 1 100%;
@@ -291,6 +294,7 @@
 				display: flex;
 				flex-direction: column;
 				justify-content: flex-end;
+				--input-focus-color: var(--color-ale);
 
 				&.name {
 					flex: 1 0 0;
@@ -314,7 +318,7 @@
 				}
 
 				&.submit {
-					flex: 1 0 0;
+					flex: 1 0 auto;
 				}
 
 				label,
@@ -344,7 +348,7 @@
 					box-sizing: border-box;
 
 					&:focus {
-						border-color: var(--color-mustard);
+						border-color: var(--input-focus-color);
 					}
 				}
 
@@ -354,8 +358,8 @@
 					cursor: pointer;
 
 					&:focus {
-						border-color: var(--color-mustard);
-						color: var(--color-mustard);
+						border-color: var(--input-focus-color);
+						color: var(--input-focus-color);
 					}
 				}
 			}
@@ -384,6 +388,7 @@
 
 				span {
 					line-height: 48px;
+					margin: 0;
 					margin-left: 20px;
 				}
 			}
@@ -391,40 +396,20 @@
 	}
 }
 
-#upcoming-tech {
-	background-color: var(--color-navy);
-	color: var(--color-fog);
+#demo-video {
+	max-width: 1000px;
+}
 
-	a {
-		color: var(--color-mustard);
+#fundraising {
+	background-color: var(--color-seaside);
+	color: rgba(0, 0, 0, 0.9);
+
+	.graphic {
+		max-width: 400px;
 	}
 }
 
-
-#recent-news {
-	background-color: var(--color-mustard);
-	color: var(--color-navy);
-
-	article {
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-
-		.headline a {
-			text-decoration: none;
-			color: var(--color-navy);
-		}
-
-		.publication {
-			font-weight: 800;
-		}
-
-		.summary {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			display: -webkit-box;
-			-webkit-box-orient: vertical;
-			-webkit-line-clamp: 8;
-		}
-	}
+#get-involved-box {
+	background-color: var(--color-lemon);
+	background-blend-mode: color-burn;
 }

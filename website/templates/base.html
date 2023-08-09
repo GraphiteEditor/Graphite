@@ -1,17 +1,32 @@
 <!DOCTYPE html>
 <html lang="en-US">
 <head>
+	{% set this = section | default(value = page | default(value = false)) %}
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">
-	<title>Graphite | {% block title %}{% endblock title %}.</title>
+	<title>Graphite | {% block title %}{% endblock title %}</title>
 	{% block rss %}
-	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path='blog/rss.xml', trailing_slash=false) }}">
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path = 'blog/rss.xml', trailing_slash = false) }}">
 	{% endblock %}
-	{% block head %}{% endblock head %}
-	<link rel="stylesheet" href="/base.css">
 	<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@400;700">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=EB+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="/base.css">
+	<link rel="stylesheet" href="/syntax-highlighting.css">
+	{% if this and this.extra.css %}
+	{% for css in this.extra.css %}
+	<link rel="stylesheet" href="{{ css | safe }}">
+	{% endfor %}
+	{% endif %}
+	{% block head %}{% endblock head %}
+	{% if this and this.extra.js %}
+	{% for js in this.extra.js %}
+	<script src="/js/{{ js | safe }}"></script>
+	{% endfor %}
+	{% endif %}
 	<script src="/js/navbar.js"></script>
+	<script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.outbound-links.file-downloads.js"></script>
 	<style>
 	.balance-text {
 		visibility: hidden;
@@ -19,24 +34,19 @@
 
 	@media (scripting: none) {
 		.balance-text {
-			visibility: visible;
+			visibility: visible !important;
 		}
 	}
 
 	@supports (text-wrap: balance) {
-		.balance-text {
+		.balance-text,
+		.balanced-text {
+			text-align: left;
 			text-wrap: balance;
 			visibility: visible;
 		}
 	}
 	</style>
-	<noscript>
-		<style>
-		.balance-text {
-			visibility: visible !important;
-		}
-		</style>
-	</noscript>
 </head>
 <body>
 	<div class="page">
@@ -49,9 +59,12 @@
 						</a>
 					</div>
 					<div class="right">
-						<a href="/blog">Blog</a>
+						<!-- <a href="/learn">Learn</a> -->
 						<a href="/features">Features</a>
-						<a href="/contribute">Contribute</a>
+						<a href="/about">About</a>
+						<a href="/blog">Blog</a>
+						<a href="/volunteer">Volunteer</a>
+						<a href="/donate">Donate</a>
 						<a href="https://editor.graphite.rs" class="button arrow">Launch</a>
 					</div>
 				</div>
@@ -63,20 +76,19 @@
 		</header>
 		<main>
 			<div class="content">
-				{% block content %} {% endblock %}
+				{% block content %}{% endblock %}
 			</div>
 		</main>
 		<footer>
 			<hr />
 			<nav>
-				<a href="https://github.com/GraphiteEditor/Graphite/tree/master/docs" class="link not-uppercase">Documentation</a>
 				<a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="link not-uppercase">Credits</a>
 				<a href="/license" class="link not-uppercase">License</a>
 				<a href="/logo" class="link not-uppercase">Logo</a>
 				<a href="/press" class="link not-uppercase">Press</a>
 				<a href="/contact" class="link not-uppercase">Contact</a>
 			</nav>
-			<span>Copyright &copy; {{ now() | date(format="%Y") }} Graphite contributors.</span>
+			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite contributors</span>
 		</footer>
 	</div>
 	<script src="https://static.graphite.rs/text-balancer/text-balancer.js"></script>

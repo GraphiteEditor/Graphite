@@ -1,12 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ section.title }}{% endblock title %}
 
-{% block head %}
-{% if section.extra.css %}
-<link rel="stylesheet" href="{{ section.extra.css | safe }}">
-{% endif %}
-{% endblock head %}
+{% block title %}{{ page.title }}{% endblock title %}
 
 {% block content %}
-{{ section.content | safe }}
+{{ page.content | safe }}
 {% endblock content %}
