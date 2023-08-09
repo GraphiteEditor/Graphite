@@ -101,7 +101,7 @@ pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(mut d
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct FlipNode<FlipX, FlipY, Translation, Rotation, Scale, Shear, Pivot> {
+pub struct FlipNode<FlipX, FlipY, Pivot> {
 	pub(crate) flip_x: FlipX,
 	pub(crate) flip_y: FlipY,
 	pub(crate) pivot: Pivot,
@@ -110,10 +110,10 @@ pub struct FlipNode<FlipX, FlipY, Translation, Rotation, Scale, Shear, Pivot> {
 #[node_macro::node_fn(FlipNode)]
 pub(crate) fn flip_vector_data<Data: TransformMut>(mut data: Data, flip_x: bool, flip_y: bool, pivot: DVec2) -> Data {
 	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
-	let bool_to_scale = |b| if b { -1. } else { 1. }
+	let bool_to_scale = |b| if b { -1. } else { 1. };
 	let new_scale = DVec2::new(bool_to_scale(flip_x), bool_to_scale(flip_y));
 
-	let modification = pivot * DAffine2::from_scale(new_scalee)  * pivot.inverse();
+	let modification = pivot * DAffine2::from_scale(new_scale) * pivot.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 
