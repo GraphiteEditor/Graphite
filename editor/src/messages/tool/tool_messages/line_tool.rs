@@ -163,6 +163,8 @@ enum LineToolFsmState {
 struct LineToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
+	drag_start_viewport: ViewportPosition,
+	drag_current_viewport: ViewportPosition,
 	angle: f64,
 	weight: f64,
 	path: Option<Vec<LayerId>>,
@@ -194,15 +196,23 @@ impl Fsm for LineToolFsmState {
 		if let ToolMessage::Line(event) = event {
 			match (self, event) {
 				(_, CanvasTransformed) => {
-					warn!("line canvas transformed");
+					warn!("canvas transform");
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+
+					// tool_data.drag_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					// tool_data.drag_start = document.document_legacy.root.transform.transform_point2(tool_data.drag_start);
+
+					// tool_data.drag_current_viewport = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					// tool_data.drag_current = document.document_legacy.root.transform.transform_point2(input.mouse.position);
+
 					tool_data.canvas_has_transformed = true;
 					self
 				}
 				(Ready, DragStart) => {
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-					tool_data.drag_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					tool_data.drag_start_viewport = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					tool_data.drag_start = document.document_legacy.root.transform.transform_point2(input.mouse.position);
 
 					let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
 
@@ -220,17 +230,19 @@ impl Fsm for LineToolFsmState {
 					Drawing
 				}
 				(Drawing, Redraw { center, snap_angle, lock_angle }) => {
-					// shift to snap position if no transformation has occured
-					if !tool_data.canvas_has_transformed {
-						tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-						let keyboard = &input.keyboard;
+					warn!("redraw");
 
-						responses.add(generate_transform(tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
-					} else {
-						warn!("transformed");
-						// revert bool state for further redraws
-						tool_data.canvas_has_transformed = false;
-					}
+					// if tool_data.canvas_has_transformed {
+					// 	let keyboard = &input.keyboard;
+					// 	responses.add(generate_transform(document, tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+					// 	return Drawing;
+					// }
+
+					tool_data.drag_current_viewport = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					tool_data.drag_current = document.document_legacy.root.transform.transform_point2(input.mouse.position);
+
+					let keyboard = &input.keyboard;
+					responses.add(generate_transform(document, tool_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
 
 					Drawing
 				}
@@ -239,12 +251,16 @@ impl Fsm for LineToolFsmState {
 					input.mouse.finish_transaction(tool_data.drag_start, responses);
 					tool_data.path = None;
 
+					tool_data.canvas_has_transformed = false;
+					warn!("drag stop");
 					Ready
 				}
 				(Drawing, Abort) => {
 					tool_data.snap_manager.cleanup(responses);
 					responses.add(DocumentMessage::AbortTransaction);
 					tool_data.path = None;
+					tool_data.canvas_has_transformed = false;
+					warn!("abort");
 					Ready
 				}
 				(_, WorkingColorChanged) => {
@@ -284,9 +300,9 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(tool_data: &mut LineToolData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
+fn generate_transform(document: &mut &DocumentMessageHandler, tool_data: &mut LineToolData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
 	let mut start = tool_data.drag_start;
-	let line_vector = tool_data.drag_current - start;
+	let mut line_vector = tool_data.drag_current - start;
 
 	let mut angle = -line_vector.angle_between(DVec2::X);
 
@@ -316,7 +332,7 @@ fn generate_transform(tool_data: &mut LineToolData, lock_angle: bool, snap_angle
 	GraphOperationMessage::TransformSet {
 		layer: tool_data.path.clone().unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
-		transform_in: TransformIn::Viewport,
+		transform_in: TransformIn::Local,
 		skip_rerender: false,
 	}
 	.into()
