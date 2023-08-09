@@ -627,7 +627,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
 		vec![
 			(
-				NodeIdentifier::new(stringify!(graphene_core::transform::TransformNode<_,_,_,_,_,_>)),
+				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
@@ -649,7 +649,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 			),
 			(
-				NodeIdentifier::new(stringify!(graphene_core::transform::TransformNode<_,_,_,_,_,_>)),
+				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
@@ -678,7 +678,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 			),
 			(
-				NodeIdentifier::new(stringify!(graphene_core::transform::TransformNode<_,_,_,_,_,_>)),
+				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
@@ -716,6 +716,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::RepeatNode<_, _>, input: VectorData, params: [DVec2, u32]),
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
+		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [VectorData]),
 		register_node!(graphene_core::vector::ResamplePoints<_>, input: VectorData, params: [f64]),
 		register_node!(graphene_core::vector::SplineFromPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),

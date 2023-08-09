@@ -543,6 +543,14 @@ impl NodeNetwork {
 		}
 		true
 	}
+
+	pub fn output_as_input(&self, arg: usize) -> NodeInput {
+		NodeInput::Node {
+			node_id: self.outputs[arg].node_id,
+			output_index: self.outputs[arg].node_output_index,
+			lambda: false,
+		}
+	}
 }
 
 struct FlowIter<'a> {

@@ -2067,6 +2067,17 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Cull",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("ShortCircut", TaggedValue::None, false),
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Text",
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _, _>"),
@@ -2082,54 +2093,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		DocumentNodeType {
 			name: "Transform",
-			category: "Gpu",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0],
-				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: [
-					DocumentNode {
-						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::application_io::IntoNode<_, &WgpuExecutor>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Upload Texture".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::node(0, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::UploadTextureNode<_>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType {
-					name: "In",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(WasmEditorApi)),
-				},
-				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
-				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
-			],
-			outputs: vec![DocumentOutputType {
-				name: "Texture",
-				data_type: FrontendGraphDataType::General,
-			}],
-			..Default::default()
-		},
-		DocumentNodeType {
-			name: "Transform",
 			category: "Transform",
 			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 			inputs: vec![
+				DocumentInputType::value(
+					"Footprint",
+					TaggedValue::Footprint(graphene_core::transform::Footprint(DAffine2::from_scale((1920., 1080.).into()))),
+					true,
+				),
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
@@ -2528,6 +2499,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 
 pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
 	let path_generator = resolve_document_node_type("Shape").expect("Shape node does not exist");
+	let cull_node = resolve_document_node_type("Cull").expect("Cull node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
@@ -2539,10 +2511,12 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),
 		false,
 	);
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()), true);
+	network.push_node(cull_node.to_document_node_default_inputs([None], Default::default()), false);
+	network.push_node(transform.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
 	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
+	log::debug!("new vector network: {:#?}", network);
 	network
 }
 

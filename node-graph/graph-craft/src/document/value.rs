@@ -65,6 +65,7 @@ pub enum TaggedValue {
 	Curve(graphene_core::raster::curve::Curve),
 	IVec2(glam::IVec2),
 	SurfaceFrame(graphene_core::SurfaceFrame),
+	Footprint(graphene_core::transform::Footprint),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -134,6 +135,7 @@ impl Hash for TaggedValue {
 			Self::Curve(curve) => curve.hash(state),
 			Self::IVec2(v) => v.hash(state),
 			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
+			Self::Footprint(footprint) => footprint.hash(state),
 		}
 	}
 }
@@ -190,6 +192,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Curve(x) => Box::new(x),
 			TaggedValue::IVec2(x) => Box::new(x),
 			TaggedValue::SurfaceFrame(x) => Box::new(x),
+			TaggedValue::Footprint(x) => Box::new(x),
 		}
 	}
 
@@ -259,6 +262,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Curve(_) => concrete!(graphene_core::raster::curve::Curve),
 			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
+			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
 		}
 	}
 
@@ -318,6 +322,7 @@ impl<'a> TaggedValue {
 				let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
 			}
+			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}

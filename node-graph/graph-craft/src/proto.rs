@@ -576,7 +576,10 @@ impl TypingContext {
 				input.output.clone()
 			}
 		};
-		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
+		let impls = self
+			.lookup
+			.get(&node.identifier)
+			.ok_or(format!("No implementations found for {:?}. Other implementations found {:?}", node.identifier, self.lookup))?;
 
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", &input, node.identifier));

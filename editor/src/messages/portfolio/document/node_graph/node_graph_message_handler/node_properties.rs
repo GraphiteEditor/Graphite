@@ -1174,7 +1174,7 @@ pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, 
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
-		let pivot_index = 5;
+		let pivot_index = 6;
 		if let NodeInput::Value {
 			tagged_value: TaggedValue::DVec2(pivot),
 			exposed: false,
@@ -1190,10 +1190,10 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			add_blank_assist(widgets);
 		}
 	};
-	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", translation_assist);
+	let translation = vec2_widget(document_node, node_id, 2, "Translation", "X", "Y", " px", translation_assist);
 
 	let rotation = {
-		let index = 2;
+		let index = 3;
 
 		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
 
@@ -1221,8 +1221,11 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets }
 	};
 
-	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
-	vec![translation, rotation, scale]
+	let scale = vec2_widget(document_node, node_id, 4, "Scale", "W", "H", "x", add_blank_assist);
+
+	let vector_data = start_widgets(document_node, node_id, 1, "Data", FrontendGraphDataType::Vector, false);
+	let vector_data = LayoutGroup::Row { widgets: vector_data };
+	vec![vector_data, translation, rotation, scale]
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

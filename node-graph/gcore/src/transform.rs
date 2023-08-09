@@ -127,8 +127,26 @@ pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, P
 	pub(crate) shear: Shear,
 	pub(crate) pivot: Pivot,
 }
-#[derive(Debug, Clone, Copy, dyn_any::DynAny)]
-pub struct Footprint(DAffine2);
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Footprint(pub DAffine2);
+
+#[derive(Debug, Clone, Copy)]
+pub struct CullNode<VectorData> {
+	pub(crate) vector_data: VectorData,
+}
+
+#[node_macro::node_fn(CullNode)]
+fn cull_vector_data(footprint: Footprint, vector_data: VectorData) -> VectorData {
+	// TODO: Implement culling
+	vector_data
+}
+
+impl core::hash::Hash for Footprint {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
+	}
+}
 
 impl Transform for Footprint {
 	fn transform(&self) -> DAffine2 {
