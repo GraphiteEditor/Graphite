@@ -24,7 +24,8 @@ impl Resize {
 		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
 	}
 
-	pub fn recalculate_snaps(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
+	/// Recalculates snap targets without snapping the starting position.
+	pub fn recalculate_snaps(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
 		self.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 	}

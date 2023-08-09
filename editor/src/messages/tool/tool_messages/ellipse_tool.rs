@@ -213,7 +213,7 @@ impl Fsm for EllipseToolFsmState {
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
 				(Drawing, CanvasTransformed) => {
-					tool_data.data.recalculate_snaps(responses, document, input, render_data);
+					tool_data.data.recalculate_snaps(document, input, render_data);
 					self
 				}
 				(Ready, DragStart) => {

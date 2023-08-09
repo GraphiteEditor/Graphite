@@ -253,7 +253,7 @@ impl Fsm for PolygonToolFsmState {
 		if let ToolMessage::Polygon(event) = event {
 			match (self, event) {
 				(Drawing, CanvasTransformed) => {
-					tool_data.data.recalculate_snaps(responses, document, input, render_data);
+					tool_data.data.recalculate_snaps(document, input, render_data);
 					self
 				}
 				(Ready, DragStart) => {
