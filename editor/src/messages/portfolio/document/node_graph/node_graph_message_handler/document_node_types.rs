@@ -1759,6 +1759,90 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Floor",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::FloorNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Ceil",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::CeilNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Round",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::RoundNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Absolute Value",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::AbsoluteNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Logarithm",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::LogParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Base", TaggedValue::F32(0.), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::log_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Natural Logarithm",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::NaturalLogNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Sine",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::SineNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Cosine",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::CosineNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Tangent",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::TangentNode"),
+			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Max",
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::MaxParameterNode<_>"),

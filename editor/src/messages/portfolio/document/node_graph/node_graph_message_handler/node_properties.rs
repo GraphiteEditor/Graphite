@@ -1055,6 +1055,15 @@ pub fn exponent_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![operand("Power", 1)]
 }
 
+pub fn log_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Base", 1)]
+}
+
 pub fn max_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
 		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
