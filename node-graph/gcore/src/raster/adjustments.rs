@@ -301,6 +301,7 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f32, yellows: f32, gree
 	let red_part = color.r() - gray_base;
 	let green_part = color.g() - gray_base;
 	let blue_part = color.b() - gray_base;
+	let alpha_part = color.a();
 
 	let additional = if red_part == 0. {
 		let cyan_part = green_part.min(blue_part);
@@ -317,6 +318,8 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f32, yellows: f32, gree
 
 	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
 	let color = tint.with_luminance(luminance);
+
+	let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
 
 	color.to_linear_srgb()
 }
