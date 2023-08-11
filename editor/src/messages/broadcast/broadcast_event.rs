@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, BroadcastMessage, TriggerEvent)]
 pub enum BroadcastEvent {
 	DocumentIsDirty,
+	CanvasTransformed,
 	ToolAbort,
 	SelectionChanged,
 	WorkingColorChanged,
