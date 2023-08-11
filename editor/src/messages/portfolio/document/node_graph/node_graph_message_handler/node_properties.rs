@@ -1030,6 +1030,33 @@ pub fn exponent_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![operand("Power", 1)]
 }
 
+pub fn max_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Maximum", 1)]
+}
+
+pub fn min_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Minimum", 1)]
+}
+
+pub fn eq_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Equality", 1)]
+}
+
 pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
 		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);

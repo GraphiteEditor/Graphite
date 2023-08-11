@@ -13,6 +13,7 @@ feed_filename = "rss.xml"
 # Theme can be customized by setting the `highlight_theme` variable to a theme supported by Zola
 highlight_code = true
 highlight_theme = "css"
+highlight_themes_css = [{ theme = "kronuz", filename = "syntax-highlighting.css" }]
 
 [extra]
 # Put all your custom variables here

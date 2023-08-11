@@ -413,7 +413,8 @@
 					requestAnimationFrame(refresh);
 				};
 				refresh();
-				const DRAG_SMOOTHING_TIME = 0.1;
+				// const DRAG_SMOOTHING_TIME = 0.1;
+				const DRAG_SMOOTHING_TIME = 0; // TODO: Reenable this after fixing the bugs with the wires, see the CSS `transition` attribute todo for other info
 				setTimeout(() => {
 					stop = true;
 				}, DRAG_SMOOTHING_TIME * 1000 + 10);
@@ -914,7 +915,8 @@
 					display: flex;
 					left: calc(var(--offset-left) * 24px);
 					top: calc(var(--offset-top) * 24px);
-					transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
+					// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
+					// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
 					// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
 					// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
 					// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox

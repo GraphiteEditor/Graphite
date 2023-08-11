@@ -45,6 +45,8 @@ impl Default for SplineOptions {
 pub enum SplineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	WorkingColorChanged,
@@ -179,6 +181,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 impl ToolTransition for SplineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -220,6 +223,10 @@ impl Fsm for SplineToolFsmState {
 
 		if let ToolMessage::Spline(event) = event {
 			match (self, event) {
+				(_, CanvasTransformed) => {
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+					self
+				}
 				(Ready, DragStart) => {
 					responses.add(DocumentMessage::StartTransaction);
 					responses.add(DocumentMessage::DeselectAllLayers);
