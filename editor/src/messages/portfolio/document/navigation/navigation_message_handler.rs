@@ -211,6 +211,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			TransformCanvasEnd => {
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
+				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
@@ -225,6 +226,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
+				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}

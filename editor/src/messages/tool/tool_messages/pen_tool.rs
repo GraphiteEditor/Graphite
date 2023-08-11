@@ -52,6 +52,8 @@ impl Default for PenOptions {
 pub enum PenToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	DocumentIsDirty,
 	#[remain::unsorted]
 	Abort,
@@ -193,6 +195,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 impl ToolTransition for PenTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(PenToolMessage::CanvasTransformed.into()),
 			document_dirty: Some(PenToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
@@ -589,6 +592,10 @@ impl Fsm for PenToolFsmState {
 
 		if let ToolMessage::Pen(event) = event {
 			match (self, event) {
+				(_, PenToolMessage::CanvasTransformed) => {
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+					self
+				}
 				(_, PenToolMessage::DocumentIsDirty) => {
 					// When the document has moved / needs to be redraw, re-render the overlays
 					// TODO the overlay system should probably receive this message instead of the tool

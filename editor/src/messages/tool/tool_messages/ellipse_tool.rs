@@ -54,6 +54,8 @@ pub enum EllipseOptionsUpdate {
 pub enum EllipseToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	WorkingColorChanged,
@@ -165,6 +167,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 impl ToolTransition for EllipseTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(EllipseToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(EllipseToolMessage::Abort.into()),
 			working_color_changed: Some(EllipseToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -209,6 +212,10 @@ impl Fsm for EllipseToolFsmState {
 
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
+				(Drawing, CanvasTransformed) => {
+					tool_data.data.recalculate_snaps(document, input, render_data);
+					self
+				}
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
 					responses.add(DocumentMessage::StartTransaction);
