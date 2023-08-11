@@ -9,6 +9,7 @@ extern crate log;
 
 pub mod consts;
 pub mod generic;
+pub mod logic;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]

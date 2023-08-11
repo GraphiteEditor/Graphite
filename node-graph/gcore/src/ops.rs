@@ -83,6 +83,42 @@ where
 	first.pow(second)
 }
 
+// Minimum
+pub struct MinParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MinParameterNode)]
+fn min<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
+	match first < second {
+		true => first,
+		false => second,
+	}
+}
+
+// Maximum
+pub struct MaxParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MaxParameterNode)]
+fn max<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
+	match first > second {
+		true => first,
+		false => second,
+	}
+}
+
+// Equality
+pub struct EqParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(EqParameterNode)]
+fn eq<T: core::cmp::PartialEq>(first: T, second: T) -> bool {
+	first == second
+}
+
 // Modulo
 pub struct ModuloParameterNode<Second> {
 	second: Second,
