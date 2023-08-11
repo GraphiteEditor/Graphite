@@ -1746,6 +1746,42 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Max",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::MaxParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("First", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::max_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Min",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::MinParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("First", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::min_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Equality",
+			category: "Math",
+			identifier: NodeImplementation::proto("graphene_core::ops::EqParameterNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("First", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::eq_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Modulo",
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::ModuloParameterNode<_>"),
@@ -1755,6 +1791,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::modulo_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Log to Console",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogToConsoleNode"),
+			inputs: vec![DocumentInputType::value("First", TaggedValue::String("Not Connected to a value yet".into()), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
+			properties: node_properties::no_properties,
 			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),
