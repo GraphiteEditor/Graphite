@@ -42,12 +42,15 @@ impl WasmApplicationIo {
 	pub async fn new() -> Self {
 		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
-			let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).unwrap();
-			let function = js_sys::Function::try_from(&request_adapter).unwrap();
-			let result = function.call0(&gpu);
+			let request_adapter = || {
+				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
+				let function = js_sys::Function::try_from(&request_adapter)?;
+				Some(function.call0(&gpu).ok())
+			};
+			let result = request_adapter();
 			match result {
-				Err(_) => None,
-				Ok(_) => WgpuExecutor::new().await,
+				None => None,
+				Some(_) => WgpuExecutor::new().await,
 			}
 		} else {
 			None
