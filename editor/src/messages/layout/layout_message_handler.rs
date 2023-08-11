@@ -183,7 +183,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 								panic!("Invalid string found when updating `NumberInput`")
 							}
 						},
-						_ => panic!("Invalid type found when updating `NumberInput`"),
+						_ => {} // If it's some other type we could just ignore it and leave the value as is
 					},
 					Widget::OptionalInput(optional_input) => {
 						let update_value = value.as_bool().expect("OptionalInput update was not of type: bool");

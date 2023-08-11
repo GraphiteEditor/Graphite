@@ -122,6 +122,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.label("Size")
 		.int()
 		.min(1.)
+		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
 		.widget_holder();
 	vec![

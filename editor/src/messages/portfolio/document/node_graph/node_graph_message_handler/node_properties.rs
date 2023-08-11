@@ -144,12 +144,16 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			NumberInput::new(Some(vec2.x))
 				.label(x)
 				.unit(unit)
+				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(vec2.y))
 				.label(y)
 				.unit(unit)
+				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
 				.widget_holder(),
 		]);
@@ -166,6 +170,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.int()
 				.label(x)
 				.unit(unit)
+				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
@@ -173,6 +179,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.int()
 				.label(y)
 				.unit(unit)
+				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
 				.widget_holder(),
 		]);
@@ -1756,7 +1764,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let name = text_widget(document_node, node_id, 1, "Name", true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
 	let visible = bool_widget(document_node, node_id, 4, "Visible", true);
 	let locked = bool_widget(document_node, node_id, 5, "Locked", true);
 	let collapsed = bool_widget(document_node, node_id, 6, "Collapsed", true);
