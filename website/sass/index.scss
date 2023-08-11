@@ -151,8 +151,12 @@
 				vertical-align: top;
 			}
 
-			span {
+			p {
+				display: flex;
+				flex-direction: column;
+				max-width: 300px;
 				margin-left: 40px;
+				text-align: left;
 			}
 		}
 	}
@@ -201,11 +205,6 @@
 		~ section {
 			margin-top: calc(80 * var(--variable-px));
 		}
-	}
-
-	.image-comparison {
-		aspect-ratio: 1;
-		max-width: Min(100%, 512px);
 	}
 
 	// #imaginate-creative-concepts-carousel {

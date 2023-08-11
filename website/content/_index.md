@@ -246,23 +246,25 @@ Make vector art out of shapes ranging from simple geometric primitives to comple
 Style your shapes with strokes, fills, and gradients. Mix your layers with blend modes. Then export as SVG.
 
 <div class="background-video">
-	<video loop muted disablepictureinpicture disableremoteplayback data-auto-play>
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
 		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
 	</video>
 </div>
 
-<p class="download-artwork">
+<div class="download-artwork">
 	<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.png" alt="Vector art of Just of Potted Cactus" />
-	<span>
-	<em>Just a Potted Cactus</em>
-	<br />
-	<br />
-	<a href="https://static.graphite.rs/graphite-files/just-a-potted-cactus.graphite">Download</a>
-	the artwork and
-	<br />
-	open it in the <a href="https://editor.graphite.rs">Graphite editor</a>
-	</span>
-</p>
+	<p>
+		<span class="balance-text">
+			<em>Just a Potted Cactus</em>
+		</span>
+		<br />
+		<span class="balance-text">
+			<a href="https://static.graphite.rs/graphite-files/just-a-potted-cactus.graphite">Download</a>
+			the artwork and open it in the
+			<a href="https://editor.graphite.rs">Graphite editor</a>
+		</span>
+	</p>
+</div>
 
 </div>
 </section>

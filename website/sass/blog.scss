@@ -81,6 +81,17 @@
 				display: -webkit-box;
 				-webkit-box-orient: vertical;
 				-webkit-line-clamp: 3;
+
+				// Safari workaround: https://stackoverflow.com/a/72170897/775283
+				// There is still an issue where the ellipsis is rendered inside the text but there doesn't appear to be a fix, or even a way to disable the ellipsis in Safari
+				p {
+					display: inline;
+
+					&::after {
+						content: "\A\A"; // Double new line
+						white-space: pre;
+					}
+				}
 			}
 		}
 

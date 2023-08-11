@@ -399,7 +399,8 @@ summary {
 .image-comparison {
 	position: relative;
 	touch-action: pan-y pinch-zoom;
-	
+	max-width: Min(100%, 512px);
+
 	.crop-container {
 		height: 100%;
 		
@@ -415,10 +416,16 @@ summary {
 			}
 		}
 
-		&.crop-container.crop-container img {
-			display: block;
-			width: auto;
-			height: 100%;
+		&.crop-container.crop-container {
+			img {
+				display: block;
+				width: auto;
+				height: 100%;
+			}
+
+			&:first-child img {
+				width: 100%;
+			}
 		}
 	}
 
@@ -898,7 +905,6 @@ hr,
 			padding: 16px;
 			gap: 16px;
 			background: rgba(0, 0, 0, 0.0625);
-			// TODO: Look into maybe switching this approach to https://developer.mozilla.org/en-US/docs/Web/CSS/column-count
 			// Half width, minus own padding on both sides, minus half a gap
 			flex: 1 0 calc(50% - (16px * 2) - (16px / 2));
 
