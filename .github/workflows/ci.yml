@@ -9,6 +9,7 @@ on:
     - master
 env:
   CARGO_TERM_COLOR: always
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.outbound-links.file-downloads.js"></script>
 
 jobs:
   build:
@@ -44,6 +45,12 @@ jobs:
         rustup update stable
         rustc --version
 
+    - name: Replace template in <head> of index.html
+      run: |
+        # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
+        git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_REPLACEMENT=""
+        sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+
     - name: 🌐 Build Graphite web code
       env:
         NODE_ENV: production
@@ -58,8 +65,8 @@ jobs:
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        projectName: graphite-dev # e.g. 'my-project'
-        directory: frontend/dist # e.g. 'dist'
+        projectName: graphite-dev
+        directory: frontend/dist
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
     - name: 👕 Lint Graphite web formatting
