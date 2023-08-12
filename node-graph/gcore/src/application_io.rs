@@ -1,6 +1,6 @@
 use crate::raster::ImageFrame;
 use crate::text::FontCache;
-use crate::transform::{Transform, TransformMut};
+use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, Node};
 
 use dyn_any::{StaticType, StaticTypeSized};
@@ -136,12 +136,30 @@ pub trait GetImaginatePreferences {
 	fn get_host_name(&self) -> &str;
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExportFormat {
+	#[default]
+	Svg,
+	Png {
+		transparent: bool,
+	},
+	Jpeg,
+	Canvas,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct RenderConfig {
+	viewport: Footprint,
+	export_format: ExportFormat,
+}
+
 pub struct EditorApi<'a, Io> {
 	pub image_frame: Option<ImageFrame<Color>>,
 	pub font_cache: &'a FontCache,
 	pub application_io: &'a Io,
 	pub node_graph_message_sender: &'a dyn NodeGraphUpdateSender,
 	pub imaginate_preferences: &'a dyn GetImaginatePreferences,
+	pub render_config: RenderConfig,
 }
 
 impl<'a, Io> Clone for EditorApi<'a, Io> {
@@ -152,6 +170,7 @@ impl<'a, Io> Clone for EditorApi<'a, Io> {
 			application_io: self.application_io,
 			node_graph_message_sender: self.node_graph_message_sender,
 			imaginate_preferences: self.imaginate_preferences,
+			render_config: self.render_config,
 		}
 	}
 }

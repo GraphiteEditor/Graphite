@@ -129,7 +129,19 @@ pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, P
 }
 #[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Footprint(pub DAffine2);
+pub struct Footprint {
+	pub transform: DAffine2,
+	pub resolution: glam::UVec2,
+}
+
+impl Default for Footprint {
+	fn default() -> Self {
+		Self {
+			transform: DAffine2::IDENTITY,
+			resolution: glam::UVec2::new(1920, 1080),
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct CullNode<VectorData> {
@@ -144,18 +156,19 @@ fn cull_vector_data(footprint: Footprint, vector_data: VectorData) -> VectorData
 
 impl core::hash::Hash for Footprint {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.0.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
+		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
+		self.resolution.hash(state)
 	}
 }
 
 impl Transform for Footprint {
 	fn transform(&self) -> DAffine2 {
-		self.0
+		self.transform
 	}
 }
 impl TransformMut for Footprint {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.0
+		&mut self.transform
 	}
 }
 

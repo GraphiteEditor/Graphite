@@ -14,7 +14,7 @@ use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, N
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type, TypeDescriptor};
-use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
+use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{ClickTarget, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
@@ -179,6 +179,7 @@ impl NodeRuntime {
 			application_io: self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			imaginate_preferences: &self.imaginate_preferences,
+			render_config: RenderConfig::default(),
 		};
 
 		// We assume only one output
