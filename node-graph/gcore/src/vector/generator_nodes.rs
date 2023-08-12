@@ -3,6 +3,7 @@ use crate::vector::VectorData;
 use crate::Node;
 
 use bezier_rs::Subpath;
+
 use glam::DVec2;
 
 pub struct UnitCircleGenerator;

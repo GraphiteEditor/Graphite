@@ -1,16 +1,12 @@
-#![allow(clippy::too_many_arguments)]
-use super::{
-	curve::{Curve, CurveManipulatorGroup, ValueMapperNode},
-	Channel, Color,
-};
-use crate::Node;
+use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
+use super::{Channel, Color, Node};
+
 use bezier_rs::{Bezier, TValue};
+use dyn_any::{DynAny, StaticType};
 
 use core::fmt::Debug;
-use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
@@ -209,7 +205,7 @@ pub struct ExtractAlphaNode;
 #[node_macro::node_fn(ExtractAlphaNode)]
 fn extract_alpha_node(color: Color) -> Color {
 	let alpha = color.a();
-	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
+	Color::from_rgbaf32(alpha, alpha, alpha, 1.).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -220,7 +216,7 @@ fn extract_opaque_node(color: Color) -> Color {
 	if color.a() == 0. {
 		return color.with_alpha(1.);
 	}
-	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.0).unwrap()
+	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -871,11 +867,11 @@ pub struct GenerateCurvesNode<OutputChannel, Curve> {
 
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
 fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
-	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2], curve.first_handle];
+	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
 	let mut lut = vec![_Channel::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
-		anchor: [1.0; 2],
-		handles: [curve.last_handle, [0.0; 2]],
+		anchor: [1.; 2],
+		handles: [curve.last_handle, [0.; 2]],
 	};
 	for sample in curve.manipulator_groups.iter().chain(core::iter::once(&end)) {
 		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.handles[0][0], sample.handles[0][1], sample.anchor[0], sample.anchor[1]].map(f64::from);

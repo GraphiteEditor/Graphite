@@ -537,7 +537,6 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
 
-
 	readonly blobUrl!: string;
 }
 

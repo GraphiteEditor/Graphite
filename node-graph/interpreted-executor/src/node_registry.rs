@@ -483,7 +483,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
 					Box::pin(async move {
-
 					let curve = ClonedNode::new(curve.eval(()).await);
 
 					let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
@@ -491,8 +490,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
 					let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 					any.into_type_erased()
-					}
-					)
+					})
 				},
 				NodeIOTypes::new(concrete!(ImageFrame<Luma>), concrete!(ImageFrame<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
 			),
@@ -503,7 +501,6 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
 					Box::pin(async move {
-
 					let curve = ClonedNode::new(curve.eval(()).await);
 
 					let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);

@@ -1,5 +1,6 @@
 use super::style::{PathStyle, Stroke};
-use crate::{uuid::ManipulatorGroupId, Color};
+use crate::uuid::ManipulatorGroupId;
+use crate::Color;
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};

@@ -1,10 +1,9 @@
-use core::ops::{Add, Mul, Sub};
+use super::{Channel, Linear, LuminanceMut};
+use crate::Node;
 
 use dyn_any::{DynAny, StaticType};
 
-use crate::Node;
-
-use super::{Channel, Linear, LuminanceMut};
+use core::ops::{Add, Mul, Sub};
 
 #[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

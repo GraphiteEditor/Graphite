@@ -3,11 +3,11 @@ use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 
 use bezier_rs::{Bezier, TValue};
+use document_legacy::document::Document;
 use document_legacy::LayerId;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType, VectorData};
 
-use document_legacy::document::Document;
 use glam::DVec2;
 
 #[derive(Clone, Debug, Default)]

@@ -18,14 +18,14 @@ pub mod curve;
 pub mod discrete_srgb;
 pub use adjustments::*;
 
-
 pub trait Linear {
 	fn from_f32(x: f32) -> Self;
 	fn to_f32(self) -> f32;
 	fn from_f64(x: f64) -> Self;
 	fn to_f64(self) -> f64;
 	fn lerp(self, other: Self, value: Self) -> Self
-		where Self: Sized + Copy,
+	where
+		Self: Sized + Copy,
 		Self: core::ops::Sub<Self, Output = Self>,
 		Self: core::ops::Mul<Self, Output = Self>,
 		Self: core::ops::Add<Self, Output = Self>,

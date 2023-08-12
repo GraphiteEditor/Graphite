@@ -1,7 +1,9 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
 use crate::{Color, Node};
+
 use bezier_rs::Subpath;
+
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
@@ -138,7 +140,7 @@ fn circular_repeat_vector_data(mut vector_data: VectorData, rotation_offset: f32
 pub struct BoundingBoxNode;
 
 #[node_macro::node_fn(BoundingBoxNode)]
-fn generate_bounding_box(mut vector_data: VectorData) -> VectorData {
+fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 	let bounding_box = vector_data.bounding_box().unwrap();
 	VectorData::from_subpaths(vec![Subpath::new_rect(
 		vector_data.transform.transform_point2(bounding_box[0]),

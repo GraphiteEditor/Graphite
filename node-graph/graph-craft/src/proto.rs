@@ -420,7 +420,7 @@ impl ProtoNetwork {
 		let mut visited = HashSet::new();
 
 		let inwards_edges = self.collect_inwards_edges();
-		for (id, node) in &self.nodes {
+		for (id, _node) in &self.nodes {
 			for &dependency in inwards_edges.get(id).unwrap_or(&Vec::new()) {
 				if !visited.contains(&dependency) {
 					dbg!(id, dependency);
