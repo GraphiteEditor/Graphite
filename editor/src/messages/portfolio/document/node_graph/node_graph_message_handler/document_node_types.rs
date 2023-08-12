@@ -2071,7 +2071,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("ShortCircut", TaggedValue::None, false),
+				DocumentInputType {
+					name: "ShortCircut",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::ShortCircut(concrete!(Footprint)),
+				},
+
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
@@ -2096,11 +2101,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Transform",
 			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 			inputs: vec![
-				DocumentInputType::value(
-					"Footprint",
-					TaggedValue::Footprint(graphene_core::transform::Footprint(DAffine2::from_scale((1920., 1080.).into()))),
-					true,
-				),
+				DocumentInputType {
+					name: "ShortCircut",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::ShortCircut(concrete!(Footprint)),
+				},
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),

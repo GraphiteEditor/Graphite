@@ -644,7 +644,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					})
 				},
 				{
-					let params = vec![fn_type!(Footprint, VectorData), fn_type!(DVec2), fn_type!(f64), fn_type!(DVec2), fn_type!(DVec2), fn_type!(DVec2)];
+					let params = vec![fn_type!(Footprint, VectorData), fn_type!(DVec2), fn_type!(f32), fn_type!(DVec2), fn_type!(DVec2), fn_type!(DVec2)];
 					NodeIOTypes::new(concrete!(Footprint), concrete!(VectorData), params)
 				},
 			),
@@ -669,7 +669,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let params = vec![
 						fn_type!(Footprint, WasmSurfaceHandleFrame),
 						fn_type!(DVec2),
-						fn_type!(f64),
+						fn_type!(f32),
 						fn_type!(DVec2),
 						fn_type!(DVec2),
 						fn_type!(DVec2),
@@ -698,7 +698,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let params = vec![
 						fn_type!(Footprint, ImageFrame<Color>),
 						fn_type!(DVec2),
-						fn_type!(f64),
+						fn_type!(f32),
 						fn_type!(DVec2),
 						fn_type!(DVec2),
 						fn_type!(DVec2),
