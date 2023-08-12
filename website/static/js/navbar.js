@@ -1,6 +1,6 @@
-const NAV_BUTTON_INITIAL_FONT_SIZE = 32;
+const NAV_BUTTON_INITIAL_FONT_SIZE = 28; // Keep up to date with `--nav-font-size` in base.scss
 const RIPPLE_ANIMATION_MILLISECONDS = 100;
-const RIPPLE_WIDTH = 120;
+const RIPPLE_WIDTH = 100;
 const HANDLE_STRETCH = 0.4;
 
 let ripplesInitialized;
@@ -84,10 +84,11 @@ function animate(forceRefresh) {
 }
 
 function setRipples() {
+	const rippleStrokeWidth = Number.parseInt(window.getComputedStyle(ripplePath).getPropertyValue("--border-thickness"), 10);
 	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize, 10) || NAV_BUTTON_INITIAL_FONT_SIZE;
 	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
 
-	const rippleHeight = fullRippleHeight * (mediaQueryScaleFactor * 0.5 + 0.5);
+	const rippleHeight = Math.round(fullRippleHeight * mediaQueryScaleFactor) + (rippleStrokeWidth === 2 ? 0 : 0.5);
 	const rippleSvgRect = rippleSvg.getBoundingClientRect();
 	const rippleSvgLeft = rippleSvgRect.left;
 	const rippleSvgWidth = rippleSvgRect.width;

@@ -17,3 +17,12 @@
 		background-color: var(--color-ale);
 	}
 }
+
+.creative-contributions,
+.code-contributions {
+	.button.button.button {
+		height: auto;
+		text-align: left;
+		white-space: normal;
+	}
+}

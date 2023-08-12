@@ -6,7 +6,7 @@ css = ["/donate.css"]
 js = ["/fundraising.js"]
 +++
 
-<section class="section-row">
+<section>
 <div class="section">
 
 # Donate
@@ -18,7 +18,7 @@ js = ["/fundraising.js"]
 
 <section id="fundraising" class="feature-box">
 <div class="box">
-<div class="section-row">
+<div>
 
 <div class="section">
 

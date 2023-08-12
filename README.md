@@ -24,7 +24,7 @@ Launch the latest alpha release of the [Graphite editor](https://editor.graphite
 
 ## Building/contributing
 
-We need Rust and web developers! See [instructions here](https://graphite.rs/contribute/) for setting up the project and getting started.
+We need Rust and web developers! See [instructions here](https://graphite.rs/volunteer/guide/) for setting up the project and getting started.
 
 We are also in search of artists to create beautiful sample work in Graphite and illustrations for the website and social media. Please [get in touch](https://graphite.rs/contact/) if you are able to help out.
 
@@ -36,4 +36,4 @@ By submitting code for inclusion in the project, you are agreeing to license you
 
 ## Support the project
 
-Please consider pledging a monthly donation using the "♥ Sponsor" button to the right part of this project repository page. Your contribution helps sustain this volunteer-run open source project and brings powerful, free creative tools to the masses.
+Please consider [pledging a monthly donation](https://graphite.rs/donate/). Your contribution helps sustain this volunteer-run open source project and brings powerful, free creative tools to the masses.

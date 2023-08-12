@@ -5,7 +5,7 @@ title = "Graphite features"
 css = ["/features.css"]
 +++
 
-<section class="section-row">
+<section>
 <div class="section">
 
 # Graphite features
@@ -15,7 +15,7 @@ The current version of Graphite provides tools for designing vector art and grap
 </div>
 </section>
 
-<section class="section-row">
+<section>
 
 <div class="diptych">
 
@@ -43,7 +43,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 
 </section>
 
-<section class="section-row">
+<section>
 
 <div class="diptych">
 
@@ -76,7 +76,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 
 </section>
 
-<section class="section-row">
+<section>
 <div class="section">
 
 ## Roadmap

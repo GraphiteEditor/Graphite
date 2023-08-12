@@ -5,7 +5,7 @@ title = "Volunteer"
 css = ["/volunteer.css"]
 +++
 
-<section class="section-row">
+<section>
 <div class="section">
 
 # Volunteer
@@ -15,7 +15,7 @@ Graphite is built by volunteers. Join the effort to bring great, free creative s
 </div>
 </section>
 
-<section class="section-row">
+<section>
 
 <div class="diptych">
 
@@ -36,8 +36,7 @@ Use your artistic talents to plan and produce ambitious open art projects publis
 
 ### PUBLICITY TEAM
 
-Become the author of feature announcements, [blog](/blog) posts, website content, the user manual, press releases, social media posts, and industry outreach.
-<!-- Become the author of feature announcements, [blog](/blog) posts, website content, the [user manual](/learn), press releases, social media posts, and industry outreach. -->
+Become the author of release notes, feature announcements, blog posts, website content, the user manual, press releases, social media posts, and industry outreach.
 
 </div>
 

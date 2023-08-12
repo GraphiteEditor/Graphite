@@ -5,7 +5,7 @@ title = "About Graphite"
 css = ["/about.css"]
 +++
 
-<section class="section-row">
+<section>
 <div class="section">
 
 # About Graphite
@@ -15,7 +15,7 @@ Graphite is a community-built, open source software project that is free to use 
 </div>
 </section>
 
-<section class="section-row">
+<section>
 <div class="section">
 
 ## Project
@@ -25,7 +25,7 @@ The idea for Graphite began with a desire to create artwork and edit photos usin
 </div>
 </section>
 
-<section class="section-row">
+<section>
 
 <div class="diptych">
 
@@ -90,7 +90,7 @@ As an independent community-driven software project, Graphite will always remain
 })();
 </script> -->
 
-<!-- <section id="opener-message" class="section-row">
+<!-- <section id="opener-message">
 <div class="section">
 
 ## A 2D creative tool made for everyone
@@ -168,7 +168,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 </section>
 
 
-<section class="section-row">
+<section>
 
 <div class="triptych">
 

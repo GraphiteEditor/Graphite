@@ -5,7 +5,7 @@ title = "Graphite logo"
 css = ["/logo.css"]
 +++
 
-<section class="section-row reading-material">
+<section class="reading-material">
 <div class="section">
 
 # Graphite logo
@@ -48,7 +48,7 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 			<a href="https://static.graphite.rs/logos/graphite-logotype-color-480x1874.png" download>Download (PNG 480x1874)</a>
 		</div>
 		<div>
-			<img src="https://static.graphite.rs/logos/graphite-logo-color.svg" height="160" />
+			<img src="https://static.graphite.rs/logos/graphite-logo-color.svg" width="160" height="160" />
 			<span>Graphite Icon (Color)</span>
 			<a href="https://static.graphite.rs/logos/graphite-logo-color.svg" download>Download (SVG)</a>
 			<a href="https://static.graphite.rs/logos/graphite-logo-color-240x240.png" download>Download (PNG 240x240)</a>
@@ -67,7 +67,7 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 			<a href="https://static.graphite.rs/logos/graphite-logotype-solid-480x1874.png" download>Download (PNG 480x1874)</a>
 		</div>
 		<div>
-			<img src="https://static.graphite.rs/logos/graphite-logo-solid.svg" height="160" />
+			<img src="https://static.graphite.rs/logos/graphite-logo-solid.svg" width="160" height="160" />
 			<span>Graphite Icon (Solid)</span>
 			<a href="https://static.graphite.rs/logos/graphite-logo-solid.svg" download>Download (SVG)</a>
 			<a href="https://static.graphite.rs/logos/graphite-logo-solid-240x240.png" download>Download (PNG 240x240)</a>
@@ -86,7 +86,7 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 			<a href="https://static.graphite.rs/logos/graphite-logotype-solid-white-480x1874.png" download>Download (PNG 480x1874)</a>
 		</div>
 		<div>
-			<img src="https://static.graphite.rs/logos/graphite-logo-solid-white.svg" height="160" />
+			<img src="https://static.graphite.rs/logos/graphite-logo-solid-white.svg" width="160" height="160" />
 			<span>Graphite Icon (Solid, White)</span>
 			<a href="https://static.graphite.rs/logos/graphite-logo-solid-white.svg" download>Download (SVG)</a>
 			<a href="https://static.graphite.rs/logos/graphite-logo-solid-white-240x240.png" download>Download (PNG 240x240)</a>

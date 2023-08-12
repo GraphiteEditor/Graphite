@@ -1,4 +1,5 @@
 addEventListener("DOMContentLoaded", trackScrollHeadingInTOC);
+addEventListener("DOMContentLoaded", listenForClickToOpenTOC);
 
 // Listen for scroll events and update the active section in the table of contents to match the visible content's heading
 function trackScrollHeadingInTOC() {
@@ -49,4 +50,14 @@ function trackScrollHeadingInTOC() {
 
 	addEventListener("scroll", updateVisibleHeading);
 	updateVisibleHeading();
+}
+
+function listenForClickToOpenTOC() {
+	document.querySelector("[data-hamburger-menu-button-open]")?.addEventListener("click", () => {
+		document.querySelector("[data-chapters]")?.classList.add("open");
+	});
+
+	document.querySelector("[data-hamburger-menu-button-close]")?.addEventListener("click", () => {
+		document.querySelector("[data-chapters]")?.classList.remove("open");
+	});
 }
