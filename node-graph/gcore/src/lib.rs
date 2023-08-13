@@ -146,9 +146,10 @@ impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> 
 	}
 }
 
+use dyn_any::StaticTypeSized;
+
 use core::pin::Pin;
 
-use dyn_any::StaticTypeSized;
 #[cfg(feature = "alloc")]
 impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
 	type Output = O;

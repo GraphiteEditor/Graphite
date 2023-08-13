@@ -476,6 +476,43 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f32), fn_type!(f32), fn_type!(bool)]),
 		)],
+		vec![
+			(
+				NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				|args| {
+					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
+					Box::pin(async move {
+						let curve = ClonedNode::new(curve.eval(()).await);
+
+						let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
+						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
+						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
+						let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+						any.into_type_erased()
+					})
+				},
+				NodeIOTypes::new(concrete!(ImageFrame<Luma>), concrete!(ImageFrame<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
+			),
+			// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
+			(
+				NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				|args| {
+					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
+					Box::pin(async move {
+						let curve = ClonedNode::new(curve.eval(()).await);
+
+						let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
+						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
+						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
+						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+						any.into_type_erased()
+					})
+				},
+				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
+			),
+		],
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f32]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f32]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f32, f32, f32]),

@@ -800,6 +800,26 @@ export type MenuListEntry = MenuEntryCommon & {
 	ref?: any;
 };
 
+export class CurveManipulatorGroup {
+	anchor!: [number, number];
+	handles!: [[number, number], [number, number]];
+}
+
+export class Curve {
+	manipulatorGroups!: CurveManipulatorGroup[];
+	firstHandle!: [number, number];
+	lastHandle!: [number, number];
+}
+
+export class CurveInput extends WidgetProps {
+	value!: Curve;
+
+	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
 export class DropdownInput extends WidgetProps {
 	entries!: MenuListEntry[][];
 
@@ -1091,6 +1111,7 @@ const widgetSubTypes = [
 	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
 	{ value: ColorInput, name: "ColorInput" },
+	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },

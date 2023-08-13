@@ -1,20 +1,16 @@
 use crate::raster::ImageFrame;
-use crate::transform::Transform;
-use crate::transform::TransformMut;
-use crate::Color;
-use crate::Node;
-use alloc::sync::Arc;
-use dyn_any::StaticType;
-use dyn_any::StaticTypeSized;
-use glam::DAffine2;
+use crate::text::FontCache;
+use crate::transform::{Transform, TransformMut};
+use crate::{Color, Node};
 
+use dyn_any::{StaticType, StaticTypeSized};
+
+use alloc::sync::Arc;
+use core::fmt::Debug;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
-
-use crate::text::FontCache;
-
-use core::fmt::Debug;
+use glam::DAffine2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

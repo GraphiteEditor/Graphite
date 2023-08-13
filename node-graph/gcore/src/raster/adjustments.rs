@@ -1,11 +1,12 @@
-#![allow(clippy::too_many_arguments)]
-use super::Color;
-use crate::Node;
-use core::fmt::Debug;
+use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
+use super::{Channel, Color, Node};
+
+use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
+
+use core::fmt::Debug;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
@@ -204,7 +205,7 @@ pub struct ExtractAlphaNode;
 #[node_macro::node_fn(ExtractAlphaNode)]
 fn extract_alpha_node(color: Color) -> Color {
 	let alpha = color.a();
-	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
+	Color::from_rgbaf32(alpha, alpha, alpha, 1.).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -215,7 +216,7 @@ fn extract_opaque_node(color: Color) -> Color {
 	if color.a() == 0. {
 		return color.with_alpha(1.);
 	}
-	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.0).unwrap()
+	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -854,6 +855,52 @@ fn exposure(color: Color, exposure: f32, offset: f32, gamma_correction: f32) -> 
 		.gamma(gamma_correction);
 
 	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+}
+
+const WINDOW_SIZE: usize = 1024;
+
+#[derive(Debug, Clone, Copy)]
+pub struct GenerateCurvesNode<OutputChannel, Curve> {
+	curve: Curve,
+	_channel: core::marker::PhantomData<OutputChannel>,
+}
+
+#[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
+fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
+	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
+	let mut lut = vec![_Channel::from_f64(0.); WINDOW_SIZE];
+	let end = CurveManipulatorGroup {
+		anchor: [1.; 2],
+		handles: [curve.last_handle, [0.; 2]],
+	};
+	for sample in curve.manipulator_groups.iter().chain(core::iter::once(&end)) {
+		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.handles[0][0], sample.handles[0][1], sample.anchor[0], sample.anchor[1]].map(f64::from);
+
+		let bezier = Bezier::from_cubic_coordinates(x0, y0, x1, y1, x2, y2, x3, y3);
+
+		let [left, right] = [pos[0], sample.anchor[0]].map(|c| c.clamp(0., 1.));
+		let lut_index_left: usize = (left * (lut.len() - 1) as f32).floor() as _;
+		let lut_index_right: usize = (right * (lut.len() - 1) as f32).ceil() as _;
+		for index in lut_index_left..=lut_index_right {
+			let x = index as f64 / (lut.len() - 1) as f64;
+			let y = if x <= x0 {
+				y0
+			} else if x >= x3 {
+				y3
+			} else {
+				bezier.find_tvalues_for_x(x)
+					.next()
+					.map(|t| bezier.evaluate(TValue::Parametric(t.clamp(0., 1.))).y)
+					// a very bad approximation if bezier_rs failes
+					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
+			};
+			lut[index] = _Channel::from_f64(y);
+		}
+
+		pos = sample.anchor;
+		param = sample.handles[1];
+	}
+	ValueMapperNode::new(lut)
 }
 
 #[cfg(feature = "alloc")]

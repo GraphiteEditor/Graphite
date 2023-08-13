@@ -281,6 +281,7 @@ impl LayoutGroup {
 			let val = match &mut widget.widget {
 				Widget::CheckboxInput(x) => &mut x.tooltip,
 				Widget::ColorInput(x) => &mut x.tooltip,
+				Widget::CurveInput(x) => &mut x.tooltip,
 				Widget::DropdownInput(x) => &mut x.tooltip,
 				Widget::FontInput(x) => &mut x.tooltip,
 				Widget::IconButton(x) => &mut x.tooltip,
@@ -430,6 +431,7 @@ pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
 	ColorInput(ColorInput),
+	CurveInput(CurveInput),
 	DropdownInput(DropdownInput),
 	FontInput(FontInput),
 	IconButton(IconButton),
@@ -512,6 +514,7 @@ impl DiffUpdate {
 				Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconLabel(_)
+				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
 				| Widget::PivotAssist(_)
 				| Widget::RadioInput(_)

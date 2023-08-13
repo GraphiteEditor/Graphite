@@ -2,6 +2,7 @@ use crate::svg_drawing::*;
 use crate::utils::parse_cap;
 
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, TValue, TValueType};
+
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;

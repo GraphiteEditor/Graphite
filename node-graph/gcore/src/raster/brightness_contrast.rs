@@ -64,6 +64,7 @@ pub struct GenerateBrightnessContrastMapperNode<Brightness, Contrast> {
 	contrast: Contrast,
 }
 
+// TODO: Replace this node implementation with one that uses the more generalized Curves adjustment node
 #[node_macro::node_fn(GenerateBrightnessContrastMapperNode)]
 fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> BrightnessContrastMapperNode {
 	// Brightness LUT

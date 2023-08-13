@@ -4,7 +4,7 @@ use std::fmt::Write;
 /// Functionality relating to core `Bezier` operations, such as constructors and `abs_diff_eq`.
 impl Bezier {
 	// TODO: Consider removing this function
-	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points.
+	/// Create a linear bezier using the provided coordinates as the start and end points.
 	pub fn from_linear_coordinates(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
 		Bezier {
 			start: DVec2::new(x1, y1),
@@ -13,7 +13,7 @@ impl Bezier {
 		}
 	}
 
-	/// Create a quadratic bezier using the provided DVec2s as the start, handle, and end points.
+	/// Create a linear bezier using the provided DVec2s as the start and end points.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/constructor/solo" title="Constructor Demo"></iframe>
 	pub fn from_linear_dvec2(p1: DVec2, p2: DVec2) -> Self {
 		Bezier {

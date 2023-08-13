@@ -14,17 +14,24 @@ pub mod brightness_contrast;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brush_cache;
 pub mod color;
+pub mod curve;
 pub mod discrete_srgb;
 pub use adjustments::*;
-
-#[cfg(target_arch = "spirv")]
-use num_traits::Float;
 
 pub trait Linear {
 	fn from_f32(x: f32) -> Self;
 	fn to_f32(self) -> f32;
 	fn from_f64(x: f64) -> Self;
 	fn to_f64(self) -> f64;
+	fn lerp(self, other: Self, value: Self) -> Self
+	where
+		Self: Sized + Copy,
+		Self: core::ops::Sub<Self, Output = Self>,
+		Self: core::ops::Mul<Self, Output = Self>,
+		Self: core::ops::Add<Self, Output = Self>,
+	{
+		self + (other - self) * value
+	}
 }
 
 #[rustfmt::skip]
@@ -189,6 +196,10 @@ pub trait Luminance {
 	fn l(&self) -> Self::LuminanceChannel {
 		self.luminance()
 	}
+}
+
+pub trait LuminanceMut: Luminance {
+	fn set_luminance(&mut self, luminance: Self::LuminanceChannel);
 }
 
 // TODO: We might rename this to Raster at some point

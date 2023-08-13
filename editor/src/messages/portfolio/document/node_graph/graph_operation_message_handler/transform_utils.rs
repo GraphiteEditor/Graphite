@@ -1,10 +1,12 @@
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
+
 use bezier_rs::{ManipulatorGroup, Subpath};
 use document_legacy::document::Document;
-use glam::{DAffine2, DVec2};
 use graph_craft::document::{value::TaggedValue, NodeInput};
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
+
+use glam::{DAffine2, DVec2};
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {

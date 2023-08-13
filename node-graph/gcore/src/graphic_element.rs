@@ -3,10 +3,10 @@ use crate::vector::VectorData;
 use crate::{Color, Node};
 
 use dyn_any::{DynAny, StaticType};
+use node_macro::node_fn;
 
 use core::ops::{Deref, DerefMut};
 use glam::IVec2;
-use node_macro::node_fn;
 
 pub mod renderer;
 
