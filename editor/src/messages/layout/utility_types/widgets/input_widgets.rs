@@ -426,11 +426,6 @@ pub struct CurveInput {
 
 	pub tooltip: String,
 
-	pub centered: bool,
-
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

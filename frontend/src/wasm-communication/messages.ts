@@ -419,17 +419,6 @@ export class Color {
 	}
 }
 
-export class CurveManipulatorGroup {
-	anchor!: [number, number];
-	handles!: [[number, number], [number, number]];
-}
-
-export class Curve {
-	manipulator_groups!: CurveManipulatorGroup[];
-	start_params!: [number, number];
-	end_params!: [number, number];
-}
-
 export class UpdateActiveDocument extends JsMessage {
 	readonly documentId!: bigint;
 }
@@ -811,12 +800,21 @@ export type MenuListEntry = MenuEntryCommon & {
 	ref?: any;
 };
 
+export class CurveManipulatorGroup {
+	anchor!: [number, number];
+	handles!: [[number, number], [number, number]];
+}
+
+export class Curve {
+	manipulatorGroups!: CurveManipulatorGroup[];
+	firstHandle!: [number, number];
+	lastHandle!: [number, number];
+}
+
 export class CurveInput extends WidgetProps {
 	value!: Curve;
 
 	disabled!: boolean;
-
-	minWidth!: number;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;

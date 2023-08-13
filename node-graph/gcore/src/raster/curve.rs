@@ -8,8 +8,11 @@ use core::ops::{Add, Mul, Sub};
 #[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Curve {
+	#[serde(rename = "manipulatorGroups")]
 	pub manipulator_groups: Vec<CurveManipulatorGroup>,
+	#[serde(rename = "firstHandle")]
 	pub first_handle: [f32; 2],
+	#[serde(rename = "lastHandle")]
 	pub last_handle: [f32; 2],
 }
 

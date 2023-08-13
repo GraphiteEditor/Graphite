@@ -11,8 +11,7 @@ export function debouncer<T>(callFn: (value: T) => unknown, { debounceTime = 60 
 
 	const emitValue = (): void => {
 		recentlyUpdated = false;
-		if (currentValue === undefined)
-			return;
+		if (currentValue === undefined) return;
 		updateValue(currentValue);
 	};
 
