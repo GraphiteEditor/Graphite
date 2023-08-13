@@ -77,7 +77,9 @@ pub struct TypeDescriptor {
 	#[specta(skip)]
 	pub id: Option<TypeId>,
 	pub name: Cow<'static, str>,
+	#[serde(default)]
 	pub size: usize,
+	#[serde(default)]
 	pub align: usize,
 }
 

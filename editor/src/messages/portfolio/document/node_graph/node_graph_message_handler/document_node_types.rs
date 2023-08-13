@@ -207,6 +207,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						DocumentNode {
 							inputs: vec![NodeInput::node(0, 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+							skip_deduplication: true,
 							..Default::default()
 						},
 					),
@@ -1986,6 +1987,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 					name: "Frame Monitor".into(),
 					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+					skip_deduplication: true,
 					..Default::default()
 				},
 			),

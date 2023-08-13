@@ -40,6 +40,8 @@ pub struct DocumentNode {
 	pub inputs: Vec<NodeInput>,
 	pub implementation: DocumentNodeImplementation,
 	pub metadata: DocumentNodeMetadata,
+	#[serde(default)]
+	pub skip_deduplication: bool,
 	pub path: Option<Vec<NodeId>>,
 }
 
@@ -97,6 +99,7 @@ impl DocumentNode {
 				input,
 				construction_args: args,
 				document_node_path: self.path.unwrap_or(Vec::new()),
+				skip_deduplication: self.skip_deduplication,
 			}
 		} else {
 			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
