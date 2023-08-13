@@ -1,7 +1,6 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
-use crate::messages::layout::utility_types::layout_widget::WidgetHolder;
-use crate::messages::layout::utility_types::layout_widget::{Widget, WidgetCallback};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -37,21 +36,21 @@ pub struct MenuBarEntry {
 	pub shortcut: Option<ActionKeys>,
 	pub action: WidgetHolder,
 	pub children: MenuBarEntryChildren,
+	pub disabled: bool,
 }
 
 impl MenuBarEntry {
-	pub fn new_root(label: String, children: MenuBarEntryChildren) -> Self {
+	pub fn new_root(label: String, disabled: bool, children: MenuBarEntryChildren) -> Self {
 		Self {
 			label,
+			disabled,
 			children,
 			..Default::default()
 		}
 	}
 
 	pub fn create_action(callback: impl Fn(&()) -> Message + 'static + Send + Sync) -> WidgetHolder {
-		WidgetHolder::new(Widget::InvisibleStandinInput(InvisibleStandinInput {
-			on_update: WidgetCallback::new(callback),
-		}))
+		InvisibleStandinInput::new().on_update(callback).widget_holder()
 	}
 
 	pub fn no_action() -> WidgetHolder {
@@ -67,6 +66,7 @@ impl Default for MenuBarEntry {
 			shortcut: None,
 			action: MenuBarEntry::no_action(),
 			children: MenuBarEntryChildren::empty(),
+			disabled: false,
 		}
 	}
 }

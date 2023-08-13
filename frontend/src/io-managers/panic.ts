@@ -66,7 +66,7 @@ function githubUrl(panicDetails: string): string {
 
 		**Steps To Reproduce**
 		Describe precisely how the crash occurred, step by step, starting with a new editor window.
-		1. Open the Graphite Editor at https://editor.graphite.rs
+		1. Open the Graphite editor at https://editor.graphite.rs
 		2. 
 		3. 
 		4. 
@@ -79,7 +79,7 @@ function githubUrl(panicDetails: string): string {
 		${browserVersion()}, ${operatingSystem(true).replace("Unknown", "YOUR OPERATING SYSTEM")}
 
 		**Stack Trace**
-		Copied from the crash dialog in the Graphite Editor:
+		Copied from the crash dialog in the Graphite editor:
 	`;
 
 	body += "\n\n```\n";

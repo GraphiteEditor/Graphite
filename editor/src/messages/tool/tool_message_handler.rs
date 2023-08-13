@@ -2,8 +2,7 @@ use super::common_functionality::overlay_renderer::OverlayRenderer;
 use super::common_functionality::shape_editor::ShapeState;
 use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
 use crate::application::generate_uuid;
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
@@ -68,7 +67,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			#[remain::unsorted]
 			ToolMessage::ActivateToolEllipse => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
 			#[remain::unsorted]
-			ToolMessage::ActivateToolShape => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }),
+			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
 			#[remain::unsorted]
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
@@ -136,7 +135,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				responses.add(ToolMessage::RefreshToolOptions);
 
 				// Notify the frontend about the new active tool to be displayed
-				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
 			}
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -161,10 +160,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
-				tool_data.tools.get(active_tool).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+				tool_data.tools.get(active_tool).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
 
 				// Notify the frontend about the initial active tool
-				tool_data.register_properties(responses, LayoutTarget::ToolShelf);
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
 
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
@@ -187,7 +186,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
-				tool_data.tools.get(&tool_data.active_tool_type).unwrap().register_properties(responses, LayoutTarget::ToolOptions);
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
 			}
 			ToolMessage::ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -283,7 +282,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			ActivateToolLine,
 			ActivateToolRectangle,
 			ActivateToolEllipse,
-			ActivateToolShape,
+			ActivateToolPolygon,
 
 			ActivateToolBrush,
 			ActivateToolImaginate,

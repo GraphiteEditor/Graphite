@@ -14,7 +14,6 @@ pub struct IconLabel {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, WidgetBuilder, specta::Type)]
 pub struct Separator {
-	#[widget_builder(constructor)]
 	pub direction: SeparatorDirection,
 
 	#[serde(rename = "type")]

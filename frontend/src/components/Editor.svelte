@@ -140,6 +140,7 @@
 
 		--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
 		--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
+		--icon-expand-collapse-arrow-disabled: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23888" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
 	}
 
 	html,
@@ -187,8 +188,6 @@
 		.scrollable-y {
 			// Firefox (standardized in CSS, but less capable)
 			scrollbar-width: thin;
-			scrollbar-width: 6px;
-			scrollbar-gutter: 6px;
 			scrollbar-color: var(--color-5-dullgray) transparent;
 
 			&:not(:hover) {
@@ -234,24 +233,15 @@
 		}
 
 		.scrollable-x.scrollable-y {
-			// Standard
 			overflow: auto;
-			// WebKit
-			overflow: overlay;
 		}
 
 		.scrollable-x:not(.scrollable-y) {
-			// Standard
 			overflow: auto hidden;
-			// WebKit
-			overflow-x: overlay;
 		}
 
 		.scrollable-y:not(.scrollable-x) {
-			// Standard
 			overflow: hidden auto;
-			// WebKit
-			overflow-y: overlay;
 		}
 	}
 

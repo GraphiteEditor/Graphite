@@ -1,10 +1,13 @@
 use crate::messages::prelude::*;
 
+use graph_craft::document::NodeId;
 use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::ManipulatorPointId;
+use graphene_core::Artboard;
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 
 pub type LayerIdentifier = Vec<document_legacy::LayerId>;
 
@@ -46,6 +49,24 @@ pub enum GraphOperationMessage {
 		layer: LayerIdentifier,
 		modification: VectorDataModification,
 	},
+	Brush {
+		layer: LayerIdentifier,
+		strokes: Vec<BrushStroke>,
+	},
+
+	NewArtboard {
+		id: NodeId,
+		artboard: Artboard,
+	},
+	ResizeArtboard {
+		id: NodeId,
+		location: IVec2,
+		dimensions: IVec2,
+	},
+	DeleteArtboard {
+		id: NodeId,
+	},
+	ClearArtboards,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

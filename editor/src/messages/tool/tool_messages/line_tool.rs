@@ -2,10 +2,7 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, WidgetHolder};
-use crate::messages::layout::utility_types::widgets::input_widgets::NumberInput;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -46,6 +43,10 @@ impl Default for LineOptions {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineToolMessage {
 	// Standard messages
+	#[remain::unsorted]
+	DocumentIsDirty,
+	#[remain::unsorted]
+	CanvasTransformed,
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -88,20 +89,21 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
+		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
 
-impl PropertyHolder for LineTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for LineTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			WidgetCallback::new(|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into()),
+			|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			WidgetCallback::new(|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value)).into()),
+			|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value)).into(),
 		);
-		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -124,10 +126,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 				}
 			}
 
-			responses.add(LayoutMessage::SendLayout {
-				layout: self.properties(),
-				layout_target: LayoutTarget::ToolOptions,
-			});
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}
@@ -146,6 +145,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 impl ToolTransition for LineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(LineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(LineToolMessage::Abort.into()),
 			working_color_changed: Some(LineToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -225,7 +225,6 @@ impl Fsm for LineToolFsmState {
 					tool_data.snap_manager.cleanup(responses);
 					input.mouse.finish_transaction(tool_data.drag_start, responses);
 					tool_data.path = None;
-
 					Ready
 				}
 				(Drawing, Abort) => {

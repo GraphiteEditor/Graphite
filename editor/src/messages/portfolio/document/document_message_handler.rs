@@ -1,22 +1,15 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::DocumentRenderMode;
+use super::utility_types::misc::{DocumentRenderMode, SnappingOptions, SnappingState};
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, Widget, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{
-	DropdownEntryData, DropdownInput, NumberInput, NumberInputIncrementBehavior, NumberInputMode, OptionalInput, RadioEntryData, RadioInput,
-};
-use crate::messages::layout::utility_types::widgets::label_widgets::{Separator, SeparatorDirection, SeparatorType};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
-use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentSave, FlipAxis};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -31,7 +24,7 @@ use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
 
@@ -48,7 +41,8 @@ pub struct DocumentMessageHandler {
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
-	pub snapping_enabled: bool,
+	#[serde(skip)]
+	pub snapping_state: SnappingState,
 	pub overlays_visible: bool,
 
 	#[serde(skip)]
@@ -74,8 +68,12 @@ pub struct DocumentMessageHandler {
 
 impl Default for DocumentMessageHandler {
 	fn default() -> Self {
+		let document_legacy = DocumentLegacy {
+			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
+			..Default::default()
+		};
 		Self {
-			document_legacy: DocumentLegacy::default(),
+			document_legacy,
 			saved_document_identifier: 0,
 			auto_saved_document_identifier: 0,
 			name: String::from("Untitled Document"),
@@ -83,7 +81,7 @@ impl Default for DocumentMessageHandler {
 
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			snapping_enabled: true,
+			snapping_state: SnappingState::default(),
 			overlays_visible: true,
 
 			document_undo_history: VecDeque::new(),
@@ -137,8 +135,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									reverse_index,
 								} => responses.add(MoveSelectedLayersTo {
 									folder_path: folder_path.clone(),
-									insert_index: insert_index.clone(),
-									reverse_index: reverse_index.clone(),
+									insert_index: *insert_index,
+									reverse_index: *reverse_index,
 								}),
 								DocumentResponse::CreatedLayer { path, is_selected } => {
 									if self.layer_metadata.contains_key(path) {
@@ -181,8 +179,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				self.navigation_handler
-					.process_message(message, responses, (&self.document_legacy, ipp, self.selected_visible_layers_bounding_box(&render_data)));
+				let document_bounds = self.document_bounds(&render_data);
+				self.navigation_handler.process_message(
+					message,
+					responses,
+					(&self.document_legacy, document_bounds, ipp, self.selected_visible_layers_bounding_box(&render_data)),
+				);
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
@@ -191,6 +193,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
+					document_name: self.name.as_str(),
 					artwork_document: &self.document_legacy,
 					artboard_document: &self.artboard_message_handler.artboards_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
@@ -202,7 +205,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler.process_message(message, responses, (&mut self.document_legacy, executor));
+				self.node_graph_handler
+					.process_message(message, responses, (&mut self.document_legacy, executor, document_id, self.name.as_str()));
 			}
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
@@ -358,6 +362,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				file_type,
 				scale_factor,
 				bounds,
+				transparent_background,
 			} => {
 				let old_transforms = self.remove_document_transform();
 
@@ -371,7 +376,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let size = bounds[1] - bounds[0];
 				let transform = (DAffine2::from_translation(bounds[0]) * DAffine2::from_scale(size)).inverse();
 
-				let document = self.render_document(size, transform, persistent_data, DocumentRenderMode::Root);
+				let document = self.render_document(size, transform, transparent_background, persistent_data, DocumentRenderMode::Root);
 
 				self.restore_document_transform(old_transforms);
 
@@ -461,17 +466,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					replacement_selected_layers: vec![new_folder_path],
 				});
 			}
-			ImaginateClear {
-				layer_path,
-				node_id,
-				cached_index: input_index,
-			} => {
-				let value = graph_craft::document::value::TaggedValue::RcImage(None);
-				responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
-				responses.add(InputFrameRasterizeRegionBelowLayer { layer_path });
-			}
-			ImaginateGenerate { layer_path, imaginate_node } => {
-				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, Some(imaginate_node)) {
+			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
+			ImaginateGenerate { layer_path } => {
+				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data) {
 					responses.add(message);
 				}
 			}
@@ -480,29 +477,27 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				imaginate_node,
 				then_generate,
 			} => {
+				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+				// outside of this range can get rounded in f64
+				let random_bits = generate_uuid();
+				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 				// Set a random seed input
 				responses.add(NodeGraphMessage::SetInputValue {
 					node_id: *imaginate_node.last().unwrap(),
 					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeType` in `document_node_type.rs`
-					input_index: 1,
-					value: graph_craft::document::value::TaggedValue::F64((generate_uuid() >> 1) as f64),
+					input_index: 3,
+					value: graph_craft::document::value::TaggedValue::F64(random_value),
 				});
 
 				// Generate the image
 				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { layer_path, imaginate_node });
+					responses.add(DocumentMessage::ImaginateGenerate { layer_path });
 				}
 			}
-			ImaginateTerminate { layer_path, node_path } => {
-				responses.add(FrontendMessage::TriggerImaginateTerminate {
-					document_id,
-					layer_path,
-					node_path,
-					hostname: preferences.imaginate_server_hostname.clone(),
-				});
-			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => {
-				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data, None) {
+				if layer_path.is_empty() {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data) {
 					responses.add(message);
 				}
 			}
@@ -662,6 +657,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(RenderDocument);
 				responses.add(FolderChanged { affected_folder_path: vec![] });
+			}
+			RenameDocument { new_name } => {
+				self.name = new_name;
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
@@ -851,8 +851,20 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let additional_layers = replacement_selected_layers;
 				responses.add_front(AddSelectedLayers { additional_layers });
 			}
-			SetSnapping { snap } => {
-				self.snapping_enabled = snap;
+			SetSnapping {
+				snapping_enabled,
+				bounding_box_snapping,
+				node_snapping,
+			} => {
+				if let Some(state) = snapping_enabled {
+					self.snapping_state.snapping_enabled = state
+				};
+				if let Some(state) = bounding_box_snapping {
+					self.snapping_state.bounding_box_snapping = state
+				}
+				if let Some(state) = node_snapping {
+					self.snapping_state.node_snapping = state
+				};
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -973,14 +985,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 }
 
 impl DocumentMessageHandler {
-	pub fn rasterize_region_below_layer(
-		&mut self,
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		_preferences: &PreferencesMessageHandler,
-		persistent_data: &PersistentData,
-		imaginate_node_path: Option<Vec<NodeId>>,
-	) -> Option<Message> {
+	pub fn rasterize_region_below_layer(&mut self, document_id: u64, layer_path: Vec<LayerId>, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
 		// Prepare the node graph input image
 
 		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_layer_network().ok()) else {
@@ -990,7 +995,7 @@ impl DocumentMessageHandler {
 		// Check if we use the "Input Frame" node.
 		// TODO: Remove once rasterization is moved into a node.
 		let input_frame_node_id = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame").map(|(&id, _)| id);
-		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id, imaginate_node_path.is_none()));
+		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id));
 
 		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
 		let response = if input_frame_connected_to_graph_output {
@@ -999,19 +1004,13 @@ impl DocumentMessageHandler {
 			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
 			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-			let svg = self.render_document(size, transform.inverse(), persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
+			// TODO: Test if this would be better to have a transparent background
+			let svg = self.render_document(size, transform.inverse(), false, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
 			self.restore_document_transform(old_transforms);
 
 			// Once JS asynchronously rasterizes the SVG, it will call the `PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer` message with the rasterized image data
-			FrontendMessage::TriggerRasterizeRegionBelowLayer {
-				document_id,
-				layer_path,
-				svg,
-				size,
-				imaginate_node_path,
-			}
-			.into()
+			FrontendMessage::TriggerRasterizeRegionBelowLayer { document_id, layer_path, svg, size }.into()
 		}
 		// Skip taking a round trip through JS since there's nothing to rasterize, and instead directly call the message which would otherwise be called asynchronously from JS
 		else {
@@ -1020,7 +1019,6 @@ impl DocumentMessageHandler {
 				layer_path,
 				input_image_data: vec![],
 				size: (0, 0),
-				imaginate_node_path,
 			}
 			.into()
 		};
@@ -1049,7 +1047,7 @@ impl DocumentMessageHandler {
 		DocumentLegacy::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_document.root);
 	}
 
-	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
+	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, transparent_background: bool, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
 		// Render the document SVG code
 
 		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
@@ -1059,20 +1057,26 @@ impl DocumentMessageHandler {
 			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, &render_data).unwrap(), None),
 			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
 		};
-		let artboards = self.artboard_message_handler.artboards_document.render_root(&render_data);
+		let artboards = match transparent_background {
+			false => self.artboard_message_handler.artboards_document.render_root(&render_data),
+			true => "".into(),
+		};
 		let outside_artboards_color = outside.map_or_else(
 			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
 			|col| col.rgba_hex(),
 		);
-		let outside_artboards = format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color);
+		let outside_artboards = match transparent_background {
+			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color),
+			true => "".into(),
+		};
 		let matrix = transform
 			.to_cols_array()
 			.iter()
 			.enumerate()
 			.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
 		let svg = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{}<g transform="matrix({})">{}{}</g></svg>"#,
-			size.x, size.y, "\n", outside_artboards, matrix, artboards, artwork
+			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{outside_artboards}<g transform="matrix({matrix})">{artboards}{artwork}</g></svg>"#,
+			size.x, size.y, "\n",
 		);
 
 		svg
@@ -1103,6 +1107,7 @@ impl DocumentMessageHandler {
 		let starting_root_transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
 		document.document_legacy.root.transform = starting_root_transform;
 		document.artboard_message_handler.artboards_document.root.transform = starting_root_transform;
+
 		document
 	}
 
@@ -1503,7 +1508,7 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index<'a>(&self, layers: &[&'a [LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
+	fn update_insert_index(&self, layers: &[&[LayerId]], path: &[LayerId], insert_index: isize, reverse_index: bool) -> Result<isize, DocumentError> {
 		let folder = self.document_legacy.folder(path)?;
 		let insert_index = if reverse_index { folder.layer_ids.len() as isize - insert_index } else { insert_index };
 		let layer_ids_above = if insert_index < 0 { &folder.layer_ids } else { &folder.layer_ids[..(insert_index as usize)] };
@@ -1574,204 +1579,171 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: self.snapping_enabled,
-				icon: "Snapping".into(),
-				tooltip: "Snapping".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetSnapping { snap: optional_input.checked }.into()),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Snapping".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: true,
-				icon: "Grid".into(),
-				tooltip: "Grid".into(),
-				on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into()),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Grid".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::OptionalInput(OptionalInput {
-				checked: self.overlays_visible,
-				icon: "Overlays".into(),
-				tooltip: "Overlays".into(),
-				on_update: WidgetCallback::new(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into()),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Overlays".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Unrelated,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::RadioInput(RadioInput {
-				selected_index: match self.view_mode {
-					ViewMode::Normal => 0,
-					_ => 1,
-				},
-				entries: vec![
-					RadioEntryData {
-						value: "normal".into(),
-						icon: "ViewModeNormal".into(),
-						tooltip: "View Mode: Normal".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
-						..RadioEntryData::default()
+			OptionalInput::new(snapping_state.snapping_enabled, "Snapping")
+				.tooltip("Snapping")
+				.on_update(move |optional_input: &OptionalInput| {
+					let snapping_enabled = optional_input.checked;
+					DocumentMessage::SetSnapping {
+						snapping_enabled: Some(snapping_enabled),
+						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
+						node_snapping: Some(snapping_state.node_snapping),
+					}
+					.into()
+				})
+				.widget_holder(),
+			PopoverButton::new("Snapping", "Snap customization settings")
+				.options_widget(vec![
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(snapping_state.bounding_box_snapping)
+								.tooltip(SnappingOptions::BoundingBoxes.to_string())
+								.on_update(move |input: &CheckboxInput| {
+									DocumentMessage::SetSnapping {
+										snapping_enabled: None,
+										bounding_box_snapping: Some(input.checked),
+										node_snapping: None,
+									}
+									.into()
+								})
+								.widget_holder(),
+							Separator::new(SeparatorType::Unrelated).widget_holder(),
+							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(false).min_width(60).widget_holder(),
+							Separator::new(SeparatorType::Related).widget_holder(),
+						],
 					},
-					RadioEntryData {
-						value: "outline".into(),
-						icon: "ViewModeOutline".into(),
-						tooltip: "View Mode: Outline".into(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
-						..RadioEntryData::default()
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.snapping_state.node_snapping)
+								.tooltip(SnappingOptions::Points.to_string())
+								.on_update(|input: &CheckboxInput| {
+									DocumentMessage::SetSnapping {
+										snapping_enabled: None,
+										bounding_box_snapping: None,
+										node_snapping: Some(input.checked),
+									}
+									.into()
+								})
+								.widget_holder(),
+							Separator::new(SeparatorType::Unrelated).widget_holder(),
+							TextLabel::new(SnappingOptions::Points.to_string()).table_align(false).min_width(60).widget_holder(),
+						],
 					},
-					RadioEntryData {
-						value: "pixels".into(),
-						icon: "ViewModePixels".into(),
-						tooltip: "View Mode: Pixels".into(),
-						on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
-						..RadioEntryData::default()
-					},
-				],
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "View Mode".into(),
-				text: "Coming soon".into(),
-				..Default::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Section,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "ZoomIn".into(),
-				tooltip: "Zoom In".into(),
-				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
-				on_update: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
-				..IconButton::default()
-			})),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "ZoomOut".into(),
-				tooltip: "Zoom Out".into(),
-				tooltip_shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
-				on_update: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
-				..IconButton::default()
-			})),
-			WidgetHolder::new(Widget::IconButton(IconButton {
-				size: 24,
-				icon: "ZoomReset".into(),
-				tooltip: "Zoom to 100%".into(),
-				tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-				on_update: WidgetCallback::new(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into()),
-				..IconButton::default()
-			})),
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::NumberInput(NumberInput {
-				unit: "%".into(),
-				value: Some(self.navigation_handler.snapped_scale() * 100.),
-				min: Some(0.000001),
-				max: Some(1000000.),
-				on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				])
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			OptionalInput::new(true, "Grid")
+				.tooltip("Grid")
+				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into())
+				.widget_holder(),
+			PopoverButton::new("Grid", "Coming soon").widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			OptionalInput::new(self.overlays_visible, "Overlays")
+				.tooltip("Overlays")
+				.on_update(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.widget_holder(),
+			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(vec![
+				RadioEntryData::default()
+					.value("normal")
+					.icon("ViewModeNormal")
+					.tooltip("View Mode: Normal")
+					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
+				RadioEntryData::default()
+					.value("outline")
+					.icon("ViewModeOutline")
+					.tooltip("View Mode: Outline")
+					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
+				RadioEntryData::default()
+					.value("pixels")
+					.icon("ViewModePixels")
+					.tooltip("View Mode: Pixels")
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+			])
+			.selected_index(match self.view_mode {
+				ViewMode::Normal => 0,
+				_ => 1,
+			})
+			.widget_holder(),
+			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
+			Separator::new(SeparatorType::Section).widget_holder(),
+			IconButton::new("ZoomIn", 24)
+				.tooltip("Zoom In")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom))
+				.on_update(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
+			IconButton::new("ZoomOut", 24)
+				.tooltip("Zoom Out")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom))
+				.on_update(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
+			IconButton::new("ZoomReset", 24)
+				.tooltip("Zoom to 100%")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
+				.on_update(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(self.navigation_handler.snapped_scale() * 100.))
+				.unit("%")
+				.min(0.000001)
+				.max(1000000.)
+				.mode_increment()
+				.on_update(|number_input: &NumberInput| {
 					NavigationMessage::SetCanvasZoom {
 						zoom_factor: number_input.value.unwrap() / 100.,
 					}
 					.into()
-				}),
-				increment_behavior: NumberInputIncrementBehavior::Callback,
-				increment_callback_decrease: WidgetCallback::new(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
-				increment_callback_increase: WidgetCallback::new(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
-				..NumberInput::default()
-			})),
+				})
+				.increment_behavior(NumberInputIncrementBehavior::Callback)
+				.increment_callback_decrease(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
+				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
 		];
 		let rotation_value = self.navigation_handler.snapped_angle() / (std::f64::consts::PI / 180.);
 		if rotation_value.abs() > 0.00001 {
 			widgets.extend([
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Related,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					unit: "°".into(),
-					value: Some(rotation_value),
-					step: 15.,
-					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				Separator::new(SeparatorType::Related).widget_holder(),
+				NumberInput::new(Some(rotation_value))
+					.unit("°")
+					.step(15.)
+					.on_update(|number_input: &NumberInput| {
 						NavigationMessage::SetCanvasRotation {
 							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
 						.into()
-					}),
-					..NumberInput::default()
-				})),
+					})
+					.widget_holder(),
 			]);
 		}
 		widgets.extend([
-			WidgetHolder::new(Widget::Separator(Separator {
-				separator_type: SeparatorType::Related,
-				direction: SeparatorDirection::Horizontal,
-			})),
-			WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-				header: "Canvas Navigation".into(),
-				text: "Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.".into(),
-				..Default::default()
-			})),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			PopoverButton::new(
+				"Canvas Navigation",
+				"Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.",
+			)
+			.widget_holder(),
 		]);
 		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-					entries: vec![vec![
-						DropdownEntryData {
-							label: DocumentMode::DesignMode.to_string(),
-							icon: DocumentMode::DesignMode.icon_name(),
-							..DropdownEntryData::default()
-						},
-						DropdownEntryData {
-							label: DocumentMode::SelectMode.to_string(),
-							icon: DocumentMode::SelectMode.icon_name(),
-							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-							..DropdownEntryData::default()
-						},
-						DropdownEntryData {
-							label: DocumentMode::GuideMode.to_string(),
-							icon: DocumentMode::GuideMode.icon_name(),
-							on_update: WidgetCallback::new(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
-							..DropdownEntryData::default()
-						},
-					]],
-					selected_index: Some(self.document_mode as u32),
-					draw_icon: true,
-					interactive: false, // TODO: set to true when dialogs are not spawned
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Section,
-					direction: SeparatorDirection::Horizontal,
-				})),
+				DropdownInput::new(
+					vec![vec![
+						DropdownEntryData::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
+						DropdownEntryData::new(DocumentMode::SelectMode.to_string())
+							.icon(DocumentMode::SelectMode.icon_name())
+							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+						DropdownEntryData::new(DocumentMode::GuideMode.to_string())
+							.icon(DocumentMode::GuideMode.icon_name())
+							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+					]])
+					.selected_index( Some(self.document_mode as u32))
+					.draw_icon( true)
+					.interactive( false) // TODO: set to true when dialogs are not spawned
+					.widget_holder(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 			],
 		}]);
 
@@ -1830,11 +1802,10 @@ impl DocumentMessageHandler {
 			.map(|modes| {
 				modes
 					.iter()
-					.map(|mode| DropdownEntryData {
-						label: mode.to_string(),
-						value: mode.to_string(),
-						on_update: WidgetCallback::new(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into()),
-						..Default::default()
+					.map(|mode| {
+						DropdownEntryData::new(mode.to_string())
+							.value(mode.to_string())
+							.on_update(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into())
 					})
 					.collect()
 			})
@@ -1842,57 +1813,41 @@ impl DocumentMessageHandler {
 
 		let layer_tree_options = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				WidgetHolder::new(Widget::DropdownInput(DropdownInput {
-					entries: blend_mode_menu_entries,
-					selected_index: blend_mode.map(|blend_mode| blend_mode as u32),
-					disabled: blend_mode.is_none() && !blend_mode_is_mixed,
-					draw_icon: false,
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Related,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::NumberInput(NumberInput {
-					label: "Opacity".into(),
-					unit: "%".into(),
-					display_decimal_places: 2,
-					disabled: opacity.is_none() && !opacity_is_mixed,
-					value: opacity.map(|opacity| opacity * 100.),
-					min: Some(0.),
-					max: Some(100.),
-					range_min: Some(0.),
-					range_max: Some(100.),
-					mode: NumberInputMode::Range,
-					on_update: WidgetCallback::new(|number_input: &NumberInput| {
+				DropdownInput::new(blend_mode_menu_entries)
+					.selected_index(blend_mode.map(|blend_mode| blend_mode as u32))
+					.disabled(blend_mode.is_none() && !blend_mode_is_mixed)
+					.draw_icon(false)
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				NumberInput::new(opacity.map(|opacity| opacity * 100.))
+					.label("Opacity")
+					.unit("%")
+					.display_decimal_places(2)
+					.disabled(opacity.is_none() && !opacity_is_mixed)
+					.min(0.)
+					.max(100.)
+					.range_min(Some(0.))
+					.range_max(Some(100.))
+					.mode(NumberInputMode::Range)
+					.on_update(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {
 							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
 						} else {
 							Message::NoOp
 						}
-					}),
-					..NumberInput::default()
-				})),
-				WidgetHolder::new(Widget::Separator(Separator {
-					separator_type: SeparatorType::Section,
-					direction: SeparatorDirection::Horizontal,
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "Folder".into(),
-					tooltip: "New Folder".into(),
-					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into()),
-					..Default::default()
-				})),
-				WidgetHolder::new(Widget::IconButton(IconButton {
-					icon: "Trash".into(),
-					tooltip: "Delete Selected".into(),
-					tooltip_shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-					size: 24,
-					on_update: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
-					..Default::default()
-				})),
+					})
+					.widget_holder(),
+				Separator::new(SeparatorType::Section).widget_holder(),
+				IconButton::new("Folder", 24)
+					.tooltip("New Folder")
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+					.on_update(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into())
+					.widget_holder(),
+				IconButton::new("Trash", 24)
+					.tooltip("Delete Selected")
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+					.widget_holder(),
 			],
 		}]);
 

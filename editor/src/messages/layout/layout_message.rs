@@ -1,5 +1,4 @@
-use super::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::layout_widget::Layout;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};

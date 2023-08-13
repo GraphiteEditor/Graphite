@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
-use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
+use crate::messages::layout::utility_types::widget_prelude::*;
 
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::LayerId;
@@ -273,7 +273,6 @@ impl NumberInput {
 	pub fn max(mut self, val: f64) -> Self {
 		self.max = Some(val);
 		self.range_max = Some(val);
-		self.mode = NumberInputMode::Range;
 		self
 	}
 	pub fn mode_range(mut self) -> Self {
@@ -289,7 +288,7 @@ impl NumberInput {
 		self
 	}
 	pub fn percentage(self) -> Self {
-		self.min(0.).max(100.).unit("%").display_decimal_places(2)
+		self.min(0.).max(100.).mode_range().unit("%").display_decimal_places(2)
 	}
 }
 

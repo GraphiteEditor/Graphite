@@ -2,7 +2,7 @@
 
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, PIVOT_INNER, PIVOT_OUTER, PIVOT_OUTER_OUTLINE_THICKNESS};
-use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use document_legacy::layers::style::{self, RenderData};

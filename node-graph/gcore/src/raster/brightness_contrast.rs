@@ -53,7 +53,7 @@ pub struct GenerateBrightnessContrastMapperNode<OutputChannel, Brightness, Contr
 }
 
 #[node_macro::node_fn(GenerateBrightnessContrastMapperNode<_Channel>)]
-fn brightness_contrast_node<_Channel: Channel>(_primary: (), brightness: f32, contrast: f32) -> ValueMapperNode<_Channel> {
+fn brightness_contrast_node<_Channel: Channel + crate::raster::Linear>(_primary: (), brightness: f32, contrast: f32) -> ValueMapperNode<_Channel> {
 	// Brightness LUT
 	let brightness_is_negative = brightness < 0.;
 	let brightness = brightness.abs() / 100.;
@@ -123,15 +123,15 @@ mod tests {
 
 		assert_eq!(brightness_contrast_legacy_map(-150., 100.), [0; 256]);
 		assert_eq!(brightness_contrast_legacy_map(-77., 100.), {
-			let mut x = [0; 153].into_iter().chain([2, 20, 65, 143].into_iter()).chain([255; 99].into_iter());
+			let mut x = [0; 153].into_iter().chain([2, 20, 65, 143]).chain([255; 99]);
 			core::array::from_fn(|_| x.next().unwrap())
 		});
 		assert_eq!(brightness_contrast_legacy_map(0., 100.), {
-			let mut x = [0; 54].into_iter().chain([13, 107].into_iter()).chain([255; 200].into_iter());
+			let mut x = [0; 54].into_iter().chain([13, 107]).chain([255; 200]);
 			core::array::from_fn(|_| x.next().unwrap())
 		});
 		assert_eq!(brightness_contrast_legacy_map(53., 100.), {
-			let mut x = [0; 18].into_iter().chain([132].into_iter()).chain([255; 237].into_iter());
+			let mut x = [0; 18].into_iter().chain([132]).chain([255; 237]);
 			core::array::from_fn(|_| x.next().unwrap())
 		});
 		assert_eq!(brightness_contrast_legacy_map(150., 100.), [255; 256]);
@@ -146,13 +146,13 @@ mod tests {
 		assert_eq!(brightness_contrast_legacy_map(0., 0.), core::array::from_fn(|i| i as u8));
 		assert_eq!(
 			brightness_contrast_legacy_map(53., 0.),
-			string_data("9,14,18,21,24,27,29,32,34,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,66,68,70,72,73,75,77,79,80,82,84,85,87,89,90,92,94,95,97,99,100,102,104,105,107,108,110,111,113,115,116,118,119,121,122,124,126,127,129,130,132,133,135,136,138,139,141,142,144,145,147,148,150,151,153,154,156,157,159,160,161,163,164,166,167,169,170,172,173,175,176,177,179,180,182,183,185,186,187,189,190,192,193,195,196,197,199,200,202,203,204,206,207,209,210,211,213,214,216,217,218,220,221,223,224,225,227,228,230,231,232,234,235,236,238,239,241,242,243,245,246,247,249,250,251,253,254").into_iter().chain([255; 105].into_iter()).collect::<Vec<_>>().as_slice(),
+			string_data("9,14,18,21,24,27,29,32,34,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,66,68,70,72,73,75,77,79,80,82,84,85,87,89,90,92,94,95,97,99,100,102,104,105,107,108,110,111,113,115,116,118,119,121,122,124,126,127,129,130,132,133,135,136,138,139,141,142,144,145,147,148,150,151,153,154,156,157,159,160,161,163,164,166,167,169,170,172,173,175,176,177,179,180,182,183,185,186,187,189,190,192,193,195,196,197,199,200,202,203,204,206,207,209,210,211,213,214,216,217,218,220,221,223,224,225,227,228,230,231,232,234,235,236,238,239,241,242,243,245,246,247,249,250,251,253,254").into_iter().chain([255; 105]).collect::<Vec<_>>().as_slice(),
 		);
 		assert_eq!(
 			brightness_contrast_legacy_map(150., 0.),
 			string_data("78,93,105,114,122,129,135,141,147,152,157,162,167,171,176,180,184,188,192,196,200,204,208,211,215,218,222,225,229,232,236,239,242,245,249,252")
 				.into_iter()
-				.chain([255; 220].into_iter())
+				.chain([255; 220])
 				.collect::<Vec<_>>()
 				.as_slice(),
 		);

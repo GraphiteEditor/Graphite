@@ -2,9 +2,14 @@ name: Continuous Integration
 
 on:
   push:
-
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
 env:
   CARGO_TERM_COLOR: always
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.outbound-links.file-downloads.js"></script>
 
 jobs:
   build:
@@ -19,27 +24,15 @@ jobs:
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
-    - name: Comment deploy start
-      if: github.event_name != 'push'
-      uses: mshick/add-pr-comment@v2
-      continue-on-error: true
-      with:
-        message-id: cloudflare-deploy
-        message: |
-          ### <span aria-hidden="true">🚧</span> Deploy Preview building...
+    - name: 🔧 Clear wasm-bindgen cache
+      run: rm -r ~/.cache/.wasm-pack
 
-          |  Name | Link |
-          |---------------------------------|------------------------|
-          |<span aria-hidden="true">🔨</span> Latest commit | ${{ github.sha }} |
-          |<span aria-hidden="true">🔍</span> Latest deploy log | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |
-          ---
-    
     - name: 🔧 Set up Node
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v3
       with:
-        node-version: '16.x'
+        node-version: '16'
 
     - name: 🚧 Install Node dependencies
       run: |
@@ -51,6 +44,12 @@ jobs:
         rustc --version
         rustup update stable
         rustc --version
+
+    - name: Replace template in <head> of index.html
+      run: |
+        # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
+        git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_REPLACEMENT=""
+        sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
     - name: 🌐 Build Graphite web code
       env:
@@ -66,26 +65,9 @@ jobs:
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        projectName: graphite-dev # e.g. 'my-project'
-        directory: frontend/dist # e.g. 'dist'
+        projectName: graphite-dev
+        directory: frontend/dist
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Comment deploy url
-      uses: mshick/add-pr-comment@v2
-      continue-on-error: true
-      with:
-        message-id: cloudflare-deploy
-        message: |
-          ### <span aria-hidden="true">✅</span> Deploy Preview ready!
-
-
-          |  Name | Link |
-          |---------------------------------|------------------------|
-          |<span aria-hidden="true">🔨</span> Latest commit | ${{ github.sha }} |
-          |<span aria-hidden="true">🔍</span> Latest deploy log | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |
-          |<span aria-hidden="true">😎</span> Deploy Preview Url | [${{ steps.cloudflare.outputs.url }}](${{ steps.cloudflare.outputs.url }}) |
-          |<span aria-hidden="true">🌳</span> Environment | ${{ steps.cloudflare.outputs.environment }} |
-          ---
 
     - name: 👕 Lint Graphite web formatting
       env:
@@ -107,6 +89,16 @@ jobs:
       run: |
         mold -run cargo nextest run
 
+        #miri:
+        #  runs-on: self-hosted
+        #
+        #  steps:
+        #  - uses: actions/checkout@v3
+        #
+        #  - name: 🧪 Run Rust miri
+        #    run: |
+        #      mold -run cargo +nightly miri nextest run -j32
+
   cargo-deny:
     runs-on: ubuntu-latest
 
@@ -120,7 +112,7 @@ jobs:
     continue-on-error: ${{ matrix.checks == 'crate security advisories' }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - uses: EmbarkStudios/cargo-deny-action@v1
       if: matrix.checks == 'crate security advisories'

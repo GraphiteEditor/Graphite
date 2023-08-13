@@ -1,13 +1,10 @@
+#![allow(clippy::too_many_arguments)]
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, Widget, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::assist_widgets::{PivotAssist, PivotPosition};
-use crate::messages::layout::utility_types::widgets::button_widgets::{IconButton, PopoverButton};
-use crate::messages::layout::utility_types::widgets::input_widgets::{DropdownEntryData, DropdownInput};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
@@ -114,8 +111,8 @@ impl ToolMetadata for SelectTool {
 	}
 }
 
-impl PropertyHolder for SelectTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for SelectTool {
+	fn layout(&self) -> Layout {
 		let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
 			.iter()
 			.map(|mode| {
@@ -125,20 +122,26 @@ impl PropertyHolder for SelectTool {
 			})
 			.collect();
 
+		let selected_layers_count = self.tool_data.selected_layers_count;
+		let deactivate_alignment = selected_layers_count < 2;
+		let deactivate_pivot = selected_layers_count < 1;
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(vec![layer_selection_behavior_entries])
 					.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
 					.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				// We'd like this widget to hide and show itself whenever the transformation cage is active or inactive (i.e. when no layers are selected)
 				PivotAssist::new(self.tool_data.pivot.to_pivot_position())
+					.disabled(deactivate_pivot)
 					.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
 					.widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("AlignLeft", 24)
 					.tooltip("Align Left")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -149,6 +152,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignHorizontalCenter", 24)
 					.tooltip("Align Horizontal Center")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -159,6 +163,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignRight", 24)
 					.tooltip("Align Right")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::X,
@@ -167,9 +172,10 @@ impl PropertyHolder for SelectTool {
 						.into()
 					})
 					.widget_holder(),
-				WidgetHolder::unrelated_separator(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("AlignTop", 24)
 					.tooltip("Align Top")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -180,6 +186,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignVerticalCenter", 24)
 					.tooltip("Align Vertical Center")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -190,6 +197,7 @@ impl PropertyHolder for SelectTool {
 					.widget_holder(),
 				IconButton::new("AlignBottom", 24)
 					.tooltip("Align Bottom")
+					.disabled(deactivate_alignment)
 					.on_update(|_| {
 						DocumentMessage::AlignSelectedLayers {
 							axis: AlignAxis::Y,
@@ -198,9 +206,9 @@ impl PropertyHolder for SelectTool {
 						.into()
 					})
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				PopoverButton::new("Align", "Coming soon").widget_holder(),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("FlipHorizontal", 24)
 					.tooltip("Flip Horizontal")
 					.on_update(|_| SelectToolMessage::FlipHorizontal.into())
@@ -209,13 +217,9 @@ impl PropertyHolder for SelectTool {
 					.tooltip("Flip Vertical")
 					.on_update(|_| SelectToolMessage::FlipVertical.into())
 					.widget_holder(),
-				WidgetHolder::related_separator(),
-				WidgetHolder::new(Widget::PopoverButton(PopoverButton {
-					header: "Flip".into(),
-					text: "Coming soon".into(),
-					..Default::default()
-				})),
-				WidgetHolder::section_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				PopoverButton::new("Flip", "Coming soon").widget_holder(),
+				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("BooleanUnion", 24)
 					.tooltip("Boolean Union (coming soon)")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
@@ -236,7 +240,7 @@ impl PropertyHolder for SelectTool {
 					.tooltip("Boolean Difference (coming soon)")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
-				WidgetHolder::related_separator(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
 			],
 		}]))
@@ -252,9 +256,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() {
+		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
 			// Notify the frontend about the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
-			self.register_properties(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+			self.tool_data.selected_layers_changed = false;
 		}
 	}
 
@@ -317,6 +322,8 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	nested_selection_behavior: NestedSelectionBehavior,
+	selected_layers_count: usize,
+	selected_layers_changed: bool,
 }
 
 impl SelectToolData {
@@ -433,6 +440,16 @@ impl Fsm for SelectToolFsmState {
 		if let ToolMessage::Select(event) = event {
 			match (self, event) {
 				(_, DocumentIsDirty | SelectionChanged) => {
+					let selected_layers_count = document.selected_layers().count();
+					let selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
+
+					if selected_layers_changed {
+						tool_data.selected_layers_count = selected_layers_count;
+						tool_data.selected_layers_changed = true;
+					} else {
+						tool_data.selected_layers_changed = false;
+					}
+
 					match (document.selected_visible_layers_bounding_box(render_data), tool_data.bounding_box_overlays.take()) {
 						(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 						(Some(bounds), paths) => {
@@ -478,7 +495,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.drag_start = input.mouse.position;
 					tool_data.drag_current = input.mouse.position;
 
-					let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|mut bounding_box| {
+					let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|bounding_box| {
 						let edges = bounding_box.check_selected_edges(input.mouse.position);
 
 						bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
@@ -565,7 +582,9 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging = selected;
 
 						RotatingBounds
-					} else if intersection.last().map(|last| selected.contains(last)).unwrap_or(false) {
+					} else if intersection.last().map(|last| selected.iter().any(|selected_layer| last.starts_with(selected_layer))).unwrap_or(false)
+						&& tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest
+					{
 						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.layers_dragging = selected;
@@ -588,9 +607,7 @@ impl Fsm for SelectToolFsmState {
 							selected = vec![intersection.clone()];
 
 							match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Shallowest => {
-									drag_shallowest_manipulation(document, &mut selected, input, select_deepest, add_to_selection, tool_data, responses, intersection)
-								}
+								NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(document, selected, input, select_deepest, add_to_selection, tool_data, responses),
 								NestedSelectionBehavior::Deepest => drag_deepest_manipulation(responses, selected, tool_data, document, input, render_data),
 							}
 							Dragging
@@ -761,9 +778,7 @@ impl Fsm for SelectToolFsmState {
 						let intersection = document.document_legacy.intersects_quad_root(quad, render_data);
 
 						if let Some(path) = intersection.last() {
-							// let folders: Vec<_> = (1..path.len() + 1).map(|i| &path[0..i]).collect();
-							// let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !folders.contains(&layer)).map(|path| path.to_vec()).collect();
-							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(layer)).map(|path| path.to_vec()).collect();
+							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(&layer)).map(|path| path.to_vec()).collect();
 
 							tool_data.layers_dragging.clear();
 							tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
@@ -825,6 +840,8 @@ impl Fsm for SelectToolFsmState {
 				}
 				(DrawingBox, DragStop { .. } | Enter) => {
 					let quad = tool_data.selection_quad();
+					// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
+					tool_data.layers_dragging = document.document_legacy.intersects_quad_root(quad, render_data);
 					responses.add_front(DocumentMessage::AddSelectedLayers {
 						additional_layers: document.document_legacy.intersects_quad_root(quad, render_data),
 					});
@@ -983,75 +1000,135 @@ fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecD
 
 fn drag_shallowest_manipulation(
 	document: &DocumentMessageHandler,
-	selected: &mut Vec<Vec<u64>>,
+	selected: Vec<Vec<u64>>,
 	input: &InputPreprocessorMessageHandler,
 	select_deepest: Key,
 	add_to_selection: Key,
 	tool_data: &mut SelectToolData,
 	responses: &mut VecDeque<Message>,
-	intersection: Vec<u64>,
 ) {
-	let layers: Vec<_> = document.selected_layers().collect();
-	let incoming_layer_path_vector = selected.first().unwrap();
-	let incoming_parent = *incoming_layer_path_vector.clone().first().unwrap();
+	let selected_layers = document.selected_layers();
+	let selected_layers_collected: Vec<_> = document.selected_layers().collect();
+	let selected_layers_count = document.selected_layers().count();
+
+	let empty_vector: &Vec<u64> = &vec![];
+	let incoming_layer_path_vector: &Vec<u64> = selected.get(0).unwrap_or(empty_vector);
+
+	let incoming_parent = *incoming_layer_path_vector.first().unwrap_or(&0);
+	let previous_parents: Vec<_> = (0..selected_layers_collected.len())
+		.map(|i| &selected_layers_collected.get(i).unwrap_or(&empty_vector.as_slice())[..1])
+		.collect();
+
+	// Permutations of intersected layer
+	let intersected_layer_ancestors: Vec<Vec<u64>> = (1..=incoming_layer_path_vector.len()).map(|i| incoming_layer_path_vector[..i].to_vec()).rev().collect();
 
 	// Accel+Shift click adds the deepest layer to the selection
 	if input.keyboard.get(select_deepest as usize) && input.keyboard.get(add_to_selection as usize) {
-		// Checks if the incoming layer's root parent is already selected
-		// If so we need to update the selected layer to the deeper of the two
-		let mut layers_without_incoming_parent: Vec<Vec<u64>> = document.selected_layers().filter(|&layer| layer != [incoming_parent].as_slice()).map(|path| path.to_vec()).collect();
-		if layers.contains(&[incoming_parent].as_slice()) {
-			// Add incoming layer
-			tool_data.layers_dragging.clear();
-			responses.add(DocumentMessage::DeselectAllLayers);
-			layers_without_incoming_parent.append(selected.clone().as_mut());
-			*selected = layers_without_incoming_parent;
+		// Collect the layers unrelated to the incoming layer path's parent
+		let mut layers_without_incoming_parent: Vec<Vec<u64>> = document
+			.selected_layers()
+			.filter(|&layer| layer.first().unwrap_or(&0) != &incoming_parent)
+			.map(|path| path.to_vec())
+			.collect();
+		// If the incoming layer is unrelated, add shape to selected layers
+		if !previous_parents.contains(&[incoming_parent].as_slice()) {
+			layers_without_incoming_parent.push(incoming_layer_path_vector.to_vec());
+			tool_data.layers_dragging = layers_without_incoming_parent.to_vec();
+			responses.add(DocumentMessage::SetSelectedLayers {
+				replacement_selected_layers: layers_without_incoming_parent.to_vec(),
+			});
+		}
+		// If the incoming shape is related, calculate the new layer tree
+		else {
+			// Calculating the next selected layers depends on how many layers are currently selected
+			if selected_layers_count <= 1 {
+				let replace = &selected_layers
+					.into_iter()
+					.any(|selected_layer| intersected_layer_ancestors.iter().any(|ancestor| selected_layer == ancestor));
+				if *replace {
+					// If the incoming layer path is already selected, deselect
+					if vec![incoming_layer_path_vector] == selected_layers_collected {
+						tool_data.layer_selected_on_start = None;
+					} else {
+						layers_without_incoming_parent.push(incoming_layer_path_vector.to_vec());
+						tool_data.layers_dragging = layers_without_incoming_parent.to_vec();
+						responses.add(DocumentMessage::SetSelectedLayers {
+							replacement_selected_layers: layers_without_incoming_parent.to_vec(),
+						});
+					}
+				} else {
+					layers_without_incoming_parent.push(incoming_layer_path_vector.to_vec());
+					tool_data.layers_dragging.append(layers_without_incoming_parent.to_vec().as_mut());
+					responses.add(DocumentMessage::AddSelectedLayers {
+						additional_layers: layers_without_incoming_parent.to_vec(),
+					});
+				}
+			}
+			// Multiple layers are selected
+			else {
+				// If the incoming layer path is already selected, deselect
+				if selected_layers_collected.contains(&incoming_layer_path_vector.as_slice()) {
+					tool_data.layer_selected_on_start = None;
+				} else {
+					layers_without_incoming_parent = document
+						.selected_layers()
+						.filter(|&layer| !intersected_layer_ancestors.contains(&(*layer).to_vec()))
+						.map(|path| path.to_vec())
+						.collect();
+					layers_without_incoming_parent.push(incoming_layer_path_vector.to_vec());
+					tool_data.layers_dragging = layers_without_incoming_parent.to_vec();
+					responses.add(DocumentMessage::SetSelectedLayers {
+						replacement_selected_layers: layers_without_incoming_parent.to_vec(),
+					});
+				}
+			}
 		}
 
 		tool_data.layers_dragging.append(selected.clone().as_mut());
 		responses.add(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() });
 		return;
 	}
-
 	// Accel click selects the deepest layer directly
-	if input.keyboard.get(select_deepest as usize) {
+	else if input.keyboard.get(select_deepest as usize) {
 		tool_data.layers_dragging.clear();
-		tool_data.layers_dragging.append(selected.clone().as_mut());
+		tool_data.layers_dragging = selected.to_vec();
 		responses.add(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: selected.clone(),
+			replacement_selected_layers: selected.to_vec(),
 		});
-		return;
 	}
-
 	// Check whether a layer is selected for next selection calculations
-	if let Some(previous_layer_path) = document.selected_layers().next() {
-		let selected_layers_count = document.selected_layers().count();
-
+	else if !selected_layers_collected.is_empty() {
 		// Check if the intersected layer path is already selected
-		let previous_parents: Vec<_> = (0..layers.len()).map(|i| &layers.get(i).unwrap()[..1]).collect();
-		let already_selected_parent = previous_parents.contains(&[incoming_parent].as_slice());
-
-		let selected_layers: Vec<_> = document.selected_layers().collect();
-		let mut search = previous_layer_path.to_vec();
+		let already_selected_parent = previous_parents.contains(&&[incoming_parent].as_slice());
+		let mut search = vec![];
 		let mut recursive_found = false;
 
 		// Only need to calculate if the incoming layer shares a parent with the selected layer
 		if already_selected_parent {
-			let mut selected_layer_path_parent = previous_layer_path.to_vec();
-			let is_parent = selected_layer_path_parent.len() == 1;
-			if selected_layer_path_parent.len() > 1 {
-				selected_layer_path_parent = selected_layer_path_parent[..selected_layer_path_parent.len() - 1].to_vec();
+			// Use the combined layers of currently selected and incoming and get shallowest common folder
+			let mut combined_layers = selected_layers_collected.to_vec();
+			if !combined_layers.contains(&incoming_layer_path_vector.as_slice()) && !incoming_layer_path_vector.is_empty() {
+				combined_layers.push(&incoming_layer_path_vector);
 			}
+			// Shared shallowest common folder of the combined layers
+			let shallowest_common_folder = document.document_legacy.shallowest_common_folder(combined_layers.to_vec().into_iter()).unwrap_or_default().to_vec();
+			let mut selected_layer_path_parent = shallowest_common_folder.to_vec();
 
-			while !selected_layer_path_parent.is_empty() && !is_parent && !recursive_found {
+			// Determine if the incoming layer path is already selected
+			let already_selected = selected_layers
+				.filter(|layer| incoming_layer_path_vector.len() >= layer.len())
+				.any(|layer| &incoming_layer_path_vector[..layer.len()] == layer);
+
+			// Recursively search through each children of the selected layer path parent, if not found move up a layer
+			while selected_layer_path_parent.len() > 0 && !recursive_found {
 				let selected_children_layer_paths = document.document_legacy.folder_children_paths(&selected_layer_path_parent);
 				for child in selected_children_layer_paths {
 					if child == *incoming_layer_path_vector {
 						search = child;
 						recursive_found = true;
 						break;
-					} else if document.document_legacy.is_folder(child.clone()) {
-						recursive_found = recursive_search(document, &child, incoming_layer_path_vector);
+					} else if document.document_legacy.is_folder(child.to_vec()) {
+						recursive_found = recursive_search(document, &child, &incoming_layer_path_vector);
 						if recursive_found {
 							search = child;
 							break;
@@ -1062,81 +1139,140 @@ fn drag_shallowest_manipulation(
 			}
 
 			// Check if new layer is already selected
-			let mut already_selected = false;
-			if selected_layers.contains(&search.as_slice()) {
-				already_selected = true;
-			}
+			let already_selected_search = selected_layers_collected.contains(&search.to_vec().as_slice());
 
 			// One layer is currently selected
 			if selected_layers_count <= 1 {
+				// If the shape has no parent and is not a folder use the incoming layer path
+				if search.is_empty() {
+					search = incoming_layer_path_vector.to_vec();
+				}
+
 				if input.keyboard.get(add_to_selection as usize) {
 					if !already_selected {
-						responses.add(DocumentMessage::AddSelectedLayers {
-							additional_layers: vec![search.clone()],
-						});
-					} else {
+						tool_data.layers_dragging.push(search.to_vec());
+						responses.add(DocumentMessage::AddSelectedLayers { additional_layers: vec![search] });
+					}
+					// Deselect already selected layers
+					else {
 						tool_data.layer_selected_on_start = None;
 					}
 				} else {
-					tool_data.layers_dragging.clear();
-					responses.add(DocumentMessage::SetSelectedLayers {
-						replacement_selected_layers: vec![search.clone()],
-					});
-				}
-				tool_data.layers_dragging.push(search);
-			} else {
-				// Previous selected layers with the intersect layer path appended to it
-				let mut combined_layers = selected_layers.clone();
-				let intersection_temp = intersection;
-				let intersection_temp_slice = intersection_temp.as_slice();
-				combined_layers.push(intersection_temp_slice);
-				let layers_iter = combined_layers.into_iter();
-				let mut direct_child = document.document_legacy.shallowest_common_folder(layers_iter).unwrap().to_vec();
-				// Append the sub layer to the base to create the deeper layer path
-				for path in intersection_temp {
-					if !direct_child.contains(&path) {
-						direct_child.push(path);
-						break;
-					}
-				}
-				if input.keyboard.get(add_to_selection as usize) {
+					// Only reselect the shape if the shape is not already selected, otherwise do nothing
 					if !already_selected {
-						tool_data.layers_dragging.push(direct_child.clone());
-						responses.add(DocumentMessage::AddSelectedLayers {
-							additional_layers: vec![direct_child.clone()],
+						tool_data.layers_dragging.clear();
+						tool_data.layers_dragging.push(search.to_vec());
+						responses.add(DocumentMessage::SetSelectedLayers {
+							replacement_selected_layers: vec![search],
 						});
-					} else {
-						tool_data.layer_selected_on_start = None;
 					}
-				} else {
-					tool_data.layers_dragging.push(direct_child.clone());
-					responses.add(DocumentMessage::SetSelectedLayers {
-						replacement_selected_layers: vec![direct_child.clone()],
-					});
+				}
+			} else if selected_layers_count > 1 {
+				let direct_child = incoming_layer_path_vector
+					.to_vec()
+					.into_iter()
+					.filter(|path| !shallowest_common_folder.contains(path))
+					.take(1)
+					.collect::<Vec<_>>();
+				let already_selected_direct_child = selected_layers_collected.contains(&direct_child.clone().as_slice());
+
+				// Update layer tree by filtering any duplicate layers (e.g. If a parent and one of its children are selected)
+				let mut replacement_selected_layers: Vec<Vec<u64>> = Vec::new();
+				let mut replacement_selected_layers_before_filter = selected_layers_collected.to_vec();
+
+				// Only use the recursive search layer if a common folder between incoming layer and already selected layers exists
+				// If not use the rootmost parent's layer path of the incoming layer (direct_child)
+				if !search.is_empty() & !replacement_selected_layers_before_filter.contains(&search.as_slice()) {
+					replacement_selected_layers_before_filter.push(&search);
+				} else if search.is_empty() && !replacement_selected_layers_before_filter.contains(&direct_child.as_slice()) {
+					replacement_selected_layers_before_filter.push(&direct_child);
+				}
+
+				// Using the shallowest common folder filter out any already selected layer that is related to the incoming selection
+				replacement_selected_layers_before_filter
+					.into_iter()
+					.filter(|layer| {
+						if !search.is_empty() {
+							layer.len() >= search.len() && &layer[..search.len()] != search
+						} else {
+							layer.len() >= direct_child.len() && &layer[..direct_child.len()] != direct_child
+						}
+					})
+					.for_each(|layer| replacement_selected_layers.push(layer.to_vec()));
+				// After filtering any layer that is related to the incoming selection, reappend the incoming selection
+				if !search.is_empty() && !replacement_selected_layers.contains(&search) {
+					replacement_selected_layers.push(search.to_vec());
+				} else if search.is_empty() && !replacement_selected_layers.contains(&direct_child) {
+					replacement_selected_layers.push(direct_child.to_vec());
+				}
+
+				let replacement_selected_layers_response: Vec<Vec<u64>> = replacement_selected_layers.to_vec().iter().map(|slice| slice.to_vec()).collect();
+
+				// Shift-Click: Append or Deselect layers
+				if input.keyboard.get(add_to_selection as usize) {
+					if search.is_empty() {
+						// Deselect already selected layer
+						if already_selected_direct_child {
+							tool_data.layer_selected_on_start = None;
+						} else {
+							tool_data.layers_dragging.clear();
+							tool_data.layers_dragging = replacement_selected_layers_response.to_vec();
+							responses.add(DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: replacement_selected_layers_response,
+							});
+						}
+					} else {
+						// Deselect already selected layer
+						if already_selected_search {
+							tool_data.layer_selected_on_start = None;
+						} else {
+							tool_data.layers_dragging.clear();
+							tool_data.layers_dragging = replacement_selected_layers_response.to_vec();
+							responses.add(DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: replacement_selected_layers_response,
+							});
+						}
+					}
+				}
+				// Normal Click: Selecting new layers
+				else {
+					if !already_selected {
+						if !search.is_empty() {
+							tool_data.layers_dragging.clear();
+							tool_data.layers_dragging = vec![search.to_vec()];
+							responses.add(DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: vec![search],
+							});
+						} else {
+							tool_data.layers_dragging.clear();
+							tool_data.layers_dragging = vec![direct_child.to_vec()];
+							responses.add(DocumentMessage::SetSelectedLayers {
+								replacement_selected_layers: vec![direct_child],
+							});
+						}
+					}
 				}
 			}
 		}
 		// Incoming layer path has different parent, set selected layer to shallowest parent
 		else {
-			let parent_folder_id = selected.first().unwrap().first().unwrap();
 			if input.keyboard.get(add_to_selection as usize) {
 				responses.add(DocumentMessage::AddSelectedLayers {
-					additional_layers: vec![vec![*parent_folder_id]],
+					additional_layers: vec![vec![incoming_parent]],
 				});
 			} else {
 				tool_data.layers_dragging.clear();
 				responses.add(DocumentMessage::SetSelectedLayers {
-					replacement_selected_layers: vec![vec![*parent_folder_id]],
+					replacement_selected_layers: vec![vec![incoming_parent]],
 				});
 			}
-			tool_data.layers_dragging.push(vec![*parent_folder_id]);
+			tool_data.layers_dragging.push(vec![incoming_parent]);
 		}
 	} else {
 		// Check if new layer is already selected
-		let parent_folder_id = selected.first().unwrap().first().unwrap();
-		tool_data.layers_dragging.push(vec![*parent_folder_id]);
+		tool_data.layers_dragging.push(vec![incoming_parent]);
 		responses.add(DocumentMessage::AddSelectedLayers {
-			additional_layers: vec![vec![*parent_folder_id]],
+			additional_layers: vec![vec![incoming_parent]],
 		});
 	}
 }
@@ -1159,29 +1295,25 @@ fn drag_deepest_manipulation(
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, intersect_layer_path: &Vec<u64>, tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
 	// Double-clicking any layer within an already selected folder should select that layer
 	// Add the first layer path not already included from the intersected to our new layer path
-	let selected_layers: Vec<_> = document.selected_layers().collect();
-	let incoming_parent = *intersect_layer_path.first().unwrap();
-	let previous_parents: Vec<_> = (0..selected_layers.len()).map(|i| &selected_layers.get(i).unwrap()[..1]).collect();
-	let mut incoming_parent_selected = false;
-	if previous_parents.contains(&[incoming_parent].as_slice()) {
-		incoming_parent_selected = true;
-	}
+	let selected_layers_collected: Vec<_> = document.selected_layers().collect();
+
+	let empty_vector: &Vec<u64> = &vec![];
+	let incoming_parent = *intersect_layer_path.first().unwrap_or(&0);
+	let previous_parents: Vec<_> = (0..selected_layers_collected.len())
+		.map(|i| &selected_layers_collected.get(i).unwrap_or(&empty_vector.as_slice())[..1])
+		.collect();
+	let incoming_parent_selected = previous_parents.contains(&&[incoming_parent].as_slice());
+
 	if incoming_parent_selected {
-		let mut intersected_layer_ancestors: Vec<Vec<u64>> = vec![];
 		// Permutations of intersected layer
-		for i in 1..intersect_layer_path.clone().len() + 1 {
-			intersected_layer_ancestors.push(intersect_layer_path.clone()[..i].to_vec());
-		}
-		intersected_layer_ancestors.reverse();
-		let mut new_layer_path: Vec<u64> = vec![];
 		// Set the base layer path to the deepest layer that is currently selected
-		for permutation in intersected_layer_ancestors {
-			for layer in selected_layers.iter() {
-				if permutation == *layer {
-					new_layer_path.append(permutation.clone().as_mut());
-				}
-			}
-		}
+		let intersected_layer_ancestors: Vec<Vec<u64>> = (1..=intersect_layer_path.len()).map(|i| intersect_layer_path[..i].to_vec()).rev().collect();
+		let mut new_layer_path: Vec<u64> = intersected_layer_ancestors
+			.iter()
+			.filter_map(|permutation| selected_layers_collected.iter().find(|layer| **layer == *permutation).map(|_| permutation.to_vec()))
+			.flatten()
+			.collect();
+
 		// Append the sub layer to the base to create the deeper layer path
 		for path in intersect_layer_path {
 			if !new_layer_path.contains(path) {
@@ -1190,13 +1322,13 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 			}
 		}
 
-		if !selected_layers.contains(&new_layer_path.as_slice()) {
-			tool_data.layers_dragging.clear();
-			tool_data.layers_dragging.push(new_layer_path.clone());
-			responses.add(DocumentMessage::SetSelectedLayers {
-				replacement_selected_layers: vec![new_layer_path],
-			});
-		} else {
+		tool_data.layers_dragging.clear();
+		tool_data.layers_dragging.push(new_layer_path.to_vec());
+		responses.add(DocumentMessage::SetSelectedLayers {
+			replacement_selected_layers: vec![new_layer_path.to_vec()],
+		});
+
+		if selected_layers_collected.contains(&new_layer_path.as_slice()) {
 			responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 		}
 	}
@@ -1219,13 +1351,15 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 	}
 }
 
-fn recursive_search(document: &DocumentMessageHandler, layer_path: &Vec<u64>, incoming_layer_path_vector: &Vec<u64>) -> bool {
+fn recursive_search(document: &DocumentMessageHandler, layer_path: &[u64], incoming_layer_path_vector: &Vec<u64>) -> bool {
 	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
 	for path in layer_paths {
 		if path == *incoming_layer_path_vector {
 			return true;
-		} else if document.document_legacy.is_folder(path.clone()) && recursive_search(document, &path, incoming_layer_path_vector) {
-			return true;
+		} else if document.document_legacy.is_folder(path.to_vec()) {
+			if recursive_search(document, &path, incoming_layer_path_vector) {
+				return true;
+			}
 		}
 	}
 	false

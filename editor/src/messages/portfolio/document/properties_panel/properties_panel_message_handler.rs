@@ -1,7 +1,6 @@
-use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties};
+use super::utility_functions::{register_artboard_layer_properties, register_artwork_layer_properties, register_document_graph_properties};
 use super::utility_types::PropertiesPanelMessageHandlerData;
-use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::properties_panel::utility_functions::apply_transform_operation;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -24,6 +23,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 		use PropertiesPanelMessage::*;
 
 		let PropertiesPanelMessageHandlerData {
+			document_name,
 			artwork_document,
 			artboard_document,
 			selected_layers,
@@ -63,6 +63,9 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				}
 			}
 			ClearSelection => {
+				// This causes the Properties panel to change, so this needs to happen before the following lines clear the Properties panel
+				responses.add(NodeGraphMessage::CloseNodeGraph);
+
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 					layout_target: LayoutTarget::PropertiesOptions,
@@ -71,7 +74,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
 					layout_target: LayoutTarget::PropertiesSections,
 				});
-				responses.add(NodeGraphMessage::CloseNodeGraph);
 				self.active_selection = None;
 			}
 			Deactivate => responses.add(BroadcastMessage::UnsubscribeEvent {
@@ -141,6 +143,17 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 						TargetDocument::Artboard => register_artboard_layer_properties(layer, responses, persistent_data),
 						TargetDocument::Artwork => register_artwork_layer_properties(document, path, layer, responses, persistent_data, node_graph_message_handler, executor),
 					}
+				} else {
+					let context = crate::messages::portfolio::document::node_graph::NodePropertiesContext {
+						persistent_data,
+						document: artwork_document,
+						responses,
+						nested_path: &node_graph_message_handler.nested_path,
+						layer_path: &[],
+						executor,
+						network: &artwork_document.document_network,
+					};
+					register_document_graph_properties(context, node_graph_message_handler, document_name);
 				}
 			}
 			UpdateSelectedDocumentProperties => responses.add(PropertiesPanelMessage::SetActiveLayers {

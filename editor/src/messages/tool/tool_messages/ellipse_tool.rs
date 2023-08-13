@@ -1,8 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widget_prelude::{ColorInput, NumberInput, WidgetHolder};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -56,6 +54,8 @@ pub enum EllipseOptionsUpdate {
 pub enum EllipseToolMessage {
 	// Standard messages
 	#[remain::unsorted]
+	CanvasTransformed,
+	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	WorkingColorChanged,
@@ -87,30 +87,31 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
+		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
 
-impl PropertyHolder for EllipseTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for EllipseTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
-			WidgetCallback::new(|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(None)).into()),
+			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColorType(color_type.clone())).into()),
-			WidgetCallback::new(|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value)).into()),
+			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value)).into(),
 		);
 
-		widgets.push(WidgetHolder::section_separator());
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			WidgetCallback::new(|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(None)).into()),
+			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			WidgetCallback::new(|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value)).into()),
+			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value)).into(),
 		));
-		widgets.push(WidgetHolder::unrelated_separator());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -140,10 +141,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 				}
 			}
 
-			responses.add(LayoutMessage::SendLayout {
-				layout: self.properties(),
-				layout_target: LayoutTarget::ToolOptions,
-			});
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}
@@ -170,6 +168,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 impl ToolTransition for EllipseTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(EllipseToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(EllipseToolMessage::Abort.into()),
 			working_color_changed: Some(EllipseToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -210,10 +209,14 @@ impl Fsm for EllipseToolFsmState {
 		use EllipseToolFsmState::*;
 		use EllipseToolMessage::*;
 
-		let mut shape_data = &mut tool_data.data;
+		let shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Ellipse(event) = event {
 			match (self, event) {
+				(Drawing, CanvasTransformed) => {
+					tool_data.data.recalculate_snaps(document, input, render_data);
+					self
+				}
 				(Ready, DragStart) => {
 					shape_data.start(responses, document, input, render_data);
 					responses.add(DocumentMessage::StartTransaction);
@@ -231,7 +234,7 @@ impl Fsm for EllipseToolFsmState {
 					let fill_color = tool_options.fill.active_color();
 					responses.add(GraphOperationMessage::FillSet {
 						layer: layer_path.clone(),
-						fill: if fill_color.is_some() { Fill::Solid(fill_color.unwrap()) } else { Fill::None },
+						fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 					});
 
 					responses.add(GraphOperationMessage::StrokeSet {

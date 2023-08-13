@@ -11,24 +11,23 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu"]
+default = ["wasm"]
+gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu", "wgpu-executor", "gpu-executor"]
 quantization = [
 	"graphene-std/quantization",
 	"interpreted-executor/quantization",
 ]
+wasm = ["wasm-bindgen", "future-executor", "graphene-std/wasm"]
 
 [dependencies]
 log = "0.4"
-bitflags = "1.2.1"
-thiserror = "1.0.24"
+bitflags = { version = "2.3", features = ["serde"] }
+thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 graphite-proc-macros = { path = "../proc-macros" }
 bezier-rs = { path = "../libraries/bezier-rs" }
-glam = { version = "0.22", features = ["serde"] }
-kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
-	"serde",
-] }
+glam = { version = "0.24", features = ["serde"] }
 remain = "0.2.2"
 derivative = "2.2.0"
 once_cell = "1.13.0" # Remove when `core::cell::OnceCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.OnceCell.html>)
@@ -40,11 +39,16 @@ image = { version = "0.24", default-features = false, features = [
 	"png",
 ] }
 graph-craft = { path = "../node-graph/graph-craft" }
+wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
+gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
-borrow_stack = { path = "../node-graph/borrow_stack" }
 dyn-any = { path = "../libraries/dyn-any" }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }
+future-executor = { path = "../node-graph/future-executor", optional = true }
+num_enum = "0.6.1"
+
+wasm-bindgen = { version = "0.2.86", optional = true }
 
 [dependencies.document-legacy]
 path = "../document-legacy"
@@ -53,3 +57,4 @@ package = "graphite-document-legacy"
 [dev-dependencies]
 env_logger = "0.8.4"
 test-case = "2.1"
+futures = "0.3.28"

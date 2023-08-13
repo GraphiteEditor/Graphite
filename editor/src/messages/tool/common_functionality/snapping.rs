@@ -123,7 +123,7 @@ impl SnapOverlays {
 
 	/// Updates the snapping overlays with the specified distances.
 	/// `positions_and_distances` is a tuple of `x`, `y` & `point` iterators,, each with `(position, goal, distance)` values.
-	fn update_overlays<X, Y, P>(&mut self, responses: &mut VecDeque<Message>, positions_and_distances: (X, Y, P), closest_distance: DVec2)
+	fn update_overlays<X, Y, P>(&mut self, responses: &mut VecDeque<Message>, positions_and_distances: (X, Y, P), closest_distance: DVec2, snapped_to_point: bool)
 	where
 		X: Iterator<Item = (DVec2, DVec2, f64)>,
 		Y: Iterator<Item = (DVec2, DVec2, f64)>,
@@ -133,9 +133,11 @@ impl SnapOverlays {
 		self.point_index = 0;
 
 		let (x, y, points) = positions_and_distances;
-		self.draw_alignment_lines(true, y, responses, closest_distance);
-		self.draw_alignment_lines(false, x, responses, closest_distance);
-		self.draw_snap_points(points, responses, closest_distance);
+		if !snapped_to_point {
+			self.draw_alignment_lines(true, y, responses, closest_distance);
+			self.draw_alignment_lines(false, x, responses, closest_distance);
+			self.draw_snap_points(points, responses, closest_distance);
+		}
 
 		Self::remove_unused_overlays(&mut self.axis_overlay_paths, responses, self.axis_index);
 		Self::remove_unused_overlays(&mut self.point_overlay_paths, responses, self.point_index);
@@ -190,18 +192,21 @@ impl SnapManager {
 		let min_points = points.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
 
 		// Snap to a point if possible
-		let clamped_closest_distance = if let Some(min_points) = min_points.filter(|&(_, _, dist)| dist <= SNAP_POINT_TOLERANCE) {
-			min_points.1
+		let (clamped_closest_distance, snapped_to_point) = if let Some(min_points) = min_points.filter(|&(_, _, dist)| dist <= SNAP_POINT_TOLERANCE) {
+			(min_points.1, true)
 		} else {
 			// Do not move if over snap tolerance
 			let closest_distance = DVec2::new(min_x.unwrap_or_default().2, min_y.unwrap_or_default().2);
-			DVec2::new(
-				if closest_distance.x.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.x },
-				if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
+			(
+				DVec2::new(
+					if closest_distance.x.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.x },
+					if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
+				),
+				false,
 			)
 		};
 
-		self.snap_overlays.update_overlays(responses, (x_axis, y_axis, points), clamped_closest_distance);
+		self.snap_overlays.update_overlays(responses, (x_axis, y_axis, points), clamped_closest_distance, snapped_to_point);
 
 		clamped_closest_distance
 	}
@@ -216,7 +221,9 @@ impl SnapManager {
 		snap_x: bool,
 		snap_y: bool,
 	) {
-		if document_message_handler.snapping_enabled {
+		let snapping_enabled = document_message_handler.snapping_state.snapping_enabled;
+		let bounding_box_snapping = document_message_handler.snapping_state.bounding_box_snapping;
+		if snapping_enabled && bounding_box_snapping {
 			self.snap_x = snap_x;
 			self.snap_y = snap_y;
 
@@ -235,7 +242,9 @@ impl SnapManager {
 	///
 	/// This should be called after start_snap
 	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
-		if document_message_handler.snapping_enabled {
+		let snapping_enabled = document_message_handler.snapping_state.snapping_enabled;
+		let node_snapping = document_message_handler.snapping_state.node_snapping;
+		if snapping_enabled && node_snapping {
 			let snap_points = snap_points.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y);
 			if let Some(targets) = &mut self.point_targets {
 				targets.extend(snap_points);
@@ -258,6 +267,10 @@ impl SnapManager {
 		ignore_points: &[ManipulatorPointInfo],
 	) {
 		let Some(vector_data) = &layer.as_vector_data() else { return };
+
+		if !document_message_handler.snapping_state.node_snapping {
+			return;
+		};
 
 		let transform = document_message_handler.document_legacy.multiply_transforms(path).unwrap();
 		let snap_points = vector_data
@@ -299,7 +312,7 @@ impl SnapManager {
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.
 	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
 	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, mouse_delta: DVec2) -> DVec2 {
-		if document_message_handler.snapping_enabled {
+		if document_message_handler.snapping_state.snapping_enabled {
 			self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
 		} else {
 			DVec2::ZERO
@@ -308,7 +321,7 @@ impl SnapManager {
 
 	/// Handles snapping of a viewport position, returning another viewport position.
 	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
-		if document_message_handler.snapping_enabled {
+		if document_message_handler.snapping_state.snapping_enabled {
 			self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
 		} else {
 			position_viewport

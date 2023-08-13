@@ -26,6 +26,10 @@ pub struct Document {
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
+	#[serde(default)]
+	pub document_network: graph_craft::document::NodeNetwork,
+	#[serde(default)]
+	pub commit_hash: String,
 }
 
 impl PartialEq for Document {
@@ -39,6 +43,20 @@ impl Default for Document {
 		Self {
 			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
+			document_network: {
+				use graph_craft::document::{value::TaggedValue, NodeInput, NodeNetwork};
+				let mut network = NodeNetwork::default();
+				let node = graph_craft::document::DocumentNode {
+					name: "Output".into(),
+					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)],
+					implementation: graph_craft::document::DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+					metadata: graph_craft::document::DocumentNodeMetadata::position((8, 4)),
+					..Default::default()
+				};
+				network.push_node(node, false);
+				network
+			},
+			commit_hash: String::new(),
 		}
 	}
 }
@@ -388,7 +406,7 @@ impl Document {
 	}
 
 	pub fn mark_downstream_as_dirty(&mut self, path: &[LayerId]) -> Result<(), DocumentError> {
-		let mut layer = self.layer_mut(path)?;
+		let layer = self.layer_mut(path)?;
 		layer.cache_dirty = true;
 
 		let mut path = path.to_vec();
@@ -724,7 +742,9 @@ impl Document {
 						let mut old_to_new_layer_id: HashMap<LayerId, LayerId> = HashMap::new();
 
 						for (i, duplicate_layer) in duplicated_layers.into_iter().enumerate() {
-							let Some(old_layer_id) = duplicate_layer.last().cloned() else { continue; };
+							let Some(old_layer_id) = duplicate_layer.last().cloned() else {
+								continue;
+							};
 
 							// Iterate through each ID of the current duplicate layer
 							// If the dictionary contains the ID, we know the duplicate folder has been created already. Use the existing layer ID instead of creating a new one
@@ -856,6 +876,12 @@ impl Document {
 				}
 				Some(Vec::new())
 			}
+			Operation::SetSurface { path, surface_id } => {
+				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
+					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
+				}
+				Some(Vec::new())
+			}
 			Operation::TransformLayerInScope { path, transform, scope } => {
 				let transform = DAffine2::from_cols_array(&transform);
 				let scope = DAffine2::from_cols_array(&scope);
@@ -901,7 +927,7 @@ impl Document {
 			}
 			Operation::SetLayerName { path, name } => {
 				self.mark_as_dirty(&path)?;
-				let mut layer = self.layer_mut(&path)?;
+				let layer = self.layer_mut(&path)?;
 				layer.name = if name.as_str() == "" { None } else { Some(name) };
 
 				Some(vec![LayerChanged { path }])
@@ -962,23 +988,5 @@ pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, render_data: &RenderD
 	let layer_bounds = layer.bounding_transform(render_data);
 	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
 
-	pick_safe_imaginate_resolution(layer_bounds_size)
-}
-
-pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
-	const MAX_RESOLUTION: u64 = 1000 * 1000;
-
-	let mut scale_factor = 1.;
-
-	let round_to_increment = |size: f64| (size / 64.).round() as u64 * 64;
-
-	loop {
-		let possible_solution = (round_to_increment(width * scale_factor), round_to_increment(height * scale_factor));
-
-		if possible_solution.0 * possible_solution.1 <= MAX_RESOLUTION {
-			return possible_solution;
-		}
-
-		scale_factor -= 0.1;
-	}
+	graphene_std::imaginate::pick_safe_imaginate_resolution(layer_bounds_size)
 }

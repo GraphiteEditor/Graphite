@@ -1,12 +1,13 @@
 use crate::consts::SELECTION_TOLERANCE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::intersection::Quad;
+use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::Fill;
 
 use glam::DVec2;
@@ -43,7 +44,11 @@ impl ToolMetadata for FillTool {
 	}
 }
 
-impl PropertyHolder for FillTool {}
+impl LayoutHolder for FillTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
@@ -103,6 +108,17 @@ impl Fsm for FillToolFsmState {
 					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
 
 					if let Some(path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
+						let is_bitmap = document
+							.document_legacy
+							.layer(path)
+							.ok()
+							.and_then(|layer| layer.as_layer().ok())
+							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+
+						if is_bitmap {
+							return self;
+						}
+
 						let color = match lmb_or_rmb {
 							LeftPointerDown => global_tool_data.primary_color,
 							RightPointerDown => global_tool_data.secondary_color,

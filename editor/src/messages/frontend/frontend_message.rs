@@ -1,7 +1,5 @@
 use super::utility_types::{FrontendDocumentDetails, FrontendImageData, MouseCursorIcon};
-use crate::messages::layout::utility_types::layout_widget::WidgetDiff;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
 use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
@@ -9,7 +7,6 @@ use crate::messages::tool::utility_types::HintData;
 
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
-use graph_craft::imaginate_input::*;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
@@ -75,40 +72,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "isDefault")]
 		is_default: bool,
 	},
-	TriggerImaginateCheckServerStatus {
-		hostname: String,
-	},
-	TriggerImaginateGenerate {
-		parameters: Box<ImaginateGenerationParameters>,
-		#[serde(rename = "baseImage")]
-		base_image: Option<Box<ImaginateBaseImage>>,
-		#[serde(rename = "maskImage")]
-		mask_image: Option<Box<ImaginateMaskImage>>,
-		#[serde(rename = "maskPaintMode")]
-		mask_paint_mode: ImaginateMaskPaintMode,
-		#[serde(rename = "maskBlurPx")]
-		mask_blur_px: u32,
-		#[serde(rename = "maskFillContent")]
-		imaginate_mask_starting_fill: ImaginateMaskStartingFill,
-		hostname: String,
-		#[serde(rename = "refreshFrequency")]
-		refresh_frequency: f64,
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		#[serde(rename = "nodePath")]
-		node_path: Vec<NodeId>,
-	},
-	TriggerImaginateTerminate {
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		#[serde(rename = "nodePath")]
-		node_path: Vec<NodeId>,
-		hostname: String,
-	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
@@ -130,8 +93,6 @@ pub enum FrontendMessage {
 		layer_path: Vec<LayerId>,
 		svg: String,
 		size: glam::DVec2,
-		#[serde(rename = "imaginateNodePath")]
-		imaginate_node_path: Option<Vec<NodeId>>,
 	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
@@ -187,6 +148,9 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateDocumentNodeRender {
+		svg: String,
+	},
 	UpdateDocumentOverlays {
 		svg: String,
 	},
@@ -199,6 +163,9 @@ pub enum FrontendMessage {
 		position: (f64, f64),
 		size: (f64, f64),
 		multiplier: (f64, f64),
+	},
+	UpdateDocumentTransform {
+		transform: String,
 	},
 	UpdateEyedropperSamplingState {
 		#[serde(rename = "mousePosition")]

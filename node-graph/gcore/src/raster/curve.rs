@@ -1,8 +1,10 @@
+use core::ops::{Add, Mul, Sub};
+
 use dyn_any::{DynAny, StaticType};
 
 use crate::Node;
 
-use super::{Channel, LuminanceMut};
+use super::{Channel, Linear, LuminanceMut};
 
 #[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -178,15 +180,22 @@ impl<C> ValueMapperNode<C> {
 	}
 }
 
-impl<'i, L: LuminanceMut + 'i> Node<'i, L> for ValueMapperNode<L::LuminanceChannel> {
+impl<'i, L: LuminanceMut + 'i> Node<'i, L> for ValueMapperNode<L::LuminanceChannel>
+where
+	L::LuminanceChannel: Linear + Copy,
+	L::LuminanceChannel: Add<Output = L::LuminanceChannel>,
+	L::LuminanceChannel: Sub<Output = L::LuminanceChannel>,
+	L::LuminanceChannel: Mul<Output = L::LuminanceChannel>,
+{
 	type Output = L;
 
 	fn eval(&'i self, mut val: L) -> L {
-		let floating_sample_index = val.luminance().to_f32() * (self.lut.len() - 1) as f32;
+		let luminance: f32 = val.luminance().to_linear();
+		let floating_sample_index = luminance * (self.lut.len() - 1) as f32;
 		let index_in_lut = floating_sample_index.floor() as usize;
 		let a = self.lut[index_in_lut];
 		let b = self.lut[(index_in_lut + 1).clamp(0, self.lut.len() - 1)];
-		let result = a.lerp(b, floating_sample_index.fract());
+		let result = a.lerp(b, L::LuminanceChannel::from_linear(floating_sample_index.fract()));
 		val.set_luminance(result);
 		val
 	}

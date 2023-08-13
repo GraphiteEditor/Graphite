@@ -82,6 +82,7 @@ pub enum DocumentMessage {
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
+		transparent_background: bool,
 	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
@@ -93,21 +94,14 @@ pub enum DocumentMessage {
 	GroupSelectedLayers,
 	ImaginateClear {
 		layer_path: Vec<LayerId>,
-		node_id: NodeId,
-		cached_index: usize,
 	},
 	ImaginateGenerate {
 		layer_path: Vec<LayerId>,
-		imaginate_node: Vec<NodeId>,
 	},
 	ImaginateRandom {
 		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
-	},
-	ImaginateTerminate {
-		layer_path: Vec<LayerId>,
-		node_path: Vec<NodeId>,
 	},
 	InputFrameRasterizeRegionBelowLayer {
 		layer_path: Vec<LayerId>,
@@ -131,6 +125,9 @@ pub enum DocumentMessage {
 		mouse: Option<(f64, f64)>,
 	},
 	Redo,
+	RenameDocument {
+		new_name: String,
+	},
 	RenameLayer {
 		layer_path: Vec<LayerId>,
 		new_name: String,
@@ -178,7 +175,9 @@ pub enum DocumentMessage {
 		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},
 	SetSnapping {
-		snap: bool,
+		snapping_enabled: Option<bool>,
+		bounding_box_snapping: Option<bool>,
+		node_snapping: Option<bool>,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

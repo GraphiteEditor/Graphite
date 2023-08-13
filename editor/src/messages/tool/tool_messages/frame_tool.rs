@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::PathOutline;
@@ -40,7 +40,11 @@ pub enum FrameToolMessage {
 	},
 }
 
-impl PropertyHolder for FrameTool {}
+impl LayoutHolder for FrameTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FrameTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
@@ -114,7 +118,7 @@ impl Fsm for NodeGraphToolFsmState {
 		use FrameToolMessage::*;
 		use NodeGraphToolFsmState::*;
 
-		let mut shape_data = &mut tool_data.data;
+		let shape_data = &mut tool_data.data;
 
 		if let ToolMessage::Frame(event) = event {
 			match (self, event) {

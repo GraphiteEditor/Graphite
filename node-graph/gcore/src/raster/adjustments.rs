@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use super::{
 	curve::{Curve, CurveManipulatorGroup, ValueMapperNode},
 	Channel, Color,
@@ -50,34 +51,28 @@ impl core::fmt::Display for LuminanceCalculation {
 }
 
 impl BlendMode {
-	pub fn list() -> [BlendMode; 26] {
+	pub fn list() -> [&'static [BlendMode]; 6] {
 		[
-			BlendMode::Normal,
-			BlendMode::Multiply,
-			BlendMode::Darken,
-			BlendMode::ColorBurn,
-			BlendMode::LinearBurn,
-			BlendMode::DarkerColor,
-			BlendMode::Screen,
-			BlendMode::Lighten,
-			BlendMode::ColorDodge,
-			BlendMode::LinearDodge,
-			BlendMode::LighterColor,
-			BlendMode::Overlay,
-			BlendMode::SoftLight,
-			BlendMode::HardLight,
-			BlendMode::VividLight,
-			BlendMode::LinearLight,
-			BlendMode::PinLight,
-			BlendMode::HardMix,
-			BlendMode::Difference,
-			BlendMode::Exclusion,
-			BlendMode::Subtract,
-			BlendMode::Divide,
-			BlendMode::Hue,
-			BlendMode::Saturation,
-			BlendMode::Color,
-			BlendMode::Luminosity,
+			// Normal group
+			&[BlendMode::Normal],
+			// Darken group
+			&[BlendMode::Darken, BlendMode::Multiply, BlendMode::ColorBurn, BlendMode::LinearBurn, BlendMode::DarkerColor],
+			// Lighten group
+			&[BlendMode::Lighten, BlendMode::Screen, BlendMode::ColorDodge, BlendMode::LinearDodge, BlendMode::LighterColor],
+			// Contrast group
+			&[
+				BlendMode::Overlay,
+				BlendMode::SoftLight,
+				BlendMode::HardLight,
+				BlendMode::VividLight,
+				BlendMode::LinearLight,
+				BlendMode::PinLight,
+				BlendMode::HardMix,
+			],
+			// Inversion group
+			&[BlendMode::Difference, BlendMode::Exclusion, BlendMode::Subtract, BlendMode::Divide],
+			// Component group
+			&[BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity],
 		]
 	}
 }
@@ -85,6 +80,7 @@ impl BlendMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
 	#[default]
 	// Basic group
@@ -125,25 +121,31 @@ pub enum BlendMode {
 	Saturation,
 	Color,
 	Luminosity,
+
+	// Other stuff
+	Erase,
+	Restore,
+	MultiplyAlpha,
 }
 
 impl core::fmt::Display for BlendMode {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
+			// Normal group
 			BlendMode::Normal => write!(f, "Normal"),
-
-			BlendMode::Multiply => write!(f, "Multiply"),
+			// Darken group
 			BlendMode::Darken => write!(f, "Darken"),
+			BlendMode::Multiply => write!(f, "Multiply"),
 			BlendMode::ColorBurn => write!(f, "Color Burn"),
 			BlendMode::LinearBurn => write!(f, "Linear Burn"),
 			BlendMode::DarkerColor => write!(f, "Darker Color"),
-
-			BlendMode::Screen => write!(f, "Screen"),
+			// Lighten group
 			BlendMode::Lighten => write!(f, "Lighten"),
+			BlendMode::Screen => write!(f, "Screen"),
 			BlendMode::ColorDodge => write!(f, "Color Dodge"),
 			BlendMode::LinearDodge => write!(f, "Linear Dodge"),
 			BlendMode::LighterColor => write!(f, "Lighter Color"),
-
+			// Contrast group
 			BlendMode::Overlay => write!(f, "Overlay"),
 			BlendMode::SoftLight => write!(f, "Soft Light"),
 			BlendMode::HardLight => write!(f, "Hard Light"),
@@ -151,16 +153,20 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::LinearLight => write!(f, "Linear Light"),
 			BlendMode::PinLight => write!(f, "Pin Light"),
 			BlendMode::HardMix => write!(f, "Hard Mix"),
-
+			// Inversion group
 			BlendMode::Difference => write!(f, "Difference"),
 			BlendMode::Exclusion => write!(f, "Exclusion"),
 			BlendMode::Subtract => write!(f, "Subtract"),
 			BlendMode::Divide => write!(f, "Divide"),
-
+			// Component group
 			BlendMode::Hue => write!(f, "Hue"),
 			BlendMode::Saturation => write!(f, "Saturation"),
 			BlendMode::Color => write!(f, "Color"),
 			BlendMode::Luminosity => write!(f, "Luminosity"),
+			// Other utility blend modes (hidden from the normal list)
+			BlendMode::Erase => write!(f, "Erase"),
+			BlendMode::Restore => write!(f, "Restore"),
+			BlendMode::MultiplyAlpha => write!(f, "Multiply Alpha"),
 		}
 	}
 }
@@ -183,6 +189,41 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractChannelNode<TargetChannel> {
+	channel: TargetChannel,
+}
+
+#[node_macro::node_fn(ExtractChannelNode)]
+fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
+	let extracted_value = match channel {
+		RedGreenBlue::Red => color.r(),
+		RedGreenBlue::Green => color.g(),
+		RedGreenBlue::Blue => color.b(),
+	};
+	color.map_rgb(|_| extracted_value)
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractAlphaNode;
+
+#[node_macro::node_fn(ExtractAlphaNode)]
+fn extract_alpha_node(color: Color) -> Color {
+	let alpha = color.a();
+	Color::from_rgbaf32(alpha, alpha, alpha, 1.0).unwrap()
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractOpaqueNode;
+
+#[node_macro::node_fn(ExtractOpaqueNode)]
+fn extract_opaque_node(color: Color) -> Color {
+	if color.a() == 0. {
+		return color.with_alpha(1.);
+	}
+	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.0).unwrap()
+}
+
+#[derive(Debug, Clone, Copy, Default)]
 pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 	input_start: InputStart,
 	input_mid: InputMid,
@@ -193,17 +234,17 @@ pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node_fn(LevelsNode)]
-fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
+fn levels_node(color: Color, input_start: f32, input_mid: f32, input_end: f32, output_start: f32, output_end: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
 	// Input Range (Range: 0-1)
-	let input_shadows = (input_start / 100.) as f32;
-	let input_midtones = (input_mid / 100.) as f32;
-	let input_highlights = (input_end / 100.) as f32;
+	let input_shadows = input_start / 100.;
+	let input_midtones = input_mid / 100.;
+	let input_highlights = input_end / 100.;
 
 	// Output Range (Range: 0-1)
-	let output_minimums = (output_start / 100.) as f32;
-	let output_maximums = (output_end / 100.) as f32;
+	let output_minimums = output_start / 100.;
+	let output_maximums = output_end / 100.;
 
 	// Midtones interpolation factor between minimums and maximums (Range: 0-1)
 	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
@@ -225,7 +266,7 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 
 	// Input levels (Range: 0-1)
 	let highlights_minus_shadows = (input_highlights - input_shadows).max(f32::EPSILON).min(1.);
-	let color = color.map_rgb(|c| (c - input_shadows).max(0.) / highlights_minus_shadows);
+	let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
 
 	// Midtones (Range: 0-1)
 	let color = color.gamma(gamma);
@@ -250,21 +291,22 @@ pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
 #[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
+fn grayscale_color_node(color: Color, tint: Color, reds: f32, yellows: f32, greens: f32, cyans: f32, blues: f32, magentas: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
-	let reds = reds as f32 / 100.;
-	let yellows = yellows as f32 / 100.;
-	let greens = greens as f32 / 100.;
-	let cyans = cyans as f32 / 100.;
-	let blues = blues as f32 / 100.;
-	let magentas = magentas as f32 / 100.;
+	let reds = reds / 100.;
+	let yellows = yellows / 100.;
+	let greens = greens / 100.;
+	let cyans = cyans / 100.;
+	let blues = blues / 100.;
+	let magentas = magentas / 100.;
 
 	let gray_base = color.r().min(color.g()).min(color.b());
 
 	let red_part = color.r() - gray_base;
 	let green_part = color.g() - gray_base;
 	let blue_part = color.b() - gray_base;
+	let alpha_part = color.a();
 
 	let additional = if red_part == 0. {
 		let cyan_part = green_part.min(blue_part);
@@ -282,41 +324,34 @@ fn grayscale_color_node(color: Color, tint: Color, reds: f64, yellows: f64, gree
 	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
 	let color = tint.with_luminance(luminance);
 
+	let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
+
 	color.to_linear_srgb()
 }
 
-#[cfg(not(target_arch = "spirv"))]
-pub use hue_shift::HueSaturationNode;
+#[derive(Debug)]
+pub struct HueSaturationNode<Hue, Saturation, Lightness> {
+	hue_shift: Hue,
+	saturation_shift: Saturation,
+	lightness_shift: Lightness,
+}
 
-// TODO: Make this work on GPU so it can be removed from the wrapper module that excludes GPU (it doesn't work because of the modulo)
-#[cfg(not(target_arch = "spirv"))]
-mod hue_shift {
-	use super::*;
+#[node_macro::node_fn(HueSaturationNode)]
+fn hue_shift_color_node(color: Color, hue_shift: f32, saturation_shift: f32, lightness_shift: f32) -> Color {
+	let color = color.to_gamma_srgb();
 
-	#[derive(Debug)]
-	pub struct HueSaturationNode<Hue, Saturation, Lightness> {
-		hue_shift: Hue,
-		saturation_shift: Saturation,
-		lightness_shift: Lightness,
-	}
+	let [hue, saturation, lightness, alpha] = color.to_hsla();
 
-	#[node_macro::node_fn(HueSaturationNode)]
-	fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
-		let color = color.to_gamma_srgb();
+	let color = Color::from_hsla(
+		(hue + hue_shift / 360.) % 1.,
+		// TODO: Improve the way saturation works (it's slightly off)
+		(saturation + saturation_shift / 100.).clamp(0., 1.),
+		// TODO: Fix the way lightness works (it's very off)
+		(lightness + lightness_shift / 100.).clamp(0., 1.),
+		alpha,
+	);
 
-		let [hue, saturation, lightness, alpha] = color.to_hsla();
-
-		let color = Color::from_hsla(
-			(hue + hue_shift as f32 / 360.) % 1.,
-			// TODO: Improve the way saturation works (it's slightly off)
-			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
-			// TODO: Fix the way lightness works (it's very off)
-			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
-			alpha,
-		);
-
-		color.to_linear_srgb()
-	}
+	color.to_linear_srgb()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -331,6 +366,19 @@ fn invert_image(color: Color) -> Color {
 	color.to_linear_srgb()
 }
 
+// TODO replace with trait based implementation
+impl<'i> Node<'i, &'i Color> for InvertRGBNode {
+	type Output = Color;
+
+	fn eval(&'i self, color: &'i Color) -> Self::Output {
+		let color = color.to_gamma_srgb();
+
+		let color = color.map_rgb(|c| color.a() - c);
+
+		color.to_linear_srgb()
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 	min_luminance: MinLuminance,
@@ -339,9 +387,9 @@ pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
 }
 
 #[node_macro::node_fn(ThresholdNode)]
-fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
-	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
-	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
+fn threshold_node(color: Color, min_luminance: f32, max_luminance: f32, luminance_calc: LuminanceCalculation) -> Color {
+	let min_luminance = Color::srgb_to_linear(min_luminance / 100.);
+	let max_luminance = Color::srgb_to_linear(max_luminance / 100.);
 
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
@@ -365,25 +413,28 @@ pub struct BlendNode<BlendMode, Opacity> {
 }
 
 #[node_macro::node_fn(BlendNode)]
-fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	let opacity = opacity / 100.;
+fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f32) -> Color {
+	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
+}
 
-	let (foreground, background) = input;
-
+#[inline(always)]
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
 	let target_color = match blend_mode {
+		// Normal group
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
-		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
+		// Darken group
 		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
+		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
 		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
 		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
 		BlendMode::DarkerColor => background.blend_darker_color(foreground),
-
-		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
+		// Lighten group
 		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
+		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
 		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
 		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
 		BlendMode::LighterColor => background.blend_lighter_color(foreground),
-
+		// Contrast group
 		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
 		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
 		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
@@ -391,19 +442,23 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Col
 		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
 		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
 		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
-
-		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_exclusion),
+		// Inversion group
+		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_difference),
 		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
 		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
 		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
-
+		// Component group
 		BlendMode::Hue => background.blend_hue(foreground),
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
+		// Other utility blend modes (hidden from the normal list)
+		BlendMode::Erase => return background.alpha_subtract(foreground),
+		BlendMode::Restore => return background.alpha_add(foreground),
+		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
+	background.alpha_blend(target_color.to_associated_alpha(opacity))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -414,8 +469,8 @@ pub struct VibranceNode<Vibrance> {
 // Modified from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node_fn(VibranceNode)]
-fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	let vibrance = vibrance as f32 / 100.;
+fn vibrance_node(color: Color, vibrance: f32) -> Color {
+	let vibrance = vibrance / 100.;
 	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 	// So this scales the 0% to -50% range to 0% to -100%.
 	let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
@@ -506,37 +561,37 @@ pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, M
 fn channel_mixer_node(
 	color: Color,
 	monochrome: bool,
-	monochrome_r: f64,
-	monochrome_g: f64,
-	monochrome_b: f64,
-	monochrome_c: f64,
-	red_r: f64,
-	red_g: f64,
-	red_b: f64,
-	red_c: f64,
-	green_r: f64,
-	green_g: f64,
-	green_b: f64,
-	green_c: f64,
-	blue_r: f64,
-	blue_g: f64,
-	blue_b: f64,
-	blue_c: f64,
+	monochrome_r: f32,
+	monochrome_g: f32,
+	monochrome_b: f32,
+	monochrome_c: f32,
+	red_r: f32,
+	red_g: f32,
+	red_b: f32,
+	red_c: f32,
+	green_r: f32,
+	green_g: f32,
+	green_b: f32,
+	green_c: f32,
+	blue_r: f32,
+	blue_g: f32,
+	blue_b: f32,
+	blue_c: f32,
 ) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let (r, g, b, a) = color.components();
 
 	let color = if monochrome {
-		let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
+		let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r / 100., monochrome_g / 100., monochrome_b / 100., monochrome_c / 100.);
 
 		let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
 
 		Color::from_rgbaf32_unchecked(gray, gray, gray, a)
 	} else {
-		let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
-		let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
-		let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
+		let (red_r, red_g, red_b, red_c) = (red_r / 100., red_g / 100., red_b / 100., red_c / 100.);
+		let (green_r, green_g, green_b, green_c) = (green_r / 100., green_g / 100., green_b / 100., green_c / 100.);
+		let (blue_r, blue_g, blue_b, blue_c) = (blue_r / 100., blue_g / 100., blue_b / 100., blue_c / 100.);
 
 		let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
 		let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
@@ -643,42 +698,42 @@ pub struct SelectiveColorNode<Absolute, RC, RM, RY, RK, YC, YM, YY, YK, GC, GM, 
 fn selective_color_node(
 	color: Color,
 	mode: RelativeAbsolute,
-	r_c: f64,
-	r_m: f64,
-	r_y: f64,
-	r_k: f64,
-	y_c: f64,
-	y_m: f64,
-	y_y: f64,
-	y_k: f64,
-	g_c: f64,
-	g_m: f64,
-	g_y: f64,
-	g_k: f64,
-	c_c: f64,
-	c_m: f64,
-	c_y: f64,
-	c_k: f64,
-	b_c: f64,
-	b_m: f64,
-	b_y: f64,
-	b_k: f64,
-	m_c: f64,
-	m_m: f64,
-	m_y: f64,
-	m_k: f64,
-	w_c: f64,
-	w_m: f64,
-	w_y: f64,
-	w_k: f64,
-	n_c: f64,
-	n_m: f64,
-	n_y: f64,
-	n_k: f64,
-	k_c: f64,
-	k_m: f64,
-	k_y: f64,
-	k_k: f64,
+	r_c: f32,
+	r_m: f32,
+	r_y: f32,
+	r_k: f32,
+	y_c: f32,
+	y_m: f32,
+	y_y: f32,
+	y_k: f32,
+	g_c: f32,
+	g_m: f32,
+	g_y: f32,
+	g_k: f32,
+	c_c: f32,
+	c_m: f32,
+	c_y: f32,
+	c_k: f32,
+	b_c: f32,
+	b_m: f32,
+	b_y: f32,
+	b_k: f32,
+	m_c: f32,
+	m_m: f32,
+	m_y: f32,
+	m_k: f32,
+	w_c: f32,
+	w_m: f32,
+	w_y: f32,
+	w_k: f32,
+	n_c: f32,
+	n_m: f32,
+	n_y: f32,
+	n_k: f32,
+	k_c: f32,
+	k_m: f32,
+	k_y: f32,
+	k_k: f32,
 ) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -728,11 +783,11 @@ fn selective_color_node(
 		// Skip this color parameter group...
 		// ...if it's unchanged from the default of zero offset on all CMYK paramters, or...
 		// ...if this pixel's color isn't in the range affected by this color parameter group
-		if (c < f64::EPSILON && m < f64::EPSILON && y < f64::EPSILON && k < f64::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+		if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
 			return acc;
 		}
 
-		let (c, m, y, k) = (c as f32 / 100., m as f32 / 100., y as f32 / 100., k as f32 / 100.);
+		let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
 
 		let color_parameter_group_scale_factor = match color_parameter_group {
 			SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
@@ -760,8 +815,8 @@ pub struct OpacityNode<O> {
 }
 
 #[node_macro::node_fn(OpacityNode)]
-fn image_opacity(color: Color, opacity_multiplier: f64) -> Color {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
+fn image_opacity(color: Color, opacity_multiplier: f32) -> Color {
+	let opacity_multiplier = opacity_multiplier / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
 
@@ -773,10 +828,10 @@ pub struct PosterizeNode<P> {
 // Based on http://www.axiomx.com/posterize.htm
 // This algorithm is perfectly accurate.
 #[node_macro::node_fn(PosterizeNode)]
-fn posterize(color: Color, posterize_value: f64) -> Color {
+fn posterize(color: Color, posterize_value: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
-	let posterize_value = posterize_value as f32;
+	let posterize_value = posterize_value;
 	let number_of_areas = posterize_value.recip();
 	let size_of_areas = (posterize_value - 1.).recip();
 	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
@@ -794,14 +849,14 @@ pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node_fn(ExposureNode)]
-fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
+fn exposure(color: Color, exposure: f32, offset: f32, gamma_correction: f32) -> Color {
 	let adjusted = color
 		// Exposure
-		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
+		.map_rgb(|c: f32| c * 2_f32.powf(exposure))
 		// Offset
-		.map_rgb(|c: f32| c + offset as f32)
+		.map_rgb(|c: f32| c + offset)
 		// Gamma correction
-		.gamma(gamma_correction as f32);
+		.gamma(gamma_correction);
 
 	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 }
@@ -815,9 +870,9 @@ pub struct GenerateCurvesNode<OutputChannel, Curve> {
 }
 
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
-fn generate_curves<_Channel: Channel>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
+fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.0; 2], curve.first_handle];
-	let mut lut = vec![_Channel::zero(); WINDOW_SIZE];
+	let mut lut = vec![_Channel::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
 		anchor: [1.0; 2],
 		handles: [curve.last_handle, [0.0; 2]],

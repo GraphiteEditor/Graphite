@@ -8,7 +8,7 @@
 
 <h1 align="center">Redefining state-of-the-art graphics editing</h1>
 
-Graphite is an in-development raster and vector 2D graphics editor that is free and open source. It is powered by a node graph compositing engine that supercharges your layer stack, providing a completely non-destructive editing experience.
+**Graphite** is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully non-destructive editing experience.
 
 Graphite is a lightweight vector graphics editor that runs in your browser. Its nascent node-based compositor lets you apply raster effects and co-create amazing art with AI in a non-destructive workflow. Fully-featured raster image editing and a native desktop application are the current focus of development and will be made available in the coming months.
 
@@ -27,6 +27,8 @@ Launch the latest alpha release of the [Graphite editor](https://editor.graphite
 We need Rust and web developers! See [instructions here](https://graphite.rs/contribute/) for setting up the project and getting started.
 
 We are also in search of artists to create beautiful sample work in Graphite and illustrations for the website and social media. Please [get in touch](https://graphite.rs/contact/) if you are able to help out.
+
+By submitting code for inclusion in the project, you are agreeing to license your changes under the Apache 2.0 license, and that you have the authority to do so. Some directories may have other licenses, like dual-licensed MIT/Apache 2.0, and code submissions to those directories mean you agree to the applicable license(s).
 
 ## Feature and roadmap
 

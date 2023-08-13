@@ -1,6 +1,6 @@
 const NAV_BUTTON_INITIAL_FONT_SIZE = 32;
 const RIPPLE_ANIMATION_MILLISECONDS = 100;
-const RIPPLE_WIDTH = 140;
+const RIPPLE_WIDTH = 120;
 const HANDLE_STRETCH = 0.4;
 
 let ripplesInitialized;
@@ -29,7 +29,18 @@ function initializeRipples() {
 		goingUp: false,
 	}));
 
-	activeRippleIndex = ripples.findIndex((ripple) => ripple.element.getAttribute("href").replace(/\//g, "") === window.location.pathname.replace(/\//g, ""));
+	activeRippleIndex = ripples.findIndex((ripple) => {
+		let link = ripple.element.getAttribute("href");
+		if (!link.endsWith("/")) link += "/";
+		let location = window.location.pathname;
+		if (!location.endsWith("/")) location += "/";
+
+		// Special case for the root, which will otherwise match as the starting prefix of all pages
+		if (link === "/" && location === "/") return true;
+		if (link === "/") return false;
+
+		return location.startsWith(link);
+	});
 
 	ripples.forEach((ripple) => {
 		const updateTimings = (goingUp) => {
@@ -51,7 +62,7 @@ function initializeRipples() {
 		ripple.element.addEventListener("pointerleave", () => updateTimings(false));
 	});
 
-	ripples[activeRippleIndex] = {
+	if (activeRippleIndex >= 0) ripples[activeRippleIndex] = {
 		...ripples[activeRippleIndex],
 		animationStartTime: 1,
 		animationEndTime: 1 + RIPPLE_ANIMATION_MILLISECONDS,

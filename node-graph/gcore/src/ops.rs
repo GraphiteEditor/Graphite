@@ -1,8 +1,9 @@
-use core::marker::PhantomData;
-use core::ops::{Add, Mul};
-
 use crate::Node;
+use core::marker::PhantomData;
+use core::ops::{Add, Div, Mul, Rem, Sub};
+use num_traits::Pow;
 
+// Add
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AddNode;
 
@@ -30,16 +31,105 @@ where
 	first + second
 }
 
-pub struct MulParameterNode<Second> {
+// Subtract
+pub struct SubtractParameterNode<Second> {
 	second: Second,
 }
 
-#[node_macro::node_fn(MulParameterNode)]
-fn flat_map<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
+#[node_macro::node_fn(SubtractParameterNode)]
+fn sub<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
+where
+	U: Sub<T>,
+{
+	first - second
+}
+
+// Divide
+pub struct DivideParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(DivideParameterNode)]
+fn div<U, T>(first: U, second: T) -> <U as Div<T>>::Output
+where
+	U: Div<T>,
+{
+	first / second
+}
+
+// Multiply
+pub struct MultiplyParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MultiplyParameterNode)]
+fn mul<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
 where
 	U: Mul<T>,
 {
 	first * second
+}
+
+// Exponent
+pub struct ExponentParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(ExponentParameterNode)]
+fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
+where
+	U: Pow<T>,
+{
+	first.pow(second)
+}
+
+// Minimum
+pub struct MinParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MinParameterNode)]
+fn min<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
+	match first < second {
+		true => first,
+		false => second,
+	}
+}
+
+// Maximum
+pub struct MaxParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(MaxParameterNode)]
+fn max<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
+	match first > second {
+		true => first,
+		false => second,
+	}
+}
+
+// Equality
+pub struct EqParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(EqParameterNode)]
+fn eq<T: core::cmp::PartialEq>(first: T, second: T) -> bool {
+	first == second
+}
+
+// Modulo
+pub struct ModuloParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(ModuloParameterNode)]
+fn modulo<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
+where
+	U: Rem<T>,
+{
+	first % second
 }
 
 #[cfg(feature = "std")]
@@ -181,7 +271,7 @@ pub struct MapResultNode<I, E, Mn> {
 }
 
 #[node_macro::node_fn(MapResultNode<_I,  _E>)]
-fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<<N as Node<'input, _I>>::Output, _E>
+fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
 where
 	N: for<'a> Node<'a, _I>,
 {
@@ -195,7 +285,7 @@ pub struct FlatMapResultNode<I, O, E, Mn> {
 }
 
 #[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'any_input N) -> Result<_O, _E>
+fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
 where
 	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
 {
@@ -204,6 +294,19 @@ where
 		Ok(Err(e)) => Err(e),
 		Err(e) => Err(e),
 	}
+}
+
+pub struct IntoNode<I, O> {
+	_i: PhantomData<I>,
+	_o: PhantomData<O>,
+}
+#[cfg(feature = "alloc")]
+#[node_macro::node_fn(IntoNode<_I, _O>)]
+async fn into<_I, _O>(input: _I) -> _O
+where
+	_I: Into<_O>,
+{
+	input.into()
 }
 
 #[cfg(test)]

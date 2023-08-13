@@ -2,7 +2,7 @@ use crate::application::generate_uuid;
 use crate::consts::SELECTION_TOLERANCE;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -13,7 +13,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use document_legacy::intersection::Quad;
 use document_legacy::LayerId;
 
-use glam::{DVec2, Vec2Swizzles};
+use glam::{DVec2, IVec2, Vec2Swizzles};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -73,7 +73,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 	);
 }
 
-impl PropertyHolder for ArtboardTool {}
+impl LayoutHolder for ArtboardTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
+}
 
 impl ToolTransition for ArtboardTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
@@ -133,10 +137,6 @@ impl Fsm for ArtboardToolFsmState {
 							tool_data.bounding_box_overlays = Some(bounding_box_overlays);
 
 							responses.add(OverlaysMessage::Rerender);
-							responses.add(PropertiesPanelMessage::SetActiveLayers {
-								paths: vec![vec![tool_data.selected_artboard.unwrap()]],
-								document: TargetDocument::Artboard,
-							});
 						}
 						_ => {}
 					};
@@ -196,11 +196,6 @@ impl Fsm for ArtboardToolFsmState {
 								.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), render_data), true, true);
 							tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-							responses.add(PropertiesPanelMessage::SetActiveLayers {
-								paths: vec![intersection.clone()],
-								document: TargetDocument::Artboard,
-							});
-
 							ArtboardToolFsmState::Dragging
 						} else {
 							tool_data.selected_artboard = None;
@@ -226,6 +221,11 @@ impl Fsm for ArtboardToolFsmState {
 								position: position.round().into(),
 								size: size.round().into(),
 							});
+							responses.add(GraphOperationMessage::ResizeArtboard {
+								id: tool_data.selected_artboard.unwrap(),
+								location: position.round().as_ivec2(),
+								dimensions: size.round().as_ivec2(),
+							});
 
 							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
@@ -250,6 +250,11 @@ impl Fsm for ArtboardToolFsmState {
 							artboard: tool_data.selected_artboard.unwrap(),
 							position: position.round().into(),
 							size: size.round().into(),
+						});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap(),
+							location: position.round().as_ivec2(),
+							dimensions: size.round().as_ivec2(),
 						});
 
 						responses.add(BroadcastEvent::DocumentIsDirty);
@@ -285,6 +290,11 @@ impl Fsm for ArtboardToolFsmState {
 							position: start.round().into(),
 							size: size.round().into(),
 						});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap(),
+							location: start.round().as_ivec2(),
+							dimensions: size.round().as_ivec2(),
+						});
 					} else {
 						let id = generate_uuid();
 						tool_data.selected_artboard = Some(id);
@@ -297,14 +307,20 @@ impl Fsm for ArtboardToolFsmState {
 							position: start.round().into(),
 							size: (1., 1.),
 						});
+						responses.add(GraphOperationMessage::NewArtboard {
+							id,
+							artboard: graphene_core::Artboard {
+								graphic_group: graphene_core::GraphicGroup::EMPTY,
+								location: start.round().as_ivec2(),
+								dimensions: IVec2::splat(1),
+								background: graphene_core::Color::WHITE,
+								clip: false,
+							},
+						})
 					}
 
 					// Have to put message here instead of when Artboard is created
 					// This might result in a few more calls but it is not reliant on the order of messages
-					responses.add(PropertiesPanelMessage::SetActiveLayers {
-						paths: vec![vec![tool_data.selected_artboard.unwrap()]],
-						document: TargetDocument::Artboard,
-					});
 
 					responses.add(BroadcastEvent::DocumentIsDirty);
 
@@ -352,6 +368,8 @@ impl Fsm for ArtboardToolFsmState {
 				(_, ArtboardToolMessage::DeleteSelected) => {
 					if let Some(artboard) = tool_data.selected_artboard.take() {
 						responses.add(ArtboardMessage::DeleteArtboard { artboard });
+						responses.add(GraphOperationMessage::DeleteArtboard { id: artboard });
+
 						responses.add(BroadcastEvent::DocumentIsDirty);
 					}
 					ArtboardToolFsmState::Ready
@@ -362,6 +380,11 @@ impl Fsm for ArtboardToolFsmState {
 							artboard: tool_data.selected_artboard.unwrap(),
 							position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
 							size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
+						});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap(),
+							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
+							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 						});
 					}
 

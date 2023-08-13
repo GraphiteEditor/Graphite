@@ -33,8 +33,9 @@ pub enum KeyPosition {
 }
 
 bitflags! {
-	#[derive(Default, Serialize, Deserialize)]
+	#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 	#[repr(transparent)]
+	#[serde(transparent)]
 	pub struct ModifierKeys: u8 {
 		const SHIFT           = 0b_0000_0001;
 		const ALT             = 0b_0000_0010;
@@ -50,7 +51,8 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type, num_enum::TryFromPrimitive)]
+#[repr(u8)]
 pub enum Key {
 	// Writing system keys
 	Digit0,

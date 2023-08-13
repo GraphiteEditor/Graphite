@@ -209,7 +209,7 @@ impl Bezier {
 		let self_points = self.get_points().collect::<Vec<DVec2>>();
 		let other_points = other.get_points().collect::<Vec<DVec2>>();
 
-		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points.into_iter()).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
+		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
 	}
 
 	/// Returns true if the start, end and handles of the Bezier are all at the same location

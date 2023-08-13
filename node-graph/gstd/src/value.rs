@@ -7,8 +7,7 @@ use dyn_any::DynAny;
 pub struct AnyRefNode<'n, N: Node<'n>>(N, PhantomData<&'n ()>);
 
 impl<'n, N: Node<'n, Output = &'n O>, O: DynAny<'n> + 'n> Node<'n> for AnyRefNode<'n, N> {
-	type Output = &'n (dyn DynAny<'n>);
-	fn eval(&'n self) -> Self::Output {
+	fn eval(&'n self) -> &'n (dyn DynAny<'n>) {
 		let value: &O = self.0.eval();
 		value
 	}
@@ -22,8 +21,7 @@ impl<'n, N: Node<'n, Output = &'n O>, O: 'n + ?Sized> AnyRefNode<'n, N> {
 pub struct StorageNode<'n>(&'n dyn Node<'n, Output = &'n dyn DynAny<'n>>);
 
 impl<'n> Node<'n> for StorageNode<'n> {
-	type Output = &'n (dyn DynAny<'n>);
-	fn eval(&'n self) -> Self::Output {
+	fn eval(&'n self) -> &'n (dyn DynAny<'n>) {
 		self.0.eval()
 	}
 }
@@ -36,7 +34,6 @@ impl<'n> StorageNode<'n> {
 #[derive(Default)]
 pub struct AnyValueNode<'n, T>(T, PhantomData<&'n ()>);
 impl<'n, T: 'n + DynAny<'n>> Node<'n> for AnyValueNode<'n, T> {
-	type Output = &'n dyn DynAny<'n>;
 	fn eval(&'n self) -> &'n dyn DynAny<'n> {
 		&self.0
 	}

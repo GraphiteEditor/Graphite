@@ -1,3 +1,4 @@
+use super::discrete_srgb::float_to_srgb_u8;
 use super::{Color, ImageSlice};
 use crate::Node;
 use alloc::vec::Vec;
@@ -10,14 +11,15 @@ mod base64_serde {
 	//! Basic wrapper for [`serde`] to perform [`base64`] encoding
 
 	use super::super::Pixel;
+	use base64::Engine;
 	use serde::{Deserialize, Deserializer, Serializer};
 
-	pub fn as_base64<S, P: Pixel>(key: &Vec<P>, serializer: S) -> Result<S::Ok, S::Error>
+	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
 		let u8_data = key.iter().flat_map(|color| color.to_bytes()).collect::<Vec<_>>();
-		serializer.serialize_str(&base64::encode(u8_data))
+		serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(u8_data))
 	}
 
 	pub fn from_base64<'a, D, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error>
@@ -26,12 +28,12 @@ mod base64_serde {
 	{
 		use serde::de::Error;
 
-		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk.try_into().unwrap());
+		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk);
 
 		let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(P::byte_size()).map(color_from_chunk).collect();
 
 		String::deserialize(deserializer)
-			.and_then(|string| base64::decode(string).map_err(|err| Error::custom(err.to_string())))
+			.and_then(|string| base64::engine::general_purpose::STANDARD.decode(string).map_err(|err| Error::custom(err.to_string())))
 			.map(colors_from_bytes)
 			.map_err(serde::de::Error::custom)
 	}
@@ -66,12 +68,15 @@ where
 
 impl<P: Copy + Pixel> Raster for Image<P> {
 	type Pixel = P;
+	#[inline(always)]
 	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
 		self.data.get((x + y * self.width) as usize).copied()
 	}
+	#[inline(always)]
 	fn width(&self) -> u32 {
 		self.width
 	}
+	#[inline(always)]
 	fn height(&self) -> u32 {
 		self.height
 	}
@@ -135,27 +140,57 @@ use super::*;
 impl<P: Alpha + RGB + AssociatedAlpha> Image<P>
 where
 	P::ColorChannel: Linear,
+	<P as Alpha>::AlphaChannel: Linear,
 {
 	/// Flattens each channel cast to a u8
 	pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 		let Image { width, height, data } = self;
+		assert!(data.len() == width as usize * height as usize);
 
-		let to_gamma = SRGBGammaFloat::from_linear;
-		let to_u8 = |x| (num_cast::<_, f32>(x).unwrap() * 255.) as u8;
+		// Cache the last sRGB value we computed, speeds up fills.
+		let mut last_r = 0.;
+		let mut last_r_srgb = 0u8;
+		let mut last_g = 0.;
+		let mut last_g_srgb = 0u8;
+		let mut last_b = 0.;
+		let mut last_b_srgb = 0u8;
 
-		let result_bytes = data
-			.into_iter()
-			.flat_map(|color| {
-				[
-					to_u8(to_gamma(color.r() / color.a().to_channel())),
-					to_u8(to_gamma(color.g() / color.a().to_channel())),
-					to_u8(to_gamma(color.b() / color.a().to_channel())),
-					(num_cast::<_, f32>(color.a()).unwrap() * 255.) as u8,
-				]
-			})
-			.collect();
+		let mut result = vec![0; data.len() * 4];
+		let mut i = 0;
+		for color in data {
+			let a = color.a().to_f32();
+			// Smaller alpha values than this would map to fully transparent
+			// anyway, avoid expensive encoding.
+			if a >= 0.5 / 255. {
+				let undo_premultiply = 1. / a;
+				let r = color.r().to_f32() * undo_premultiply;
+				let g = color.g().to_f32() * undo_premultiply;
+				let b = color.b().to_f32() * undo_premultiply;
 
-		(result_bytes, width, height)
+				// Compute new sRGB value if necessary.
+				if r != last_r {
+					last_r = r;
+					last_r_srgb = float_to_srgb_u8(r);
+				}
+				if g != last_g {
+					last_g = g;
+					last_g_srgb = float_to_srgb_u8(g);
+				}
+				if b != last_b {
+					last_b = b;
+					last_b_srgb = float_to_srgb_u8(b);
+				}
+
+				result[i] = last_r_srgb;
+				result[i + 1] = last_g_srgb;
+				result[i + 2] = last_b_srgb;
+				result[i + 3] = (a * 255. + 0.5) as u8;
+			}
+
+			i += 4;
+		}
+
+		(result, width, height)
 	}
 }
 
@@ -206,6 +241,16 @@ fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
+
+	// The transform that maps image space to layer space.
+	//
+	// Image space is unitless [0, 1] for both axes, with x axis positive
+	// going right and y axis positive going down, with the origin lying at
+	// the topleft of the image and (1, 1) lying at the bottom right of the image.
+	//
+	// Layer space has pixels as its units for both axes, with the x axis
+	// positive going right and y axis positive going down, with the origin
+	// being an unspecified quantity.
 	pub transform: DAffine2,
 }
 
@@ -213,6 +258,7 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	type Pixel = P;
 
 	// TODO: Improve sampling logic
+	#[inline(always)]
 	fn sample(&self, pos: DVec2, _area: DVec2) -> Option<Self::Pixel> {
 		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
 		let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);
@@ -294,43 +340,43 @@ impl<P: Hash + Pixel> Hash for ImageFrame<P> {
 	}
 }
 
-use crate::text::FontCache;
-#[derive(Clone, Debug, Hash, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct EditorApi<'a> {
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub image_frame: Option<ImageFrame<Color>>,
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub font_cache: Option<&'a FontCache>,
-}
+/* This does not work because of missing specialization
+ * so we have to manually implement this for now
+impl<S: Into<P> + Pixel, P: Pixel> From<Image<S>> for Image<P> {
+	fn from(image: Image<S>) -> Self {
+		let data = image.data.into_iter().map(|x| x.into()).collect();
+		Self {
+			data,
+			width: image.width,
+			height: image.height,
+		}
+	}
+}*/
 
-unsafe impl StaticType for EditorApi<'_> {
-	type Static = EditorApi<'static>;
-}
-
-impl EditorApi<'_> {
-	pub fn empty() -> Self {
-		Self { image_frame: None, font_cache: None }
+impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
+	fn from(image: ImageFrame<Color>) -> Self {
+		let data = image.image.data.into_iter().map(|x| x.into()).collect();
+		Self {
+			image: Image {
+				data,
+				width: image.image.width,
+				height: image.image.height,
+			},
+			transform: image.transform,
+		}
 	}
 }
 
-impl<'a> AsRef<EditorApi<'a>> for EditorApi<'a> {
-	fn as_ref(&self) -> &EditorApi<'a> {
-		self
-	}
-}
-
-pub struct ExtractImageFrame;
-
-impl<'a: 'input, 'input> Node<'input, EditorApi<'a>> for ExtractImageFrame {
-	type Output = ImageFrame<Color>;
-	fn eval(&'input self, mut editor_api: EditorApi<'a>) -> Self::Output {
-		editor_api.image_frame.take().unwrap_or(ImageFrame::identity())
-	}
-}
-
-impl ExtractImageFrame {
-	pub fn new() -> Self {
-		Self
+impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
+	fn from(image: ImageFrame<SRGBA8>) -> Self {
+		let data = image.image.data.into_iter().map(|x| x.into()).collect();
+		Self {
+			image: Image {
+				data,
+				width: image.image.width,
+				height: image.image.height,
+			},
+			transform: image.transform,
+		}
 	}
 }

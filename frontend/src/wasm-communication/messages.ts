@@ -42,7 +42,6 @@ export class UpdateNodeGraphSelection extends JsMessage {
 	readonly selected!: bigint[];
 }
 
-
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly openDocuments!: FrontendDocumentDetails[];
@@ -97,7 +96,9 @@ export class FrontendNode {
 
 	readonly exposedInputs!: NodeGraphInput[];
 
-	readonly outputs!: NodeGraphOutput[];
+	readonly primaryOutput!: NodeGraphOutput | undefined;
+
+	readonly exposedOutputs!: NodeGraphOutput[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;
@@ -457,6 +458,14 @@ export class UpdateDocumentArtboards extends JsMessage {
 	readonly svg!: string;
 }
 
+export class UpdateDocumentNodeRender extends JsMessage {
+	readonly svg!: string;
+}
+
+export class UpdateDocumentTransform extends JsMessage {
+	readonly transform!: string;
+}
+
 export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
 	readonly position!: XY;
@@ -504,7 +513,7 @@ const mouseCursorIconCSSNames = {
 	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
-export type MouseCursorIcon = typeof mouseCursorIconCSSNames[MouseCursor];
+export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
 
 export class UpdateMouseCursor extends JsMessage {
 	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
@@ -528,6 +537,7 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
 
+
 	readonly blobUrl!: string;
 }
 
@@ -548,85 +558,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 	readonly name!: string;
 }
 
-export class TriggerImaginateCheckServerStatus extends JsMessage {
-	readonly hostname!: string;
-}
-
-export class TriggerImaginateGenerate extends JsMessage {
-	@Type(() => ImaginateGenerationParameters)
-	readonly parameters!: ImaginateGenerationParameters;
-
-	@Type(() => ImaginateBaseImage)
-	readonly baseImage!: ImaginateBaseImage | undefined;
-
-	@Type(() => ImaginateMaskImage)
-	readonly maskImage: ImaginateMaskImage | undefined;
-
-	readonly maskPaintMode!: string;
-
-	readonly maskBlurPx!: number;
-
-	readonly maskFillContent!: string;
-
-	readonly hostname!: string;
-
-	readonly refreshFrequency!: number;
-
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
-
-	readonly nodePath!: BigUint64Array;
-}
-
-export class ImaginateMaskImage {
-	readonly svg!: string;
-
-	readonly size!: [number, number];
-}
-
-export class ImaginateBaseImage {
-	readonly mime!: string;
-
-	readonly imageData!: Uint8Array;
-
-	@TupleToVec2
-	readonly size!: [number, number];
-}
-
-export class ImaginateGenerationParameters {
-	readonly seed!: number;
-
-	readonly samples!: number;
-
-	readonly samplingMethod!: string;
-
-	readonly denoisingStrength!: number | undefined;
-
-	readonly cfgScale!: number;
-
-	readonly prompt!: string;
-
-	readonly negativePrompt!: string;
-
-	@BigIntTupleToVec2
-	readonly resolution!: XY;
-
-	readonly restoreFaces!: boolean;
-
-	readonly tiling!: boolean;
-}
-
-export class TriggerImaginateTerminate extends JsMessage {
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
-
-	readonly nodePath!: BigUint64Array;
-
-	readonly hostname!: string;
-}
-
 export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly documentId!: bigint;
 
@@ -635,8 +566,6 @@ export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly svg!: string;
 
 	readonly size!: [number, number];
-
-	readonly imaginateNodePath!: BigUint64Array | undefined;
 }
 
 export class TriggerRefreshBoundsOfViewports extends JsMessage { }
@@ -790,7 +719,7 @@ export class ImaginateImageData {
 
 	readonly imageData!: Uint8Array;
 
-	readonly transform!: Float64Array ;
+	readonly transform!: Float64Array;
 }
 
 export class DisplayDialogDismiss extends JsMessage { }
@@ -867,6 +796,7 @@ type MenuEntryCommon = {
 export type MenuBarEntry = MenuEntryCommon & {
 	action: Widget;
 	children?: MenuBarEntry[][];
+	disabled?: boolean,
 };
 
 // An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
@@ -1034,6 +964,8 @@ export class PopoverButton extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	optionsWidget: LayoutGroup[] | undefined;
 }
 
 export type RadioEntryData = {
@@ -1202,13 +1134,13 @@ const widgetSubTypes = [
 	{ value: TextLabel, name: "TextLabel" },
 ] as const;
 
-type WidgetSubTypes = typeof widgetSubTypes[number];
+type WidgetSubTypes = (typeof widgetSubTypes)[number];
 type WidgetKindMap = { [T in WidgetSubTypes as T["name"]]: InstanceType<T["value"]> };
 export type WidgetPropsNames = keyof WidgetKindMap;
 export type WidgetPropsSet = WidgetKindMap[WidgetPropsNames];
 
 export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetPropsSet, kind: K) {
-	if (props.kind === kind) return props as WidgetKindMap[K]
+	if (props.kind === kind) return props as WidgetKindMap[K];
 	else return undefined;
 }
 
@@ -1229,6 +1161,10 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	const kind = Object.keys(widgetHolder.widget)[0];
 	const props = widgetHolder.widget[kind];
 	props.kind = kind;
+
+	if (kind === "PopoverButton") {
+		props.optionsWidget = props.optionsWidget.map(createLayoutGroup);
+	}
 
 	const { widgetId } = widgetHolder;
 
@@ -1277,6 +1213,9 @@ export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: Widge
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
+				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.optionsWidget) {
+					return targetLayout.props.optionsWidget[index];
+				}
 				// eslint-disable-next-line no-console
 				console.error("Tried to index widget");
 				return targetLayout;
@@ -1405,6 +1344,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 			...entry,
 			action: hoistWidgetHolders([entry.action])[0],
 			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
+			disabled: entry.disabled ?? false,
 		}))
 	);
 }
@@ -1427,9 +1367,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
 	TriggerFontLoad,
-	TriggerImaginateCheckServerStatus,
-	TriggerImaginateGenerate,
-	TriggerImaginateTerminate,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
@@ -1448,6 +1385,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateActiveDocument,
 	UpdateDialogDetails,
 	UpdateDocumentArtboards,
+	UpdateDocumentNodeRender,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
@@ -1456,6 +1394,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
+	UpdateDocumentTransform,
 	UpdateEyedropperSamplingState,
 	UpdateImageData,
 	UpdateInputHints,

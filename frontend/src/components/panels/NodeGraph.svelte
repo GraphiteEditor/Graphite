@@ -2,9 +2,8 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import type { IconName } from "@graphite/utility-functions/icons";
-
-	import { UpdateNodeGraphSelection, type FrontendNodeLink, type FrontendNodeType, type FrontendNode } from "@graphite/wasm-communication/messages";
-
+	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeLink, FrontendNodeType, FrontendNode } from "@graphite/wasm-communication/messages";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -18,9 +17,13 @@
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
+	const ADD_NODE_MENU_WIDTH = 180;
+	const ADD_NODE_MENU_HEIGHT = 200;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+
+	type LinkPath = { pathString: string; dataType: string; thick: boolean };
 
 	let graph: LayoutRow | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
@@ -31,10 +34,10 @@
 	let selected: bigint[] = [];
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	let selectIfNotDragged: undefined | bigint = undefined;
-	let linkInProgressFromConnector: HTMLDivElement | undefined = undefined;
-	let linkInProgressToConnector: HTMLDivElement | DOMRect | undefined = undefined;
+	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
+	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
-	let nodeLinkPaths: [string, string][] = [];
+	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
 	let nodeListLocation: { x: number; y: number } | undefined = undefined;
 
@@ -46,6 +49,19 @@
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 	$: nodeListX = ((nodeListLocation?.x || 0) * GRID_SIZE + transform.x) * transform.scale;
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
+
+	let appearAboveMouse = false;
+	let appearRightOfMouse = false;
+
+	$: (() => {
+		const bounds = graph?.div()?.getBoundingClientRect();
+		if (!bounds) return;
+		const { width, height } = bounds;
+
+		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH / 2;
+		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT / 2;
+	})();
+
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
 	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
 
@@ -60,29 +76,53 @@
 		return sparse;
 	}
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, FrontendNodeType[]][] {
-		const categories = new Map();
+	type NodeCategoryDetails = {
+		nodes: FrontendNodeType[];
+		open: boolean;
+	};
+
+	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
+		const categories = new Map<string, NodeCategoryDetails>();
+
 		nodeTypes.forEach((node) => {
-			if (searchTerm.length > 0 && !node.name.toLowerCase().includes(searchTerm.toLowerCase()) && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
+			const nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+
+			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
 				return;
 			}
 
 			const category = categories.get(node.category);
-			if (category) category.push(node);
-			else categories.set(node.category, [node]);
+			let open = nameIncludesSearchTerm;
+			if (searchTerm.length === 0) {
+				open = false;
+			}
+
+			if (category) {
+				category.open = open;
+				category.nodes.push(node);
+			} else
+				categories.set(node.category, {
+					open: open,
+					nodes: [node],
+				});
 		});
 
 		return Array.from(categories);
 	}
 
-	function createLinkPathInProgress(linkInProgressFromConnector?: HTMLDivElement, linkInProgressToConnector?: HTMLDivElement | DOMRect): [string, string] | undefined {
+	function createLinkPathInProgress(linkInProgressFromConnector?: SVGSVGElement, linkInProgressToConnector?: SVGSVGElement | DOMRect): LinkPath | undefined {
 		if (linkInProgressFromConnector && linkInProgressToConnector && nodesContainer) {
-			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, false, false);
+			const from = connectorToNodeIndex(linkInProgressFromConnector);
+			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
+
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.displayName === "Layer";
+			const linkEnd = $nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.displayName === "Layer" && to?.index !== 0;
+			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
 	}
 
-	function createLinkPaths(linkPathInProgress: [string, string] | undefined, nodeLinkPaths: [string, string][]): [string, string][] {
+	function createLinkPaths(linkPathInProgress: LinkPath | undefined, nodeLinkPaths: LinkPath[]): LinkPath[] {
 		const optionalTuple = linkPathInProgress ? [linkPathInProgress] : [];
 		return [...optionalTuple, ...nodeLinkPaths];
 	}
@@ -92,7 +132,7 @@
 		await refreshLinks();
 	}
 
-	function resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodePrimaryOutput: HTMLDivElement | undefined; nodePrimaryInput: HTMLDivElement | undefined } {
+	function resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
 		const outputIndex = Number(link.linkStartOutputIndex);
 		const inputIndex = Number(link.linkEndInputIndex);
 
@@ -100,9 +140,9 @@
 
 		const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
 
-		const nodePrimaryOutput = nodeOutputConnectors?.[outputIndex] as HTMLDivElement | undefined;
-		const nodePrimaryInput = nodeInputConnectors?.[inputIndex] as HTMLDivElement | undefined;
-		return { nodePrimaryOutput, nodePrimaryInput };
+		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
+		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
+		return { nodeOutput, nodeInput };
 	}
 
 	async function refreshLinks(): Promise<void> {
@@ -113,11 +153,13 @@
 
 		const links = $nodeGraph.links;
 		nodeLinkPaths = links.flatMap((link, index) => {
-			const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, theNodesContainer);
-			if (!nodePrimaryInput || !nodePrimaryOutput) return [];
+			const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.displayName === "Layer";
+			const linkEnd = $nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.displayName === "Layer" && link.linkEndInputIndex !== 0n;
 
-			return [createWirePath(nodePrimaryOutput, nodePrimaryInput.getBoundingClientRect(), false, false)];
+			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
 	}
 
@@ -171,13 +213,13 @@
 		return `M${locations[0].x},${locations[0].y} C${locations[1].x},${locations[1].y} ${locations[2].x},${locations[2].y} ${locations[3].x},${locations[3].y}`;
 	}
 
-	function createWirePath(outputPort: HTMLDivElement, inputPort: HTMLDivElement | DOMRect, verticalOut: boolean, verticalIn: boolean): [string, string] {
-		const inputPortRect = inputPort instanceof HTMLDivElement ? inputPort.getBoundingClientRect() : inputPort;
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
+		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
 
 		const pathString = buildWirePathString(outputPort.getBoundingClientRect(), inputPortRect, verticalOut, verticalIn);
 		const dataType = outputPort.getAttribute("data-datatype") || "general";
 
-		return [pathString, dataType];
+		return { pathString, dataType, thick: verticalIn && verticalOut };
 	}
 
 	function scroll(e: WheelEvent) {
@@ -239,7 +281,7 @@
 	function pointerDown(e: PointerEvent) {
 		const [lmb, rmb] = [e.button === 0, e.button === 2];
 
-		const port = (e.target as HTMLDivElement).closest("[data-port]") as HTMLDivElement;
+		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeId = node?.getAttribute("data-node") || undefined;
 		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
@@ -281,17 +323,19 @@
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 				// Set the link to draw from the input that a previous link was on
-				if (inputIndex !== undefined && nodeId) {
+				if (inputIndex !== undefined && nodeId !== undefined) {
 					const nodeIdInt = BigInt(nodeId);
 					const inputIndexInt = BigInt(inputIndex);
 					const links = $nodeGraph.links;
 					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-					const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
-					linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
-					const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
-					linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as HTMLDivElement | undefined;
-					disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
-					refreshLinks();
+					if (linkIndex !== -1) {
+						const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+						linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
+						const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
+						linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
+						disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
+						refreshLinks();
+					}
 				}
 			}
 
@@ -320,7 +364,7 @@
 				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 			}
 
-			if (modifiedSelected) editor.instance.selectNodes(new BigUint64Array(selected));
+			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected) : null);
 
 			return;
 		}
@@ -328,7 +372,7 @@
 		// Clicked on the graph background
 		if (lmb && selected.length !== 0) {
 			selected = [];
-			editor.instance.selectNodes(new BigUint64Array([]));
+			editor.instance.selectNodes(null);
 		}
 
 		// LMB clicked on the graph background or MMB clicked anywhere
@@ -350,7 +394,7 @@
 			transform.y += e.movementY / transform.scale;
 		} else if (linkInProgressFromConnector) {
 			const target = e.target as Element | undefined;
-			const dot = (target?.closest(`[data-port="input"]`) || undefined) as HTMLDivElement | undefined;
+			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
 			if (dot) {
 				linkInProgressToConnector = dot;
 			} else {
@@ -362,9 +406,37 @@
 			if (draggingNodes.roundX !== deltaX || draggingNodes.roundY !== deltaY) {
 				draggingNodes.roundX = deltaX;
 				draggingNodes.roundY = deltaY;
-				refreshLinks();
+
+				let stop = false;
+				const refresh = () => {
+					if (!stop) refreshLinks();
+					requestAnimationFrame(refresh);
+				};
+				refresh();
+				// const DRAG_SMOOTHING_TIME = 0.1;
+				const DRAG_SMOOTHING_TIME = 0; // TODO: Reenable this after fixing the bugs with the wires, see the CSS `transition` attribute todo for other info
+				setTimeout(() => {
+					stop = true;
+				}, DRAG_SMOOTHING_TIME * 1000 + 10);
 			}
 		}
+	}
+
+	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
+		const node = svg.closest("[data-node]");
+
+		if (!node) return undefined;
+		const nodeIdAttribute = node.getAttribute("data-node");
+		if (!nodeIdAttribute) return undefined;
+		const nodeId = BigInt(nodeIdAttribute);
+
+		const inputPortElements = Array.from(node.querySelectorAll(`[data-port="input"]`));
+		const outputPortElements = Array.from(node.querySelectorAll(`[data-port="output"]`));
+		const inputNodeConnectionIndexSearch = inputPortElements.includes(svg) ? inputPortElements.indexOf(svg) : outputPortElements.indexOf(svg);
+		const index = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+
+		if (nodeId !== undefined && index !== undefined) return { nodeId, index };
+		else return undefined;
 	}
 
 	function pointerUp(e: PointerEvent) {
@@ -375,26 +447,14 @@
 		}
 		disconnecting = undefined;
 
-		if (linkInProgressToConnector instanceof HTMLDivElement && linkInProgressFromConnector) {
-			const outputNode = linkInProgressFromConnector.closest("[data-node]");
-			const inputNode = linkInProgressToConnector.closest("[data-node]");
+		if (linkInProgressToConnector instanceof SVGSVGElement && linkInProgressFromConnector) {
+			const from = connectorToNodeIndex(linkInProgressFromConnector);
+			const to = connectorToNodeIndex(linkInProgressToConnector);
 
-			const outputConnectedNodeID = outputNode?.getAttribute("data-node") ?? undefined;
-			const inputConnectedNodeID = inputNode?.getAttribute("data-node") ?? undefined;
-
-			if (outputNode && inputNode && outputConnectedNodeID && inputConnectedNodeID) {
-				const inputNodeInPorts = Array.from(inputNode.querySelectorAll(`[data-port="input"]`));
-				const outputNodeInPorts = Array.from(outputNode.querySelectorAll(`[data-port="output"]`));
-
-				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(linkInProgressToConnector);
-				const outputNodeConnectionIndexSearch = outputNodeInPorts.indexOf(linkInProgressFromConnector);
-
-				const inputNodeConnectionIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
-				const outputNodeConnectionIndex = outputNodeConnectionIndexSearch > -1 ? outputNodeConnectionIndexSearch : undefined;
-
-				if (inputNodeConnectionIndex !== undefined && outputNodeConnectionIndex !== undefined) {
-					editor.instance.connectNodesByLink(BigInt(outputConnectedNodeID), outputNodeConnectionIndex, BigInt(inputConnectedNodeID), inputNodeConnectionIndex);
-				}
+			if (from !== undefined && to !== undefined) {
+				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
+				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
+				editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x || draggingNodes.startY === e.y) {
@@ -422,10 +482,10 @@
 
 					// Find the link that the node has been dragged on top of
 					const link = $nodeGraph.links.find((link): boolean => {
-						const { nodePrimaryInput, nodePrimaryOutput } = resolveLink(link, theNodesContainer);
-						if (!nodePrimaryInput || !nodePrimaryOutput) return false;
+						const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+						if (!nodeInput || !nodeOutput) return false;
 
-						const wireCurveLocations = buildWirePathLocations(nodePrimaryOutput.getBoundingClientRect(), nodePrimaryInput.getBoundingClientRect(), false, false);
+						const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
 
 						const selectedNodeBounds = selectedNode.getBoundingClientRect();
 						const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
@@ -464,15 +524,20 @@
 		nodeListLocation = undefined;
 	}
 
+	function buildBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
+		const nodeHeight = Math.max(1 + parameters, 1 + exposedOutputs) * 24;
+
+		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+		if (primaryInputExists) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
+		for (let i = 0; i < parameters; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+		if (primaryOutputExists) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
+		for (let i = 0; i < exposedOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+
+		const rectangles = boxes.map((box) => `M${box.x},${box.y} L${box.x + box.width},${box.y} L${box.x + box.width},${box.y + box.height} L${box.x},${box.y + box.height}z`);
+		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
+	}
+
 	onMount(() => {
-		const outputPort1 = document.querySelectorAll(`[data-port="output"]`)[4] as HTMLDivElement | undefined;
-		const inputPort1 = document.querySelectorAll(`[data-port="input"]`)[1] as HTMLDivElement | undefined;
-		if (outputPort1 && inputPort1) createWirePath(outputPort1, inputPort1.getBoundingClientRect(), true, true);
-
-		const outputPort2 = document.querySelectorAll(`[data-port="output"]`)[6] as HTMLDivElement | undefined;
-		const inputPort2 = document.querySelectorAll(`[data-port="input"]`)[3] as HTMLDivElement | undefined;
-		if (outputPort2 && inputPort2) createWirePath(outputPort2, inputPort2.getBoundingClientRect(), true, false);
-
 		editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
 			selected = updateNodeGraphSelection.selected;
 		});
@@ -496,106 +561,226 @@
 			"--dot-radius": `${dotRadius}px`,
 		}}
 	>
+		<!-- <img src="https://files.keavon.com/-/MountainousDroopyBlueshark/flyover.jpg" /> -->
+		<div class="fade-artwork" />
+		<!-- Right click menu for adding nodes -->
 		{#if nodeListLocation}
-			<LayoutCol class="node-list" data-node-list styles={{ "margin-left": `${nodeListX}px`, "margin-top": `${nodeListY}px` }}>
+			<LayoutCol
+				class="node-list"
+				data-node-list
+				styles={{
+					left: `${nodeListX}px`,
+					top: `${nodeListY}px`,
+					transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+					width: `${ADD_NODE_MENU_WIDTH}px`,
+				}}
+			>
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				{#each nodeCategories as nodeCategory}
-					<LayoutCol>
-						<TextLabel>{nodeCategory[0]}</TextLabel>
-						{#each nodeCategory[1] as nodeType}
-							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-						{/each}
-					</LayoutCol>
-				{:else}
-					<TextLabel>No search results</TextLabel>
-				{/each}
+				<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|stopPropagation>
+					{#each nodeCategories as nodeCategory}
+						<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
+							<summary>
+								<IconLabel icon="DropdownArrow" />
+								<TextLabel>{nodeCategory[0]}</TextLabel>
+							</summary>
+							{#each nodeCategory[1].nodes as nodeType}
+								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
+							{/each}
+						</details>
+					{:else}
+						<div style="margin-right: 4px;"><TextLabel>No search results</TextLabel></div>
+					{/each}
+				</div>
 			</LayoutCol>
 		{/if}
-		<div class="nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
-			{#each $nodeGraph.nodes as node (String(node.id))}
-				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.outputs.slice(1)]}
+		<!-- Node connection links -->
+		<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
+			<svg>
+				{#each linkPaths as { pathString, dataType, thick }}
+					<path
+						d={pathString}
+						style:--data-line-width={`${thick ? 5 : 2}px`}
+						style:--data-color={`var(--color-data-${dataType})`}
+						style:--data-color-dim={`var(--color-data-${dataType}-dim)`}
+					/>
+				{/each}
+			</svg>
+		</div>
+		<!-- Layers and nodes -->
+		<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
+			<!-- Layers -->
+			{#each $nodeGraph.nodes.filter((node) => node.displayName === "Layer") as node (String(node.id))}
+				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
+				{@const clipPathId = `${Math.random()}`.substring(2)}
+				{@const stackDatainput = node.exposedInputs[0]}
 				<div
-					class="node"
+					class="layer"
 					class:selected={selected.includes(node.id)}
 					class:previewed={node.previewed}
 					class:disabled={node.disabled}
 					style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 					style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+					style:--clip-path-id={`url(#${clipPathId})`}
 					data-node={node.id}
 				>
-					<div class="primary">
-						<div class="ports">
-							{#if node.primaryInput}
-								<div
-									class="input port"
-									data-port="input"
-									data-datatype={node.primaryInput}
-									style:--data-color={`var(--color-data-${node.primaryInput})`}
-									style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
-								>
-									<div />
-								</div>
-							{/if}
-							{#if node.outputs.length > 0}
-								<div
-									class="output port"
-									data-port="output"
-									data-datatype={node.outputs[0].dataType}
-									style:--data-color={`var(--color-data-${node.outputs[0].dataType})`}
-									style:--data-color-dim={`var(--color-data-${node.outputs[0].dataType}-dim)`}
-								>
-									<div />
-								</div>
-							{/if}
-						</div>
-						{#if node.thumbnailSvg}
-							{@html node.thumbnailSvg}
-						{:else}
-							<IconLabel icon={nodeIcon(node.displayName)} />
+					<div class="node-chain" />
+					<!-- Layer input port (from left) -->
+					<div class="input ports">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port"
+							data-port="input"
+							data-datatype={node.primaryInput}
+							style:--data-color={`var(--color-data-${node.primaryInput})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					</div>
+					<div class="thumbnail">
+						{@html node.thumbnailSvg}
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="port top"
+								data-port="output"
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							>
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							</svg>
 						{/if}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port bottom"
+							data-port="input"
+							data-datatype={stackDatainput.dataType}
+							style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
+							style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					</div>
+					<div class="details">
 						<TextLabel>{node.displayName}</TextLabel>
 					</div>
+
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs)} />
+							</clipPath>
+						</defs>
+					</svg>
+				</div>
+			{/each}
+			<!-- Nodes -->
+			{#each $nodeGraph.nodes.filter((node) => node.displayName !== "Layer") as node (String(node.id))}
+				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
+				{@const clipPathId = `${Math.random()}`.substring(2)}
+				<div
+					class="node"
+					class:selected={selected.includes(node.id)}
+					class:previewed={node.previewed}
+					class:disabled={node.disabled}
+					class:is-layer={node.thumbnailSvg !== undefined}
+					style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
+					style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					data-node={node.id}
+				>
+					<!-- Primary row -->
+					<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
+						<IconLabel icon={nodeIcon(node.displayName)} />
+						<TextLabel>{node.displayName}</TextLabel>
+					</div>
+					<!-- Parameter rows -->
 					{#if exposedInputsOutputs.length > 0}
 						<div class="parameters">
-							{#each exposedInputsOutputs as parameter, index (index)}
-								<div class="parameter">
-									<div class="ports">
-										{#if index < node.exposedInputs.length}
-											<div
-												class="input port"
-												data-port="input"
-												data-datatype={parameter.dataType}
-												style:--data-color={`var(--color-data-${parameter.dataType})`}
-												style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
-											>
-												<div />
-											</div>
-										{:else}
-											<div
-												class="output port"
-												data-port="output"
-												data-datatype={parameter.dataType}
-												style:--data-color={`var(--color-data-${parameter.dataType})`}
-												style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
-											>
-												<div />
-											</div>
-										{/if}
-									</div>
+							{#each exposedInputsOutputs as parameter, index}
+								<div class="parameter expanded">
+									<div class="expand-arrow" />
 									<TextLabel class={index < node.exposedInputs.length ? "name" : "output"}>{parameter.name}</TextLabel>
 								</div>
 							{/each}
 						</div>
 					{/if}
+					<!-- Input ports -->
+					<div class="input ports">
+						{#if node.primaryInput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="port"
+								data-port="input"
+								data-datatype={node.primaryInput}
+								style:--data-color={`var(--color-data-${node.primaryInput})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+							>
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							</svg>
+						{/if}
+						{#each node.exposedInputs as parameter, index}
+							{#if index < node.exposedInputs.length}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="port"
+									data-port="input"
+									data-datatype={parameter.dataType}
+									style:--data-color={`var(--color-data-${parameter.dataType})`}
+									style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+								>
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+								</svg>
+							{/if}
+						{/each}
+					</div>
+					<!-- Output ports -->
+					<div class="output ports">
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="port"
+								data-port="output"
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							>
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							</svg>
+						{/if}
+						{#each node.exposedOutputs as parameter}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="port"
+								data-port="output"
+								data-datatype={parameter.dataType}
+								style:--data-color={`var(--color-data-${parameter.dataType})`}
+								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+							>
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							</svg>
+						{/each}
+					</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path
+									clip-rule="evenodd"
+									d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+								/>
+							</clipPath>
+						</defs>
+					</svg>
 				</div>
 			{/each}
-		</div>
-		<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
-			<svg>
-				{#each linkPaths as [pathString, dataType], index (index)}
-					<path d={pathString} style:--data-color={`var(--color-data-${dataType})`} style:--data-color-dim={`var(--color-data-${dataType}-dim)`} />
-				{/each}
-			</svg>
 		</div>
 	</LayoutRow>
 </LayoutCol>
@@ -607,12 +792,45 @@
 
 		.node-list {
 			width: max-content;
-			position: fixed;
+			position: absolute;
 			padding: 5px;
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 
+			.text-button {
+				width: 100%;
+			}
+
+			.list-nodes {
+				overflow-y: scroll;
+			}
+
+			details {
+				margin-right: 4px;
+				cursor: pointer;
+			}
+
+			summary {
+				list-style-type: none;
+				display: flex;
+				align-items: center;
+				gap: 2px;
+
+				span {
+					white-space: break-spaces;
+				}
+			}
+
+			details summary svg {
+				transform: rotate(-90deg);
+			}
+
+			details[open] summary svg {
+				transform: rotate(0deg);
+			}
+
 			.text-button + .text-button {
+				display: block;
 				margin-left: 0;
 				margin-top: 4px;
 			}
@@ -631,6 +849,13 @@
 			}
 		}
 
+		.fade-artwork {
+			background: var(--color-2-mildblack);
+			opacity: 0.8;
+			width: 100%;
+			height: 100%;
+		}
+
 		.graph {
 			position: relative;
 			background: var(--color-2-mildblack);
@@ -639,6 +864,11 @@
 			margin-bottom: 4px;
 			border-radius: 2px;
 			overflow: hidden;
+
+			> img {
+				position: absolute;
+				bottom: 0;
+			}
 
 			// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
 			&::before {
@@ -654,7 +884,7 @@
 			}
 		}
 
-		.nodes,
+		.layers-and-nodes,
 		.wires {
 			position: absolute;
 			width: 100%;
@@ -672,27 +902,52 @@
 
 					path {
 						fill: none;
-						// stroke: var(--color-data-raster-dim);
 						stroke: var(--data-color-dim);
-						stroke-width: 2px;
+						stroke-width: var(--data-line-width);
 					}
 				}
 			}
 
-			&.nodes {
+			&.layers-and-nodes {
+				.layer,
 				.node {
 					position: absolute;
 					display: flex;
-					flex-direction: column;
-					min-width: 120px;
-					border-radius: 4px;
-					background: var(--color-4-dimgray);
-					left: calc((var(--offset-left) + 0.5) * 24px);
-					top: calc((var(--offset-top) - 0.5) * 24px);
+					left: calc(var(--offset-left) * 24px);
+					top: calc(var(--offset-top) * 24px);
+					// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
+					// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
+					// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
+					// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
+					// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
+					backdrop-filter: blur(4px);
+					background: rgba(0, 0, 0, 0.33);
+
+					&::after {
+						content: "";
+						position: absolute;
+						box-sizing: border-box;
+						top: 0;
+						left: 0;
+						width: 100%;
+						height: 100%;
+						pointer-events: none;
+						clip-path: var(--clip-path-id);
+					}
+
+					.border-mask {
+						position: absolute;
+						top: 0;
+					}
 
 					&.selected {
-						border: 1px solid var(--color-e-nearwhite);
-						margin: -1px;
+						.primary {
+							background: rgba(255, 255, 255, 0.15);
+						}
+
+						.parameters {
+							background: rgba(255, 255, 255, 0.1);
+						}
 					}
 
 					&.disabled {
@@ -702,24 +957,172 @@
 						.icon-label {
 							fill: var(--color-a-softgray);
 						}
+
+						.expand-arrow::after {
+							background: var(--icon-expand-collapse-arrow-disabled);
+						}
 					}
 
-					&.previewed {
-						outline: 3px solid var(--color-data-vector);
+					&.previewed::after {
+						border: 1px dashed var(--color-data-vector);
+					}
+
+					.ports {
+						position: absolute;
+
+						&.input {
+							left: -3px;
+						}
+
+						&.output {
+							right: -5px;
+						}
+					}
+
+					.port {
+						fill: var(--data-color);
+						// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
+						margin: calc(24px - 8px) 0;
+						width: 8px;
+						height: 8px;
+
+						&:first-of-type {
+							margin-top: calc((24px - 8px) / 2);
+						}
+
+						&:last-of-type {
+							margin-bottom: calc((24px - 8px) / 2);
+						}
+					}
+
+					.expand-arrow {
+						width: 16px;
+						height: 16px;
+						margin: 0;
+						padding: 0;
+						position: relative;
+						flex: 0 0 auto;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+
+						&::after {
+							content: "";
+							position: absolute;
+							width: 8px;
+							height: 8px;
+							background: var(--icon-expand-collapse-arrow);
+						}
+
+						&:hover::after {
+							background: var(--icon-expand-collapse-arrow-hover);
+						}
+					}
+
+					.expanded .expand-arrow::after {
+						transform: rotate(90deg);
+					}
+				}
+
+				.layer {
+					border-radius: 8px;
+					min-width: 216px;
+
+					&::after {
+						border: 1px solid var(--color-5-dullgray);
+						border-radius: 8px;
+					}
+
+					.node-chain {
+						width: 36px;
+					}
+
+					.thumbnail {
+						background: var(--color-2-mildblack);
+						border: 1px solid var(--color-data-vector-dim);
+						border-radius: 2px;
+						position: relative;
+						box-sizing: border-box;
+						width: 72px;
+						height: 48px;
+
+						&::before {
+							content: "";
+							background: var(--color-transparent-checkered-background);
+							background-size: var(--color-transparent-checkered-background-size);
+							background-position: var(--color-transparent-checkered-background-position);
+						}
+
+						&::before,
+						svg:not(.port) {
+							pointer-events: none;
+							position: absolute;
+							margin: auto;
+							inset: 1px;
+							width: 100%;
+							height: 100%;
+						}
+
+						.port {
+							position: absolute;
+							margin: 0 auto;
+							left: 0;
+							right: 0;
+
+							&.top {
+								top: -12px;
+							}
+
+							&.bottom {
+								bottom: -12px;
+							}
+						}
+					}
+
+					.details {
+						margin-left: 12px;
+
+						.text-label {
+							line-height: 48px;
+						}
+					}
+
+					.input.ports,
+					.input.ports .port {
+						position: absolute;
+						margin: auto 0;
+						top: 0;
+						bottom: 0;
+					}
+				}
+
+				.node {
+					flex-direction: column;
+					border-radius: 2px;
+					min-width: 120px;
+					top: calc((var(--offset-top) + 0.5) * 24px);
+
+					&::after {
+						border: 1px solid var(--color-data-vector-dim);
+						border-radius: 2px;
 					}
 
 					.primary {
 						display: flex;
 						align-items: center;
 						position: relative;
-						gap: 4px;
 						width: 100%;
 						height: 24px;
-						background: var(--color-5-dullgray);
-						border-radius: 4px;
+						border-radius: 2px 2px 0 0;
+						font-style: italic;
+						background: rgba(255, 255, 255, 0.05);
+
+						&.no-parameter-section {
+							border-radius: 2px;
+						}
 
 						.icon-label {
-							margin-left: 4px;
+							margin: 0 8px;
 						}
 
 						.text-label {
@@ -737,10 +1140,16 @@
 							position: relative;
 							display: flex;
 							align-items: center;
+							width: 100%;
 							height: 24px;
-							width: calc(100% - 24px * 2);
-							margin-left: 24px;
-							margin-right: 24px;
+
+							&:last-of-type {
+								border-radius: 0 0 2px 2px;
+							}
+
+							.expand-arrow {
+								margin-left: 4px;
+							}
 
 							.text-label {
 								width: 100%;
@@ -751,63 +1160,12 @@
 							}
 						}
 
-						// Squares to cover up the rounded corners of the primary area and make them have a straight edge
-						&::before,
-						&::after {
-							content: "";
-							position: absolute;
-							background: var(--color-5-dullgray);
-							width: 4px;
-							height: 4px;
-							top: -4px;
-						}
-
 						&::before {
 							left: 0;
 						}
 
 						&::after {
 							right: 0;
-						}
-					}
-
-					.ports {
-						position: absolute;
-						width: 100%;
-						height: 100%;
-
-						.port {
-							position: absolute;
-							margin: auto 0;
-							top: 0;
-							bottom: 0;
-							width: 12px;
-							height: 12px;
-							border-radius: 50%;
-							background: var(--data-color-dim);
-							// background: var(--color-data-raster-dim);
-
-							div {
-								background: var(--data-color);
-								// background: var(--color-data-raster);
-								width: 8px;
-								height: 8px;
-								border-radius: 50%;
-								position: absolute;
-								top: 0;
-								bottom: 0;
-								left: 0;
-								right: 0;
-								margin: auto;
-							}
-
-							&.input {
-								left: calc(-12px - 6px);
-							}
-
-							&.output {
-								right: calc(-12px - 6px);
-							}
 						}
 					}
 				}

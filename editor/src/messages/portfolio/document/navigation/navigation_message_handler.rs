@@ -1,6 +1,6 @@
 use crate::consts::{
-	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
-	VIEWPORT_ZOOM_WHEEL_RATE,
+	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
+	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup};
@@ -10,6 +10,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::document::Document;
 use document_legacy::Operation as DocumentOperation;
+use graphene_core::renderer::format_transform_matrix;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -51,10 +52,17 @@ impl Default for NavigationMessageHandler {
 	}
 }
 
-impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)> for NavigationMessageHandler {
+impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)> for NavigationMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, (document, ipp, selection_bounds): (&Document, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)) {
+	fn process_message(
+		&mut self,
+		message: NavigationMessage,
+		responses: &mut VecDeque<Message>,
+		(document, document_bounds, ipp, selection_bounds): (&Document, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>),
+	) {
 		use NavigationMessage::*;
+
+		let old_zoom = self.zoom;
 
 		#[remain::sorted]
 		match message {
@@ -157,6 +165,8 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
 					self.zoom *= amount;
+					self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
+
 					if let Some(mouse) = zoom_from_viewport {
 						let zoom_factor = self.snapped_scale() / zoom_start;
 
@@ -192,6 +202,7 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 			}
 			SetCanvasZoom { zoom_factor } => {
 				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -200,6 +211,7 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 			TransformCanvasEnd => {
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
+				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
@@ -214,6 +226,7 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
+				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
@@ -243,7 +256,8 @@ impl MessageHandler<NavigationMessage, (&Document, &InputPreprocessorMessageHand
 				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
-				};
+				}
+				zoom_factor *= Self::clamp_zoom(self.zoom * zoom_factor, document_bounds, old_zoom, ipp);
 
 				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
 				responses.add(SetCanvasZoom { zoom_factor: self.zoom * zoom_factor });
@@ -341,6 +355,9 @@ impl NavigationMessageHandler {
 			}
 			.into(),
 		));
+		let transform = format_transform_matrix(self.calculate_offset_transform(scaled_half_viewport));
+		responses.add(FrontendMessage::UpdateDocumentTransform { transform });
+		// TODO: Artboard pos
 	}
 
 	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {
@@ -350,5 +367,16 @@ impl NavigationMessageHandler {
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
 		NavigationMessage::TranslateCanvas { delta }.into()
+	}
+
+	pub fn clamp_zoom(zoom: f64, document_bounds: Option<[DVec2; 2]>, old_zoom: f64, ipp: &InputPreprocessorMessageHandler) -> f64 {
+		let document_size = (document_bounds.map(|[min, max]| max - min).unwrap_or_default() / old_zoom) * zoom;
+		let scale_factor = (document_size / ipp.viewport_bounds.size()).max_element();
+
+		if scale_factor > f64::EPSILON * 100. && scale_factor.is_finite() && scale_factor < VIEWPORT_ZOOM_MIN_FRACTION_COVER {
+			VIEWPORT_ZOOM_MIN_FRACTION_COVER / scale_factor
+		} else {
+			1.
+		}
 	}
 }

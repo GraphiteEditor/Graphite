@@ -1,0 +1,16 @@
+[target.wasm32-unknown-unknown]
+
+rustflags = [
+	# Currently disabled because of https://github.com/GraphiteEditor/Graphite/issues/1262
+	# The current simd implementation leads to undefined behavior
+	#"-C",
+	#"target-feature=+simd128",
+	"-C",
+	"target-feature=+bulk-memory",
+	"-C",
+	"link-arg=--max-memory=4294967296",
+	"--cfg=web_sys_unstable_apis",
+]
+
+[unstable]
+build-std = ["panic_abort", "std"]

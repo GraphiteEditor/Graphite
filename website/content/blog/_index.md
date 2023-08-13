@@ -9,7 +9,7 @@ generate_feed = true
 <section id="intro" class="section-row">
 <div class="section">
 
-# Blog.
+# Blog
 
 <div class="left-right-split">
 

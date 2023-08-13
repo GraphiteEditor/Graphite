@@ -9,29 +9,16 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = [
-	"dyn-any",
-	"dyn-any/std",
-	"alloc",
-	"glam/std",
-	"specta",
-	"num-traits/std",
-	"rustybuzz",
-]
-default = ["async", "serde", "kurbo", "log", "std", "rand_chacha"]
+std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta", "num-traits/std", "rustybuzz"]
+default = ["async", "serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
 log = ["dep:log"]
-serde = [
-	"dep:serde",
-	"glam/serde",
-	"bezier-rs/serde",
-	"bezier-rs/serde",
-	"base64",
-]
+serde = ["dep:serde", "glam/serde", "bezier-rs/serde", "bezier-rs/serde", "base64"]
 gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
 async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs", "once_cell"]
 type_id_logging = []
+wasm = ["web-sys"]
 
 [dependencies]
 dyn-any = { path = "../../libraries/dyn-any", features = [
@@ -39,7 +26,7 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 	"glam",
 ], optional = true, default-features = false }
 
-spirv-std = { version = "0.7", optional = true }
+spirv-std = { version = "0.8", optional = true }
 bytemuck = { version = "1.8", features = ["derive"] }
 async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = [
@@ -53,18 +40,27 @@ kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ], optional = true }
 spin = "0.9.2"
-glam = { version = "^0.22", default-features = false, features = [
+glam = { version = "0.24", default-features = false, features = [
 	"scalar-math",
 ] }
 node-macro = { path = "../node-macro" }
-base64 = { version = "0.13", optional = true }
+base64 = { version = "0.21", optional = true }
 specta.workspace = true
 specta.optional = true
 once_cell = { version = "1.17.0", default-features = false, optional = true }
 
-rustybuzz = { version = "0.6.0", optional = true }
+rustybuzz = { version = "0.8.0", optional = true }
 
 num-derive = { version = "0.3.3" }
 num-traits = { version = "0.2.15", default-features = false, features = [
 	"i128",
 ] }
+
+
+wasm-bindgen = { version = "0.2.84", optional = true }
+js-sys = { version = "0.3.55", optional = true }
+
+[dependencies.web-sys]
+version = "0.3.4"
+optional = true
+features = ["HtmlCanvasElement"]

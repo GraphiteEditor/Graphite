@@ -1,10 +1,10 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, PropertyHolder, WidgetCallback, WidgetHolder, WidgetLayout};
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorInput, FontInput, NumberInput};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::new_text_network;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -97,56 +97,55 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
-	let font = FontInput {
-		is_style_picker: false,
-		font_family: tool.options.font_name.clone(),
-		font_style: tool.options.font_style.clone(),
-		on_update: WidgetCallback::new(|font_input: &FontInput| {
+	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
+		.is_style_picker(false)
+		.on_update(|font_input: &FontInput| {
 			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 				family: font_input.font_family.clone(),
 				style: font_input.font_style.clone(),
 			})
 			.into()
-		}),
-		..Default::default()
-	}
-	.widget_holder();
-	let style = FontInput {
-		is_style_picker: true,
-		font_family: tool.options.font_name.clone(),
-		font_style: tool.options.font_style.clone(),
-		on_update: WidgetCallback::new(|font_input: &FontInput| {
+		})
+		.widget_holder();
+	let style = FontInput::new(&tool.options.font_name, &tool.options.font_style)
+		.is_style_picker(true)
+		.on_update(|font_input: &FontInput| {
 			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
 				family: font_input.font_family.clone(),
 				style: font_input.font_style.clone(),
 			})
 			.into()
-		}),
-		..Default::default()
-	}
-	.widget_holder();
+		})
+		.widget_holder();
 	let size = NumberInput::new(Some(tool.options.font_size as f64))
 		.unit(" px")
 		.label("Size")
 		.int()
 		.min(1.)
+		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
 		.widget_holder();
-	vec![font, WidgetHolder::related_separator(), style, WidgetHolder::related_separator(), size]
+	vec![
+		font,
+		Separator::new(SeparatorType::Related).widget_holder(),
+		style,
+		Separator::new(SeparatorType::Related).widget_holder(),
+		size,
+	]
 }
 
-impl PropertyHolder for TextTool {
-	fn properties(&self) -> Layout {
+impl LayoutHolder for TextTool {
+	fn layout(&self) -> Layout {
 		let mut widgets = create_text_widgets(self);
 
-		widgets.push(WidgetHolder::section_separator());
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
-			WidgetCallback::new(|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into()),
+			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			WidgetCallback::new(|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value)).into()),
+			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value)).into(),
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -161,7 +160,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 					self.options.font_name = family;
 					self.options.font_style = style;
 
-					self.register_properties(responses, LayoutTarget::ToolOptions);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 				TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 				TextOptionsUpdate::FillColor(color) => {
@@ -175,10 +174,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 				}
 			}
 
-			responses.add(LayoutMessage::SendLayout {
-				layout: self.properties(),
-				layout_target: LayoutTarget::ToolOptions,
-			});
+			self.send_layout(responses, LayoutTarget::ToolOptions);
 
 			return;
 		}
@@ -205,11 +201,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 impl ToolTransition for TextTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: None,
 			document_dirty: Some(TextToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
-			..Default::default()
 		}
 	}
 }
@@ -298,9 +294,27 @@ impl TextToolData {
 	}
 
 	fn extract_text_node_inputs(node: &DocumentNode) -> Option<(&String, &Font, f64)> {
-		let NodeInput::Value { tagged_value: TaggedValue::String(text), .. } = &node.inputs[1] else { return None; };
-		let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = &node.inputs[2] else { return None; };
-		let NodeInput::Value { tagged_value: TaggedValue::F64(font_size), .. } = &node.inputs[3] else { return None; };
+		let NodeInput::Value {
+			tagged_value: TaggedValue::String(text),
+			..
+		} = &node.inputs[1]
+		else {
+			return None;
+		};
+		let NodeInput::Value {
+			tagged_value: TaggedValue::Font(font),
+			..
+		} = &node.inputs[2]
+		else {
+			return None;
+		};
+		let NodeInput::Value {
+			tagged_value: TaggedValue::F64(font_size),
+			..
+		} = &node.inputs[3]
+		else {
+			return None;
+		};
 		Some((text, font, *font_size))
 	}
 
@@ -455,7 +469,9 @@ fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {
 }
 
 fn is_text_layer(document: &DocumentMessageHandler, layer_path: &[LayerId]) -> bool {
-	let Some(network) = get_network(layer_path, document) else { return false; };
+	let Some(network) = get_network(layer_path, document) else {
+		return false;
+	};
 	get_text_node_id(network).is_some()
 }
 

@@ -56,7 +56,7 @@ pub enum ToolMessage {
 	Ellipse(EllipseToolMessage),
 	#[remain::unsorted]
 	#[child]
-	Shape(ShapeToolMessage),
+	Polygon(PolygonToolMessage),
 	#[remain::unsorted]
 	#[child]
 	Text(TextToolMessage),
@@ -117,7 +117,7 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	ActivateToolEllipse,
 	#[remain::unsorted]
-	ActivateToolShape,
+	ActivateToolPolygon,
 
 	#[remain::unsorted]
 	ActivateToolBrush,

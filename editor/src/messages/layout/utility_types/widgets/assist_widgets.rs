@@ -1,4 +1,4 @@
-use crate::messages::layout::utility_types::layout_widget::WidgetCallback;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;

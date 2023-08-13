@@ -1,6 +1,7 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
 use crate::{Color, Node};
+use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
@@ -53,21 +54,94 @@ pub struct SetStrokeNode<Color, Weight, DashLengths, DashOffset, LineCap, LineJo
 fn set_vector_data_stroke(
 	mut vector_data: VectorData,
 	color: Option<Color>,
-	weight: f64,
+	weight: f32,
 	dash_lengths: Vec<f32>,
-	dash_offset: f64,
+	dash_offset: f32,
 	line_cap: super::style::LineCap,
 	line_join: super::style::LineJoin,
-	miter_limit: f64,
+	miter_limit: f32,
 ) -> VectorData {
 	vector_data.style.set_stroke(Stroke {
 		color,
-		weight,
+		weight: weight as f64,
 		dash_lengths,
-		dash_offset,
+		dash_offset: dash_offset as f64,
 		line_cap,
 		line_join,
-		line_join_miter_limit: miter_limit,
+		line_join_miter_limit: miter_limit as f64,
 	});
 	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepeatNode<Direction, Count> {
+	direction: Direction,
+	count: Count,
+}
+
+#[node_macro::node_fn(RepeatNode)]
+fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
+	// repeat the vector data
+	let VectorData { subpaths, transform, .. } = &vector_data;
+
+	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(subpaths.len() * count as usize);
+	let inverse = transform.inverse();
+	let direction = inverse.transform_vector2(direction);
+	for i in 0..count {
+		let transform = DAffine2::from_translation(direction * i as f64);
+		for mut subpath in subpaths.clone() {
+			subpath.apply_transform(transform);
+			new_subpaths.push(subpath);
+		}
+	}
+
+	vector_data.subpaths = new_subpaths;
+	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CircularRepeatNode<RotationOffset, Radius, Count> {
+	rotation_offset: RotationOffset,
+	radius: Radius,
+	count: Count,
+}
+
+#[node_macro::node_fn(CircularRepeatNode)]
+fn circular_repeat_vector_data(mut vector_data: VectorData, rotation_offset: f32, radius: f32, count: u32) -> VectorData {
+	// repeat the vector data
+	let VectorData { subpaths, transform, .. } = &vector_data;
+
+	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(subpaths.len() * count as usize);
+
+	let bounding_box = vector_data.bounding_box().unwrap();
+	let center = (bounding_box[0] + bounding_box[1]) / 2.;
+
+	//let inverse = transform.inverse();
+	//let radius_transform = DAffine2::from_translation(DVec2::new(0., radius as f64));
+	let base_transform = DVec2::new(0., radius as f64) - center;
+
+	for i in 0..count {
+		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + rotation_offset.to_radians() as f64;
+		let rotation = DAffine2::from_angle(angle);
+		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+		for mut subpath in subpaths.clone() {
+			subpath.apply_transform(transform);
+			new_subpaths.push(subpath);
+		}
+	}
+
+	vector_data.subpaths = new_subpaths;
+	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BoundingBoxNode;
+
+#[node_macro::node_fn(BoundingBoxNode)]
+fn generate_bounding_box(mut vector_data: VectorData) -> VectorData {
+	let bounding_box = vector_data.bounding_box().unwrap();
+	VectorData::from_subpaths(vec![Subpath::new_rect(
+		vector_data.transform.transform_point2(bounding_box[0]),
+		vector_data.transform.transform_point2(bounding_box[1]),
+	)])
 }

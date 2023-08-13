@@ -24,6 +24,9 @@ impl SelectedLayerState {
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
 		self.selected_points.remove(&point);
 	}
+	pub fn clear_points(&mut self) {
+		self.selected_points.clear();
+	}
 }
 pub type SelectedShapeState = HashMap<Vec<LayerId>, SelectedLayerState>;
 #[derive(Debug, Default)]
@@ -97,10 +100,6 @@ impl ShapeState {
 				return None;
 			}
 		}
-
-		// Deselect all points if no nearby point
-		self.deselect_all();
-
 		None
 	}
 
@@ -145,7 +144,7 @@ impl ShapeState {
 	}
 
 	/// Provide the currently selected points by reference.
-	pub fn selected_points<'a>(&'a self) -> impl Iterator<Item = &'a ManipulatorPointId> {
+	pub fn selected_points(&self) -> impl Iterator<Item = &'_ ManipulatorPointId> {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 
@@ -195,7 +194,9 @@ impl ShapeState {
 					}
 
 					if mirror {
-						let Some(mut original_handle_position) = point.manipulator_type.get_position(group) else { continue };
+						let Some(mut original_handle_position) = point.manipulator_type.get_position(group) else {
+							continue;
+						};
 						original_handle_position += delta;
 
 						let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
@@ -219,7 +220,7 @@ impl ShapeState {
 			let Ok(layer) = document.layer(layer_path) else { continue };
 			let Some(vector_data) = layer.as_vector_data() else { continue };
 
-			let opposing_handle_lengths = opposing_handle_lengths.as_ref().map(|lengths| lengths.get(layer_path)).flatten();
+			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(layer_path));
 
 			let transform = document.multiply_transforms(layer_path).unwrap_or(glam::DAffine2::IDENTITY);
 
@@ -319,7 +320,9 @@ impl ShapeState {
 						continue;
 					}
 
-					let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else { continue };
+					let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else {
+						continue;
+					};
 
 					let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
 					let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
@@ -345,7 +348,9 @@ impl ShapeState {
 						continue;
 					};
 
-					let Some(opposing_handle) = single_selected_handle.opposite().get_position(manipulator_group) else { continue };
+					let Some(opposing_handle) = single_selected_handle.opposite().get_position(manipulator_group) else {
+						continue;
+					};
 
 					let Some(offset) = (opposing_handle - manipulator_group.anchor).try_normalize() else { continue };
 
@@ -620,5 +625,29 @@ impl ShapeState {
 			}
 		}
 		false
+	}
+
+	pub fn select_all_in_quad(&mut self, document: &Document, quad: [DVec2; 2], clear_selection: bool) {
+		for (layer_path, state) in &mut self.selected_shape_state {
+			if clear_selection {
+				state.clear_points()
+			}
+
+			let Ok(layer) = document.layer(layer_path) else { continue };
+			let Some(vector_data) = layer.as_vector_data() else { continue };
+
+			let transform = document.multiply_transforms(layer_path).unwrap_or_default();
+
+			for manipulator_group in vector_data.manipulator_groups() {
+				for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
+					let Some(position) = selected_type.get_position(manipulator_group) else { continue };
+					let transformed_position = transform.transform_point2(position);
+
+					if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
+						state.select_point(ManipulatorPointId::new(manipulator_group.id, selected_type));
+					}
+				}
+			}
+		}
 	}
 }

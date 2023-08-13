@@ -1,8 +1,5 @@
-use super::utility_types::layout_widget::{LayoutGroup, WidgetDiff, WidgetHolder};
-use super::utility_types::misc::LayoutTarget;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
-use crate::messages::layout::utility_types::layout_widget::{DiffUpdate, Widget};
-use crate::messages::layout::utility_types::layout_widget::{Layout, WidgetLayout};
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use document_legacy::LayerId;
@@ -30,6 +27,10 @@ impl LayoutMessageHandler {
 						if widget.widget_id == id {
 							widget_path.push(index);
 							return Some((widget, widget_path));
+						}
+
+						if let Widget::PopoverButton(popover) = &widget.widget {
+							stack.extend(popover.options_widget.iter().enumerate().map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)));
 						}
 					}
 				}
@@ -64,7 +65,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				// Resend that diff
 				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
 			}
-			SendLayout { layout, layout_target } => self.send_layout(layout_target, layout, responses, &action_input_mapping),
+			SendLayout { layout, layout_target } => self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping),
 			UpdateLayout { layout_target, widget_id, value } => {
 				// Look up the layout
 				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
@@ -188,7 +189,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 								panic!("Invalid string found when updating `NumberInput`")
 							}
 						},
-						_ => panic!("Invalid type found when updating `NumberInput`"),
+						_ => {} // If it's some other type we could just ignore it and leave the value as is
 					},
 					Widget::OptionalInput(optional_input) => {
 						let update_value = value.as_bool().expect("OptionalInput update was not of type: bool");
@@ -245,7 +246,13 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 
 impl LayoutMessageHandler {
 	/// Diff the update and send to the frontend where necessary
-	fn send_layout(&mut self, layout_target: LayoutTarget, new_layout: Layout, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	fn diff_and_send_layout_to_frontend(
+		&mut self,
+		layout_target: LayoutTarget,
+		new_layout: Layout,
+		responses: &mut VecDeque<Message>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
+	) {
 		// We don't diff the menu bar layout yet.
 		if matches!(new_layout, Layout::MenuLayout(_)) {
 			// Skip update if the same

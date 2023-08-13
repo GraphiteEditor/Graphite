@@ -8,8 +8,8 @@ members = [
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/graph-craft",
+	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
-	"node-graph/borrow_stack",
 	"node-graph/node-macro",
 	"node-graph/compilation-server",
 	"node-graph/compilation-client",
@@ -28,10 +28,14 @@ resolver = "2"
 exclude = ["node-graph/gpu-compiler"]
 
 [workspace.dependencies]
-specta = { git = "https://github.com/oscartbeaumont/rspc", rev = "9725ddbfe40183debc055b88c37910eb6f818eae", features = [
+# We are using this fork because:
+# - They specify glam=0.22 whereas we use glam=0.24 so the encoding doesn't work.
+# - Their current release doesn't allow doc comments and produces a compile error.
+# See: https://github.com/GraphiteEditor/Graphite/pull/1346/files/a2206401b5b4cf669e71df57f6c95c67336802c8#r1280201659
+specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c0863d27bc47529f300de3969480c66d", features = [
 	"glam",
 ] }
-xxhash-rust = { version = "0.8.4", features = ["xxh3"] }
+rustc-hash = "1.1.0"
 
 [profile.dev.package.graphite-editor]
 opt-level = 1
@@ -53,11 +57,15 @@ opt-level = 3
 [profile.dev.package.image]
 opt-level = 3
 
-[profile.dev.package.png]
-opt-level = 3
-
 [profile.dev.package.xxhash-rust]
 opt-level = 3
 
 [profile.dev]
 opt-level = 1
+
+[profile.release]
+lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+debug = true

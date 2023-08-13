@@ -18,14 +18,18 @@ jobs:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
+      INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="editor.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.outbound-links.file-downloads.js"></script>
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+
+    - name: 🔧 Clear wasm-bindgen cache
+      run: rm -r ~/.cache/.wasm-pack
 
     - name: 🔧 Set up Node
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v3
       with:
-        node-version: '16.x'
+        node-version: '16'
 
     - name: 🚧 Install Node dependencies
       run: |
@@ -37,6 +41,10 @@ jobs:
         rustc --version
         rustup update stable
         rustc --version
+
+    - name: Replace template in <head> of index.html
+      run: |
+        sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
     - name: 🌐 Build Graphite web code
       env:
@@ -53,4 +61,5 @@ jobs:
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         projectName: graphite-editor
         directory: frontend/dist
+        branch: master
         gitHubToken: ${{ secrets.GITHUB_TOKEN }}

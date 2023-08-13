@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
-use crate::messages::portfolio::document::node_graph::IMAGINATE_NODE;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::utility_types::ImaginateServerStatus;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -19,10 +14,12 @@ use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::Image;
 use graphene_core::text::Font;
 
-#[derive(Debug, Clone, Default)]
+use glam::DAffine2;
+use std::sync::Arc;
+
+#[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<u64, DocumentMessageHandler>,
@@ -36,11 +33,13 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
 	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
+		let has_active_document = self.active_document_id.is_some();
+
 		#[remain::sorted]
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, ()),
+			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, has_active_document),
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -112,14 +111,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
 				}
+
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
+				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
 				responses.add(DocumentMessage::RenderDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
+
 				if let Some(document) = self.active_document() {
 					for layer in document.layer_metadata.keys() {
 						responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() });
@@ -136,7 +137,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document_name: target_document.name.clone(),
 						document_id,
 					};
-					dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					dialog.send_layout(responses, LayoutTarget::DialogDetails);
 					responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
 
 					// Select the document being closed
@@ -182,6 +183,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				if self.document_ids.is_empty() {
 					self.active_document_id = None;
+					responses.add(MenuBarMessage::SendLayout);
 				} else if self.active_document_id.is_some() {
 					let document_id = if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
@@ -198,6 +200,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.documents.clear();
 				self.document_ids.clear();
 				self.active_document_id = None;
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			PortfolioMessage::FontLoaded {
 				font_family,
@@ -215,71 +218,37 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
+				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
-				self.persistent_data.imaginate_server_status = ImaginateServerStatus::Checking;
-				responses.add(FrontendMessage::TriggerImaginateCheckServerStatus {
-					hostname: preferences.imaginate_server_hostname.clone(),
-				});
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
-			}
-			PortfolioMessage::ImaginateSetGeneratingStatus {
-				document_id,
-				layer_path,
-				node_path,
-				percent,
-				status,
-			} => {
-				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-				if let Some(percentage) = percent {
-					responses.add(PortfolioMessage::DocumentPassMessage {
-						document_id,
-						message: NodeGraphMessage::SetQualifiedInputValue {
-							layer_path: layer_path.clone(),
-							node_path: node_path.clone(),
-							input_index: get("Percent Complete"),
-							value: TaggedValue::F64(percentage),
+				let server_status = self.persistent_data.imaginate.server_status().clone();
+				self.persistent_data.imaginate.poll_server_check();
+				#[cfg(target_arch = "wasm32")]
+				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
+					future_executor::spawn(async move {
+						let () = fut.await;
+						use wasm_bindgen::prelude::*;
+
+						#[wasm_bindgen(module = "/../frontend/src/wasm-communication/editor.ts")]
+						extern "C" {
+							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+							fn inject();
 						}
-						.into(),
-					});
+						inject();
+					})
 				}
-
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path,
-						input_index: get("Status"),
-						value: TaggedValue::ImaginateStatus(status),
-					}
-					.into(),
-				});
+				if &server_status != self.persistent_data.imaginate.server_status() {
+					responses.add(PropertiesPanelMessage::ResendActiveProperties);
+				}
 			}
-			PortfolioMessage::ImaginateSetImageData {
-				document_id,
-				layer_path,
-				node_path,
-				image_data,
-				width,
-				height,
-			} => {
-				let get = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
-
-				let image = Image::from_image_data(&image_data, width, height);
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: NodeGraphMessage::SetQualifiedInputValue {
-						layer_path,
-						node_path,
-						input_index: get("Cached Data"),
-						value: TaggedValue::RcImage(Some(std::sync::Arc::new(image))),
-					}
-					.into(),
-				});
-			}
-			PortfolioMessage::ImaginateSetServerStatus { status } => {
-				self.persistent_data.imaginate_server_status = status;
+			PortfolioMessage::ImaginatePollServerStatus => {
+				self.persistent_data.imaginate.poll_server_check();
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+			}
+			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
+			PortfolioMessage::ImaginateServerHostname => {
+				debug!("setting imaginate persistent data");
+				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
@@ -347,6 +316,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						self.load_document(document, document_id, responses);
 					}
 					Err(e) => {
+						println!("Failed to open document: {}", e);
 						if !document_is_auto_saved {
 							responses.add(DialogMessage::DisplayDialogError {
 								title: "Failed to open document".to_string(),
@@ -454,13 +424,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				layer_path,
 				input_image_data,
 				size,
-				imaginate_node_path,
 			} => {
-				let result = self.executor.evaluate_node_graph(
+				let result = self.executor.submit_node_graph_evaluation(
 					(document_id, &mut self.documents),
 					layer_path,
 					(input_image_data, size),
-					imaginate_node_path,
 					(preferences, &self.persistent_data),
 					responses,
 				);
@@ -500,8 +468,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			PortfolioMessage::SetActiveDocument { document_id } => self.active_document_id = Some(document_id),
+			PortfolioMessage::SetActiveDocument { document_id } => {
+				self.active_document_id = Some(document_id);
+				responses.add(MenuBarMessage::SendLayout);
+			}
 			PortfolioMessage::SetImageBlobUrl {
 				document_id,
 				layer_path,
@@ -509,11 +481,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				blob_url,
 				resolution,
 			} => {
-				if let (Some(layer_id), Some(node_id)) = (layer_path.last().copied(), node_id) {
-					self.executor.insert_thumbnail_blob_url(blob_url, layer_id, node_id, responses);
+				if let Some(node_id) = node_id {
+					self.executor.insert_thumbnail_blob_url(blob_url, layer_path.last().copied(), node_id, responses);
 					return;
 				}
-
 				let message = DocumentMessage::SetImageBlobUrl {
 					layer_path,
 					blob_url,
@@ -676,7 +647,11 @@ impl PortfolioMessageHandler {
 				}))),
 				LayerDataType::Layer(layer) => {
 					let input_is_font = |input: &NodeInput| {
-						let NodeInput::Value { tagged_value: TaggedValue::Font(font), .. } = input else {
+						let NodeInput::Value {
+							tagged_value: TaggedValue::Font(font),
+							..
+						} = input
+						else {
 							return false;
 						};
 						font == target_font
@@ -689,5 +664,12 @@ impl PortfolioMessageHandler {
 				_ => {}
 			}
 		}
+	}
+
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
+		let transform = self.active_document().map(|document| document.document_legacy.root.transform).unwrap_or(DAffine2::IDENTITY);
+		self.executor.poll_node_graph_evaluation(transform, responses).unwrap_or_else(|e| {
+			log::error!("Error while evaluating node graph: {}", e);
+		});
 	}
 }

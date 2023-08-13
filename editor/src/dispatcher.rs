@@ -205,6 +205,10 @@ impl Dispatcher {
 		list
 	}
 
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
+		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses);
+	}
+
 	/// Create the tree structure for logging the messages as a tree
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
@@ -251,7 +255,7 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::application::Editor;
-	use crate::messages::layout::utility_types::layout_widget::DiffUpdate;
+	use crate::messages::layout::utility_types::widget_prelude::*;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::prelude::*;
 	use crate::test_utils::EditorTestUtils;
@@ -278,7 +282,7 @@ mod test {
 		editor.draw_rect(100., 200., 300., 400.);
 
 		editor.select_primary_color(Color::BLUE);
-		editor.draw_shape(10., 1200., 1300., 400.);
+		editor.draw_polygon(10., 1200., 1300., 400.);
 
 		editor.select_primary_color(Color::GREEN);
 		editor.draw_ellipse(104., 1200., 1300., 400.);
@@ -319,6 +323,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select shape
 	/// - copy
@@ -358,6 +363,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	fn copy_paste_folder() {
 		let mut editor = create_editor_with_three_layers();
 
@@ -446,6 +452,7 @@ mod test {
 	}
 
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
 	/// - copy
@@ -527,23 +534,22 @@ mod test {
 
 		editor.handle_message(DocumentMessage::SelectedLayersRaise);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::SelectedLayersLower);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, selected.into_iter().chain(non_selected.into_iter()).collect::<Vec<_>>());
+		assert_eq!(all, selected.into_iter().chain(non_selected).collect::<Vec<_>>());
 
 		editor.handle_message(DocumentMessage::SelectedLayersRaiseToFront);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, non_selected.into_iter().chain(selected.into_iter()).collect::<Vec<_>>());
+		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());
 	}
 
 	#[test]
 	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
 	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {
-		use crate::messages::layout::utility_types::layout_widget::{LayoutGroup, Widget};
-		use crate::messages::layout::utility_types::widgets::label_widgets::TextLabel;
+		use crate::messages::layout::utility_types::widget_prelude::*;
 
 		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();

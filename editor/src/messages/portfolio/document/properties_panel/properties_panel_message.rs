@@ -1,5 +1,5 @@
 use super::utility_types::TransformOp;
-use crate::messages::layout::utility_types::widgets::assist_widgets::PivotPosition;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 

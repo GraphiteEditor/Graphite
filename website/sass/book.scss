@@ -1,0 +1,111 @@
+.three-column-layout {
+	display: flex;
+
+	.reading-material {
+		width: 800px;
+
+		.prev-next {
+			display: flex;
+			justify-content: space-between;
+			width: 100%;
+
+			a {
+				display: flex;
+				align-items: center;
+				gap: 20px;
+
+				svg {
+					fill: var(--color-navy);
+				}
+			}
+		}
+	}
+	
+	aside {
+		position: sticky;
+		align-self: flex-start;
+		overflow-y: auto;
+		top: 0;
+		width: 300px;
+		max-height: 100vh;
+		margin-top: -40px;
+
+		li {
+			margin-top: 0.5em;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			overflow: hidden;
+			
+			a {
+				color: var(--color-walnut);
+
+				&:hover {
+					color: var(--color-crimson);
+				}
+			}
+	
+			&:not(.title) a {
+				text-decoration: none;
+			}
+
+			&.title,
+			&.chapter {
+				font-weight: bold;
+			}
+		}
+
+
+		&.chapters li.active a {
+			color: var(--color-ale);
+		}
+
+		&.contents {
+			li {
+				position: relative;
+				padding-left: 12px;
+
+				&.active::before {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					left: 0;
+					width: 4px;
+					background: var(--color-ale);
+				}
+
+				a:not(:hover) span {
+					display: none;
+				}
+			}
+		}
+
+		ul {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+			margin-top: 40px;
+
+			ul {
+				margin-top: 0;
+				text-indent: 1em;
+
+				ul {
+					text-indent: 2em;
+
+					ul {
+						text-indent: 3em;
+
+						ul {
+							text-indent: 4em;
+	
+							ul {
+								text-indent: 5em;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

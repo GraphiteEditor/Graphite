@@ -12,12 +12,15 @@ use axum::routing::get;
 use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
 use http::{Response, StatusCode};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 static IMAGES: Mutex<Option<HashMap<String, FrontendImageData>>> = Mutex::new(None);
-static EDITOR: Mutex<Option<Editor>> = Mutex::new(None);
+thread_local! {
+	static EDITOR: RefCell<Option<Editor>> = RefCell::new(None);
+}
 
 async fn respond_to(id: Path<String>) -> impl IntoResponse {
 	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
@@ -55,7 +58,7 @@ async fn main() {
 
 	*(IMAGES.lock().unwrap()) = Some(HashMap::new());
 	graphite_editor::application::set_uuid_seed(0);
-	*(EDITOR.lock().unwrap()) = Some(Editor::new());
+	EDITOR.with(|editor| editor.borrow_mut().replace(Editor::new()));
 	let app = Router::new().route("/", get(|| async { "Hello, World!" })).route("/image/:id", get(respond_to));
 
 	// run it with hyper on localhost:3000
@@ -84,9 +87,10 @@ fn handle_message(message: String) -> String {
 	let Ok(message) = ron::from_str::<graphite_editor::messages::message::Message>(&message) else {
 		panic!("Error parsing message: {}", message)
 	};
-	let mut guard = EDITOR.lock().unwrap();
-	let editor = (*guard).as_mut().unwrap();
-	let responses = editor.handle_message(message);
+	let responses = EDITOR.with(|editor| {
+		let mut editor = editor.borrow_mut();
+		editor.as_mut().unwrap().handle_message(message)
+	});
 
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(message: FrontendMessage) -> FrontendMessage {

@@ -1,6 +1,5 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog};
-use crate::messages::layout::utility_types::layout_widget::PropertyHolder;
-use crate::messages::layout::utility_types::misc::LayoutTarget;
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 #[derive(Debug, Default, Clone)]
@@ -24,7 +23,7 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog;
-				dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				dialog.send_layout(responses, LayoutTarget::DialogDetails);
 				responses.add(FrontendMessage::DisplayDialog { icon: "Copy".to_string() });
 			}
 			DialogMessage::CloseDialogAndThen { followups } => {
@@ -35,7 +34,7 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
 				let dialog = simple_dialogs::ErrorDialog { title, description };
-				dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				dialog.send_layout(responses, LayoutTarget::DialogDetails);
 				responses.add(FrontendMessage::DisplayDialog { icon: "Warning".to_string() });
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
@@ -46,12 +45,12 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 			DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date } => {
 				let about_graphite = AboutGraphiteDialog { localized_commit_date };
 
-				about_graphite.register_properties(responses, LayoutTarget::DialogDetails);
+				about_graphite.send_layout(responses, LayoutTarget::DialogDetails);
 				responses.add(FrontendMessage::DisplayDialog { icon: "GraphiteLogo".to_string() });
 			}
 			DialogMessage::RequestComingSoonDialog { issue } => {
 				let coming_soon = ComingSoonDialog { issue };
-				coming_soon.register_properties(responses, LayoutTarget::DialogDetails);
+				coming_soon.send_layout(responses, LayoutTarget::DialogDetails);
 				responses.add(FrontendMessage::DisplayDialog { icon: "Warning".to_string() });
 			}
 			DialogMessage::RequestExportDialog => {
@@ -84,7 +83,7 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 						has_selection: document.selected_layers().next().is_some(),
 						..Default::default()
 					};
-					self.export_dialog.register_properties(responses, LayoutTarget::DialogDetails);
+					self.export_dialog.send_layout(responses, LayoutTarget::DialogDetails);
 					responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
 				}
 			}
@@ -94,12 +93,12 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 					infinite: false,
 					dimensions: glam::UVec2::new(1920, 1080),
 				};
-				self.new_document_dialog.register_properties(responses, LayoutTarget::DialogDetails);
+				self.new_document_dialog.send_layout(responses, LayoutTarget::DialogDetails);
 				responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
 			}
 			DialogMessage::RequestPreferencesDialog => {
 				self.preferences_dialog = PreferencesDialogMessageHandler {};
-				self.preferences_dialog.register_properties(responses, LayoutTarget::DialogDetails, preferences);
+				self.preferences_dialog.send_layout(responses, LayoutTarget::DialogDetails, preferences);
 				responses.add(FrontendMessage::DisplayDialog { icon: "Settings".to_string() });
 			}
 		}

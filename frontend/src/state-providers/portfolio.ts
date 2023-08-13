@@ -1,9 +1,8 @@
 /* eslint-disable max-classes-per-file */
 
-import {writable} from "svelte/store";
+import { writable } from "svelte/store";
 
 import { downloadFileText, downloadFileBlob, upload, downloadFileURL } from "@graphite/utility-functions/files";
-import { imaginateGenerate, imaginateCheckConnection, imaginateTerminate, updateBackendImage } from "@graphite/utility-functions/imaginate";
 import { extractPixelData, imageToPNG, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
@@ -13,8 +12,6 @@ import {
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
 	TriggerImaginateCheckServerStatus,
-	TriggerImaginateGenerate,
-	TriggerImaginateTerminate,
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterizeRegionBelowLayer,
@@ -85,37 +82,6 @@ export function createPortfolioState(editor: Editor) {
 		// Have the browser download the file to the user's disk
 		downloadFileBlob(name, blob);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerImaginateCheckServerStatus, async (triggerImaginateCheckServerStatus) => {
-		const { hostname } = triggerImaginateCheckServerStatus;
-
-		imaginateCheckConnection(hostname, editor);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerImaginateGenerate, async (triggerImaginateGenerate) => {
-		const { documentId, layerPath, nodePath, hostname, refreshFrequency, baseImage, maskImage, maskPaintMode, maskBlurPx, maskFillContent, parameters } = triggerImaginateGenerate;
-
-		// Handle img2img mode
-		let image: Blob | undefined;
-		if (parameters.denoisingStrength !== undefined && baseImage !== undefined) {
-			const buffer = new Uint8Array(baseImage.imageData.values()).buffer;
-
-			image = new Blob([buffer], { type: baseImage.mime });
-			updateBackendImage(editor, image, documentId, layerPath, nodePath);
-		}
-
-		// Handle layer mask
-		let mask: Blob | undefined;
-		if (maskImage !== undefined) {
-			// Rasterize the SVG to an image file
-			mask = await rasterizeSVG(maskImage.svg, maskImage.size[0], maskImage.size[1], "image/png");
-		}
-
-		imaginateGenerate(parameters, image, mask, maskPaintMode, maskBlurPx, maskFillContent, hostname, refreshFrequency, documentId, layerPath, nodePath, editor);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerImaginateTerminate, async (triggerImaginateTerminate) => {
-		const { documentId, layerPath, nodePath, hostname } = triggerImaginateTerminate;
-
-		imaginateTerminate(hostname, documentId, layerPath, nodePath, editor);
-	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {
 			const buffer = new Uint8Array(element.imageData.values()).buffer;
@@ -132,7 +98,7 @@ export function createPortfolioState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRasterizeRegionBelowLayer, async (triggerRasterizeRegionBelowLayer) => {
-		const { documentId, layerPath, svg, size, imaginateNodePath } = triggerRasterizeRegionBelowLayer;
+		const { documentId, layerPath, svg, size } = triggerRasterizeRegionBelowLayer;
 
 		// Rasterize the SVG to an image file
 		try {
@@ -140,7 +106,7 @@ export function createPortfolioState(editor: Editor) {
 				const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
 				if (!imageData) return;
 
-				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height, imaginateNodePath);
+				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 		}
 		// getImageData may throw an exception if the resolution is too high

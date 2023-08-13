@@ -1,25 +1,83 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
-use xxhash_rust::xxh3::Xxh3;
 
-use crate::document::value;
+use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
+
+use std::hash::Hash;
+
 use crate::document::NodeId;
+use crate::document::{value, InlineRust};
 use dyn_any::DynAny;
 use graphene_core::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
+pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n (dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync)>;
-pub type TypeErasedPinned<'n> = Pin<Box<dyn for<'i> NodeIO<'i, Any<'i>, Output = Any<'i>> + 'n + Send + Sync>>;
+pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
+// TODO: is this safe? This is assumed to be send+sync.
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
+pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
+pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
+pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type NodeConstructor = for<'a> fn(Vec<TypeErasedPinnedRef<'static>>) -> TypeErasedPinned<'static>;
+pub type SharedNodeContainer = std::rc::Rc<NodeContainer>;
+
+pub type NodeConstructor = for<'a> fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+
+#[derive(Clone)]
+pub struct NodeContainer {
+	#[cfg(feature = "dealloc_nodes")]
+	pub node: *mut TypeErasedNode<'static>,
+	#[cfg(not(feature = "dealloc_nodes"))]
+	pub node: TypeErasedRef<'static>,
+}
+
+impl Deref for NodeContainer {
+	type Target = TypeErasedNode<'static>;
+
+	#[cfg(feature = "dealloc_nodes")]
+	fn deref(&self) -> &Self::Target {
+		unsafe { &*(self.node as *const TypeErasedNode) }
+		#[cfg(not(feature = "dealloc_nodes"))]
+		self.node
+	}
+	#[cfg(not(feature = "dealloc_nodes"))]
+	fn deref(&self) -> &Self::Target {
+		self.node
+	}
+}
+
+#[cfg(feature = "dealloc_nodes")]
+impl Drop for NodeContainer {
+	fn drop(&mut self) {
+		unsafe { self.dealloc_unchecked() }
+	}
+}
+
+impl core::fmt::Debug for NodeContainer {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("NodeContainer").finish()
+	}
+}
+
+impl NodeContainer {
+	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
+		let node = Box::leak(node);
+		Self { node }.into()
+	}
+
+	#[cfg(feature = "dealloc_nodes")]
+	unsafe fn dealloc_unchecked(&mut self) {
+		std::mem::drop(Box::from_raw(self.node));
+	}
+}
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
 pub struct ProtoNetwork {
 	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
@@ -32,7 +90,7 @@ impl core::fmt::Display for ProtoNetwork {
 		f.write_str("Proto Network with nodes: ")?;
 		fn write_node(f: &mut core::fmt::Formatter<'_>, network: &ProtoNetwork, id: NodeId, indent: usize) -> core::fmt::Result {
 			f.write_str(&"\t".repeat(indent))?;
-			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)|*node_id == id) else {
+			let Some((_, node)) = network.nodes.iter().find(|(node_id, _)| *node_id == id) else {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;
@@ -62,6 +120,10 @@ impl core::fmt::Display for ProtoNetwork {
 						write_node(f, network, id.0, indent + 1)?;
 					}
 				}
+				ConstructionArgs::Inline(inline) => {
+					f.write_str(&"\t".repeat(indent + 1))?;
+					f.write_fmt(format_args!("Inline construction argument: {inline:?}"))?
+				}
 			}
 			f.write_str(&"\t".repeat(indent))?;
 			f.write_str("}\n")?;
@@ -79,14 +141,25 @@ pub enum ConstructionArgs {
 	Value(value::TaggedValue),
 	// the bool indicates whether to treat the node as lambda node
 	Nodes(Vec<(NodeId, bool)>),
+	Inline(InlineRust),
 }
+
+impl Eq for ConstructionArgs {}
 
 impl PartialEq for ConstructionArgs {
 	fn eq(&self, other: &Self) -> bool {
 		match (&self, &other) {
 			(Self::Nodes(n1), Self::Nodes(n2)) => n1 == n2,
 			(Self::Value(v1), Self::Value(v2)) => v1 == v2,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+			_ => {
+				use std::hash::Hasher;
+				let hash = |input: &Self| {
+					let mut hasher = rustc_hash::FxHasher::default();
+					input.hash(&mut hasher);
+					hasher.finish()
+				};
+				hash(self) == hash(other)
+			}
 		}
 	}
 }
@@ -101,6 +174,7 @@ impl Hash for ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.hash(state),
+			Self::Inline(inline) => inline.hash(state),
 		}
 	}
 }
@@ -108,14 +182,15 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("&n{}", n.0)).collect(),
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
+			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -126,7 +201,7 @@ pub struct ProtoNode {
 /// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
 /// For documentation on the meaning of the variants, see the documentation of the `NodeInput` enum
 /// in the `document` module
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProtoNodeInput {
 	None,
@@ -152,19 +227,18 @@ impl ProtoNodeInput {
 impl ProtoNode {
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
-		let mut hasher = Xxh3::new();
+		let mut hasher = rustc_hash::FxHasher::default();
 
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		self.document_node_path.hash(&mut hasher);
+		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
-			ProtoNodeInput::None => "none".hash(&mut hasher),
+			ProtoNodeInput::None => (),
 			ProtoNodeInput::ShortCircut(ref ty) => {
-				"lambda".hash(&mut hasher);
 				ty.hash(&mut hasher);
 			}
 			ProtoNodeInput::Network(ref ty) => {
-				"network".hash(&mut hasher);
 				ty.hash(&mut hasher);
 			}
 			ProtoNodeInput::Node(id, lambda) => (id, lambda).hash(&mut hasher),
@@ -174,7 +248,7 @@ impl ProtoNode {
 
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ValueNode"),
+			identifier: NodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 			document_node_path: path,
@@ -229,20 +303,15 @@ impl ProtoNetwork {
 	}
 
 	pub fn generate_stable_node_ids(&mut self) {
-		for i in 0..self.nodes.len() {
-			self.generate_stable_node_id(i);
-		}
-	}
+		debug_assert!(self.is_topologically_sorted());
+		let outwards_edges = self.collect_outwards_edges();
 
-	pub fn generate_stable_node_id(&mut self, index: usize) -> NodeId {
-		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
-		if let Some(sni) = self.nodes[index].1.stable_node_id() {
-			lookup.insert(self.nodes[index].0, sni);
-			self.replace_node_references(&lookup, false);
-			self.nodes[index].0 = sni;
-			sni
-		} else {
-			panic!("failed to generate stable node id for node {:#?}", self.nodes[index].1);
+		for index in 0..self.nodes.len() {
+			let Some(sni) = self.nodes[index].1.stable_node_id() else {
+				panic!("failed to generate stable node id for node {:#?}", self.nodes[index].1);
+			};
+			self.replace_node_id(&outwards_edges, index as NodeId, sni, false);
+			self.nodes[index].0 = sni as NodeId;
 		}
 	}
 
@@ -264,45 +333,59 @@ impl ProtoNetwork {
 	}
 
 	pub fn resolve_inputs(&mut self) {
-		let mut resolved = HashSet::new();
-		while !self.resolve_inputs_impl(&mut resolved) {}
-	}
-	fn resolve_inputs_impl(&mut self, resolved: &mut HashSet<NodeId>) -> bool {
+		// Perform topological sort once
 		self.reorder_ids();
 
-		let mut lookup = self.nodes.iter().map(|(id, _)| (*id, *id)).collect::<HashMap<_, _>>();
-		let compose_node_id = self.nodes.len() as NodeId;
-		let inputs = self.nodes.iter().map(|(_, node)| node.input.clone()).collect::<Vec<_>>();
-		let paths = self.nodes.iter().map(|(_, node)| node.document_node_path.clone()).collect::<Vec<_>>();
+		let max_id = self.nodes.len() as NodeId - 1;
 
-		let resolved_lookup = resolved.clone();
-		if let Some((input_node, id, input, mut path)) = self.nodes.iter_mut().filter(|(id, _)| !resolved_lookup.contains(id)).find_map(|(id, node)| {
-			if let ProtoNodeInput::Node(input_node, false) = node.input {
-				resolved.insert(*id);
-				let pre_node_input = inputs.get(input_node as usize).expect("input node should exist");
-				let pre_path = paths.get(input_node as usize).expect("input node should exist");
-				Some((input_node, *id, pre_node_input.clone(), pre_path.clone()))
-			} else {
-				resolved.insert(*id);
-				None
+		// Collect outward edges once
+		let outwards_edges = self.collect_outwards_edges();
+
+		// Iterate over nodes in topological order
+		for node_id in 0..=max_id {
+			let node = &mut self.nodes[node_id as usize].1;
+
+			if let ProtoNodeInput::Node(input_node_id, false) = node.input {
+				// Create a new node that composes the current node and its input node
+				let compose_node_id = self.nodes.len() as NodeId;
+				let input = self.nodes[input_node_id as usize].1.input.clone();
+				let mut path = self.nodes[input_node_id as usize].1.document_node_path.clone();
+				path.push(node_id);
+
+				self.nodes.push((
+					compose_node_id,
+					ProtoNode {
+						identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
+						construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
+						input,
+						document_node_path: path,
+					},
+				));
+
+				self.replace_node_id(&outwards_edges, node_id, compose_node_id, true);
 			}
-		}) {
-			lookup.insert(id, compose_node_id);
-			self.replace_node_references(&lookup, true);
-			path.push(id);
-			self.nodes.push((
-				compose_node_id,
-				ProtoNode {
-					identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
-					construction_args: ConstructionArgs::Nodes(vec![(input_node, false), (id, true)]),
-					input,
-					document_node_path: path,
-				},
-			));
-			return false;
+		}
+		self.reorder_ids();
+	}
+
+	fn replace_node_id(&mut self, outwards_edges: &HashMap<u64, Vec<u64>>, node_id: u64, compose_node_id: u64, skip_lambdas: bool) {
+		// Update references in other nodes to use the new compose node
+		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
+			for &referring_node_id in referring_nodes {
+				let referring_node = &mut self.nodes[referring_node_id as usize].1;
+				referring_node.map_ids(|id| if id == node_id { compose_node_id } else { id }, skip_lambdas)
+			}
 		}
 
-		true
+		if self.output == node_id {
+			self.output = compose_node_id;
+		}
+
+		self.inputs.iter_mut().for_each(|id| {
+			if *id == node_id {
+				*id = compose_node_id;
+			}
+		});
 	}
 
 	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
@@ -310,27 +393,45 @@ impl ProtoNetwork {
 	pub fn topological_sort(&self) -> Vec<NodeId> {
 		let mut sorted = Vec::new();
 		let inwards_edges = self.collect_inwards_edges();
-		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>) {
+		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) {
 			if sorted.contains(&node_id) {
 				return;
 			};
 			if temp_marks.contains(&node_id) {
-				panic!("Cycle detected");
+				panic!("Cycle detected {:#?}, {:#?}", &inwards_edges, &network);
 			}
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
 				temp_marks.insert(node_id);
 				for &dependant in dependencies {
-					visit(dependant, temp_marks, sorted, inwards_edges);
+					visit(dependant, temp_marks, sorted, inwards_edges, network);
 				}
 				temp_marks.remove(&node_id);
 			}
 			sorted.push(node_id);
 		}
 		assert!(self.nodes.iter().any(|(id, _)| *id == self.output), "Output id {} does not exist", self.output);
-		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges);
+		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self);
 
 		sorted
+	}
+
+	fn is_topologically_sorted(&self) -> bool {
+		let mut visited = HashSet::new();
+
+		let inwards_edges = self.collect_inwards_edges();
+		for (id, node) in &self.nodes {
+			for &dependency in inwards_edges.get(id).unwrap_or(&Vec::new()) {
+				if !visited.contains(&dependency) {
+					dbg!(id, dependency);
+					dbg!(&visited);
+					dbg!(&self.nodes);
+					return false;
+				}
+			}
+			visited.insert(*id);
+		}
+		true
 	}
 
 	/*// Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
@@ -359,33 +460,38 @@ impl ProtoNetwork {
 		sorted
 	}*/
 
-	pub fn reorder_ids(&mut self) {
+	fn reorder_ids(&mut self) {
 		let order = self.topological_sort();
-		// Map of node ids to indexes (which become the node ids as they are inserted into the borrow stack)
-		let lookup: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
-		self.nodes = order
-			.iter()
-			.enumerate()
-			.map(|(pos, id)| {
-				let node = self.nodes.swap_remove(self.nodes.iter().position(|(test_id, _)| test_id == id).unwrap()).1;
-				(pos as NodeId, node)
-			})
-			.collect();
-		self.replace_node_references(&lookup, false);
-		assert_eq!(order.len(), self.nodes.len());
-	}
 
-	fn replace_node_references(&mut self, lookup: &HashMap<u64, u64>, skip_lambdas: bool) {
-		self.nodes.iter_mut().for_each(|(_, node)| {
-			node.map_ids(|id| *lookup.get(&id).expect("node not found in lookup table"), skip_lambdas);
+		// Map of node ids to their current index in the nodes vector
+		let current_positions: HashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
+
+		// Map of node ids to their new index based on topological order
+		let new_positions: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
+
+		// Create a new nodes vector based on the topological order
+		let mut new_nodes = Vec::with_capacity(order.len());
+		for (index, &id) in order.iter().enumerate() {
+			let current_pos = *current_positions.get(&id).unwrap();
+			new_nodes.push((index as NodeId, self.nodes[current_pos].1.clone()));
+		}
+
+		// Update node references to reflect the new order
+		new_nodes.iter_mut().for_each(|(_, node)| {
+			node.map_ids(|id| *new_positions.get(&id).expect("node not found in lookup table"), false);
 		});
-		self.inputs = self.inputs.iter().filter_map(|id| lookup.get(id).copied()).collect();
-		self.output = *lookup.get(&self.output).unwrap();
+
+		// Update the nodes vector and other references
+		self.nodes = new_nodes;
+		self.inputs = self.inputs.iter().filter_map(|id| new_positions.get(id).copied()).collect();
+		self.output = *new_positions.get(&self.output).unwrap();
+
+		assert_eq!(order.len(), self.nodes.len());
 	}
 }
 
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
@@ -449,6 +555,7 @@ impl TypingContext {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, String>>()?,
+			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
 		// Get the node input type from the proto node declaration
@@ -467,13 +574,13 @@ impl TypingContext {
 		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
 
 		if matches!(input, Type::Generic(_)) {
-			return Err(format!("Generic types are not supported as inputs yet {:?} occured in {:?}", &input, node.identifier));
+			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", &input, node.identifier));
 		}
-		if parameters.iter().any(|p| match p {
-			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)) => true,
-			_ => false,
+		if parameters.iter().any(|p| {
+			matches!(p,
+			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
-			return Err(format!("Generic types are not supported in parameters: {:?} occured in {:?}", parameters, node.identifier));
+			return Err(format!("Generic types are not supported in parameters: {:?} occurred in {:?}", parameters, node.identifier));
 		}
 		fn covariant(from: &Type, to: &Type) -> bool {
 			match (from, to) {
@@ -517,7 +624,7 @@ impl TypingContext {
 				dbg!(&self.inferred);
 				Err(format!(
 					"No implementations found for {identifier} with \ninput: {input:?} and \nparameters: {parameters:?}.\nOther Implementations found: {:?}",
-					impls,
+					impls.keys().collect::<Vec<_>>(),
 				))
 			}
 			[(org_nio, output)] => {
@@ -621,8 +728,6 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network.reorder_ids();
-		construction_network.generate_stable_node_ids();
 		construction_network.resolve_inputs();
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
@@ -630,12 +735,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				4471348669260178714,
-				12892313567093808068,
-				6883586777044498729,
-				13841339389284532934,
-				4412916056300566478,
-				15358108940336208665
+				16203111412429166836,
+				8181436982058796771,
+				10130798762907147404,
+				1082623390433068677,
+				4567264975997576294,
+				8215587082195034469
 			]
 		);
 	}
