@@ -1084,7 +1084,7 @@ mod test {
 						input: ProtoNodeInput::Network(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![1, 0],
-			skip_deduplication: false,
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -1094,7 +1094,7 @@ mod test {
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![1, 1],
-			skip_deduplication: false,
+						skip_deduplication: false,
 					},
 				),
 				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)), vec![1, 4])),
