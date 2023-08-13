@@ -4,11 +4,12 @@ use core::future::Future;
 use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
-use graphene_core::Color;
+use graphene_core::transform::Footprint;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
 };
+use graphene_core::{Color, GraphicGroup};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
@@ -279,4 +280,20 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 		transform: glam::DAffine2::IDENTITY,
 	};
 	image
+}
+
+pub enum RenderOutput {
+	CanvasFrame(SurfaceHandleFrame<HtmlCanvasElement>),
+	Svg(String),
+	Raster(Vec<u8>),
+}
+
+pub struct RenderNode<Data, Surface> {
+	data: Data,
+	surface_handle: Surface,
+}
+
+#[node_macro::node_fn(RenderNode)]
+async fn render_node<'a: 'input>(editor: WasmEditorApi<'a>, data: impl Node<'a, Footprint, Output = GraphicGroup>, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> RenderOutput {
+	RenderOutput::Svg("".to_owned())
 }
