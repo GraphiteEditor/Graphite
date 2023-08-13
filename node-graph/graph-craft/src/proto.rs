@@ -762,6 +762,7 @@ mod test {
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -771,6 +772,7 @@ mod test {
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -780,6 +782,7 @@ mod test {
 						input: ProtoNodeInput::Network(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -789,6 +792,7 @@ mod test {
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -798,6 +802,7 @@ mod test {
 						input: ProtoNodeInput::None,
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 			]
