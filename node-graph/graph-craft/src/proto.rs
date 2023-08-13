@@ -190,12 +190,13 @@ impl ConstructionArgs {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
 	pub identifier: NodeIdentifier,
 	pub document_node_path: Vec<NodeId>,
+	pub skip_deduplication: bool,
 }
 
 /// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
@@ -231,7 +232,9 @@ impl ProtoNode {
 
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
-		self.document_node_path.hash(&mut hasher);
+		if self.skip_deduplication {
+			self.document_node_path.hash(&mut hasher);
+		}
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -252,6 +255,7 @@ impl ProtoNode {
 			construction_args: value,
 			input: ProtoNodeInput::None,
 			document_node_path: path,
+			skip_deduplication: false,
 		}
 	}
 
@@ -359,6 +363,7 @@ impl ProtoNetwork {
 						construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
 						input,
 						document_node_path: path,
+						skip_deduplication: false,
 					},
 				));
 
@@ -735,12 +740,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				16203111412429166836,
-				8181436982058796771,
-				10130798762907147404,
-				1082623390433068677,
-				4567264975997576294,
-				8215587082195034469
+				2785293541695324513,
+				12994980551665119079,
+				17926586814106640907,
+				2523412932923113119,
+				12965978620570332342,
+				16191561097939296982
 			]
 		);
 	}
@@ -757,6 +762,7 @@ mod test {
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -766,6 +772,7 @@ mod test {
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -775,6 +782,7 @@ mod test {
 						input: ProtoNodeInput::Network(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -784,6 +792,7 @@ mod test {
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 				(
@@ -793,6 +802,7 @@ mod test {
 						input: ProtoNodeInput::None,
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
 						document_node_path: vec![],
+						skip_deduplication: false,
 					},
 				),
 			]

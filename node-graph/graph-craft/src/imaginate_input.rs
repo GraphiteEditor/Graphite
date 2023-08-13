@@ -36,6 +36,7 @@ pub trait ImaginateTerminationHandle: Debug + Send + Sync + 'static {
 #[derive(Default, Debug, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct InternalImaginateControl {
+	#[serde(skip)]
 	status: Mutex<ImaginateStatus>,
 	trigger_regenerate: AtomicBool,
 	#[serde(skip)]
