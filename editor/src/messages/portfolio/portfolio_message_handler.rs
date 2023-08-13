@@ -393,16 +393,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						for entry in data.iter().rev() {
 							let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
 
-							responses.add_front(DocumentMessage::UpdateLayerMetadata {
-								layer_path: destination_path.clone(),
-								layer_metadata: entry.layer_metadata,
-							});
 							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
-							responses.add_front(DocumentOperation::InsertLayer {
+							responses.add(DocumentOperation::InsertLayer {
 								layer: Box::new(entry.layer.clone()),
-								destination_path,
+								destination_path: destination_path.clone(),
 								insert_index: -1,
 								duplicating: false,
+							});
+							responses.add(DocumentMessage::UpdateLayerMetadata {
+								layer_path: destination_path,
+								layer_metadata: entry.layer_metadata,
 							});
 						}
 
