@@ -1139,6 +1139,51 @@ pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![operand("Modulo", 1)]
 }
 
+pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Radius", 1)]
+}
+
+pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Size X", 1), operand("Size Y", 2)]
+}
+
+pub fn polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Points", 1), operand("Radius", 2)]
+}
+
+pub fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Points", 1), operand("Radius", 2), operand("Inner Radius", 3)]
+}
+
+pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", add_blank_assist);
+	vec![operand("Start", 1), operand("End", 2)]
+}
+pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", add_blank_assist);
+	vec![operand("Start", 1), operand("Middle", 2), operand("End", 3)]
+}
+
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
 		let pivot_index = 5;
