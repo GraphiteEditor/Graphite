@@ -18,6 +18,21 @@ fn unit_circle(_input: (), radius: f32) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct UnitElipseGenerator<RadiusX, RadiusY> {
+	radius_x: RadiusX,
+	radius_y: RadiusY,
+}
+
+#[node_macro::node_fn(UnitElipseGenerator)]
+fn unit_elipse(_input: (), radius_x: f32, radius_y: f32) -> VectorData {
+	let radius_x = radius_x.into();
+	let radius_y: f64 = radius_y.into();
+	let corner1 = DVec2::new(radius_x * -1., radius_y * -1.);
+	let corner2: DVec2 = DVec2::new(radius_x, radius_y);
+	super::VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2))
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct UnitRectangleGenerator<SizeX, SizeY> {
 	size_x: SizeX,
 	size_y: SizeY,
@@ -25,8 +40,8 @@ pub struct UnitRectangleGenerator<SizeX, SizeY> {
 
 #[node_macro::node_fn(UnitRectangleGenerator)]
 fn unit_square(_input: (), size_x: f32, size_y: f32) -> VectorData {
-	let size_x: f64 = size_x.into();
-	let size_y: f64 = size_y.into();
+	let size_x = (size_x / 2.).into();
+	let size_y = (size_y / 2.).into();
 	let corner1 = DVec2::new(size_x * -1., size_y * -1.);
 	let corner2 = DVec2::new(size_x, size_y);
 
@@ -42,7 +57,7 @@ pub struct UnitPolygonGenerator<Points, Radius> {
 #[node_macro::node_fn(UnitPolygonGenerator)]
 fn unit_polygon(_input: (), points: u32, radius: f32) -> VectorData {
 	let points = points.into();
-	let radius = radius.into();
+	let radius = (radius * 2.).into();
 	super::VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(radius * -1.), points, radius))
 }
 
@@ -55,9 +70,9 @@ pub struct UnitStarGenerator<Points, Radius, InnerRadius> {
 
 #[node_macro::node_fn(UnitStarGenerator)]
 fn unit_star(_input: (), points: u32, radius: f32, inner_radius: f32) -> VectorData {
-	let points: u64 = points.into();
-	let radius: f64 = radius.into();
-	let inner_radius: f64 = inner_radius.into();
+	let points = points.into();
+	let radius = (radius * 2.).into();
+	let inner_radius = (inner_radius * 2.).into();
 
 	super::VectorData::from_subpath(Subpath::new_regular_star_polygon(DVec2::splat(radius * -1.), points, radius, inner_radius))
 }

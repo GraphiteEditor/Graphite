@@ -631,6 +631,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
 		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator<_>, input: (), params: [f32]),
+		register_node!(graphene_core::vector::generator_nodes::UnitElipseGenerator<_, _>, input: (), params: [f32, f32]),
 		register_node!(graphene_core::vector::generator_nodes::UnitRectangleGenerator<_, _>, input: (), params: [f32, f32]),
 		register_node!(graphene_core::vector::generator_nodes::UnitPolygonGenerator<_, _>, input: (), params: [u32, f32]),
 		register_node!(graphene_core::vector::generator_nodes::UnitStarGenerator<_, _, _>, input: (), params: [u32, f32, f32]),

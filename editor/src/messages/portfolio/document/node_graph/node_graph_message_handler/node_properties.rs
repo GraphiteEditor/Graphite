@@ -1148,6 +1148,15 @@ pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![operand("Radius", 1)]
 }
 
+pub fn elipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Radius X", 1), operand("Radius Y", 2)]
+}
+
 pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
 		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
@@ -1158,21 +1167,18 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(3.), true);
+	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Points", 1), operand("Radius", 2)]
+	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }]
 }
 
 pub fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(2.), true);
+	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
+	let inner_radius = number_widget(document_node, node_id, 3, "Inner Radius", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Points", 1), operand("Radius", 2), operand("Inner Radius", 3)]
+	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: inner_radius }]
 }
 
 pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

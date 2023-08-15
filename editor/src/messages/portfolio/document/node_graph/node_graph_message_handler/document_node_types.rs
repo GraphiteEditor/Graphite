@@ -1918,9 +1918,22 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Circle",
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitCircleGenerator<_>"),
-			inputs: vec![DocumentInputType::none(), DocumentInputType::value("Radius", TaggedValue::F32(0.), false)],
+			inputs: vec![DocumentInputType::none(), DocumentInputType::value("Radius", TaggedValue::F32(50.), false)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::circle_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Elipse",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitElipseGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Radius X", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Radius Y", TaggedValue::F32(25.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::elipse_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -1929,8 +1942,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitRectangleGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Size X", TaggedValue::F32(0.), false),
-				DocumentInputType::value("Size Y", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Size X", TaggedValue::F32(100.), false),
+				DocumentInputType::value("Size Y", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::rectangle_properties,
@@ -1942,8 +1955,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitPolygonGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Sides", TaggedValue::U32(3), false),
-				DocumentInputType::value("Radius", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Sides", TaggedValue::U32(32), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::polygon_properties,
@@ -1955,9 +1968,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitStarGenerator<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Sides", TaggedValue::U32(3), false),
-				DocumentInputType::value("Radius", TaggedValue::F32(0.), false),
-				DocumentInputType::value("Inner Radius", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Sides", TaggedValue::U32(32), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Inner Radius", TaggedValue::F32(40.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::star_properties,
@@ -1969,8 +1982,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitLineGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 1.)), false),
-				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 1.)), false),
+				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., -50.)), false),
+				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 50.)), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::line_properties,
@@ -1982,9 +1995,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitSplineGenerator<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 1.)), false),
-				DocumentInputType::value("middle", TaggedValue::DVec2(DVec2::new(0., 1.)), false),
-				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 1.)), false),
+				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., -50.)), false),
+				DocumentInputType::value("middle", TaggedValue::DVec2(DVec2::new(25., 0.)), false),
+				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 50.)), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::spline_properties,
