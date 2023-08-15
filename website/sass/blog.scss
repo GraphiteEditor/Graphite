@@ -81,6 +81,7 @@
 				flex-direction: column;
 				gap: 20px;
 				text-align: justify;
+				-webkit-hyphens: auto;
 				hyphens: auto;
 				overflow: hidden;
 				text-overflow: ellipsis;

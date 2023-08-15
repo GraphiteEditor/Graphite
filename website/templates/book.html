@@ -38,7 +38,11 @@
 	<aside class="chapters" data-chapters>
 		<div class="wrapper-outer">
 			<div class="wrapper-inner">
-				<button class="hamburger-menu-button close" data-hamburger-menu-button-close></button>
+				<button class="close-chapter-selection" data-close-chapter-selection>
+					<svg viewBox="0 0 24 24">
+						<polygon points="20.7,4.7 19.3,3.3 12,10.6 4.7,3.3 3.3,4.7 10.6,12 3.3,19.3 4.7,20.7 12,13.4 19.3,20.7 20.7,19.3 13.4,12" />
+					</svg>
+				</button>
 				<ul>
 					<li class="title{% if current_path == book.path %} active{% endif %}"><a href="{{ book.path }}" title="{{ book.title }}">{{ book.title }}</a></li>
 				</ul>
@@ -70,7 +74,13 @@
 	<section class="reading-material">
 		<div class="section">
 			<div class="article-title">
-				<button class="hamburger-menu-button open" data-hamburger-menu-button-open></button>
+				<button title="Open chapter selection" class="open-chapter-selection" data-open-chapter-selection>
+					<svg viewBox="0 0 24 24">
+						<rect x="2" y="4" width="20" height="2"/>
+						<rect x="2" y="18" width="20" height="2"/>
+						<rect x="2" y="11" width="20" height="2"/>
+					</svg>
+				</button>
 				<h1>{{ this.title }}</h1>
 			</div>
 			<article>

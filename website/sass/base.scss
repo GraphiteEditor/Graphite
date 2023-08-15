@@ -148,6 +148,7 @@ h6 {
 
 p {
 	margin: 0;
+	-webkit-hyphens: auto;
 	hyphens: auto;
 	text-align: justify;
 }
@@ -212,6 +213,7 @@ code {
 	color: var(--color-black);
 	padding: 0 4px;
 	overflow-wrap: anywhere;
+	-webkit-hyphens: none;
 	hyphens: none;
 }
 
@@ -1006,18 +1008,8 @@ body > .page {
 header {
 	padding: 0 var(--page-edge-padding);
 	color: var(--color-walnut);
-
-	@media screen and (max-width: 1824px) {
-		.ripple {
-			width: calc(100% + (var(--page-edge-padding) * 2));
-			margin-left: calc(-1 * var(--page-edge-padding));
-			margin-right: calc(-1 * var(--page-edge-padding));
-		}
-
-		hr {
-			display: none;
-		}
-	}
+	position: relative;
+	z-index: 1000;
 
 	nav {
 		margin: auto;
@@ -1026,14 +1018,20 @@ header {
 		.row {
 			display: flex;
 			justify-content: space-between;
-			padding: 30px 0;
+			--nav-padding-above-below: 30px;
+			padding-top: var(--nav-padding-above-below);
+			padding-bottom: calc(var(--nav-padding-above-below) - 16px);
+			margin-bottom: calc(var(--nav-padding-above-below) - 16px);
+			// Covers up content that extends up underneath the header
+			background: white;
 
 			@media screen and (max-width: 760px) {
-				padding: 20px 0;
+				--nav-padding-above-below: 24px;
 			}
 
 			.left,
 			.right {
+				z-index: 1;
 				display: flex;
 				align-items: center;
 				gap: 40px;
@@ -1156,7 +1154,8 @@ header {
 	.ripple {
 		display: block;
 		background: none;
-		fill: none;
+		// Covers up content that extends up underneath the header
+		fill: white;
 		stroke: currentColor;
 		--ripple-height: 16px;
 		height: var(--ripple-height);
@@ -1172,6 +1171,18 @@ header {
 
 	hr {
 		background: none;
+	}
+
+	@media screen and (max-width: 1824px) {
+		.ripple {
+			width: calc(100% + (var(--page-edge-padding) * 2));
+			margin-left: calc(-1 * var(--page-edge-padding));
+			margin-right: calc(-1 * var(--page-edge-padding));
+		}
+
+		hr {
+			display: none;
+		}
 	}
 }
 

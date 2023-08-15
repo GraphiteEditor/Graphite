@@ -1,5 +1,5 @@
 addEventListener("DOMContentLoaded", trackScrollHeadingInTOC);
-addEventListener("DOMContentLoaded", listenForClickToOpenTOC);
+addEventListener("DOMContentLoaded", listenForClickToOpenOrCloseTOC);
 
 // Listen for scroll events and update the active section in the table of contents to match the visible content's heading
 function trackScrollHeadingInTOC() {
@@ -52,12 +52,25 @@ function trackScrollHeadingInTOC() {
 	updateVisibleHeading();
 }
 
-function listenForClickToOpenTOC() {
-	document.querySelector("[data-hamburger-menu-button-open]")?.addEventListener("click", () => {
-		document.querySelector("[data-chapters]")?.classList.add("open");
+function listenForClickToOpenOrCloseTOC() {
+	// Open the chapter selection if the user clicks the open button
+	document.querySelector("[data-open-chapter-selection]")?.addEventListener("click", () => {
+		// Wait until after the click-outside-the-panel event has been handled before opening the panel so it doesn't immediately get closed in the same call stack
+		setTimeout(() => {
+			document.querySelector("[data-chapters]")?.classList.add("open");
+		});
 	});
 
-	document.querySelector("[data-hamburger-menu-button-close]")?.addEventListener("click", () => {
+	// Close the chapter selection if the user clicks the close button
+	document.querySelector("[data-close-chapter-selection]")?.addEventListener("click", () => {
 		document.querySelector("[data-chapters]")?.classList.remove("open");
+	});
+
+	// Close the chapter selection if the user clicks outside of it
+	document.querySelector("main")?.addEventListener("click", (e) => {
+		const chapters = document.querySelector("[data-chapters]");
+		if (chapters?.classList.contains("open") && !e.target.closest("[data-chapters]")) {
+			chapters.classList.remove("open");
+		}
 	});
 }

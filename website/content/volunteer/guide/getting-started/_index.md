@@ -26,12 +26,12 @@ You only need to explicitly install Node.js dependencies. Rust's cargo dependenc
 
 One tool in the Rust ecosystem does need to be installed:
 
-```
+```sh
 cargo install cargo-watch
 ```
 
 That's it! Now, to run the project while developing, just execute:
-```
+```sh
 npm start
 ```
 

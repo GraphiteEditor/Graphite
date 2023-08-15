@@ -142,16 +142,6 @@
 				div {
 					min-height: auto;
 				}
-
-				@media screen and (max-width: 1200px) {
-					flex-direction: column;
-					flex: 1 1 100%;
-
-					&.name,
-					&.email {
-						flex: 1 1 100%;
-					}
-				}
 			}
 
 			.column {

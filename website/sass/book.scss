@@ -2,16 +2,35 @@
 	position: relative;
 	display: flex;
 	gap: 40px;
+	// Creates a stacking context for the left popout sidebar's sticky positioning
 	transform: translate(0);
+
+	.close-chapter-selection,
+	.open-chapter-selection {
+		display: none;
+		fill: var(--color-navy);
+		background: none;
+		border: none;
+		box-sizing: content-box;
+		padding: 6px;
+		font-size: 0;
+		cursor: pointer;
+
+		svg {
+			width: 36px;
+			height: 36px;
+		}
+	}
 
 	.reading-material {
 		width: 800px;
-		flex: 0 0 auto;
-		
+		flex: 1 2 100%;
+
 		.prev-next {
 			display: flex;
 			justify-content: space-between;
 			width: 100%;
+			gap: 20px;
 			
 			a {
 				display: flex;
@@ -25,40 +44,35 @@
 		}
 	}
 
-	@media screen and (max-width: 1320px) {
+	// Page contents right sidebar is removed on smaller screens
+	@media screen and (max-width: 1200px) {
 		.contents {
 			display: none;
 		}
-		
-		.reading-material.reading-material {
-			margin-right: 0;
-		}
-	}
-	
-	.hamburger-menu-button {
-		display: none;
-		border: none;
-		cursor: pointer;
-		width: 30px;
-		height: 30px;
 	}
 
-	// Overlaid fold-out menu
-	@media screen and (max-width: 1080px) {
+	// Overlaid fold-out menu for chapter selection
+	@media screen and (max-width: 1000px) {
 		gap: 0;
 		
 		.chapters {
 			position: sticky;
-			height: 100vh;
 			width: 0;
 			margin-top: calc(-120 * var(--variable-px));
 			overflow: visible;
 			z-index: 10;
+			height: 0;
+			transition: height 0.25s ease-in-out 0.25s;
 
-			&.open .wrapper-outer {
-				left: 0;
+			&.open {
+				height: 100vh;
+				transition: height 0s;
+
+				.wrapper-outer {
+					left: 0;
+				}
 			}
-
+			
 			.wrapper-outer {
 				position: absolute;
 				background: white;
@@ -66,13 +80,15 @@
 				bottom: 0;
 				padding-left: var(--page-edge-padding);
 				margin-left: calc(-1 * var(--page-edge-padding));
-				padding-bottom: 120px;
-				margin-bottom: -120px;
+				padding-bottom: calc(120 * var(--variable-px));
+				margin-bottom: calc(-120 * var(--variable-px));
+				padding-top: 16px;
+				margin-top: -16px;
 				border-right: var(--border-thickness) solid var(--color-walnut);
 				box-sizing: border-box;
+				transition: left 0.25s ease-in-out;
+				left: calc(-1 * (300px + 10px));
 				width: 300px;
-				transition: left 0.2s ease-in-out;
-				left: -310px;
 
 				&::after {
 					content: "";
@@ -89,35 +105,17 @@
 					overflow-y: auto;
 					height: 100%;
 					padding-right: var(--page-edge-padding);
-					padding-bottom: 120px;
+					padding-bottom: calc(-120 * var(--variable-px));
 
 					ul:first-of-type {
 						margin-top: calc(120 * var(--variable-px));
 					}
 
-					.hamburger-menu-button.close {
-						display: inline-block;
-						background: none;
-						overflow: hidden;
+					.close-chapter-selection {
+						display: block;
 						position: absolute;
-						top: 20px;
-						right: 20px;
-
-						&::before,
-						&::after {
-							content: "";
-							position: absolute;
-							background: var(--color-walnut);
-							width: 36px;
-							height: 4px;
-							top: 50%;
-							left: 50%;
-							transform: translate(-18px, -2px) rotate(45deg);
-						}
-
-						&::after {
-							transform: translate(-18px, -2px) rotate(-45deg);
-						}
+						top: calc(20px - 6px);
+						right: calc(20px - 6px);
 					}
 				}
 			}
@@ -131,15 +129,15 @@
 			.article-title {
 				display: flex;
 				white-space: nowrap;
-				gap: 20px;
 
-				.hamburger-menu-button.open {
-					flex: 0 0 auto;
-					position: relative;
+				.open-chapter-selection {
 					display: inline-block;
 					vertical-align: top;
-					top: calc(var(--font-size-heading-h1) * 0.25);
-					background: linear-gradient(to bottom, transparent calc(25% / 3), var(--color-walnut) calc(25% / 3), var(--color-walnut) calc(75% / 3), transparent calc(75% / 3), transparent calc(125% / 3), var(--color-walnut) calc(125% / 3), var(--color-walnut) calc(175% / 3), transparent calc(175% / 3), transparent calc(225% / 3), var(--color-walnut) calc(225% / 3), var(--color-walnut) calc(275% / 3), transparent calc(275% / 3));
+					height: calc(var(--font-size-heading-h1) * 1.25);
+					padding-top: 0;
+					padding-bottom: 0;
+					margin-left: -6px;
+					margin-right: calc(20px - 6px);
 				}
 
 				h1 {
@@ -157,6 +155,7 @@
 		width: 300px;
 		max-height: 100vh;
 		margin-top: -40px;
+		flex: 0 1 auto;
 
 		li {
 			margin-top: 0.5em;
