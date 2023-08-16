@@ -11,7 +11,7 @@ use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::VectorData;
 use graphene_core::{application_io::SurfaceHandle, SurfaceFrame, WasmSurfaceHandleFrame};
-use graphene_core::{concrete, generic};
+use graphene_core::{concrete, generic, GraphicGroup};
 use graphene_core::{fn_type, raster::*};
 use graphene_core::{Cow, NodeIdentifier, Type, TypeDescriptor};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
@@ -78,24 +78,27 @@ macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
 	// assign a Pin<Box<dyn Fututure<Output=T>>> type to the node, which is not what we want for now.
 	($path:ty, input: $input:ty, output: $output:ty, params: [ $($type:ty),*]) => {
+		async_node!($path, input: $input, output: $output, fn_params: [ $(() => $type),*])
+	};
+	($path:ty, input: $input:ty, output: $output:ty, fn_params: [  $($arg:ty => $type:ty),*]) => {
 		vec![
 		(
 			NodeIdentifier::new(stringify!($path)),
 			|mut args| {
 				Box::pin(async move {
 				args.reverse();
-				let node = <$path>::new($(graphene_std::any::input_node::<$type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+				let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
 				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
 				Box::new(any) as TypeErasedBox
 				})
 			},
 			{
 				let node = <$path>::new($(
-							graphene_std::any::PanicNode::<(), core::pin::Pin<Box<dyn core::future::Future<Output = $type>>>>::new()
+							graphene_std::any::PanicNode::<$arg, core::pin::Pin<Box<dyn core::future::Future<Output = $type>>>>::new()
 				),*);
 				// TODO: Propagate the future type through the node graph
 				//let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
-				let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))),*];
+				let params = vec![$(fn_type!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
 				node_io.input = concrete!(<$input as StaticType>::Static);
@@ -625,6 +628,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::quantization::QuantizeNode<_>, input: Color, params: [QuantizationChannels]),
 		register_node!(graphene_core::quantization::DeQuantizeNode<_>, input: PackedPixel, params: [QuantizationChannels]),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => GraphicGroup, () => Arc<WasmSurfaceHandle>]),
 		vec![
 			(
 				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),

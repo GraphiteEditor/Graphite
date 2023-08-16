@@ -127,11 +127,30 @@ pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, P
 	pub(crate) shear: Shear,
 	pub(crate) pivot: Pivot,
 }
+
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RenderQuality {
+	/// Low quality, fast rendering
+	Preview,
+	/// Ensure that the render is available with at least the specified quality
+	/// A value of 0.5 means that the render is available with at least 50% of the final image resolution
+	Scale(f32),
+	/// Flip a coin to decide if the render should be available with the current quality or done at full quality
+	/// This should be used to gradually update the render quality of a cached node
+	Propability(f32),
+	/// Render at full quality
+	Full,
+}
 #[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Footprint {
+	/// Inverse of the transform which will be applied to the node output during the rendering process
 	pub transform: DAffine2,
+	/// Resolution of the target output area in pixels
 	pub resolution: glam::UVec2,
+	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
+	pub quality: RenderQuality,
 }
 
 impl Default for Footprint {
@@ -139,6 +158,7 @@ impl Default for Footprint {
 		Self {
 			transform: DAffine2::IDENTITY,
 			resolution: glam::UVec2::new(1920, 1080),
+			quality: RenderQuality::Full,
 		}
 	}
 }

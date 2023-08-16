@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: &application_io,
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
+		render_config: graphene_core::application_io::RenderConfig::default(),
 	};
 
 	loop {

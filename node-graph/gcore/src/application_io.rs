@@ -43,7 +43,7 @@ impl<S> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SurfaceHandle<Surface> {
 	pub surface_id: SurfaceId,
 	pub surface: Surface,
@@ -53,7 +53,7 @@ unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceHandleFrame<Surface> {
 	pub surface_handle: Arc<SurfaceHandle<Surface>>,
 	pub transform: DAffine2,
@@ -149,8 +149,8 @@ pub enum ExportFormat {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct RenderConfig {
-	viewport: Footprint,
-	export_format: ExportFormat,
+	pub viewport: Footprint,
+	pub export_format: ExportFormat,
 }
 
 pub struct EditorApi<'a, Io> {

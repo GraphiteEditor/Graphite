@@ -2,9 +2,11 @@ use std::cell::RefCell;
 
 use core::future::Future;
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
+use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_core::transform::Footprint;
+use graphene_core::vector::style::ViewMode;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
@@ -282,6 +284,7 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 	image
 }
 
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
 pub enum RenderOutput {
 	CanvasFrame(SurfaceHandleFrame<HtmlCanvasElement>),
 	Svg(String),
@@ -294,6 +297,23 @@ pub struct RenderNode<Data, Surface> {
 }
 
 #[node_macro::node_fn(RenderNode)]
-async fn render_node<'a: 'input>(editor: WasmEditorApi<'a>, data: impl Node<'a, Footprint, Output = GraphicGroup>, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> RenderOutput {
-	RenderOutput::Svg("".to_owned())
+async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
+	editor: WasmEditorApi<'a>,
+	data: impl Node<'input, Footprint, Output = F>,
+	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+) -> RenderOutput {
+	let footprint = editor.render_config.viewport;
+	let data = self.data.eval(footprint).await;
+	let mut render = SvgRender::new();
+	let render_params = RenderParams::new(ViewMode::Normal, None, false);
+	let output_format = editor.render_config.export_format;
+
+	match output_format {
+		ExportFormat::Svg => {
+			data.render_svg(&mut render, &render_params);
+			render.format_svg((0., 0.).into(), (1., 1.).into());
+			RenderOutput::Svg(render.svg.to_string())
+		}
+		_ => todo!("Non svg render output"),
+	}
 }
