@@ -7,6 +7,8 @@ title = "Press resources"
 
 # Press resources
 
+<article>
+
 Materials for journalists and creators looking to share Graphite with their audiences.
 
 ## Contact
@@ -18,6 +20,8 @@ Send an email to <contact@graphite.rs> and you can usually expect a quick reply.
 ## Logo
 
 Logos in PNG and SVG format are available for use in articles talking about Graphite. See the [logo](/logo) page for downloads.
+
+</article>
 
 </div>
 </section>

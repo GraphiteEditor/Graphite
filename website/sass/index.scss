@@ -1,4 +1,6 @@
 .page {
+	// Prevents horizontal scrollbars from appearing on the page.
+	// This happens because of the masked (but not overflow: hidden) carousel images.
 	overflow: hidden;
 }
 

@@ -1,9 +1,10 @@
 +++
-title = "Node graph"
+title = "Node catalog"
 template = "book.html"
 page_template = "book.html"
 
 [extra]
-order = 2
+order = 9
 +++
 
+## Graphical data types

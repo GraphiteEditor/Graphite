@@ -25,9 +25,9 @@
 	--font-size-heading-h2: 42px;
 	--font-size-subheading: 24px;
 	--font-size-body: 18px;
-	--font-size-article-h1: 32px;
-	--font-size-article-h2: 24px;
-	--font-size-article-h3: 18px;
+	--font-size-article-h2: 30px;
+	--font-size-article-h3: 24px;
+	--font-size-article-h4: 18px;
 
 	--max-width: 1600px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
@@ -165,7 +165,8 @@ p ~ p {
 
 h1,
 h2,
-h3 {
+h3,
+h4 {
 	& ~ p,
 	& ~ ol li p,
 	& ~ img {
@@ -177,11 +178,14 @@ h1 ~ .informational-group,
 p ~ h1,
 p ~ h2,
 p ~ h3,
+p ~ h4,
 p ~ details summary,
 p ~ blockquote,
 p ~ .informational-group,
 p ~ .image-comparison,
 p + .link,
+p + section,
+p + table,
 p ~ .video-background,
 p ~ .video-embed,
 .video-embed + p,
@@ -204,8 +208,23 @@ ol + p {
 	margin-top: 0;
 }
 
-li + li {
+li {
 	margin-top: 0.5em;
+}
+
+table {
+	margin: -20px;
+
+	th,
+	td {
+		margin: 0;
+		padding: 0;
+	}
+	
+	td {
+		vertical-align: top;
+		border: 20px solid transparent;
+	}
 }
 
 code {
@@ -333,9 +352,10 @@ kbd {
 	background: var(--color-fog);
 	border-radius: calc(var(--variable-px) * 2);
 	outline: calc(var(--border-thickness) / 2) solid var(--color-navy);
-	padding: 0 4px;
+	padding: 0 8px;
 	margin: 0 4px;
-	color: var(--color-navy);
+	color: inherit;
+	font-family: inherit;
 }
 
 summary {
@@ -355,22 +375,26 @@ summary {
 		
 		h1,
 		h2,
-		h3 {
+		h3,
+		h4 {
 			font-family: "Inter", sans-serif;
 			line-height: 1.5;
 			font-weight: 800;
 		}
 
-		h1 {
-			font-size: var(--font-size-article-h1);
-		}
-
 		h2 {
 			font-size: var(--font-size-article-h2);
+			margin-top: 80px;
 		}
 
 		h3 {
 			font-size: var(--font-size-article-h3);
+			margin-top: 40px;
+		}
+
+		h4 {
+			font-size: var(--font-size-article-h4);
+			margin-top: 20px;
 		}
 
 		h1,
@@ -380,6 +404,10 @@ summary {
 		h5,
 		h6 {
 			display: block;
+
+			&:first-child {
+				margin-top: 0;
+			}
 		}
 	}
 }
@@ -480,17 +508,17 @@ summary {
 				position: absolute;
 				width: 6.5px;
 				height: 11px;
-				top: calc(11px / -2);
+				top: calc(-11px / 2);
 				fill: var(--color-white);
 
 				@keyframes pulse-left {
-					from { right: 2px; }
-					to { right: 9px; }
+					from { transform: translateX(3px); }
+					to { transform: translateX(-3px); }
 				}
 
 				@keyframes pulse-right {
-					from { left: 1px; }
-					to { left: 9px; }
+					from { transform: scaleX(-1) translateX(3px); }
+					to { transform: scaleX(-1) translateX(-3px); }
 				}
 
 				@keyframes pulse-opacity {
@@ -501,14 +529,13 @@ summary {
 				}
 
 				&:nth-of-type(1) {
-					animation: 3s infinite ease-out pulse-left, 3s infinite ease-out pulse-opacity;
 					right: 6px;
+					animation: 3s infinite ease-out pulse-left, 3s infinite ease-out pulse-opacity;
 				}
 
 				&:nth-of-type(2) {
-					animation: 3s infinite ease-out pulse-right, 3s infinite ease-out pulse-opacity;
 					left: 6px;
-					transform: scaleX(-1);
+					animation: 3s infinite ease-out pulse-right, 3s infinite ease-out pulse-opacity;
 				}
 			}
 
@@ -516,7 +543,6 @@ summary {
 				content: "";
 				position: absolute;
 				background: var(--color-navy);
-				// border-radius: 50%;
 				top: 0;
 				left: 0;
 				width: 32px;
@@ -671,16 +697,31 @@ summary {
 		}
 	}
 
+	&.center {
+		.screenshot-details {
+			justify-content: center;
+		}
+	}
+
 	&.window-size-1 .carousel-slide img {
 		width: 100%;
 	}
 
 	&.window-size-2 .carousel-slide img {
-		width: calc(100% / 2);
+		width: calc((100% / 2) - 10px);
+		padding: 0 10px;
+
+		&:first-child {
+			margin-left: -10px;
+		}
+
+		&:last-child {
+			margin-right: -10px;
+		}
 	}
 
 	&.window-size-3 .carousel-slide img {
-		width: calc((100% + 2 * 10px) / 3 - (3 - 1) * 10px);
+		width: calc((100% / 3) - 10px * (4 / 3));
 		padding: 0 10px;
 
 		&:first-child {
@@ -1010,256 +1051,257 @@ body > .page {
 	box-sizing: border-box;
 	min-width: 320px;
 
-header {
-	padding: 0 var(--page-edge-padding);
-	color: var(--color-walnut);
-	position: relative;
-	z-index: 1000;
+	header {
+		padding: 0 var(--page-edge-padding);
+		color: var(--color-walnut);
+		position: relative;
+		z-index: 1000;
 
-	nav {
-		margin: auto;
-		max-width: var(--max-width);
+		nav {
+			margin: auto;
+			max-width: var(--max-width);
 
-		.row {
-			display: flex;
-			justify-content: space-between;
-			--nav-padding-above-below: 30px;
-			padding-top: var(--nav-padding-above-below);
-			padding-bottom: calc(var(--nav-padding-above-below) - 16px);
-			margin-bottom: calc(var(--nav-padding-above-below) - 16px);
-			// Covers up content that extends up underneath the header
-			background: white;
-
-			@media screen and (max-width: 760px) {
-				--nav-padding-above-below: 24px;
-			}
-
-			.left,
-			.right {
-				z-index: 1;
+			.row {
 				display: flex;
-				align-items: center;
-				gap: 40px;
+				justify-content: space-between;
+				--nav-padding-above-below: 30px;
+				padding-top: var(--nav-padding-above-below);
+				padding-bottom: calc(var(--nav-padding-above-below) - 16px);
+				margin-bottom: calc(var(--nav-padding-above-below) - 16px);
+				// Covers up content that extends up underneath the header
+				background: white;
 
-				a {
-					color: inherit;
-					font-family: "Bona Nova", Palatino, serif;
-					font-feature-settings: "lnum";
-					line-height: 1.25;
-					font-weight: 700;
-					text-decoration: none;
-					--height: 60px;
-					--button-padding: 24px;
-					--nav-font-size: 28px; // Keep up to date with `NAV_BUTTON_INITIAL_FONT_SIZE` in navbar.js
-					font-size: var(--nav-font-size);
+				@media screen and (max-width: 760px) {
+					--nav-padding-above-below: 24px;
+				}
 
-					&.button.button {
-						height: var(--height);
-						padding-left: var(--button-padding);
-						padding-right: var(--button-padding);
-						line-height: calc(var(--height) - 2 * var(--border-thickness));
+				.left,
+				.right {
+					z-index: 1;
+					display: flex;
+					align-items: center;
+					gap: 40px;
+
+					a {
+						color: inherit;
+						font-family: "Bona Nova", Palatino, serif;
+						font-feature-settings: "lnum";
+						line-height: 1.25;
+						font-weight: 700;
+						text-decoration: none;
+						--height: 60px;
+						--button-padding: 24px;
+						--nav-font-size: 28px; // Keep up to date with `NAV_BUTTON_INITIAL_FONT_SIZE` in navbar.js
 						font-size: var(--nav-font-size);
+
+						&.button.button {
+							height: var(--height);
+							padding-left: var(--button-padding);
+							padding-right: var(--button-padding);
+							line-height: calc(var(--height) - 2 * var(--border-thickness));
+							font-size: var(--nav-font-size);
+						}
+
+						img {
+							display: block;
+							width: var(--height);
+							height: var(--height);
+						}
 					}
 
-					img {
-						display: block;
-						width: var(--height);
-						height: var(--height);
+					&.left img {
+						// Don't show the alt text if the image doesn't load
+						font-size: 0;
 					}
-				}
 
-				&.left img {
-					// Don't show the alt text if the image doesn't load
-					font-size: 0;
-				}
+					@media screen and (max-width: 1200px) {
+						gap: 30px;
 
-				@media screen and (max-width: 1200px) {
-					gap: 30px;
-
-					a {
-						--height: 50px;
-						--button-padding: 16px;
-						--nav-font-size: 24px;
+						a {
+							--height: 50px;
+							--button-padding: 16px;
+							--nav-font-size: 24px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 960px) {
-					gap: 30px;
+					@media screen and (max-width: 960px) {
+						gap: 30px;
 
-					a {
-						--height: 50px;
-						--button-padding: 16px;
-						--nav-font-size: 20px;
+						a {
+							--height: 50px;
+							--button-padding: 16px;
+							--nav-font-size: 20px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 880px) {
-					gap: 20px;
+					@media screen and (max-width: 880px) {
+						gap: 20px;
 
-					a {
-						--height: 40px;
-						--button-padding: 12px;
-						--nav-font-size: 16px;
+						a {
+							--height: 40px;
+							--button-padding: 12px;
+							--nav-font-size: 16px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 680px) {
-					gap: 16px;
+					@media screen and (max-width: 680px) {
+						gap: 16px;
 
-					a {
-						--height: 30px;
-						--button-padding: 8px;
-						--nav-font-size: 14px;
+						a {
+							--height: 30px;
+							--button-padding: 8px;
+							--nav-font-size: 14px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 600px) {
-					gap: 12px;
+					@media screen and (max-width: 600px) {
+						gap: 12px;
 
-					a {
-						--height: 24px;
-						--button-padding: 8px;
-						--nav-font-size: 13px;
+						a {
+							--height: 24px;
+							--button-padding: 8px;
+							--nav-font-size: 13px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 540px) {
-					gap: 10px;
+					@media screen and (max-width: 540px) {
+						gap: 10px;
 
-					a {
-						--height: 22px;
-						--button-padding: 6px;
-						--nav-font-size: 12px;
+						a {
+							--height: 22px;
+							--button-padding: 6px;
+							--nav-font-size: 12px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 480px) {
-					gap: 8px;
+					@media screen and (max-width: 480px) {
+						gap: 8px;
 
-					a {
-						--height: 20px;
-						--button-padding: 4px;
-						--nav-font-size: 11px;
+						a {
+							--height: 20px;
+							--button-padding: 4px;
+							--nav-font-size: 11px;
+						}
 					}
-				}
 
-				@media screen and (max-width: 430px) {
-					gap: 6px;
+					@media screen and (max-width: 430px) {
+						gap: 6px;
 
-					a {
-						--height: 20px;
-						--button-padding: 4px;
-						--nav-font-size: 10px;
+						a {
+							--height: 20px;
+							--button-padding: 4px;
+							--nav-font-size: 10px;
+						}
 					}
 				}
 			}
 		}
-	}
 
-	.ripple {
-		display: block;
-		background: none;
-		// Covers up content that extends up underneath the header
-		fill: white;
-		stroke: currentColor;
-		--ripple-height: 16px;
-		height: var(--ripple-height);
-		margin-top: calc(-1 * var(--ripple-height) + var(--border-thickness));
-		margin-bottom: calc(-1 * var(--border-thickness));
-		stroke-width: var(--border-thickness);
-
-		&::before,
-		&::after {
-			content: none;
-		}
-	}
-
-	hr {
-		background: none;
-	}
-
-	@media screen and (max-width: 1824px) {
 		.ripple {
-			width: calc(100% + (var(--page-edge-padding) * 2));
-			margin-left: calc(-1 * var(--page-edge-padding));
-			margin-right: calc(-1 * var(--page-edge-padding));
+			display: block;
+			background: none;
+			// Covers up content that extends up underneath the header
+			fill: white;
+			stroke: currentColor;
+			--ripple-height: 16px;
+			height: var(--ripple-height);
+			margin-top: calc(-1 * var(--ripple-height) + var(--border-thickness));
+			margin-bottom: calc(-1 * var(--border-thickness));
+			stroke-width: var(--border-thickness);
+
+			&::before,
+			&::after {
+				content: none;
+			}
 		}
 
 		hr {
-			display: none;
+			background: none;
 		}
-	}
-}
 
-main {
-	padding: 0 var(--page-edge-padding);
-
-	.content {
-		padding: calc(120 * var(--variable-px)) 0;
-
-		section {
-			max-width: var(--max-width);
-			margin: 0 auto;
-			// Puts the content in front of the hexagon decoration
-			position: relative;
-			z-index: 1;
-
-			~ section {
-				margin-top: calc(120 * var(--variable-px));
+		@media screen and (max-width: 1824px) {
+			.ripple {
+				width: calc(100% + (var(--page-edge-padding) * 2));
+				margin-left: calc(-1 * var(--page-edge-padding));
+				margin-right: calc(-1 * var(--page-edge-padding));
 			}
 
-			p img {
-				max-width: 100%;
-			}
-
-			pre {
-				box-sizing: border-box;
-				overflow: auto;
-			}
-
-			details {
-				width: 100%;
+			hr {
+				display: none;
 			}
 		}
 	}
-}
 
-footer {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 40px;
-	padding: 40px;
-	padding-top: 0;
-	color: var(--color-walnut);
+	main {
+		padding: 0 var(--page-edge-padding);
 
-	nav {
+		.content {
+			padding: calc(120 * var(--variable-px)) 0;
+
+			section {
+				max-width: var(--max-width);
+				margin-left: auto;
+				margin-right: auto;
+				// Puts the content in front of the hexagon decoration
+				position: relative;
+				z-index: 1;
+
+				~ section {
+					margin-top: calc(120 * var(--variable-px));
+				}
+
+				p img {
+					max-width: 100%;
+				}
+
+				pre {
+					box-sizing: border-box;
+					overflow: auto;
+				}
+
+				details {
+					width: 100%;
+				}
+			}
+		}
+	}
+
+	footer {
 		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 8px 40px;
+		flex-direction: column;
+		align-items: center;
+		gap: 40px;
+		padding: 40px;
+		padding-top: 0;
+		color: var(--color-walnut);
 
-		a {
-			color: var(--color-walnut);
+		nav {
+			display: flex;
+			flex-wrap: wrap;
+			justify-content: center;
+			gap: 8px 40px;
+
+			a {
+				color: var(--color-walnut);
+			}
+
+			@media screen and (max-width: 900px) {
+				max-width: 500px;
+			}
+
+			@media screen and (max-width: 760px) {
+				max-width: 440px;
+			}
+
+			@media screen and (max-width: 400px) {
+				gap: 6px 20px;
+			}
 		}
 
-		@media screen and (max-width: 900px) {
-			max-width: 500px;
-		}
-
-		@media screen and (max-width: 760px) {
-			max-width: 440px;
-		}
-
-		@media screen and (max-width: 400px) {
-			gap: 6px 20px;
+		span {
+			text-align: center;
 		}
 	}
-
-	span {
-		text-align: center;
-	}
-}
 }
 
 .fundraising {

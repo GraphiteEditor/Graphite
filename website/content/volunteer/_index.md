@@ -2,7 +2,7 @@
 title = "Volunteer"
 
 [extra]
-css = ["/volunteer.css"]
+css = ["volunteer.css"]
 +++
 
 <section>
@@ -10,7 +10,7 @@ css = ["/volunteer.css"]
 
 # Volunteer
 
-Graphite is built by volunteers. Join the effort to bring great, free creative software to the world.
+**Graphite is built by volunteers.** Join the effort to bring great, free creative software to the world.
 
 </div>
 </section>

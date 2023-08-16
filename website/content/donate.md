@@ -2,8 +2,8 @@
 title = "Donate"
 
 [extra]
-css = ["/donate.css"]
-js = ["/fundraising.js"]
+css = ["donate.css"]
+# js = ["fundraising.js"]
 +++
 
 <section>
