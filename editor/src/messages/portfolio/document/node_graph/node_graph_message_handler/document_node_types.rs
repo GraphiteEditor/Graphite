@@ -375,6 +375,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
@@ -418,6 +419,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
@@ -534,17 +536,58 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Output",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_std::wasm_application_io::RenderNode<_, _>"),
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![3, 0],
+				outputs: vec![NodeOutput::new(4, 0)],
+				nodes: [
+					DocumentNode {
+						name: "EditorApi".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::node(0,0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "RenderNode".to_string(),
+						inputs: vec![NodeInput::node(0,0), NodeInput::Network(fn_type!(Footprint, GraphicGroup)), NodeInput::node(2, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(3, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType {
 					name: "Output",
 					data_type: FrontendGraphDataType::Raster,
-					default: NodeInput::value(TaggedValue::None, true),
+					default: NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::default()), true),
 				},
 				DocumentInputType {
-					name: "Output",
-					data_type: FrontendGraphDataType::Raster,
-					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
 				},
 			],
 			outputs: vec![],
@@ -2527,7 +2570,6 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
-	log::debug!("new vector network: {:#?}", network);
 	network
 }
 

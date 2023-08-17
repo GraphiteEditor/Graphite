@@ -283,13 +283,7 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 	};
 	image
 }
-
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
-pub enum RenderOutput {
-	CanvasFrame(SurfaceHandleFrame<HtmlCanvasElement>),
-	Svg(String),
-	Raster(Vec<u8>),
-}
+pub use graph_craft::document::value::RenderOutput;
 
 pub struct RenderNode<Data, Surface> {
 	data: Data,

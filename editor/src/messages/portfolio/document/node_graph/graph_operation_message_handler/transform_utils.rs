@@ -37,10 +37,10 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
 	let (scale, angle, translation, shear) = compute_scale_angle_translation_shear(transform);
 
-	inputs[1] = NodeInput::value(TaggedValue::DVec2(translation), false);
-	inputs[2] = NodeInput::value(TaggedValue::F32(angle as f32), false);
-	inputs[3] = NodeInput::value(TaggedValue::DVec2(scale), false);
-	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
+	inputs[2] = NodeInput::value(TaggedValue::DVec2(translation), false);
+	inputs[3] = NodeInput::value(TaggedValue::F32(angle as f32), false);
+	inputs[4] = NodeInput::value(TaggedValue::DVec2(scale), false);
+	inputs[5] = NodeInput::value(TaggedValue::DVec2(shear), false);
 }
 
 // TODO: This should be extracted from the graph at the location of the transform node.
@@ -81,7 +81,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	let translation = if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(translation),
 		..
-	} = inputs[1]
+	} = inputs[2]
 	{
 		translation
 	} else {
@@ -91,7 +91,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	let angle = if let NodeInput::Value {
 		tagged_value: TaggedValue::F32(angle),
 		..
-	} = inputs[2]
+	} = inputs[3]
 	{
 		angle
 	} else {
@@ -101,7 +101,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	let scale = if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(scale),
 		..
-	} = inputs[3]
+	} = inputs[4]
 	{
 		scale
 	} else {
@@ -111,7 +111,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	let shear = if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(shear),
 		..
-	} = inputs[4]
+	} = inputs[5]
 	{
 		shear
 	} else {
@@ -126,7 +126,7 @@ pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(pivot),
 		..
-	} = inputs[5]
+	} = inputs[6]
 	{
 		pivot
 	} else {

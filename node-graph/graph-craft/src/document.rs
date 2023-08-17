@@ -685,6 +685,7 @@ impl NodeNetwork {
 			return;
 		};
 
+
 		if self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
 			node.inputs.drain(1..);
@@ -731,6 +732,7 @@ impl NodeNetwork {
 			}
 		}
 
+
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
 			// Resolve all extract nodes in the inner network
 			inner_network.resolve_extract_nodes();
@@ -749,6 +751,11 @@ impl NodeNetwork {
 				node.name,
 				node.inputs,
 				inner_network.inputs
+			);
+			assert_eq!(
+				node.inputs.len(),
+				inner_network.inputs.len(),
+				"Document Nodes with a Network implementation should have the same number of inner network inputs as inputs declared on the Document Node"
 			);
 			// Match the document node input and the inputs of the inner network
 			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {

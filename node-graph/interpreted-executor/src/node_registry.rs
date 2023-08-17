@@ -542,6 +542,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<WasmEditorApi>, params: []),
 		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: VectorData, params: [VectorData]),
+		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: RenderOutput, params: [RenderOutput]),
 		async_node!(
 			graphene_core::memo::EndLetNode<_>,
 			input: WasmEditorApi,
@@ -623,6 +624,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: wgpu_executor::WgpuSurface, params: [wgpu_executor::WgpuSurface]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: SurfaceFrame, params: [SurfaceFrame]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
 		register_node!(graphene_std::raster::PixelNoiseNode<_, _, _>, input: u32, params: [u32, u32, NoiseType]),

@@ -640,7 +640,6 @@ impl TypingContext {
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
-				log::debug!("Inferred type for {node_id}: {node_io:?}");
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
 			}

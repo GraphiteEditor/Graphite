@@ -66,6 +66,7 @@ pub enum TaggedValue {
 	IVec2(glam::IVec2),
 	SurfaceFrame(graphene_core::SurfaceFrame),
 	Footprint(graphene_core::transform::Footprint),
+	RenderOutput(RenderOutput),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -136,6 +137,7 @@ impl Hash for TaggedValue {
 			Self::IVec2(v) => v.hash(state),
 			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
 			Self::Footprint(footprint) => footprint.hash(state),
+			Self::RenderOutput(render_output) => render_output.hash(state),
 		}
 	}
 }
@@ -193,6 +195,7 @@ impl<'a> TaggedValue {
 			TaggedValue::IVec2(x) => Box::new(x),
 			TaggedValue::SurfaceFrame(x) => Box::new(x),
 			TaggedValue::Footprint(x) => Box::new(x),
+			TaggedValue::RenderOutput(x) => Box::new(x),
 		}
 	}
 
@@ -261,6 +264,7 @@ impl<'a> TaggedValue {
 			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
 			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
+			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
 		}
 	}
 
@@ -316,6 +320,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::Artboard>() => Ok(TaggedValue::Artboard(*downcast(input).unwrap())),
 			x if x == TypeId::of::<glam::IVec2>() => Ok(TaggedValue::IVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
+			x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
 				let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
@@ -341,3 +346,12 @@ impl UpcastNode {
 		Self { value }
 	}
 }
+
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RenderOutput {
+	CanvasFrame(graphene_core::SurfaceFrame),
+	Svg(String),
+	Raster(Vec<u8>),
+}
+

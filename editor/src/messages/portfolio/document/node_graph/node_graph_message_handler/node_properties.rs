@@ -1225,7 +1225,8 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let vector_data = start_widgets(document_node, node_id, 1, "Data", FrontendGraphDataType::Vector, false);
 	let vector_data = LayoutGroup::Row { widgets: vector_data };
 	let vec = vec![vector_data, translation, rotation, scale];
-	log::debug!("vec: {:?}", &vec);
+	//let vec = vec![vector_data];
+	//log::debug!("vec: {:?}", &vec);
 	vec
 }
 

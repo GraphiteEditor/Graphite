@@ -142,7 +142,6 @@ impl NodeRuntime {
 					path,
 					..
 				}) => {
-					log::debug!("Executing node graph {:#?}", graph);
 					let network = wrap_network_in_scope(graph);
 
 					let monitor_nodes = network
@@ -533,6 +532,12 @@ impl NodeGraphExecutor {
 			TaggedValue::Artboard(artboard) => {
 				warn!("Rendered graph produced artboard (which is not currently rendered): {artboard:#?}");
 				return Err("Artboard (see console)".to_string());
+			}
+			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
+				// Send to frontend
+				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+
+				//return Err("Graphic group (see console)".to_string());
 			}
 			TaggedValue::GraphicGroup(graphic_group) => {
 				use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
