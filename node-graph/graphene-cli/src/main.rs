@@ -8,12 +8,11 @@ use graph_craft::{
 	document::*,
 	graphene_compiler::{Compiler, Executor},
 	imaginate_input::ImaginatePreferences,
-	NodeIdentifier, Type, TypeDescriptor,
+	NodeIdentifier,
 };
 use graphene_core::{
 	application_io::{ApplicationIo, NodeGraphUpdateSender},
 	text::FontCache,
-	Cow,
 };
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;

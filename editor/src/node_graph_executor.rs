@@ -13,7 +13,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
-use graph_craft::{concrete, Type, TypeDescriptor};
+use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{ClickTarget, SvgSegment, SvgSegmentList};
@@ -26,7 +26,6 @@ use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 use glam::{DAffine2, DVec2};
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -143,6 +142,7 @@ impl NodeRuntime {
 					path,
 					..
 				}) => {
+					log::debug!("Executing node graph {:#?}", graph);
 					let network = wrap_network_in_scope(graph);
 
 					let monitor_nodes = network

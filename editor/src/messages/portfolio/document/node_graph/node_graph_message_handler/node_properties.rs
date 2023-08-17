@@ -13,7 +13,6 @@ use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingM
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
-use graphene_core::{Cow, Type, TypeDescriptor};
 
 use glam::{DVec2, IVec2};
 
@@ -1225,7 +1224,9 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 	let vector_data = start_widgets(document_node, node_id, 1, "Data", FrontendGraphDataType::Vector, false);
 	let vector_data = LayoutGroup::Row { widgets: vector_data };
-	vec![vector_data, translation, rotation, scale]
+	let vec = vec![vector_data, translation, rotation, scale];
+	log::debug!("vec: {:?}", &vec);
+	vec
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

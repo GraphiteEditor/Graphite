@@ -534,12 +534,19 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Output",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType {
-				name: "Output",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			}],
+			identifier: NodeImplementation::proto("graphene_std::wasm_application_io::RenderNode<_, _>"),
+			inputs: vec![
+				DocumentInputType {
+					name: "Output",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::None, true),
+				},
+				DocumentInputType {
+					name: "Output",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				},
+			],
 			outputs: vec![],
 			properties: node_properties::output_properties,
 			..Default::default()
@@ -2076,7 +2083,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					data_type: FrontendGraphDataType::General,
 					default: NodeInput::ShortCircut(concrete!(Footprint)),
 				},
-
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
@@ -2106,7 +2112,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					data_type: FrontendGraphDataType::General,
 					default: NodeInput::ShortCircut(concrete!(Footprint)),
 				},
-				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
@@ -2516,7 +2522,7 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),
 		false,
 	);
-	network.push_node(cull_node.to_document_node_default_inputs([None], Default::default()), false);
+	network.push_node(cull_node.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
 	network.push_node(transform.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
 	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);

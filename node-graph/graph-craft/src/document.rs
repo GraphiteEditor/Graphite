@@ -5,8 +5,6 @@ use graphene_core::{NodeIdentifier, Type};
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::TypeDescriptor;
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 pub mod value;

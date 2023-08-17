@@ -211,8 +211,6 @@ impl<'a> TaggedValue {
 	}
 
 	pub fn ty(&self) -> Type {
-		use graphene_core::TypeDescriptor;
-		use std::borrow::Cow;
 		match self {
 			TaggedValue::None => concrete!(()),
 			TaggedValue::String(_) => concrete!(String),

@@ -1,6 +1,6 @@
 use core::future::Future;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::StaticType;
 use glam::DAffine2;
 
 use glam::DVec2;
