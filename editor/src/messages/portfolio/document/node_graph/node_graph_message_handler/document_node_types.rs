@@ -2214,6 +2214,55 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::index_node_properties,
 			..Default::default()
 		},
+		DocumentNodeType {
+			name: "Color Overlay",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 1, 2, 3],             // todo: pass equal no. of inputs to node and inner network
+				outputs: vec![NodeOutput::new(1, 0)], // todo: figure out what this value should be
+				nodes: [
+					DocumentNode {
+						name: "Identity".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Color".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Blend".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlendNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Opacity".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::OpacityNode")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
+				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::color_overlay,
+			..Default::default()
+		},
 	]
 }
 
