@@ -3,7 +3,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
-use graphene_core::transform::Transform;
+use graphene_core::transform::{Footprint, Transform};
 
 use crate::wasm_application_io::WasmEditorApi;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
@@ -58,28 +58,30 @@ fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
 	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-pub struct DownresNode<P> {
-	_p: PhantomData<P>,
+pub struct DownresNode<ImageFrame> {
+	image_frame: ImageFrame,
 }
 
-#[node_macro::node_fn(DownresNode<_P>)]
-fn downres<_P: Pixel>(image_frame: ImageFrame<_P>) -> ImageFrame<_P> {
-	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
-	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
+#[node_macro::node_fn(DownresNode)]
+fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+	// resize the image using imagers
+	let image = image_frame.image;
+	let data = bytemuck::cast_vec(image.data);
 
-	let mut image = Image {
-		width: target_width as u32,
-		height: target_height as u32,
-		data: Vec::with_capacity(target_width * target_height),
+	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
+
+	let dynamic_image: image::DynamicImage = image_buffer.into();
+	let nwidth = 0;
+	let nheight = 0;
+	let resized = dynamic_image.resize_exact(nwidth, nheight, image::imageops::Lanczos3);
+	let buffer = resized.to_rgba32f();
+	let buffer = buffer.into_raw();
+	let vec = bytemuck::cast_vec(buffer);
+	let image = Image {
+		width: nwidth,
+		height: nheight,
+		data: vec,
 	};
-
-	let scale_factor = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64) / DVec2::new(target_width as f64, target_height as f64);
-	for y in 0..target_height {
-		for x in 0..target_width {
-			let pixel = image_frame.sample(DVec2::new(x as f64, y as f64) * scale_factor);
-			image.data.push(pixel);
-		}
-	}
 
 	ImageFrame {
 		image,

@@ -14,7 +14,7 @@ use bytemuck::{Pod, Zeroable};
 
 use super::{
 	discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float},
-	Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB,
+	image, Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB,
 };
 
 #[repr(C)]

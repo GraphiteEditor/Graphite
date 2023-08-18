@@ -257,12 +257,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Downres",
 			category: "Raster",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
+				inputs: vec![0, 0],
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Downres".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						inputs: vec![
+							NodeInput::Network(concrete!(Footprint)),
+							NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode<_>")),
 						..Default::default()
 					},
@@ -286,7 +288,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				.collect(),
 				..Default::default()
 			}),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+			inputs: vec![
+				DocumentInputType {
+					name: "ShortCircut",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::ShortCircut(concrete!(Footprint)),
+				},
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
 			..Default::default()
@@ -556,6 +564,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Conversion".to_string(),
+						inputs: vec![NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -928,17 +942,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Image",
 			category: "Ignore",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+			inputs: vec![
+
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)
+			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
-			..Default::default()
-		},
-		DocumentNodeType {
-			name: "Ref",
-			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
