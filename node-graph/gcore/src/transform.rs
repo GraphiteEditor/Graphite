@@ -207,15 +207,14 @@ where
 {
 	// TOOD: This is hack and might break for Vector data because the pivot may be incorrect
 	let pivot_transform = DAffine2::from_translation(pivot);
-	let transform =
-		pivot_transform * DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot_transform.inverse();
-	let inverse = transform.inverse();
-	*footprint.transform_mut() = inverse * footprint.transform();
+	let transform = DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	let modification = pivot_transform * transform * pivot_transform.inverse();
+	*footprint.transform_mut() = footprint.transform() * modification;
 
 	let mut data = self.transform_target.eval(footprint).await;
-	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
+	let pivot_transform = DAffine2::from_translation(data.local_pivot(pivot));
 
-	let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+	let modification = pivot_transform * transform * pivot_transform.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 
