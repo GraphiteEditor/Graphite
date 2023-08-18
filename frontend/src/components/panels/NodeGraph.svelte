@@ -180,12 +180,12 @@
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
-		const outY = verticalOut ? outputBounds.y + 1 : outputBounds.y + outputBounds.height / 2;
+		const outY = verticalOut ? outputBounds.y - 1 : outputBounds.y + outputBounds.height / 2;
 		const outConnectorX = (outX - containerBounds.x) / transform.scale;
 		const outConnectorY = (outY - containerBounds.y) / transform.scale;
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
-		const inY = verticalIn ? inputBounds.y + inputBounds.height - 1 : inputBounds.y + inputBounds.height / 2;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height + 2 : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / transform.scale;
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
@@ -364,7 +364,7 @@
 				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 			}
 
-			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected) : null);
+			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected) : undefined);
 
 			return;
 		}
@@ -372,7 +372,7 @@
 		// Clicked on the graph background
 		if (lmb && selected.length !== 0) {
 			selected = [];
-			editor.instance.selectNodes(null);
+			editor.instance.selectNodes(undefined);
 		}
 
 		// LMB clicked on the graph background or MMB clicked anywhere
@@ -524,15 +524,40 @@
 		nodeListLocation = undefined;
 	}
 
-	function buildBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
+	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
 		const nodeHeight = Math.max(1 + parameters, 1 + exposedOutputs) * 24;
 
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+
+		// Primary input
 		if (primaryInputExists) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
+		// Parameter inputs
 		for (let i = 0; i < parameters; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+
+		// Primary output
 		if (primaryOutputExists) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
+		// Exposed outputs
 		for (let i = 0; i < exposedOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
+		return borderMask(boxes, nodeWidth, nodeHeight);
+	}
+
+	function layerBorderMask(nodeWidth: number): string {
+		const NODE_HEIGHT = 2 * 24;
+		const THUMBNAIL_WIDTH = 96;
+		const FUDGE = 2;
+
+		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+		// Left input
+		boxes.push({ x: -8, y: 16, width: 16, height: 16 });
+
+		// Thumbnail
+		boxes.push({ x: 24, y: -FUDGE, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE * 2 });
+
+		return borderMask(boxes, nodeWidth, NODE_HEIGHT);
+	}
+
+	function borderMask(boxes: { x: number; y: number; width: number; height: number }[], nodeWidth: number, nodeHeight: number): string {
 		const rectangles = boxes.map((box) => `M${box.x},${box.y} L${box.x + box.width},${box.y} L${box.x + box.width},${box.y + box.height} L${box.x},${box.y + box.height}z`);
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
@@ -599,7 +624,7 @@
 				{#each linkPaths as { pathString, dataType, thick }}
 					<path
 						d={pathString}
-						style:--data-line-width={`${thick ? 5 : 2}px`}
+						style:--data-line-width={`${thick ? 8 : 2}px`}
 						style:--data-color={`var(--color-data-${dataType})`}
 						style:--data-color-dim={`var(--color-data-${dataType}-dim)`}
 					/>
@@ -650,7 +675,7 @@
 								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							>
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+								<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
 							</svg>
 						{/if}
 						<svg
@@ -662,17 +687,17 @@
 							style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
 						>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
 						</svg>
 					</div>
 					<div class="details">
-						<TextLabel>{node.displayName}</TextLabel>
+						<TextLabel tooltip={node.displayName}>{node.displayName}</TextLabel>
 					</div>
 
 					<svg class="border-mask" width="0" height="0">
 						<defs>
 							<clipPath id={clipPathId}>
-								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs)} />
+								<path clip-rule="evenodd" d={layerBorderMask(216)} />
 							</clipPath>
 						</defs>
 					</svg>
@@ -696,15 +721,15 @@
 					<!-- Primary row -->
 					<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 						<IconLabel icon={nodeIcon(node.displayName)} />
-						<TextLabel>{node.displayName}</TextLabel>
+						<TextLabel tooltip={node.displayName}>{node.displayName}</TextLabel>
 					</div>
 					<!-- Parameter rows -->
 					{#if exposedInputsOutputs.length > 0}
 						<div class="parameters">
 							{#each exposedInputsOutputs as parameter, index}
-								<div class="parameter expanded">
+								<div class={`parameter expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
 									<div class="expand-arrow" />
-									<TextLabel class={index < node.exposedInputs.length ? "name" : "output"}>{parameter.name}</TextLabel>
+									<TextLabel tooltip={parameter.name}>{parameter.name}</TextLabel>
 								</div>
 							{/each}
 						</div>
@@ -715,7 +740,7 @@
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
-								class="port"
+								class="port primary-port"
 								data-port="input"
 								data-datatype={node.primaryInput}
 								style:--data-color={`var(--color-data-${node.primaryInput})`}
@@ -746,7 +771,7 @@
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
-								class="port"
+								class="port primary-port"
 								data-port="output"
 								data-datatype={node.primaryOutput.dataType}
 								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
@@ -774,7 +799,7 @@
 							<clipPath id={clipPathId}>
 								<path
 									clip-rule="evenodd"
-									d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+									d={nodeBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
 								/>
 							</clipPath>
 						</defs>
@@ -940,14 +965,17 @@
 						top: 0;
 					}
 
-					&.selected {
-						.primary {
-							background: rgba(255, 255, 255, 0.15);
-						}
+					&.node.selected .primary {
+						background: rgba(255, 255, 255, 0.15);
+					}
 
-						.parameters {
-							background: rgba(255, 255, 255, 0.1);
-						}
+					&.node.selected .parameters {
+						background: rgba(255, 255, 255, 0.1);
+					}
+
+					&.layer.selected {
+						// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
+						background: rgba(66, 66, 66, 0.4);
 					}
 
 					&.disabled {
@@ -988,6 +1016,10 @@
 
 						&:first-of-type {
 							margin-top: calc((24px - 8px) / 2);
+
+							&:not(.primary-port) {
+								margin-top: calc((24px - 8px) / 2 + 24px);
+							}
 						}
 
 						&:last-of-type {
@@ -1022,11 +1054,16 @@
 					.expanded .expand-arrow::after {
 						transform: rotate(90deg);
 					}
+
+					.text-label {
+						overflow: hidden;
+						text-overflow: ellipsis;
+					}
 				}
 
 				.layer {
 					border-radius: 8px;
-					min-width: 216px;
+					width: 216px;
 
 					&::after {
 						border: 1px solid var(--color-5-dullgray);
@@ -1058,9 +1095,10 @@
 							pointer-events: none;
 							position: absolute;
 							margin: auto;
-							inset: 1px;
-							width: 100%;
-							height: 100%;
+							top: 1px;
+							left: 1px;
+							width: calc(100% - 2px);
+							height: calc(100% - 2px);
 						}
 
 						.port {
@@ -1070,11 +1108,11 @@
 							right: 0;
 
 							&.top {
-								top: -12px;
+								top: -9px;
 							}
 
 							&.bottom {
-								bottom: -12px;
+								bottom: -9px;
 							}
 						}
 					}
@@ -1099,7 +1137,7 @@
 				.node {
 					flex-direction: column;
 					border-radius: 2px;
-					min-width: 120px;
+					width: 120px;
 					top: calc((var(--offset-top) + 0.5) * 24px);
 
 					&::after {
@@ -1122,10 +1160,12 @@
 						}
 
 						.icon-label {
+							display: none; // Remove after we have unique icons for the nodes
 							margin: 0 8px;
 						}
 
 						.text-label {
+							margin-left: 8px; // Remove after reenabling icon-label
 							margin-right: 4px;
 						}
 					}
@@ -1147,15 +1187,22 @@
 								border-radius: 0 0 2px 2px;
 							}
 
-							.expand-arrow {
-								margin-left: 4px;
-							}
-
 							.text-label {
 								width: 100%;
+							}
 
-								&.output {
-									text-align: right;
+							&.input {
+								.expand-arrow {
+									margin-left: 4px;
+								}
+							}
+
+							&.output {
+								flex-direction: row-reverse;
+								text-align: right;
+
+								.expand-arrow {
+									margin-right: 4px;
 								}
 							}
 						}
