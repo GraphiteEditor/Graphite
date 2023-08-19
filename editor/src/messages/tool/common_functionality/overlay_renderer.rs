@@ -126,18 +126,15 @@ impl OverlayRenderer {
 		responses.add(OverlaysMessage::Rerender);
 	}
 
-	pub fn clear_subpath_overlays(&mut self, _document: &Document, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		// Remove the shape outline overlays
-		if let Some(overlay_path) = self.shape_overlay_cache.get(&layer) {
-			Self::remove_outline_overlays(overlay_path.clone(), responses)
+	/// Delete all cached overlays
+	pub fn clear_all_overlays(&mut self, responses: &mut VecDeque<Message>) {
+		for (_, overlay_path) in self.shape_overlay_cache.drain() {
+			Self::remove_outline_overlays(overlay_path, responses)
 		}
-		self.shape_overlay_cache.remove(&layer);
-
-		// Remove the ManipulatorGroup overlays
-		let Some(layer_cache) = self.manipulator_group_overlay_cache.remove(&layer) else { return };
-
-		for manipulator_group_overlays in layer_cache.values() {
-			Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
+		for (_, layer_cache) in self.manipulator_group_overlay_cache.drain() {
+			for manipulator_group_overlays in layer_cache.values() {
+				Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
+			}
 		}
 	}
 
