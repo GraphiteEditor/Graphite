@@ -3,7 +3,6 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::tool_messages::pen_tool::graph_modification_utils::NodeGraphLayer;
 
@@ -275,7 +274,7 @@ impl PenToolData {
 
 	// TODO: tooltip / user documentation?
 	/// If you place the anchor on top of the previous anchor then you break the mirror
-	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) -> Option<()> {
+	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<()> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
 		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
@@ -317,16 +316,11 @@ impl PenToolData {
 			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
 		});
 
-		// The overlay system cannot detect deleted points so we must just delete all the overlays
-		for layer_path in document.all_layers() {
-			shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
-		}
-
 		self.should_mirror = false;
 		None
 	}
 
-	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer_path = self.path.as_ref()?;
 		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
@@ -383,11 +377,6 @@ impl PenToolData {
 			});
 
 			responses.add(DocumentMessage::CommitTransaction);
-
-			// Clean up overlays
-			for layer_path in document.all_layers() {
-				shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
-			}
 
 			// Clean up tool data
 			self.path = None;
@@ -643,12 +632,12 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
-				tool_data.check_break(document, transform, shape_overlay, responses);
+				tool_data.check_break(document, transform, responses);
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
 				tool_data.should_mirror = true;
-				tool_data.finish_placing_handle(document, transform, shape_overlay, responses).unwrap_or(PenToolFsmState::PlacingAnchor)
+				tool_data.finish_placing_handle(document, transform, responses).unwrap_or(PenToolFsmState::PlacingAnchor)
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
 				let modifiers = ModifierState {
@@ -673,10 +662,6 @@ impl Fsm for PenToolFsmState {
 				let message = tool_data.finish_transaction(self, document, responses).unwrap_or(DocumentMessage::AbortTransaction);
 				responses.add(message);
 
-				// Clean up overlays
-				for layer_path in document.all_layers() {
-					shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
-				}
 				tool_data.path = None;
 				tool_data.snap_manager.cleanup(responses);
 
@@ -684,9 +669,8 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Abort) => {
 				// Clean up overlays
-				for layer_path in document.all_layers() {
-					shape_overlay.clear_subpath_overlays(&document.document_legacy, LayerNodeIdentifier::from_path(layer_path, document.network()), responses);
-				}
+				shape_overlay.clear_all_overlays(responses);
+
 				self
 			}
 			_ => self,
