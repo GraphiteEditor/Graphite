@@ -217,6 +217,43 @@ fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	}
 	widgets
 }
+
+fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
+
+	let from_string = |string: &str| {
+		string
+			.split("],")
+			.map(|item| {
+				let parts: Vec<_> = item.split(",").collect();
+				let x = parts[0].parse::<f64>();
+				let y = parts[1].parse::<f64>();
+				if let (Ok(x_val), Ok(y_val)) = (x, y) {
+					Some(DVec2 { x: x_val, y: y_val })
+				} else {
+					None
+				}
+			})
+			.collect::<Option<Vec<_>>>()
+			.map(TaggedValue::VecDVec2)
+	};
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::VecDVec2(x),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			text_props
+				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
+				.widget_holder(),
+		])
+	}
+	widgets
+}
+
 fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
 	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let mut second_widgets = None;
@@ -1186,8 +1223,9 @@ pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	vec![operand("Start", 1), operand("End", 2)]
 }
 pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", add_blank_assist);
-	vec![operand("Start", 1), operand("Middle", 2), operand("End", 3)]
+	vec![LayoutGroup::Row {
+		widgets: vec_dvec2_input(document_node, node_id, 1, "Test", TextInput::default().centered(true), true),
+	}]
 }
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

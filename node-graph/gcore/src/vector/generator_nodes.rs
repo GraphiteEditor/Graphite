@@ -89,15 +89,14 @@ fn unit_line(_input: (), pos_1: DVec2, pos_2: DVec2) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct UnitSplineGenerator<Pos1, Pos2, Pos3> {
-	pos_1: Pos1,
-	pos_2: Pos2,
-	pos_3: Pos3,
+pub struct UnitSplineGenerator<Positions> {
+	positions: Positions,
 }
 
 #[node_macro::node_fn(UnitSplineGenerator)]
-fn unit_spline(_input: (), pos_1: DVec2, pos_2: DVec2, pos_3: DVec2) -> VectorData {
-	super::VectorData::from_subpaths(vec![Subpath::new_cubic_spline(vec![pos_1, pos_2, pos_3])])
+fn unit_spline(_input: (), positions: Vec<DVec2>) -> VectorData {
+	debug!("Should work: First Y-{}", positions[0].y);
+	super::VectorData::from_subpaths(vec![Subpath::new_cubic_spline(positions)])
 }
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
