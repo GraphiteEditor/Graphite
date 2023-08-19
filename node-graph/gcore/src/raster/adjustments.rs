@@ -532,6 +532,27 @@ impl core::fmt::Display for RedGreenBlue {
 	}
 }
 
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum NoiseType {
+	WhiteNoise,
+}
+
+impl core::fmt::Display for NoiseType {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			NoiseType::WhiteNoise => write!(f, "White Noise"),
+		}
+	}
+}
+
+impl NoiseType {
+	pub fn list() -> [NoiseType; 1] {
+		[NoiseType::WhiteNoise]
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, MonochromeC, RedR, RedG, RedB, RedC, GreenR, GreenG, GreenB, GreenC, BlueR, BlueG, BlueB, BlueC> {
 	monochrome: Monochrome,
