@@ -124,17 +124,12 @@ impl ShapeState {
 	pub fn set_selected_layers(&mut self, target_layers: Vec<LayerNodeIdentifier>) {
 		self.selected_shape_state.retain(|layer_path, _| target_layers.contains(layer_path));
 		for layer in target_layers {
-			self.selected_shape_state.entry(layer).or_insert_with(SelectedLayerState::default);
+			self.selected_shape_state.entry(layer).or_default();
 		}
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &LayerNodeIdentifier> {
 		self.selected_shape_state.keys()
-	}
-
-	/// Clear all of the shapes we can modify.
-	pub fn clear_selected_layers(&mut self) {
-		self.selected_shape_state.clear();
 	}
 
 	pub fn has_selected_layers(&self) -> bool {

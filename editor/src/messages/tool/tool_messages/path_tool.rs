@@ -3,14 +3,12 @@ use std::vec;
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
-use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box};
+use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, remove_bounding_box, update_bounding_box};
 
 use document_legacy::document::Document;
-use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::intersection::Quad;
-use document_legacy::{LayerId, Operation};
+use document_legacy::LayerId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 #[derive(Default)]
@@ -48,8 +46,8 @@ pub enum PathToolMessage {
 		delta_y: f64,
 	},
 	PointerMove {
-		alt_mirror_angle: Key,
-		shift_mirror_distance: Key,
+		alt: Key,
+		shift: Key,
 	},
 	SelectAllPoints,
 	SelectedPointUpdated,
@@ -188,8 +186,7 @@ struct PathToolData {
 impl PathToolData {
 	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) {
 		// Set the previously selected layers to invisible
-		for layer_path in document.all_layers() {
-			let layer = LayerNodeIdentifier::from_path(layer_path, document.network());
+		for layer in document.document_legacy.metadata.all_layers() {
 			shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
 		}
 
@@ -199,6 +196,106 @@ impl PathToolData {
 		}
 
 		self.opposing_handle_lengths = None;
+	}
+
+	fn mouse_down(
+		&mut self,
+		shift: bool,
+		shape_editor: &mut ShapeState,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		shape_overlay: &mut OverlayRenderer,
+		responses: &mut VecDeque<Message>,
+	) -> PathToolFsmState {
+		self.opposing_handle_lengths = None;
+		let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
+
+		// Select the first point within the threshold (in pixels)
+		if let Some(selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift) {
+			self.start_dragging_point(selected_points, input, document, responses);
+			self.refresh_overlays(document, shape_editor, shape_overlay, responses);
+
+			PathToolFsmState::Dragging
+		}
+		// We didn't find a point nearby, so consider selecting the nearest shape instead
+		else if let Some((layer, _)) = document.document_legacy.metadata.click(input.mouse.position) {
+			// TODO: Actual selection
+			let layer_list = vec![layer.to_path()];
+			if shift {
+				responses.add(DocumentMessage::AddSelectedLayers { additional_layers: layer_list });
+			} else {
+				responses.add(DocumentMessage::SetSelectedLayers {
+					replacement_selected_layers: layer_list,
+				});
+			}
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = input.mouse.position;
+			shape_editor.select_all_anchors(&document.document_legacy, layer);
+
+			PathToolFsmState::Dragging
+		} else {
+			// Start drawing a box
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = input.mouse.position;
+			self.drag_box_overlay_layer = Some(add_bounding_box(responses));
+
+			PathToolFsmState::DrawingBox
+		}
+	}
+
+	fn start_dragging_point(&mut self, mut selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, _document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		responses.add(DocumentMessage::StartTransaction);
+
+		// TODO: enable snapping
+
+		//self
+		//	.snap_manager
+		//	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, render_data), true, true);
+
+		// Do not snap against handles when anchor is selected
+		let mut additional_selected_points = Vec::new();
+		for point in selected_points.points.iter() {
+			if point.point_id.manipulator_type == SelectedType::Anchor {
+				additional_selected_points.push(ManipulatorPointInfo {
+					layer: point.layer,
+					point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::InHandle),
+				});
+				additional_selected_points.push(ManipulatorPointInfo {
+					layer: point.layer,
+					point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::OutHandle),
+				});
+			}
+		}
+		selected_points.points.extend(additional_selected_points);
+
+		//let include_handles: Vec<_> = selected_layers.iter().map(|x| x.as_slice()).collect();
+		//self.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
+
+		self.drag_start_pos = input.mouse.position;
+		self.previous_mouse_position = input.mouse.position - selected_points.offset;
+	}
+
+	fn drag(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		// Check if the alt key has just been pressed
+		if alt && !self.alt_debounce {
+			self.opposing_handle_lengths = None;
+			shape_editor.toggle_handle_mirroring_on_selected(responses);
+		}
+		self.alt_debounce = alt;
+
+		if shift {
+			if self.opposing_handle_lengths.is_none() {
+				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_legacy));
+			}
+		} else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
+			shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+			self.opposing_handle_lengths = None;
+		}
+
+		// Move the selected points with the mouse
+		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
+		shape_editor.move_selected_points(&document.document_legacy, snapped_position - self.previous_mouse_position, shift, responses);
+		self.previous_mouse_position = snapped_position;
 	}
 }
 
@@ -210,7 +307,6 @@ impl Fsm for PathToolFsmState {
 		let ToolActionHandlerData {
 			document,
 			input,
-			render_data,
 			shape_editor,
 			shape_overlay,
 			..
@@ -218,157 +314,47 @@ impl Fsm for PathToolFsmState {
 		let ToolMessage::Path(event) = event else {
 			return self;
 		};
+
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let layer_paths = document
-					.selected_visible_layers()
-					.map(|layer_path| LayerNodeIdentifier::from_path(layer_path, document.network()))
-					.collect();
-				shape_editor.set_selected_layers(layer_paths);
+				let target_layers = document.document_legacy.metadata.selected_layers().collect();
+				shape_editor.set_selected_layers(target_layers);
 
 				tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 
-					responses.add(PathToolMessage::SelectedPointUpdated);
+				responses.add(PathToolMessage::SelectedPointUpdated);
 				// This can happen in any state (which is why we return self)
 				self
 			}
 			(_, PathToolMessage::DocumentIsDirty) => {
 				// When the document has moved / needs to be redraw, re-render the overlays
 				// TODO the overlay system should probably receive this message instead of the tool
-				for layer_path in document.selected_visible_layers() {
-					let layer = LayerNodeIdentifier::from_path(layer_path, document.network());
+				for layer in document.document_legacy.metadata.selected_layers() {
 					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
 				}
 
-					responses.add(PathToolMessage::SelectedPointUpdated);
+				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				self
 			}
 			// Mouse down
 			(_, PathToolMessage::DragStart { add_to_selection }) => {
-				let shift_pressed = input.keyboard.get(add_to_selection as usize);
+				let shift = input.keyboard.get(add_to_selection as usize);
 
-				tool_data.opposing_handle_lengths = None;
-				let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
-
-				// Select the first point within the threshold (in pixels)
-				if let Some(mut selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift_pressed) {
-					responses.add(DocumentMessage::StartTransaction);
-
-					//tool_data
-					//	.snap_manager
-					//	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, render_data), true, true);
-
-					// Do not snap against handles when anchor is selected
-					let mut additional_selected_points = Vec::new();
-					for point in selected_points.points.iter() {
-						if point.point_id.manipulator_type == SelectedType::Anchor {
-							additional_selected_points.push(ManipulatorPointInfo {
-								layer: point.layer,
-								point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::InHandle),
-							});
-							additional_selected_points.push(ManipulatorPointInfo {
-								layer: point.layer,
-								point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::OutHandle),
-							});
-						}
-					}
-					selected_points.points.extend(additional_selected_points);
-
-					//let include_handles: Vec<_> = selected_layers.iter().map(|x| x.as_slice()).collect();
-					//tool_data.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
-
-					tool_data.drag_start_pos = input.mouse.position;
-					tool_data.previous_mouse_position = input.mouse.position - selected_points.offset;
-
-					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
-
-						responses.add(PathToolMessage::SelectedPointUpdated);
-					PathToolFsmState::Dragging
-				}
-				// We didn't find a point nearby, so consider selecting the nearest shape instead
-				else {
-					let selection_size = DVec2::new(2.0, 2.0);
-					// Select shapes directly under our mouse
-					let intersection = document
-						.document_legacy
-						.intersects_quad_root(Quad::from_box([input.mouse.position - selection_size, input.mouse.position + selection_size]), render_data);
-					if !intersection.is_empty() {
-						if shift_pressed {
-							responses.add(DocumentMessage::AddSelectedLayers { additional_layers: intersection });
-						} else {
-							// Selects the topmost layer when selecting intersecting shapes
-							let top_most_intersection = intersection[intersection.len() - 1].clone();
-							responses.add(DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![top_most_intersection.clone()],
-							});
-							tool_data.drag_start_pos = input.mouse.position;
-							tool_data.previous_mouse_position = input.mouse.position;
-							// Selects all the anchor points when clicking in a filled area of shape. If two shapes intersect we pick the topmost layer.
-							let layer = LayerNodeIdentifier::from_path(&top_most_intersection, document.network());
-							shape_editor.select_all_anchors(&document.document_legacy, layer);
-							return PathToolFsmState::Dragging;
-						}
-					} else {
-						// an empty intersection means that the user is drawing a box
-						tool_data.drag_start_pos = input.mouse.position;
-						tool_data.previous_mouse_position = input.mouse.position;
-
-						tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
-						return PathToolFsmState::DrawingBox;
-					}
-
-					PathToolFsmState::Ready
-				}
+				tool_data.mouse_down(shift, shape_editor, document, input, shape_overlay, responses)
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
 				tool_data.previous_mouse_position = input.mouse.position;
+				update_bounding_box(tool_data.drag_start_pos, input.mouse.position, &tool_data.drag_box_overlay_layer, responses);
 
-				responses.add_front(DocumentMessage::Overlays(
-					Operation::SetLayerTransformInViewport {
-						path: tool_data.drag_box_overlay_layer.clone().unwrap(),
-						transform: transform_from_box(tool_data.drag_start_pos, tool_data.previous_mouse_position, DAffine2::IDENTITY).to_cols_array(),
-					}
-					.into(),
-				));
 				PathToolFsmState::DrawingBox
 			}
+			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift }) => {
+				let alt = input.keyboard.get(alt as usize);
+				let shift = input.keyboard.get(shift as usize);
+				tool_data.drag(shift, alt, shape_editor, document, input, responses);
 
-			// Dragging
-			(
-				PathToolFsmState::Dragging,
-				PathToolMessage::PointerMove {
-					alt_mirror_angle,
-					shift_mirror_distance,
-				},
-			) => {
-				// Determine when alt state changes
-				let alt_pressed = input.keyboard.get(alt_mirror_angle as usize);
-
-				// Only on alt down
-				if alt_pressed && !tool_data.alt_debounce {
-					tool_data.opposing_handle_lengths = None;
-					shape_editor.toggle_handle_mirroring_on_selected(responses);
-				}
-				tool_data.alt_debounce = alt_pressed;
-
-				// Determine when shift state changes
-				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
-
-				if shift_pressed {
-					if tool_data.opposing_handle_lengths.is_none() {
-						tool_data.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_legacy));
-					}
-				} else if let Some(opposing_handle_lengths) = &tool_data.opposing_handle_lengths {
-					shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
-					tool_data.opposing_handle_lengths = None;
-				}
-
-				// Move the selected points by the mouse position
-				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-				shape_editor.move_selected_points(&document.document_legacy, snapped_position - tool_data.previous_mouse_position, shift_pressed, responses);
-				tool_data.previous_mouse_position = snapped_position;
 				PathToolFsmState::Dragging
 			}
 
@@ -381,13 +367,8 @@ impl Fsm for PathToolFsmState {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 				};
+				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
 
-				responses.add_front(DocumentMessage::Overlays(
-					Operation::DeleteLayer {
-						path: tool_data.drag_box_overlay_layer.take().unwrap(),
-					}
-					.into(),
-				));
 				PathToolFsmState::Ready
 			}
 
@@ -401,13 +382,8 @@ impl Fsm for PathToolFsmState {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 				};
+				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
 
-				responses.add_front(DocumentMessage::Overlays(
-					Operation::DeleteLayer {
-						path: tool_data.drag_box_overlay_layer.take().unwrap(),
-					}
-					.into(),
-				));
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
@@ -438,10 +414,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.delete_selected_points(responses);
 				responses.add(PathToolMessage::SelectionChanged);
-				for layer_path in document.all_layers() {
-					let layer = LayerNodeIdentifier::from_path(layer_path, document.network());
-					shape_overlay.clear_subpath_overlays(&document.document_legacy, layer, responses);
-				}
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::InsertPoint) => {
@@ -455,45 +428,39 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Abort) => {
 				// TODO Tell overlay manager to remove the overlays
-				for layer_path in document.all_layers() {
-					let layer = LayerNodeIdentifier::from_path(layer_path, document.network());
-					shape_overlay.clear_subpath_overlays(&document.document_legacy, layer, responses);
-				}
+				shape_overlay.clear_all_overlays(responses);
+				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
+
 				PathToolFsmState::Ready
 			}
-			(
-				_,
-				PathToolMessage::PointerMove {
-					alt_mirror_angle: _,
-					shift_mirror_distance: _,
-				},
-			) => self,
+			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 				shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
+
 				PathToolFsmState::Ready
 			}
-				(_, PathToolMessage::SelectAllPoints) => {
-					shape_editor.select_all_points(&document.document_legacy);
-					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
-					PathToolFsmState::Ready
+			(_, PathToolMessage::SelectAllPoints) => {
+				shape_editor.select_all_points(&document.document_legacy);
+				tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
+				if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 				}
-				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
-						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
-					}
-					PathToolFsmState::Ready
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
+				if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 				}
-				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
-						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
-					}
-					PathToolFsmState::Ready
-				}
-				(_, PathToolMessage::SelectedPointUpdated) => {
-					let new_point = get_single_selected_point(&document.document_legacy, shape_editor, shape_overlay);
-					tool_data.single_selected_point = new_point;
-					self
-				}
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::SelectedPointUpdated) => {
+				let new_point = get_single_selected_point(&document.document_legacy, shape_editor, shape_overlay);
+				tool_data.single_selected_point = new_point;
+				self
+			}
 			(_, _) => PathToolFsmState::Ready,
 		}
 	}
