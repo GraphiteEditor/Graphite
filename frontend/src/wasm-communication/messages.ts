@@ -725,6 +725,10 @@ export class TriggerFontLoad extends JsMessage {
 	isDefault!: boolean;
 }
 
+export class TriggerGraphViewOverlay extends JsMessage {
+	open!: boolean;
+}
+
 export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
@@ -1199,7 +1203,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 	};
 }
 
-// Updates a widget layout based on a list of updates, returning the new layout
+// Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
 export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: WidgetDiffUpdate): void {
 	layout.layoutTarget = updates.layoutTarget;
 
@@ -1300,24 +1304,15 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 // WIDGET LAYOUTS
 export class UpdateDialogDetails extends WidgetDiffUpdate { }
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
-
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
-
 export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
+export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
 
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
-
-export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate { }
-
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
+export class UpdateGraphViewOverlayButtonLayout extends WidgetDiffUpdate { }
 
 export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate { }
-
+// Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
 	layoutTarget!: unknown;
 
@@ -1326,6 +1321,18 @@ export class UpdateMenuBarLayout extends JsMessage {
 	@Transform(({ value }: { value: any }) => createMenuLayout(value))
 	layout!: MenuBarEntry[];
 }
+
+export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate { }
+
+export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate { }
+
+export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
+
+export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
+
+export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
+
+export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
@@ -1364,6 +1371,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
 	TriggerFontLoad,
+	TriggerGraphViewOverlay,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
@@ -1382,17 +1390,18 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateActiveDocument,
 	UpdateDialogDetails,
 	UpdateDocumentArtboards,
-	UpdateDocumentNodeRender,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
 	UpdateDocumentModeLayout,
+	UpdateDocumentNodeRender,
 	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateDocumentTransform,
 	UpdateEyedropperSamplingState,
+	UpdateGraphViewOverlayButtonLayout,
 	UpdateImageData,
 	UpdateInputHints,
 	UpdateLayerTreeOptionsLayout,

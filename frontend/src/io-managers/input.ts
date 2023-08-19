@@ -103,7 +103,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onKeyDown(key, modifiers);
+			editor.instance.onKeyDown(key, modifiers, e.repeat);
 			return;
 		}
 
@@ -118,7 +118,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onKeyUp(key, modifiers);
+			editor.instance.onKeyUp(key, modifiers, e.repeat);
 		}
 	}
 

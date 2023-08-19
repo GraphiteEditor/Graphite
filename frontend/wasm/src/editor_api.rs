@@ -420,25 +420,25 @@ impl JsEditorHandle {
 
 	/// A keyboard button depressed within screenspace the bounds of the viewport
 	#[wasm_bindgen(js_name = onKeyDown)]
-	pub fn on_key_down(&self, name: String, modifiers: u8) {
+	pub fn on_key_down(&self, name: String, modifiers: u8, key_repeat: bool) {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		trace!("Key down {:?}, name: {}, modifiers: {:?}", key, name, modifiers);
+		trace!("Key down {:?}, name: {}, modifiers: {:?}, key repeat: {}", key, name, modifiers, key_repeat);
 
-		let message = InputPreprocessorMessage::KeyDown { key, modifier_keys };
+		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// A keyboard button released
 	#[wasm_bindgen(js_name = onKeyUp)]
-	pub fn on_key_up(&self, name: String, modifiers: u8) {
+	pub fn on_key_up(&self, name: String, modifiers: u8, key_repeat: bool) {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		trace!("Key up {:?}, name: {}, modifiers: {:?}", key, name, modifier_keys);
+		trace!("Key up {:?}, name: {}, modifiers: {:?}, key repeat: {}", key, name, modifier_keys, key_repeat);
 
-		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
+		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
 		self.dispatch(message);
 	}
 

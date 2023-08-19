@@ -39,14 +39,20 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 
 				responses.add(InputMapperMessage::DoubleClick);
 			}
-			InputPreprocessorMessage::KeyDown { key, modifier_keys } => {
+			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 				self.keyboard.set(key as usize);
+				if !key_repeat {
+					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
+				}
 				responses.add(InputMapperMessage::KeyDown(key));
 			}
-			InputPreprocessorMessage::KeyUp { key, modifier_keys } => {
+			InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 				self.keyboard.unset(key as usize);
+				if !key_repeat {
+					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
+				}
 				responses.add(InputMapperMessage::KeyUp(key));
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
@@ -218,8 +224,9 @@ mod test {
 		input_preprocessor.keyboard.set(Key::Control as usize);
 
 		let key = Key::KeyA;
+		let key_repeat = false;
 		let modifier_keys = ModifierKeys::empty();
-		let message = InputPreprocessorMessage::KeyDown { key, modifier_keys };
+		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
 
 		let mut responses = VecDeque::new();
 
@@ -234,8 +241,9 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 
 		let key = Key::KeyS;
+		let key_repeat = false;
 		let modifier_keys = ModifierKeys::CONTROL | ModifierKeys::SHIFT;
-		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
+		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
 
 		let mut responses = VecDeque::new();
 

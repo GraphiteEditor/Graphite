@@ -21,11 +21,13 @@ pub enum LayoutTarget {
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
+	/// The button below the tool shelf and directly above the working colors which lets the user toggle the node graph overlaid on the canvas.
+	GraphViewOverlayButton,
 	/// Options for opacity seen at the top of the Layers panel.
 	LayerTreeOptions,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
-	/// Bar at the top of the node graph containing the location and the 'preview' and 'hide' buttons.
+	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphBar,
 	/// The bar at the top of the Properties panel containing the layer name and icon.
 	PropertiesOptions,

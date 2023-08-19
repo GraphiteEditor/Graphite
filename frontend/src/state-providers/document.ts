@@ -11,6 +11,8 @@ import {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
+	UpdateGraphViewOverlayButtonLayout,
+	UpdateNodeGraphBarLayout,
 } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -21,7 +23,9 @@ export function createDocumentState(editor: Editor) {
 		toolOptionsLayout: defaultWidgetLayout(),
 		documentBarLayout: defaultWidgetLayout(),
 		toolShelfLayout: defaultWidgetLayout(),
+		graphViewOverlayButtonLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
+		nodeGraphBarLayout: defaultWidgetLayout(),
 	});
 	const { subscribe, update } = state;
 
@@ -62,6 +66,14 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlayButtonLayout, async (updateGraphViewOverlayButtonLayout) => {
+		await tick();
+
+		update((state) => {
+			patchWidgetLayout(state.graphViewOverlayButtonLayout, updateGraphViewOverlayButtonLayout);
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
 		await tick();
 		
@@ -71,6 +83,14 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
+		update((state) => {
+			patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+			return state;
+		});
+	});
+
+	// Other
 	editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
 		// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
 		await tick();

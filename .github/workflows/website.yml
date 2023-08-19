@@ -13,7 +13,7 @@ on:
       - website/**
 env:
   CARGO_TERM_COLOR: always
-  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.outbound-links.file-downloads.js"></script>
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.js"></script>
 
 jobs:
   build:

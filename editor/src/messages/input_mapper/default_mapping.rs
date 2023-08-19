@@ -330,13 +330,17 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
-		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
-		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
+		entry!(KeyUp(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
+		entry!(KeyDownNoRepeat(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false }),
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
+		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
+		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
+		//
+		// FrontendMessage
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
 		//
 		// DialogMessage
@@ -351,7 +355,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Digit1); modifiers=[Alt], action_dispatch=DebugMessage::MessageNames),
 		entry!(KeyDown(Digit2); modifiers=[Alt], action_dispatch=DebugMessage::MessageContents),
 	];
-	let (mut key_up, mut key_down, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 
 	// TODO: Hardcode these 10 lines into 10 lines of declarations, or make this use a macro to do all 10 in one line
 	const NUMBER_KEYS: [Key; 10] = [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9];
@@ -367,7 +371,7 @@ pub fn default_mapping() -> Mapping {
 	}
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
-	for list in [&mut key_up, &mut key_down] {
+	for list in [&mut key_up, &mut key_down, &mut key_up_no_repeat, &mut key_down_no_repeat] {
 		for sublist in list {
 			sort(sublist);
 		}
@@ -379,6 +383,8 @@ pub fn default_mapping() -> Mapping {
 	Mapping {
 		key_up,
 		key_down,
+		key_up_no_repeat,
+		key_down_no_repeat,
 		double_click,
 		wheel_scroll,
 		pointer_move,

@@ -291,6 +291,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
+			LayoutTarget::GraphViewOverlayButton => FrontendMessage::UpdateGraphViewOverlayButtonLayout { layout_target, diff },
 			LayoutTarget::LayerTreeOptions => FrontendMessage::UpdateLayerTreeOptionsLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout { layout_target, diff },

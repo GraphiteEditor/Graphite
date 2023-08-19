@@ -20,11 +20,13 @@
 		UpdateMouseCursor,
 		UpdateDocumentNodeRender,
 		UpdateDocumentTransform,
+		TriggerGraphViewOverlay,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import Graph from "@graphite/components/views/Graph.svelte";
 	import CanvasRuler from "@graphite/components/widgets/metrics/CanvasRuler.svelte";
 	import PersistentScrollbar from "@graphite/components/widgets/metrics/PersistentScrollbar.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
@@ -37,6 +39,9 @@
 
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
+
+	// Graph view overlay
+	let graphViewOverlayOpen = false;
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
@@ -135,6 +140,7 @@
 		// Replace the placeholders with the actual canvas elements
 		placeholders.forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
+			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			const canvas = (window as any).imageCanvases[canvasName];
 			placeholder.replaceWith(canvas);
@@ -332,6 +338,11 @@
 	}
 
 	onMount(() => {
+		// Show or hide the graph view overlay
+		editor.subscriptions.subscribeJsMessage(TriggerGraphViewOverlay, (triggerGraphViewOverlay) => {
+			graphViewOverlayOpen = triggerGraphViewOverlay.open;
+		});
+
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
@@ -425,23 +436,30 @@
 </script>
 
 <LayoutCol class="document">
-	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={$document.documentModeLayout} />
-		<WidgetLayout layout={$document.toolOptionsLayout} />
+	<LayoutRow class="options-bar" classes={{ "for-graph": graphViewOverlayOpen }} scrollableX={true}>
+		{#if !graphViewOverlayOpen}
+			<WidgetLayout layout={$document.documentModeLayout} />
+			<WidgetLayout layout={$document.toolOptionsLayout} />
 
-		<LayoutRow class="spacer" />
+			<LayoutRow class="spacer" />
 
-		<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={$document.documentBarLayout} />
+		{:else}
+			<WidgetLayout layout={$document.nodeGraphBarLayout} />
+		{/if}
 	</LayoutRow>
 	<LayoutRow class="shelf-and-viewport">
 		<LayoutCol class="shelf">
-			<LayoutCol class="tools" scrollableY={true}>
-				<WidgetLayout layout={$document.toolShelfLayout} />
-			</LayoutCol>
+			{#if !graphViewOverlayOpen}
+				<LayoutCol class="tools" scrollableY={true}>
+					<WidgetLayout layout={$document.toolShelfLayout} />
+				</LayoutCol>
+			{/if}
 
 			<LayoutCol class="spacer" />
 
-			<LayoutCol class="working-colors">
+			<LayoutCol class="widgets-below-shelf">
+				<WidgetLayout layout={$document.graphViewOverlayButtonLayout} />
 				<WidgetLayout layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
@@ -485,6 +503,9 @@
 							{/if}
 						</div>
 					</div>
+					<div class="graph-view" class:open={graphViewOverlayOpen} style:--fade-artwork="80%">
+						<Graph />
+					</div>
 				</LayoutCol>
 				<LayoutCol class="bar-area right-scrollbar">
 					<PersistentScrollbar
@@ -520,6 +541,12 @@
 
 			.spacer {
 				min-width: 40px;
+			}
+
+			&.for-graph .widget-layout {
+				flex-direction: row;
+				flex-grow: 1;
+				justify-content: space-between;
 			}
 		}
 
@@ -557,21 +584,30 @@
 
 				.spacer {
 					flex: 1 0 auto;
-					min-height: 8px;
+					min-height: 20px;
 				}
 
-				.working-colors {
+				.widgets-below-shelf {
 					flex: 0 0 auto;
 
-					.widget-row {
-						min-height: 0;
+					.widget-layout:first-of-type {
+						height: auto;
+						align-items: center;
+					}
 
-						.swatch-pair {
-							margin: 0;
-						}
+					.widget-layout:last-of-type {
+						height: auto;
 
-						.icon-button {
-							--widget-height: 0;
+						.widget-row {
+							min-height: 0;
+
+							.swatch-pair {
+								margin: 0;
+							}
+
+							.icon-button {
+								--widget-height: 0;
+							}
 						}
 					}
 				}
@@ -579,11 +615,6 @@
 
 			.viewport {
 				flex: 1 1 100%;
-
-				.canvas-area {
-					flex: 1 1 100%;
-					position: relative;
-				}
 
 				.bar-area {
 					flex: 0 0 auto;
@@ -602,51 +633,89 @@
 					margin-right: 16px;
 				}
 
-				.canvas {
-					background: var(--color-2-mildblack);
-					width: 100%;
-					height: 100%;
-					// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
+				.canvas-area {
+					flex: 1 1 100%;
 					position: relative;
-					overflow: hidden;
 
-					svg {
-						position: absolute;
-						// Fallback values if JS hasn't set these to integers yet
+					.canvas {
+						background: var(--color-2-mildblack);
 						width: 100%;
 						height: 100%;
-						// Allows dev tools to select the artwork without being blocked by the SVG containers
-						pointer-events: none;
+						// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
+						position: relative;
+						overflow: hidden;
 
-						canvas {
+						svg {
+							position: absolute;
+							// Fallback values if JS hasn't set these to integers yet
 							width: 100%;
 							height: 100%;
+							// Allows dev tools to select the artwork without being blocked by the SVG containers
+							pointer-events: none;
+
+							canvas {
+								width: 100%;
+								height: 100%;
+							}
+
+							// Prevent inheritance from reaching the child elements
+							> * {
+								pointer-events: auto;
+							}
 						}
 
-						// Prevent inheritance from reaching the child elements
-						> * {
-							pointer-events: auto;
+						.text-input div {
+							cursor: text;
+							background: none;
+							border: none;
+							margin: 0;
+							padding: 0;
+							overflow: visible;
+							white-space: pre-wrap;
+							display: inline-block;
+							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+							padding-left: 1px;
+							margin-left: -1px;
+
+							&:focus {
+								border: none;
+								outline: none; // Ok for contenteditable element
+								margin: -1px;
+							}
 						}
 					}
 
-					.text-input div {
-						cursor: text;
-						background: none;
-						border: none;
-						margin: 0;
-						padding: 0;
-						overflow: visible;
-						white-space: pre-wrap;
-						display: inline-block;
-						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
-						padding-left: 1px;
-						margin-left: -1px;
+					.graph-view {
+						pointer-events: none;
+						transition: opacity 0.1s ease-in-out;
+						opacity: 0;
 
-						&:focus {
-							border: none;
-							outline: none; // Ok for contenteditable element
-							margin: -1px;
+						&.open {
+							cursor: auto;
+							pointer-events: auto;
+							opacity: 1;
 						}
+
+						&::before {
+							content: "";
+							position: absolute;
+							top: 0;
+							left: 0;
+							width: 100%;
+							height: 100%;
+							background: var(--color-2-mildblack);
+							opacity: var(--fade-artwork);
+							pointer-events: none;
+						}
+					}
+
+					.fade-artwork,
+					.graph {
+						position: absolute;
+						top: 0;
+						left: 0;
+						width: 100%;
+						height: 100%;
 					}
 				}
 			}

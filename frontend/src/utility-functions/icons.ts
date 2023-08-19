@@ -105,6 +105,8 @@ import FlipHorizontal from "@graphite-frontend/assets/icon-16px-solid/flip-horiz
 import FlipVertical from "@graphite-frontend/assets/icon-16px-solid/flip-vertical.svg";
 import Folder from "@graphite-frontend/assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
+import GraphViewClosed from "@graphite-frontend/assets/icon-16px-solid/graph-view-closed.svg";
+import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-open.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
 import NodeArtboard from "@graphite-frontend/assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@graphite-frontend/assets/icon-16px-solid/node-blur.svg";
@@ -166,6 +168,8 @@ const SOLID_16PX = {
 	FlipVertical: { svg: FlipVertical, size: 16 },
 	Folder: { svg: Folder, size: 16 },
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
+	GraphViewClosed: { svg: GraphViewClosed, size: 16 },
+	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	NodeArtboard: { svg: NodeArtboard, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },

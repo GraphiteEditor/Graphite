@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 pub struct Mapping {
 	pub key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
+	pub key_up_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
+	pub key_down_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub double_click: KeyMappingEntries,
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
@@ -40,6 +42,8 @@ impl Mapping {
 		match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
 			InputMapperMessage::KeyUp(key) => &self.key_up[*key as usize],
+			InputMapperMessage::KeyDownNoRepeat(key) => &self.key_down_no_repeat[*key as usize],
+			InputMapperMessage::KeyUpNoRepeat(key) => &self.key_up_no_repeat[*key as usize],
 			InputMapperMessage::DoubleClick => &self.double_click,
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
@@ -50,6 +54,8 @@ impl Mapping {
 		match message {
 			InputMapperMessage::KeyDown(key) => &mut self.key_down[*key as usize],
 			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
+			InputMapperMessage::KeyDownNoRepeat(key) => &mut self.key_down_no_repeat[*key as usize],
+			InputMapperMessage::KeyUpNoRepeat(key) => &mut self.key_up_no_repeat[*key as usize],
 			InputMapperMessage::DoubleClick => &mut self.double_click,
 			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
 			InputMapperMessage::PointerMove => &mut self.pointer_move,

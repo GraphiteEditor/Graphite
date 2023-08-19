@@ -255,7 +255,6 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	use crate::application::Editor;
-	use crate::messages::layout::utility_types::widget_prelude::*;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::prelude::*;
 	use crate::test_utils::EditorTestUtils;

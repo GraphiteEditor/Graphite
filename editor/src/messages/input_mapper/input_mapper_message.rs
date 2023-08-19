@@ -14,6 +14,12 @@ pub enum InputMapperMessage {
 	#[remain::unsorted]
 	#[child]
 	KeyUp(Key),
+	#[remain::unsorted]
+	#[child]
+	KeyDownNoRepeat(Key),
+	#[remain::unsorted]
+	#[child]
+	KeyUpNoRepeat(Key),
 
 	// Messages
 	DoubleClick,

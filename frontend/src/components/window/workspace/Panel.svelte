@@ -2,7 +2,6 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import LayerTree from "@graphite/components/panels/LayerTree.svelte";
-	import NodeGraph from "@graphite/components/panels/NodeGraph.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -10,7 +9,6 @@
 	const PANEL_COMPONENTS = {
 		Document,
 		LayerTree,
-		NodeGraph,
 		Properties,
 	};
 	type PanelTypes = keyof typeof PANEL_COMPONENTS;
