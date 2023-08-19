@@ -159,6 +159,7 @@
 
 	export function updateDocumentTransform(transform: string) {
 		artworkTransform = transform;
+		rasterizedCanvas = undefined;
 	}
 
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
@@ -180,7 +181,7 @@
 		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 		const artboards = artboardSvg;
-		const artwork = artworkSvg;
+		const artwork = `<g id="transform-group" transform="${artworkTransform}">${nodeRenderSvg}</g>`;
 		const svg = `
 				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artboards}${artwork}</svg>
 				`.trim();
