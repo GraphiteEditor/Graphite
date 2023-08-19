@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::RenderData;
 use graphene_core::vector::ManipulatorPointId;
 
@@ -229,11 +228,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.mouse_position = ipp.mouse.position;
 			}
 			SelectionChanged => {
-				let layer_paths = document
-					.selected_visible_layers()
-					.map(|layer_path| LayerNodeIdentifier::from_path(layer_path, document.network()))
-					.collect();
-				shape_editor.set_selected_layers(layer_paths);
+				let target_layers = document.document_legacy.metadata.selected_layers().collect();
+				shape_editor.set_selected_layers(target_layers);
 			}
 			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),

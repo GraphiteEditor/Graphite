@@ -164,6 +164,23 @@ pub fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
 	path
 }
 
+/// Update the location of a bounding box with no handles
+pub fn update_bounding_box(pos1: DVec2, pos2: DVec2, layer: &Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
+	if let Some(path) = layer.as_ref().cloned() {
+		let transform = transform_from_box(pos1, pos2, DAffine2::IDENTITY).to_cols_array();
+		let operation = Operation::SetLayerTransformInViewport { path, transform };
+		responses.add_front(DocumentMessage::Overlays(operation.into()));
+	}
+}
+
+/// Removes the bounding box overlay with no transform handles
+pub fn remove_bounding_box(layer_path: Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
+	if let Some(path) = layer_path {
+		let operation = Operation::DeleteLayer { path };
+		responses.add(DocumentMessage::Overlays(operation.into()));
+	}
+}
+
 /// Add the transform handle overlay
 fn add_transform_handles(responses: &mut VecDeque<Message>) -> [Vec<LayerId>; 8] {
 	const EMPTY_VEC: Vec<LayerId> = Vec::new();
