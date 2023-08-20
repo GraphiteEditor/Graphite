@@ -128,7 +128,7 @@ impl ShapeState {
 
 	// Sets the selected points to all points for the corresponding intersection
 	pub fn select_all_anchors(&mut self, document: &Document, layer: LayerNodeIdentifier) {
-		let Some(subpaths) =  get_subpaths(layer, document) else { return };
+		let Some(subpaths) = get_subpaths(layer, document) else { return };
 		let Some(state) = self.selected_shape_state.get_mut(&layer) else { return };
 		for manipulator in get_manipulator_groups(subpaths) {
 			state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor))
@@ -154,7 +154,7 @@ impl ShapeState {
 					continue;
 				}
 
-				let Some(group) =get_manipulator_from_id(subpaths,point.group) else { continue };
+				let Some(group) = get_manipulator_from_id(subpaths, point.group) else { continue };
 
 				let mut move_point = |point: ManipulatorPointId| {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
@@ -209,7 +209,7 @@ impl ShapeState {
 	/// Delete selected and mirrored handles with zero length when the drag stops.
 	pub fn delete_selected_handles_with_zero_length(&self, document: &Document, opposing_handle_lengths: &Option<OpposingHandleLengths>, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) =  get_subpaths(layer, document) else { continue };
+			let Some(subpaths) = get_subpaths(layer, document) else { continue };
 			let Some(mirror_angle) = get_mirror_handles(layer, document) else { continue };
 
 			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(&layer));
@@ -222,7 +222,7 @@ impl ShapeState {
 					continue;
 				}
 
-				let Some(group) = get_manipulator_from_id(subpaths,point.group) else { continue };
+				let Some(group) = get_manipulator_from_id(subpaths, point.group) else { continue };
 
 				let anchor_position = transform.transform_point2(group.anchor);
 
@@ -300,7 +300,7 @@ impl ShapeState {
 	/// Reset the opposing handle lengths.
 	pub fn reset_opposing_handle_lengths(&self, document: &Document, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) =  get_subpaths(layer, document) else { continue };
+			let Some(subpaths) = get_subpaths(layer, document) else { continue };
 			let Some(mirror_angle) = get_mirror_handles(layer, document) else { continue };
 			let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };
 

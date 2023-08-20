@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DRAG_THRESHOLD;
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -192,22 +193,14 @@ impl Fsm for SplineToolFsmState {
 	type ToolData = SplineToolData;
 	type ToolOptions = SplineOptions;
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
 			document,
 			global_tool_data,
 			input,
 			render_data,
 			..
-		}: &mut ToolActionHandlerData,
-		tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use SplineToolFsmState::*;
-		use SplineToolMessage::*;
+		} = tool_action_data;
 
 		let transform = document.document_legacy.metadata.document_to_viewport;
 
@@ -215,11 +208,11 @@ impl Fsm for SplineToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(_, CanvasTransformed) => {
+			(_, SplineToolMessage::CanvasTransformed) => {
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 				self
 			}
-			(Ready, DragStart) => {
+			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
 				tool_data.path = Some(document.get_path_for_new_layer());
@@ -235,11 +228,11 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+				add_spline(tool_data, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
 
-				Drawing
+				SplineToolFsmState::Drawing
 			}
-			(Drawing, DragStop) => {
+			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
@@ -250,25 +243,22 @@ impl Fsm for SplineToolFsmState {
 					}
 				}
 
-				responses.add(remove_preview(tool_data));
-				add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+				update_spline(tool_data, true, responses);
 
-				Drawing
+				SplineToolFsmState::Drawing
 			}
-			(Drawing, PointerMove) => {
+			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 
-				responses.add(remove_preview(tool_data));
-				add_spline(tool_data, true, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+				update_spline(tool_data, true, responses);
 
-				Drawing
+				SplineToolFsmState::Drawing
 			}
-			(Drawing, Confirm) | (Drawing, Abort) => {
+			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
 				if tool_data.points.len() >= 2 {
-					responses.add(remove_preview(tool_data));
-					add_spline(tool_data, false, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+					update_spline(tool_data, false, responses);
 					responses.add(DocumentMessage::CommitTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
@@ -278,9 +268,9 @@ impl Fsm for SplineToolFsmState {
 				tool_data.points.clear();
 				tool_data.snap_manager.cleanup(responses);
 
-				Ready
+				SplineToolFsmState::Ready
 			}
-			(_, WorkingColorChanged) => {
+			(_, SplineToolMessage::WorkingColorChanged) => {
 				responses.add(SplineToolMessage::UpdateOptions(SplineOptionsUpdate::WorkingColors(
 					Some(global_tool_data.primary_color),
 					Some(global_tool_data.secondary_color),
@@ -308,25 +298,11 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn remove_preview(tool_data: &SplineToolData) -> Message {
-	Operation::DeleteLayer {
-		path: tool_data.path.clone().unwrap(),
-	}
-	.into()
-}
-
-fn add_spline(tool_data: &SplineToolData, show_preview: bool, fill_color: Option<Color>, stroke_color: Option<Color>, responses: &mut VecDeque<Message>) {
-	let mut points = tool_data.points.clone();
-	if show_preview {
-		points.push(tool_data.next_point)
-	}
-
-	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
-
-	let layer_path = tool_data.path.clone().unwrap();
-	let manipulator_groups = subpath.manipulator_groups().to_vec();
-	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-	graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
+fn add_spline(tool_data: &SplineToolData, fill_color: Option<Color>, stroke_color: Option<Color>, responses: &mut VecDeque<Message>) {
+	let Some(layer_path) = tool_data.path.clone() else {
+		return;
+	};
+	graph_modification_utils::new_vector_layer(vec![], layer_path.clone(), responses);
 
 	responses.add(GraphOperationMessage::FillSet {
 		layer: layer_path.clone(),
@@ -334,7 +310,25 @@ fn add_spline(tool_data: &SplineToolData, show_preview: bool, fill_color: Option
 	});
 
 	responses.add(GraphOperationMessage::StrokeSet {
-		layer: layer_path.clone(),
+		layer: layer_path,
 		stroke: Stroke::new(stroke_color, tool_data.weight),
 	});
+}
+
+fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+	let mut points = tool_data.points.clone();
+	if show_preview {
+		points.push(tool_data.next_point)
+	}
+
+	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
+
+	let Some(layer) = tool_data.path.clone() else {
+		return;
+	};
+
+	graph_modification_utils::set_manipulator_mirror_angle(subpath.manipulator_groups(), &layer, true, responses);
+	let subpaths = vec![subpath];
+	let modification = VectorDataModification::UpdateSubpaths { subpaths };
+	responses.add(GraphOperationMessage::Vector { layer, modification });
 }

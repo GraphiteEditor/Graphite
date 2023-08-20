@@ -219,7 +219,7 @@ impl LayoutHolder for BrushTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else{
+		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 			return;
 		};
