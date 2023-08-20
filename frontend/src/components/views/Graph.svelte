@@ -653,7 +653,9 @@
 					</svg>
 				</div>
 				<div class="thumbnail">
-					{@html node.thumbnailSvg}
+					{#if node.thumbnailSvg}
+						{@html node.thumbnailSvg}
+					{/if}
 					{#if node.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -890,287 +892,291 @@
 			position: absolute;
 			width: 100%;
 			height: 100%;
+		}
 
-			.layer,
-			.node {
+		.layer,
+		.node {
+			position: absolute;
+			display: flex;
+			left: calc(var(--offset-left) * 24px);
+			top: calc(var(--offset-top) * 24px);
+			// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
+			// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
+			// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
+			// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
+			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
+			backdrop-filter: blur(4px);
+			background: rgba(0, 0, 0, 0.33);
+
+			&::after {
+				content: "";
 				position: absolute;
+				box-sizing: border-box;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				pointer-events: none;
+				clip-path: var(--clip-path-id);
+			}
+
+			.border-mask {
+				position: absolute;
+				top: 0;
+			}
+
+			&.disabled {
+				background: var(--color-3-darkgray);
+				color: var(--color-a-softgray);
+
+				.icon-label {
+					fill: var(--color-a-softgray);
+				}
+
+				.expand-arrow::after {
+					background: var(--icon-expand-collapse-arrow-disabled);
+				}
+			}
+
+			&.previewed::after {
+				border: 1px dashed var(--color-data-vector);
+			}
+
+			.ports {
+				position: absolute;
+
+				&.input {
+					left: -3px;
+				}
+
+				&.output {
+					right: -5px;
+				}
+			}
+
+			.port {
+				fill: var(--data-color);
+				// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
+				margin: calc(24px - 8px) 0;
+				width: 8px;
+				height: 8px;
+			}
+
+			.expand-arrow {
+				width: 16px;
+				height: 16px;
+				margin: 0;
+				padding: 0;
+				position: relative;
+				flex: 0 0 auto;
 				display: flex;
-				left: calc(var(--offset-left) * 24px);
-				top: calc(var(--offset-top) * 24px);
-				// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
-				// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
-				// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
-				// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
-				// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
-				backdrop-filter: blur(4px);
-				background: rgba(0, 0, 0, 0.33);
+				align-items: center;
+				justify-content: center;
 
 				&::after {
 					content: "";
 					position: absolute;
-					box-sizing: border-box;
-					top: 0;
-					left: 0;
-					width: 100%;
-					height: 100%;
+					width: 8px;
+					height: 8px;
+					background: var(--icon-expand-collapse-arrow);
+				}
+
+				&:hover::after {
+					background: var(--icon-expand-collapse-arrow-hover);
+				}
+			}
+
+			.expanded .expand-arrow::after {
+				transform: rotate(90deg);
+			}
+
+			.text-label {
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+		}
+
+		.layer {
+			border-radius: 8px;
+			width: 216px;
+
+			&::after {
+				border: 1px solid var(--color-5-dullgray);
+				border-radius: 8px;
+			}
+
+			&.selected {
+				// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
+				background: rgba(66, 66, 66, 0.4);
+			}
+
+			.node-chain {
+				width: 36px;
+			}
+
+			.thumbnail {
+				background: var(--color-2-mildblack);
+				border: 1px solid var(--color-data-vector-dim);
+				border-radius: 2px;
+				position: relative;
+				box-sizing: border-box;
+				width: 72px;
+				height: 48px;
+
+				&::before {
+					content: "";
+					background: var(--color-transparent-checkered-background);
+					background-size: var(--color-transparent-checkered-background-size);
+					background-position: var(--color-transparent-checkered-background-position);
+				}
+
+				&::before,
+				svg:not(.port) {
 					pointer-events: none;
-					clip-path: var(--clip-path-id);
-				}
-
-				.border-mask {
 					position: absolute;
-					top: 0;
-				}
-
-				&.node.selected .primary {
-					background: rgba(255, 255, 255, 0.15);
-				}
-
-				&.node.selected .parameters {
-					background: rgba(255, 255, 255, 0.1);
-				}
-
-				&.layer.selected {
-					// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
-					background: rgba(66, 66, 66, 0.4);
-				}
-
-				&.disabled {
-					background: var(--color-3-darkgray);
-					color: var(--color-a-softgray);
-
-					.icon-label {
-						fill: var(--color-a-softgray);
-					}
-
-					.expand-arrow::after {
-						background: var(--icon-expand-collapse-arrow-disabled);
-					}
-				}
-
-				&.previewed::after {
-					border: 1px dashed var(--color-data-vector);
-				}
-
-				.ports {
-					position: absolute;
-
-					&.input {
-						left: -3px;
-					}
-
-					&.output {
-						right: -5px;
-					}
+					margin: auto;
+					top: 1px;
+					left: 1px;
+					width: calc(100% - 2px);
+					height: calc(100% - 2px);
 				}
 
 				.port {
-					fill: var(--data-color);
-					// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
-					margin: calc(24px - 8px) 0;
-					width: 8px;
-					height: 8px;
+					position: absolute;
+					margin: 0 auto;
+					left: 0;
+					right: 0;
 
-					&:first-of-type {
-						margin-top: calc((24px - 8px) / 2);
-
-						&:not(.primary-port) {
-							margin-top: calc((24px - 8px) / 2 + 24px);
-						}
+					&.top {
+						top: -9px;
 					}
 
-					&:last-of-type {
-						margin-bottom: calc((24px - 8px) / 2);
+					&.bottom {
+						bottom: -9px;
 					}
 				}
+			}
 
-				.expand-arrow {
-					width: 16px;
-					height: 16px;
-					margin: 0;
-					padding: 0;
-					position: relative;
-					flex: 0 0 auto;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-
-					&::after {
-						content: "";
-						position: absolute;
-						width: 8px;
-						height: 8px;
-						background: var(--icon-expand-collapse-arrow);
-					}
-
-					&:hover::after {
-						background: var(--icon-expand-collapse-arrow-hover);
-					}
-				}
-
-				.expanded .expand-arrow::after {
-					transform: rotate(90deg);
-				}
+			.details {
+				margin-left: 12px;
 
 				.text-label {
-					overflow: hidden;
-					text-overflow: ellipsis;
+					line-height: 48px;
 				}
 			}
 
-			.layer {
-				border-radius: 8px;
-				width: 216px;
-
-				&::after {
-					border: 1px solid var(--color-5-dullgray);
-					border-radius: 8px;
-				}
-
-				.node-chain {
-					width: 36px;
-				}
-
-				.thumbnail {
-					background: var(--color-2-mildblack);
-					border: 1px solid var(--color-data-vector-dim);
-					border-radius: 2px;
-					position: relative;
-					box-sizing: border-box;
-					width: 72px;
-					height: 48px;
-
-					&::before {
-						content: "";
-						background: var(--color-transparent-checkered-background);
-						background-size: var(--color-transparent-checkered-background-size);
-						background-position: var(--color-transparent-checkered-background-position);
-					}
-
-					&::before,
-					svg:not(.port) {
-						pointer-events: none;
-						position: absolute;
-						margin: auto;
-						top: 1px;
-						left: 1px;
-						width: calc(100% - 2px);
-						height: calc(100% - 2px);
-					}
-
-					.port {
-						position: absolute;
-						margin: 0 auto;
-						left: 0;
-						right: 0;
-
-						&.top {
-							top: -9px;
-						}
-
-						&.bottom {
-							bottom: -9px;
-						}
-					}
-				}
-
-				.details {
-					margin-left: 12px;
-
-					.text-label {
-						line-height: 48px;
-					}
-				}
-
-				.input.ports,
-				.input.ports .port {
-					position: absolute;
-					margin: auto 0;
-					top: 0;
-					bottom: 0;
-				}
+			.input.ports,
+			.input.ports .port {
+				position: absolute;
+				margin: auto 0;
+				top: 0;
+				bottom: 0;
 			}
+		}
 
-			.node {
-				flex-direction: column;
+		.node {
+			flex-direction: column;
+			border-radius: 2px;
+			width: 120px;
+			top: calc((var(--offset-top) + 0.5) * 24px);
+
+			&::after {
+				border: 1px solid var(--color-data-vector-dim);
 				border-radius: 2px;
-				width: 120px;
-				top: calc((var(--offset-top) + 0.5) * 24px);
+			}
 
-				&::after {
-					border: 1px solid var(--color-data-vector-dim);
-					border-radius: 2px;
-				}
-
+			&.selected {
 				.primary {
-					display: flex;
-					align-items: center;
-					position: relative;
-					width: 100%;
-					height: 24px;
-					border-radius: 2px 2px 0 0;
-					font-style: italic;
-					background: rgba(255, 255, 255, 0.05);
-
-					&.no-parameter-section {
-						border-radius: 2px;
-					}
-
-					.icon-label {
-						display: none; // Remove after we have unique icons for the nodes
-						margin: 0 8px;
-					}
-
-					.text-label {
-						margin-left: 8px; // Remove after reenabling icon-label
-						margin-right: 4px;
-					}
+					background: rgba(255, 255, 255, 0.15);
 				}
 
 				.parameters {
-					display: flex;
-					flex-direction: column;
-					width: 100%;
+					background: rgba(255, 255, 255, 0.1);
+				}
+			}
+
+			.port {
+				&:first-of-type {
+					margin-top: calc((24px - 8px) / 2);
+
+					&:not(.primary-port) {
+						margin-top: calc((24px - 8px) / 2 + 24px);
+					}
+				}
+
+				&:last-of-type {
+					margin-bottom: calc((24px - 8px) / 2);
+				}
+			}
+
+			.primary {
+				display: flex;
+				align-items: center;
+				position: relative;
+				width: 100%;
+				height: 24px;
+				border-radius: 2px 2px 0 0;
+				font-style: italic;
+				background: rgba(255, 255, 255, 0.05);
+
+				&.no-parameter-section {
+					border-radius: 2px;
+				}
+
+				.icon-label {
+					display: none; // Remove after we have unique icons for the nodes
+					margin: 0 8px;
+				}
+
+				.text-label {
+					margin-left: 8px; // Remove after reenabling icon-label
+					margin-right: 4px;
+				}
+			}
+
+			.parameters {
+				display: flex;
+				flex-direction: column;
+				width: 100%;
+				position: relative;
+
+				.parameter {
 					position: relative;
+					display: flex;
+					align-items: center;
+					width: 100%;
+					height: 24px;
 
-					.parameter {
-						position: relative;
-						display: flex;
-						align-items: center;
+					&:last-of-type {
+						border-radius: 0 0 2px 2px;
+					}
+
+					.text-label {
 						width: 100%;
-						height: 24px;
+					}
 
-						&:last-of-type {
-							border-radius: 0 0 2px 2px;
-						}
-
-						.text-label {
-							width: 100%;
-						}
-
-						&.input {
-							.expand-arrow {
-								margin-left: 4px;
-							}
-						}
-
-						&.output {
-							flex-direction: row-reverse;
-							text-align: right;
-
-							.expand-arrow {
-								margin-right: 4px;
-							}
+					&.input {
+						.expand-arrow {
+							margin-left: 4px;
 						}
 					}
 
-					&::before {
-						left: 0;
-					}
+					&.output {
+						flex-direction: row-reverse;
+						text-align: right;
 
-					&::after {
-						right: 0;
+						.expand-arrow {
+							margin-right: 4px;
+						}
 					}
+				}
+
+				&::before {
+					left: 0;
+				}
+
+				&::after {
+					right: 0;
 				}
 			}
 		}

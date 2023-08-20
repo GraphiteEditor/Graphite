@@ -121,19 +121,19 @@ pub enum ActionKeys {
 impl ActionKeys {
 	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> String {
 		match self {
-			ActionKeys::Action(action) => {
+			Self::Action(action) => {
 				if let Some(keys) = action_input_mapping(action).get_mut(0) {
 					let mut taken_keys = KeysGroup::default();
 					std::mem::swap(keys, &mut taken_keys);
 					let description = taken_keys.to_string();
-					*self = ActionKeys::Keys(taken_keys.into());
+					*self = Self::Keys(taken_keys.into());
 					description
 				} else {
-					*self = ActionKeys::Keys(KeysGroup::default().into());
+					*self = Self::Keys(KeysGroup::default().into());
 					String::new()
 				}
 			}
-			ActionKeys::Keys(keys) => {
+			Self::Keys(keys) => {
 				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
 				String::new()
 			}
