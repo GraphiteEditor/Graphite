@@ -218,7 +218,9 @@ impl PenToolData {
 		self.subpath_index = subpath_index;
 
 		// Stop the handles on the first point from mirroring
-		let Some(subpaths) = get_subpaths (LayerNodeIdentifier::from_path(layer, document.network()), &document.document_legacy) else { return };
+		let Some(subpaths) = get_subpaths(LayerNodeIdentifier::from_path(layer, document.network()), &document.document_legacy) else {
+			return;
+		};
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
 		let Some(last_handle) = (if from_start { manipulator_groups.first() } else { manipulator_groups.last() }) else {
 			return;
