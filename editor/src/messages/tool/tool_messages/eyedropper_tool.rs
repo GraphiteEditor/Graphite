@@ -84,7 +84,7 @@ impl Fsm for EyedropperToolFsmState {
 	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { global_tool_data, input, .. } = tool_action_data;
 
-		let ToolMessage::Eyedropper(event) = event else{
+		let ToolMessage::Eyedropper(event) = event else {
 			return self;
 		};
 		match (self, event) {
