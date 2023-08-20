@@ -5,6 +5,7 @@ use glam::DAffine2;
 
 use glam::DVec2;
 
+use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
@@ -151,6 +152,8 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
+	/// When the transform is set downstream, all upsream modifications have to be ignored
+	pub ignore_modifications: bool,
 }
 
 impl Default for Footprint {
@@ -159,7 +162,17 @@ impl Default for Footprint {
 			transform: DAffine2::IDENTITY,
 			resolution: glam::UVec2::new(1920, 1080),
 			quality: RenderQuality::Full,
+			ignore_modifications: false,
 		}
+	}
+}
+
+impl Footprint {
+	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
+		let inverse = self.transform.inverse();
+		let start = inverse.transform_point2((0., 0.).into());
+		let end = inverse.transform_point2(self.resolution.as_dvec2());
+		AxisAlignedBbox { start, end }
 	}
 }
 
@@ -206,10 +219,12 @@ where
 	Fut::Output: TransformMut,
 {
 	// TOOD: This is hack and might break for Vector data because the pivot may be incorrect
-	let pivot_transform = DAffine2::from_translation(pivot);
 	let transform = DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let modification = pivot_transform * transform * pivot_transform.inverse();
-	*footprint.transform_mut() = footprint.transform() * modification;
+	if !footprint.ignore_modifications {
+		let pivot_transform = DAffine2::from_translation(pivot);
+		let modification = pivot_transform * transform * pivot_transform.inverse();
+		*footprint.transform_mut() = footprint.transform() * modification;
+	}
 
 	let mut data = self.transform_target.eval(footprint).await;
 	let pivot_transform = DAffine2::from_translation(data.local_pivot(pivot));

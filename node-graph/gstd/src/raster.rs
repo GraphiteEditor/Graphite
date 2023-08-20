@@ -68,12 +68,26 @@ fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<C
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
 
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let bbox = Bbox::from_transform(image_frame.transform);
+	let bounds = viewport_bounds.intersect(&bbox.to_axis_aligned_bbox());
+	let union = viewport_bounds.union(&bbox.to_axis_aligned_bbox());
+	let size = bounds.size();
+
+
+
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
 
 	let dynamic_image: image::DynamicImage = image_buffer.into();
 	let nwidth = 0;
 	let nheight = 0;
-	let resized = dynamic_image.resize_exact(nwidth, nheight, image::imageops::Lanczos3);
+	let offset = (bounds.start - viewport_bounds.start).as_uvec2();
+	let cropped = dynamic_image.crop_imm(offset.x , offset.y, size.x as u32, size.y as u32);
+
+	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
+	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
+
+	let resized = dynamic_image.resize_exact(viewport_resolution_x as u32, viewport_resolution_y as u32, image::imageops::Lanczos3);
 	let buffer = resized.to_rgba32f();
 	let buffer = buffer.into_raw();
 	let vec = bytemuck::cast_vec(buffer);

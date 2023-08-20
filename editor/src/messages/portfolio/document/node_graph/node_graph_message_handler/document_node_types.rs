@@ -253,6 +253,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::artboard_properties,
 			..Default::default()
 		},
+		/*
 		DocumentNodeType {
 			name: "Downres",
 			category: "Raster",
@@ -262,15 +263,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "Downres".to_string(),
-						inputs: vec![
-							NodeInput::Network(concrete!(Footprint)),
-							NodeInput::Network(concrete!(ImageFrame<Color>))],
+						inputs: vec![NodeInput::Network(concrete!(Footprint)), NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::ShortCircut(concrete!(Footprint)), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -294,11 +293,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					data_type: FrontendGraphDataType::General,
 					default: NodeInput::ShortCircut(concrete!(Footprint)),
 				},
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
+			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
 			..Default::default()
-		},
+		},*/
 		// DocumentNodeType {
 		// 	name: "Input Frame",
 		// 	category: "Ignore",
@@ -556,7 +556,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(0,0)],
+						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -575,7 +575,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
-						inputs: vec![NodeInput::node(0,0), NodeInput::Network(fn_type!(Footprint, GraphicGroup)), NodeInput::node(2, 0)],
+						inputs: vec![NodeInput::node(0, 0), NodeInput::Network(fn_type!(Footprint, GraphicGroup)), NodeInput::node(2, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
 						..Default::default()
 					},
@@ -942,10 +942,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Image",
 			category: "Ignore",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![
-
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)
-			],
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 			..Default::default()
@@ -2126,6 +2123,21 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Downres",
+			category: "Structural",
+			identifier: NodeImplementation::proto("graphene_std::raster::DownresNode<_>"),
+			inputs: vec![
+				DocumentInputType {
+					name: "ShortCircut",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::ShortCircut(concrete!(Footprint)),
+				},
+				DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Cull",
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
@@ -2579,6 +2591,29 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
 	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
+	network
+}
+
+pub fn new_raster_network(image_frame: ImageFrame<Color>) -> NodeNetwork {
+	let sample_node = resolve_document_node_type("Downres").expect("Downres node does not exist");
+	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
+	let output = resolve_document_node_type("Output").expect("Output node does not exist");
+
+	let mut network = NodeNetwork::default();
+
+	let image_node_type = resolve_document_node_type("Image").expect("Image node should be in registry");
+
+	network.push_node(
+		image_node_type.to_document_node(
+			[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::ImageFrame(image_frame), false)],
+			Default::default(),
+		),
+		false,
+	);
+	network.push_node(sample_node.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
+	network.push_node(transform.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
+	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
+	log::debug!("network: {:#?}", &network);
 	network
 }
 
