@@ -108,10 +108,10 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 
 			let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-			self.insert_between(new_id, sibling_layer, output, node, 7, 0, IVec2::new(-4, 3))
+			self.insert_between(new_id, sibling_layer, output, node, 7, 0, IVec2::new(0, 3))
 		} else {
 			let layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
-			self.insert_node_before(new_id, output_node_id, input_index, layer_node, IVec2::new(-4, 3))
+			self.insert_node_before(new_id, output_node_id, input_index, layer_node, IVec2::new(-5, 3))
 		};
 
 		// Update the document metadata structure
