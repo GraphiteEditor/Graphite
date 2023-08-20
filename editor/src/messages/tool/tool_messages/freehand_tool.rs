@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 
@@ -6,6 +7,7 @@ use document_legacy::LayerId;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
+use bezier_rs::ManipulatorGroup;
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
@@ -117,7 +119,7 @@ impl LayoutHolder for FreehandTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else{
+		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 			return;
 		};
@@ -174,9 +176,10 @@ impl ToolTransition for FreehandTool {
 
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
-	points: Vec<DVec2>,
+	last_point: DVec2,
+	dragged: bool,
 	weight: f64,
-	path: Option<Vec<LayerId>>,
+	layer_path: Option<Vec<LayerId>>,
 }
 
 impl Fsm for FreehandToolFsmState {
@@ -197,40 +200,42 @@ impl Fsm for FreehandToolFsmState {
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
-				tool_data.path = Some(document.get_path_for_new_layer());
+				tool_data.layer_path = Some(document.get_path_for_new_layer());
 
 				let pos = transform.inverse().transform_point2(input.mouse.position);
 
-				tool_data.points.push(pos);
+				tool_data.dragged = false;
+				tool_data.last_point = pos;
 
 				tool_data.weight = tool_options.line_weight;
 
-				add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
+				add_polyline([pos], tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				let pos = transform.inverse().transform_point2(input.mouse.position);
 
-				if tool_data.points.last() != Some(&pos) {
-					tool_data.points.push(pos);
+				if tool_data.last_point != pos {
+					if let Some(layer) = tool_data.layer_path.clone() {
+						let manipulator_group = ManipulatorGroup::new_anchor(pos);
+						let modification = VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group };
+						responses.add(GraphOperationMessage::Vector { layer, modification });
+						tool_data.dragged = true;
+						tool_data.last_point = pos;
+					}
 				}
-
-				add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop | FreehandToolMessage::Abort) => {
-				if tool_data.points.len() >= 2 {
-					responses.add(remove_preview(tool_data));
-					add_polyline(tool_data, tool_options.stroke.active_color(), tool_options.fill.active_color(), responses);
+				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 
-				tool_data.path = None;
-				tool_data.points.clear();
+				tool_data.layer_path = None;
 
 				FreehandToolFsmState::Ready
 			}
@@ -259,14 +264,10 @@ impl Fsm for FreehandToolFsmState {
 	}
 }
 
-fn remove_preview(data: &FreehandToolData) -> Message {
-	GraphOperationMessage::DeleteLayer { id: data.path.clone().unwrap()[0] }.into()
-}
+fn add_polyline(anchors: impl IntoIterator<Item = DVec2>, data: &FreehandToolData, stroke_color: Option<Color>, fill_color: Option<Color>, responses: &mut VecDeque<Message>) {
+	let subpath = bezier_rs::Subpath::from_anchors(anchors, false);
 
-fn add_polyline(data: &FreehandToolData, stroke_color: Option<Color>, fill_color: Option<Color>, responses: &mut VecDeque<Message>) {
-	let subpath = bezier_rs::Subpath::from_anchors(data.points.iter().copied(), false);
-
-	let layer_path = data.path.clone().unwrap();
+	let layer_path = data.layer_path.clone().unwrap();
 	graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 
 	responses.add(GraphOperationMessage::FillSet {

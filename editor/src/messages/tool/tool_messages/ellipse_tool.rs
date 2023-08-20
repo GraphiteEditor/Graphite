@@ -112,7 +112,7 @@ impl LayoutHolder for EllipseTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EllipseTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let ToolMessage::Ellipse(EllipseToolMessage::UpdateOptions(action)) = message else{
+		let ToolMessage::Ellipse(EllipseToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
 			return;
 		};

@@ -104,7 +104,7 @@ impl Fsm for NavigateToolFsmState {
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolMessage::Navigate(navigate) = message else{
+		let ToolMessage::Navigate(navigate) = message else {
 			return self;
 		};
 
