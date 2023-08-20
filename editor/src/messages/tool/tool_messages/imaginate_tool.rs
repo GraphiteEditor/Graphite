@@ -112,7 +112,7 @@ impl Fsm for ImaginateToolFsmState {
 	) -> Self {
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Imaginate(event) = event else{
+		let ToolMessage::Imaginate(event) = event else {
 			return self;
 		};
 		match (self, event) {

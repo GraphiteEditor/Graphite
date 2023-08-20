@@ -94,4 +94,5 @@ pub enum VectorDataModification {
 	SetManipulatorHandleMirroring { id: ManipulatorGroupId, mirror_angle: bool },
 	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
 	ToggleManipulatorHandleMirroring { id: ManipulatorGroupId },
+	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
