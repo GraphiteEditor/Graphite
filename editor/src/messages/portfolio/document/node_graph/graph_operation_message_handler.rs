@@ -378,6 +378,11 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn delete_layer(&mut self, id: NodeId) {
+		if !self.network.nodes.contains_key(&id) {
+			warn!("Deleting layer node that does not exist");
+			return;
+		}
+
 		let mut new_input = None;
 		let post_node = self.outwards_links.get(&id).and_then(|links| links.first().copied());
 		let mut delete_nodes = vec![id];

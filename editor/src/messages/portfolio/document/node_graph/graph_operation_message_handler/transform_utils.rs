@@ -316,6 +316,7 @@ impl<'a> VectorModificationState<'a> {
 			VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle } => self.set_mirror(id, mirror_angle),
 			VectorDataModification::SetManipulatorPosition { point, position } => self.set_position(point, position),
 			VectorDataModification::ToggleManipulatorHandleMirroring { id } => self.toggle_mirror(id),
+			VectorDataModification::UpdateSubpaths { subpaths } => *self.subpaths = subpaths,
 		}
 	}
 }

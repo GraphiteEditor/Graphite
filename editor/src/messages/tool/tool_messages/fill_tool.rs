@@ -69,8 +69,8 @@ impl Fsm for FillToolFsmState {
 			return self;
 		};
 		let Some((layer_identifier, _)) = document.document_legacy.metadata.click(input.mouse.position) else {
-				return self;
-			};
+			return self;
+		};
 		let layer = layer_identifier.to_path();
 
 		let color = match event {
