@@ -102,14 +102,14 @@ fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32)
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CircularRepeatNode<RotationOffset, Radius, Count> {
-	rotation_offset: RotationOffset,
+pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
+	angle_offset: AngleOffset,
 	radius: Radius,
 	count: Count,
 }
 
 #[node_macro::node_fn(CircularRepeatNode)]
-fn circular_repeat_vector_data(mut vector_data: VectorData, rotation_offset: f32, radius: f32, count: u32) -> VectorData {
+fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f32, radius: f32, count: u32) -> VectorData {
 	// repeat the vector data
 	let VectorData { subpaths, transform, .. } = &vector_data;
 
@@ -123,7 +123,7 @@ fn circular_repeat_vector_data(mut vector_data: VectorData, rotation_offset: f32
 	let base_transform = DVec2::new(0., radius as f64) - center;
 
 	for i in 0..count {
-		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + rotation_offset.to_radians() as f64;
+		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians() as f64;
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
 		for mut subpath in subpaths.clone() {
