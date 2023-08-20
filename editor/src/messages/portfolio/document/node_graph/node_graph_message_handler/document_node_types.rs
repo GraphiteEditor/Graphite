@@ -2056,6 +2056,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::resample_curve_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Spline from Points",
@@ -2064,6 +2065,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
+			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Image Segmentation",
