@@ -2218,8 +2218,10 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Color Overlay",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1],
-				outputs: vec![NodeOutput::new(0, 0), NodeOutput::new(0, 0)],
+				// this maps node inputs to the document nodes that will consume them
+				inputs: vec![0, 1, 2, 2, 2],
+				// this maps to the outputs from the document nodes
+				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -2229,28 +2231,21 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Color".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
+						inputs: vec![NodeInput::Network(concrete!(Color))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Blend".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlendNode")),
+						inputs: vec![
+							NodeInput::node(0, 0),
+							NodeInput::Network(concrete!(ImageFrame<Color>)),
+							NodeInput::Network(concrete!(BlendMode)),
+							NodeInput::Network(concrete!(f32)),
+						],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>")),
 						..Default::default()
 					},
-					DocumentNode {
-						name: "Opacity".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::OpacityNode")),
-						..Default::default()
-					},
-					// DocumentNode {
-					// 	name: "EmptyOutput".to_string(),
-					// 	inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false)],
-					// 	implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-					// 	..Default::default()
-					// },
 				]
 				.into_iter()
 				.enumerate()
@@ -2262,6 +2257,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
 				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
+				DocumentInputType::value("Second", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::color_overlay,
