@@ -570,19 +570,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Conversion".to_string(),
 						inputs: vec![NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::Network(fn_type!(Footprint, GraphicGroup)), NodeInput::node(2, 0)],
+						inputs: vec![NodeInput::node(0, 0), NodeInput::node(3, 0), NodeInput::node(2, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(3, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
