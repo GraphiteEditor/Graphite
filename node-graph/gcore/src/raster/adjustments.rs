@@ -1,7 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, Node};
+use super::{Channel, Color, Image, ImageFrame, Node, Pixel};
+
+use std::marker::PhantomData;
 
 use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
@@ -924,6 +926,46 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 		param = sample.handles[1];
 	}
 	ValueMapperNode::new(lut)
+}
+
+#[derive(Debug, Clone)]
+pub struct ColorFillNode<C> {
+	// * main input (core generic type input for the node might need to be an ImageFrame<_p>)
+	color: C,
+}
+
+#[node_macro::node_fn(ColorFillNode)]
+pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
+	// let mut image = &image_frame.image;
+	// let v = &image.data;
+
+	// warn!("color vec len: {}", &v.len());
+	// warn!("image h: {}, w: {}", &image.height, &image.width);
+
+	// for mut data in &image.data {
+	// data = &color.clone()
+	// }
+
+	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
+	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
+
+	let mut image = Image {
+		width: target_width as u32,
+		height: target_height as u32,
+		data: Vec::with_capacity(target_width * target_height),
+	};
+
+	// let color_pixel = color.to_bytes();
+
+	// for x in 0..target_height {
+	// 	for y in 0..target_width {
+	// 		// image.data.push(color.clone())
+	// 	}
+	// }
+
+	image_frame.image = image;
+	image_frame
+	// image_frame
 }
 
 #[cfg(feature = "alloc")]

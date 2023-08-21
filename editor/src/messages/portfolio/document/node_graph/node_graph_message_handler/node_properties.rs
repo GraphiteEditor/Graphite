@@ -1946,3 +1946,8 @@ pub fn color_overlay(document_node: &DocumentNode, node_id: NodeId, _context: &m
 
 	vec![color, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
+
+pub fn color_fill_node(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
+	vec![color]
+}
