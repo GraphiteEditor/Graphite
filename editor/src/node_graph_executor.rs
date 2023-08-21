@@ -554,6 +554,7 @@ impl NodeGraphExecutor {
 
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				responses.add(DocumentMessage::RenderScrollbars);
 
 				//return Err("Graphic group (see console)".to_string());
 			}

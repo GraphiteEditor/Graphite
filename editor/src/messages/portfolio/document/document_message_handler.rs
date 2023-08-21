@@ -27,6 +27,7 @@ use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as Doc
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
+use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
 
 use glam::{DAffine2, DVec2};
@@ -174,7 +175,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				let document_bounds = self.document_bounds(&render_data);
+				let document_bounds = self.document_bounds();
 				self.navigation_handler.process_message(
 					message,
 					responses,
@@ -663,12 +664,29 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(FrontendMessage::UpdateDocumentArtwork {
 					svg: self.document_legacy.render_root(&render_data),
 				});
-
+			}
+			RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_scale();
+
+				let ruler_origin = self.document_legacy.metadata.document_to_viewport.transform_point2(DVec2::ZERO);
+				let log = document_transform_scale.log2();
+				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_spacing = ruler_interval * document_transform_scale;
+
+				responses.add(FrontendMessage::UpdateDocumentRulers {
+					origin: ruler_origin.into(),
+					spacing: ruler_spacing,
+					interval: ruler_interval,
+				});
+			}
+			RenderScrollbars => {
+				let document_transform_scale = self.navigation_handler.snapped_scale();
+
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
+
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document_bounds(&render_data).unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.document_bounds().unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -676,22 +694,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let scrollbar_multiplier = bounds_length - viewport_size;
 				let scrollbar_size = viewport_size / bounds_length;
 
-				let log = document_transform_scale.log2();
-				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_interval * document_transform_scale;
-
-				let ruler_origin = self.document_legacy.metadata.document_to_viewport.transform_point2(DVec2::ZERO);
-
 				responses.add(FrontendMessage::UpdateDocumentScrollbars {
 					position: scrollbar_position.into(),
 					size: scrollbar_size.into(),
 					multiplier: scrollbar_multiplier.into(),
-				});
-
-				responses.add(FrontendMessage::UpdateDocumentRulers {
-					origin: ruler_origin.into(),
-					spacing: ruler_spacing,
-					interval: ruler_interval,
 				});
 			}
 			RollbackTransaction => {
@@ -924,6 +930,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.document_legacy.metadata.document_to_viewport = transform;
 				let transform = graphene_core::renderer::format_transform_matrix(transform);
 				responses.add(FrontendMessage::UpdateDocumentTransform { transform });
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			UpdateLayerMetadata { layer_path, layer_metadata } => {
 				self.layer_metadata.insert(layer_path, layer_metadata);
@@ -935,7 +943,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.document_bounds(&render_data) {
+				if let Some(bounds) = self.document_bounds() {
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds,
 						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
@@ -1502,8 +1510,12 @@ impl DocumentMessageHandler {
 	}
 
 	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
-	pub fn document_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
-		self.all_layer_bounds(render_data)
+	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
+		self.document_legacy
+			.metadata
+			.all_layers()
+			.filter_map(|layer| self.document_legacy.metadata.bounding_box_viewport(layer))
+			.reduce(Quad::combine_bounds)
 	}
 
 	/// Calculate the path that new layers should be inserted to.
