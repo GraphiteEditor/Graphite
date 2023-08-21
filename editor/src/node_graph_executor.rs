@@ -552,6 +552,7 @@ impl NodeGraphExecutor {
 
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			_ => {
 				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));
