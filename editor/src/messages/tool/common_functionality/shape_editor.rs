@@ -1,7 +1,7 @@
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
-use crate::messages::tool::tool_messages::pen_tool::{get_manipulator_from_id, get_manipulator_groups, get_mirror_handles, get_subpaths};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_manipulator_groups, get_mirror_handles, get_subpaths};
 
 use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use document_legacy::document::Document;

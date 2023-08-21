@@ -5,7 +5,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::{LayerId, Operation};
+use document_legacy::LayerId;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 

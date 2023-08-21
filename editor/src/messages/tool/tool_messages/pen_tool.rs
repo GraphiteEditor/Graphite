@@ -3,14 +3,11 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::tool_messages::pen_tool::graph_modification_utils::NodeGraphLayer;
 
-use bezier_rs::Subpath;
-use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
-use graph_craft::document::value::TaggedValue;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -766,27 +763,4 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 	}
 
 	best
-}
-
-pub fn get_subpaths(layer: LayerNodeIdentifier, document: &Document) -> Option<&Vec<Subpath<ManipulatorGroupId>>> {
-	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document)?.find_input("Shape", 0)? {
-		Some(subpaths)
-	} else {
-		None
-	}
-}
-
-pub fn get_mirror_handles(layer: LayerNodeIdentifier, document: &Document) -> Option<&Vec<ManipulatorGroupId>> {
-	if let TaggedValue::ManipulatorGroupIds(mirror_handles) = NodeGraphLayer::new(layer, document)?.find_input("Shape", 1)? {
-		Some(mirror_handles)
-	} else {
-		None
-	}
-}
-
-pub fn get_manipulator_groups(subpaths: &[Subpath<ManipulatorGroupId>]) -> impl Iterator<Item = &bezier_rs::ManipulatorGroup<ManipulatorGroupId>> + DoubleEndedIterator {
-	subpaths.iter().flat_map(|subpath| subpath.manipulator_groups())
-}
-pub fn get_manipulator_from_id(subpaths: &[Subpath<ManipulatorGroupId>], id: ManipulatorGroupId) -> Option<&bezier_rs::ManipulatorGroup<ManipulatorGroupId>> {
-	subpaths.iter().find_map(|subpath| subpath.manipulator_from_id(id))
 }
