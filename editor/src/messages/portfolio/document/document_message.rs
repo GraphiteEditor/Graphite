@@ -129,6 +129,8 @@ pub enum DocumentMessage {
 		new_name: String,
 	},
 	RenderDocument,
+	RenderRulers,
+	RenderScrollbars,
 	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
