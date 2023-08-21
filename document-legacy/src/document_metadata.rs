@@ -41,6 +41,14 @@ impl DocumentMetadata {
 		self.all_layers()
 	}
 
+	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier) -> bool {
+		self.selected_layers().any(|selected| selected == layer)
+	}
+
+	pub fn selected_visible_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.all_layers()
+	}
+
 	/// Access the [`NodeRelations`] of a layer
 	fn get_relations(&self, node_identifier: LayerNodeIdentifier) -> Option<&NodeRelations> {
 		self.structure.get(&node_identifier)
@@ -90,11 +98,26 @@ impl DocumentMetadata {
 			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
 			.find(|(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.transform_from_document(*layer))))
 	}
+
+	/// Get the bounding box of the click target of the specified layer in the specified transform space
+	pub fn bounding_box(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.click_targets
+			.get(&layer)?
+			.iter()
+			.filter_map(|click_target| click_target.subpath.bounding_box_with_transform(transform))
+			.reduce(Quad::combine_bounds)
+	}
 }
 
 /// Id of a layer node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LayerNodeIdentifier(NonZeroU64);
+
+impl Default for LayerNodeIdentifier {
+	fn default() -> Self {
+		Self::ROOT
+	}
+}
 
 impl LayerNodeIdentifier {
 	const ROOT: Self = LayerNodeIdentifier::new_unchecked(0);
@@ -282,6 +305,10 @@ impl LayerNodeIdentifier {
 		for node in delete {
 			document_metadata.structure.remove(&node);
 		}
+	}
+
+	pub fn exists(&self, document_metadata: &DocumentMetadata) -> bool {
+		document_metadata.get_relations(*self).is_some()
 	}
 }
 
