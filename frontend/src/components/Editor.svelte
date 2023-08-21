@@ -16,7 +16,6 @@
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
-	import { createWorkspaceState } from "@graphite/state-providers/workspace";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -37,8 +36,6 @@
 	setContext("nodeGraph", nodeGraph);
 	let portfolio = createPortfolioState(editor);
 	setContext("portfolio", portfolio);
-	let workspace = createWorkspaceState(editor);
-	setContext("workspace", workspace);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);

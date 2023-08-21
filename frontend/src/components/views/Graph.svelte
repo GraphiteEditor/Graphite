@@ -635,6 +635,8 @@
 				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
+				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
+				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
 				<div class="node-chain" />
@@ -707,6 +709,8 @@
 				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
+				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
+				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
 				<!-- Primary row -->
@@ -901,11 +905,12 @@
 			left: calc(var(--offset-left) * 24px);
 			top: calc(var(--offset-top) * 24px);
 			// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
-			// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
-			// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
-			// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
+			// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above.
+			// TODO: Reenable the `backdrop-filter` property once a solution can be found for the black whole-page flickering problems it causes in Chrome.
+			// TODO: Additionally, find a solution for this having no effect in Firefox due to a browser bug caused when the two
+			// ancestor elements, `.graph` and `.panel`, each have the simultaneous pairing of `overflow: hidden` and `border-radius`.
 			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
-			backdrop-filter: blur(4px);
+			// backdrop-filter: blur(4px);
 			background: rgba(0, 0, 0, 0.33);
 
 			&::after {
@@ -939,7 +944,7 @@
 			}
 
 			&.previewed::after {
-				border: 1px dashed var(--color-data-vector);
+				border: 1px dashed var(--data-color);
 			}
 
 			.ports {
@@ -1016,7 +1021,7 @@
 
 			.thumbnail {
 				background: var(--color-2-mildblack);
-				border: 1px solid var(--color-data-vector-dim);
+				border: 1px solid var(--data-color-dim);
 				border-radius: 2px;
 				position: relative;
 				box-sizing: border-box;
@@ -1081,7 +1086,7 @@
 			top: calc((var(--offset-top) + 0.5) * 24px);
 
 			&::after {
-				border: 1px solid var(--color-data-vector-dim);
+				border: 1px solid var(--data-color-dim);
 				border-radius: 2px;
 			}
 

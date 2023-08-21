@@ -5,7 +5,6 @@
 	import Panel from "@graphite/components/window/workspace/Panel.svelte";
 	import { getContext } from "svelte";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { WorkspaceState } from "@graphite/state-providers/workspace";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
@@ -35,7 +34,6 @@
 	});
 
 	const editor = getContext<Editor>("editor");
-	const workspace = getContext<WorkspaceState>("workspace");
 	const portfolio = getContext<PortfolioState>("portfolio");
 	const dialog = getContext<DialogState>("dialog");
 

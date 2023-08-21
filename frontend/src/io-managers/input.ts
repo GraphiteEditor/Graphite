@@ -136,8 +136,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 		const { target } = e;
-		const newInCanvas = (target instanceof Element && target.closest("[data-canvas]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
-		if (newInCanvas && !canvasFocused) {
+		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
+		if (newInCanvasArea && !canvasFocused) {
 			canvasFocused = true;
 			app?.focus();
 		}
@@ -148,7 +148,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 
 	function onPointerDown(e: PointerEvent): void {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
 		const inTextInput = target === textToolInteractiveInputElement;
 
@@ -194,7 +194,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 
 	function onWheelScroll(e: WheelEvent): void {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-canvas]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -226,7 +226,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, document
 	// Window events
 
 	function onWindowResize(container: HTMLElement): void {
-		const viewports = Array.from(container.querySelectorAll("[data-canvas]"));
+		const viewports = Array.from(container.querySelectorAll("[data-viewport]"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
 			return [bounds.left, bounds.top, bounds.right, bounds.bottom];

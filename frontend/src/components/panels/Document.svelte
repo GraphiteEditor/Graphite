@@ -35,7 +35,7 @@
 
 	let rulerHorizontal: CanvasRuler | undefined;
 	let rulerVertical: CanvasRuler | undefined;
-	let canvasContainer: HTMLDivElement | undefined;
+	let viewport: HTMLDivElement | undefined;
 
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
@@ -126,7 +126,7 @@
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
 
-		if (!onEditbox) canvasContainer?.setPointerCapture(e.pointerId);
+		if (!onEditbox) viewport?.setPointerCapture(e.pointerId);
 	}
 
 	// Update rendered SVGs
@@ -136,7 +136,7 @@
 
 		await tick();
 
-		const placeholders = window.document.querySelectorAll("[data-canvas] [data-canvas-placeholder]");
+		const placeholders = window.document.querySelectorAll("[data-viewport] [data-canvas-placeholder]");
 		// Replace the placeholders with the actual canvas elements
 		placeholders.forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
@@ -317,11 +317,11 @@
 
 	// Resize elements to render the new viewport size
 	export function viewportResize() {
-		if (!canvasContainer) return;
+		if (!viewport) return;
 
 		// Resize the canvas
-		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasContainer).width));
-		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasContainer).height));
+		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
+		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -440,38 +440,34 @@
 		{#if !graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
 			<WidgetLayout layout={$document.toolOptionsLayout} />
-
 			<LayoutRow class="spacer" />
-
 			<WidgetLayout layout={$document.documentBarLayout} />
 		{:else}
 			<WidgetLayout layout={$document.nodeGraphBarLayout} />
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="shelf-and-viewport">
+	<LayoutRow class="shelf-and-table">
 		<LayoutCol class="shelf">
 			{#if !graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
 					<WidgetLayout layout={$document.toolShelfLayout} />
 				</LayoutCol>
 			{/if}
-
 			<LayoutCol class="spacer" />
-
-			<LayoutCol class="widgets-below-shelf">
+			<LayoutCol class="shelf-bottom-widgets">
 				<WidgetLayout layout={$document.graphViewOverlayButtonLayout} />
 				<WidgetLayout layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
-		<LayoutCol class="viewport">
-			<LayoutRow class="bar-area top-ruler">
+		<LayoutCol class="table">
+			<LayoutRow class="ruler-or-scrollbar top-ruler">
 				<CanvasRuler origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 			</LayoutRow>
-			<LayoutRow class="canvas-area">
-				<LayoutCol class="bar-area">
+			<LayoutRow class="viewport-container">
+				<LayoutCol class="ruler-or-scrollbar">
 					<CanvasRuler origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 				</LayoutCol>
-				<LayoutCol class="canvas-area" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -482,7 +478,7 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasContainer} data-canvas>
+					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={viewport} data-viewport>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
 						</svg>
@@ -503,11 +499,11 @@
 							{/if}
 						</div>
 					</div>
-					<div class="graph-view" class:open={graphViewOverlayOpen} style:--fade-artwork="80%">
+					<div class="graph-view" class:open={graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
 						<Graph />
 					</div>
 				</LayoutCol>
-				<LayoutCol class="bar-area right-scrollbar">
+				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<PersistentScrollbar
 						direction="Vertical"
 						handleLength={scrollbarSize.y}
@@ -517,7 +513,7 @@
 					/>
 				</LayoutCol>
 			</LayoutRow>
-			<LayoutRow class="bar-area bottom-scrollbar">
+			<LayoutRow class="ruler-or-scrollbar bottom-scrollbar">
 				<PersistentScrollbar
 					direction="Horizontal"
 					handleLength={scrollbarSize.x}
@@ -550,7 +546,7 @@
 			}
 		}
 
-		.shelf-and-viewport {
+		.shelf-and-table {
 			.shelf {
 				width: 32px;
 				flex: 0 0 auto;
@@ -587,7 +583,7 @@
 					min-height: 20px;
 				}
 
-				.widgets-below-shelf {
+				.shelf-bottom-widgets {
 					flex: 0 0 auto;
 
 					.widget-layout:first-of-type {
@@ -613,10 +609,10 @@
 				}
 			}
 
-			.viewport {
+			.table {
 				flex: 1 1 100%;
 
-				.bar-area {
+				.ruler-or-scrollbar {
 					flex: 0 0 auto;
 				}
 
@@ -633,11 +629,11 @@
 					margin-right: 16px;
 				}
 
-				.canvas-area {
+				.viewport-container {
 					flex: 1 1 100%;
 					position: relative;
 
-					.canvas {
+					.viewport {
 						background: var(--color-2-mildblack);
 						width: 100%;
 						height: 100%;
