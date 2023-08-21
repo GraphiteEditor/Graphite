@@ -81,41 +81,70 @@ impl DocumentMetadata {
 		self.document_to_viewport * self.transform_from_document(layer)
 	}
 
-	/// Runs an intersection test with all layers and a document space quad
-	pub fn intersect_quad(&self, viewport_quad: Quad) -> Option<(LayerNodeIdentifier, &Vec<ClickTarget>)> {
+	/// Runs an intersection test with all layers and a viewport space quad
+	pub fn intersect_quad(&self, viewport_quad: Quad) -> Option<LayerNodeIdentifier> {
 		let document_quad = self.document_to_viewport.inverse() * viewport_quad;
 		self.root()
 			.decendants(self)
 			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
 			.find(|(layer, target)| target.iter().any(|target| target.intersect_rectangle(document_quad, self.transform_from_document(*layer))))
+			.map(|(layer, _)| layer)
 	}
 
-	/// Find the layer that has been clicked on from a document space location
-	pub fn click(&self, viewport_location: DVec2) -> Option<(LayerNodeIdentifier, &Vec<ClickTarget>)> {
+	/// Find all of the layers that were clicked on from a viewport space location
+	pub fn click_xray<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let point = self.document_to_viewport.inverse().transform_point2(viewport_location);
 		self.root()
 			.decendants(self)
 			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
-			.find(|(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.transform_from_document(*layer))))
+			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.transform_from_document(*layer))))
+			.map(|(layer, _)| layer)
+	}
+
+	/// Find the layer that has been clicked on from a viewport space location
+	pub fn click(&self, viewport_location: DVec2) -> Option<LayerNodeIdentifier> {
+		self.click_xray(viewport_location).next()
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
-	pub fn bounding_box(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
+	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.click_targets
 			.get(&layer)?
 			.iter()
 			.filter_map(|click_target| click_target.subpath.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
 	}
+
+	/// Get the bounding box of the click target of the specified layer in document space
+	pub fn bounding_box_document(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
+		self.bounding_box_with_transform(layer, self.transform_from_document(layer))
+	}
+
+	/// Get the bounding box of the click target of the specified layer in viewport space
+	pub fn bounding_box_viewport(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
+		self.bounding_box_with_transform(layer, self.transform_from_viewport(layer))
+	}
 }
 
 /// Id of a layer node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayerNodeIdentifier(NonZeroU64);
 
 impl Default for LayerNodeIdentifier {
 	fn default() -> Self {
 		Self::ROOT
+	}
+}
+
+impl core::fmt::Debug for LayerNodeIdentifier {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("LayerNodeIdentifier").field(&self.to_node()).finish()
+	}
+}
+
+impl core::fmt::Display for LayerNodeIdentifier {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("Layer(node_id={})", self.to_node()))
 	}
 }
 

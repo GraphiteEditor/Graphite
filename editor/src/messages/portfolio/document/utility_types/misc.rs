@@ -1,6 +1,4 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
-use crate::messages::prelude::ArtboardMessageHandler;
-
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::LayerId;
 use graphene_core::raster::color::Color;
@@ -12,7 +10,6 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct DocumentSave {
 	pub document: DocumentLegacy,
-	pub artboard: ArtboardMessageHandler,
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 }
 
@@ -34,12 +31,6 @@ pub enum AlignAggregate {
 	Max,
 	Center,
 	Average,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum TargetDocument {
-	Artboard,
-	Artwork,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]

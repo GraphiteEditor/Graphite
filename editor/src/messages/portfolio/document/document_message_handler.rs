@@ -62,7 +62,6 @@ pub struct DocumentMessageHandler {
 	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
-	pub artboard_message_handler: ArtboardMessageHandler,
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
 	#[serde(skip)]
 	node_graph_handler: NodeGraphMessageHandler,
@@ -95,7 +94,6 @@ impl Default for DocumentMessageHandler {
 
 			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
-			artboard_message_handler: ArtboardMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			node_graph_handler: Default::default(),
 		}
@@ -176,10 +174,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				}
 			}
 			#[remain::unsorted]
-			Artboard(message) => {
-				self.artboard_message_handler.process_message(message, responses, persistent_data);
-			}
-			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.document_bounds(&render_data);
 				self.navigation_handler.process_message(
@@ -197,7 +191,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					document_name: self.name.as_str(),
 					artwork_document: &self.document_legacy,
-					artboard_document: &self.artboard_message_handler.artboards_document,
 					selected_layers: &mut self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice())),
 					node_graph_message_handler: &self.node_graph_handler,
 					executor,
@@ -275,7 +268,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
 			}
-			BackupDocument { document, artboard, layer_metadata } => self.backup_with_document(document, *artboard, layer_metadata, responses),
+			BackupDocument { document, layer_metadata } => self.backup_with_document(document, layer_metadata, responses),
 			ClearLayerTree => {
 				// Send an empty layer tree
 				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
@@ -375,13 +368,13 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				bounds,
 				transparent_background,
 			} => {
-				let old_transforms = self.remove_document_transform();
+				let old_artwork_transform = self.remove_document_transform();
 
 				// Calculate the bounding box of the region to be exported
 				let bounds = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(&render_data),
 					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&render_data),
-					ExportBounds::Artboard(id) => self.artboard_message_handler.artboards_document.layer(&[id]).ok().and_then(|layer| layer.aabb(&render_data)),
+					ExportBounds::Artboard(id) => self.document_legacy.metadata.bounding_box_document(id),
 				}
 				.unwrap_or_default();
 				let size = bounds[1] - bounds[0];
@@ -389,7 +382,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let document = self.render_document(size, transform, transparent_background, persistent_data, DocumentRenderMode::Root);
 
-				self.restore_document_transform(old_transforms);
+				self.restore_document_transform(old_artwork_transform);
 
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
@@ -681,7 +674,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(FrontendMessage::UpdateDocumentArtwork {
 					svg: self.document_legacy.render_root(&render_data),
 				});
-				responses.add(ArtboardMessage::RenderArtboards);
 
 				let document_transform_scale = self.navigation_handler.snapped_scale();
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
@@ -699,7 +691,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_interval * document_transform_scale;
 
-				let ruler_origin = self.document_legacy.root.transform.transform_point2(DVec2::ZERO);
+				let ruler_origin = self.document_legacy.metadata.document_to_viewport.transform_point2(DVec2::ZERO);
 
 				responses.add(FrontendMessage::UpdateDocumentScrollbars {
 					position: scrollbar_position.into(),
@@ -1020,7 +1012,7 @@ impl DocumentMessageHandler {
 
 		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
 		let response = if input_frame_connected_to_graph_output {
-			let old_transforms = self.remove_document_transform();
+			let old_artwork_transform = self.remove_document_transform();
 
 			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
 			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
@@ -1028,7 +1020,7 @@ impl DocumentMessageHandler {
 			// TODO: Test if this would be better to have a transparent background
 			let svg = self.render_document(size, transform.inverse(), false, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
 
-			self.restore_document_transform(old_transforms);
+			self.restore_document_transform(old_artwork_transform);
 
 			// Once JS asynchronously rasterizes the SVG, it will call the `PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer` message with the rasterized image data
 			FrontendMessage::TriggerRasterizeRegionBelowLayer { document_id, layer_path, svg, size }.into()
@@ -1047,25 +1039,18 @@ impl DocumentMessageHandler {
 	}
 
 	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
-	pub(crate) fn remove_document_transform(&mut self) -> [DAffine2; 2] {
-		let old_artwork_transform = self.document_legacy.root.transform;
-		self.document_legacy.root.transform = DAffine2::IDENTITY;
+	pub(crate) fn remove_document_transform(&mut self) -> DAffine2 {
+		let old_artwork_transform = self.document_legacy.metadata.document_to_viewport;
+		self.document_legacy.metadata.document_to_viewport = DAffine2::IDENTITY;
 		DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
 
-		let old_artboard_transform = self.artboard_message_handler.artboards_document.root.transform;
-		self.artboard_message_handler.artboards_document.root.transform = DAffine2::IDENTITY;
-		DocumentLegacy::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_document.root);
-
-		[old_artwork_transform, old_artboard_transform]
+		old_artwork_transform
 	}
 
 	/// Transform the artwork and artboard back to their original scales
-	pub(crate) fn restore_document_transform(&mut self, [old_artwork_transform, old_artboard_transform]: [DAffine2; 2]) {
-		self.document_legacy.root.transform = old_artwork_transform;
+	pub(crate) fn restore_document_transform(&mut self, old_artwork_transform: DAffine2) {
+		self.document_legacy.metadata.document_to_viewport = old_artwork_transform;
 		DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
-
-		self.artboard_message_handler.artboards_document.root.transform = old_artboard_transform;
-		DocumentLegacy::mark_children_as_dirty(&mut self.artboard_message_handler.artboards_document.root);
 	}
 
 	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, transparent_background: bool, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
@@ -1079,13 +1064,10 @@ impl DocumentMessageHandler {
 			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
 		};
 		let artboards = match transparent_background {
-			false => self.artboard_message_handler.artboards_document.render_root(&render_data),
+			false => "<!--artboards-->",
 			true => "".into(),
 		};
-		let outside_artboards_color = outside.map_or_else(
-			|| if self.artboard_message_handler.artboard_ids.is_empty() { "ffffff" } else { "222222" }.to_string(),
-			|col| col.rgba_hex(),
-		);
+		let outside_artboards_color = outside.map_or_else(|| if false { "ffffff" } else { "222222" }.to_string(), |col| col.rgba_hex());
 		let outside_artboards = match transparent_background {
 			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color),
 			true => "".into(),
@@ -1123,11 +1105,11 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler) -> Self {
+	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		let starting_root_transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
-		document.document_legacy.metadata.document_to_viewport = starting_root_transform;
-		document.artboard_message_handler.artboards_document.root.transform = starting_root_transform;
+		let transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		document.document_legacy.metadata.document_to_viewport = transform;
+		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 
 		document
 	}
@@ -1168,10 +1150,6 @@ impl DocumentMessageHandler {
 	pub fn selected_visible_layers_bounding_box(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		let paths = self.selected_visible_layers();
 		self.document_legacy.combined_viewport_bounding_box(paths, render_data)
-	}
-
-	pub fn artboard_bounding_box_and_transform(&self, path: &[LayerId], render_data: &RenderData) -> Option<([DVec2; 2], DAffine2)> {
-		self.artboard_message_handler.artboards_document.bounding_box_and_transform(path, render_data).unwrap_or(None)
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -1216,18 +1194,11 @@ impl DocumentMessageHandler {
 		})
 	}
 
-	/// Returns the bounding boxes for all visible layers and artboards, optionally excluding any paths.
-	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, ignore_artboard: Option<LayerId>, render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+	/// Returns the bounding boxes for all visible layers, optionally excluding any paths.
+	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, _ignore_artboard: Option<LayerId>, render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
 		self.visible_layers()
 			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
 			.filter_map(|path| self.document_legacy.viewport_bounding_box(path, render_data).ok()?)
-			.chain(
-				self.artboard_message_handler
-					.artboard_ids
-					.iter()
-					.filter(move |&&id| Some(id) != ignore_artboard)
-					.filter_map(|&path| self.artboard_message_handler.artboards_document.viewport_bounding_box(&[path], render_data).ok()?),
-			)
 	}
 
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
@@ -1348,9 +1319,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Places a document into the history system
-	fn backup_with_document(&mut self, document: DocumentLegacy, artboard: ArtboardMessageHandler, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
+	fn backup_with_document(&mut self, document: DocumentLegacy, layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back(DocumentSave { document, artboard, layer_metadata });
+		self.document_undo_history.push_back(DocumentSave { document, layer_metadata });
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -1361,14 +1332,13 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup_with_document(self.document_legacy.clone(), self.artboard_message_handler.clone(), self.layer_metadata.clone(), responses);
+		self.backup_with_document(self.document_legacy.clone(), self.layer_metadata.clone(), responses);
 	}
 
 	/// Push a message backing up the document in its current state
 	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::BackupDocument {
 			document: self.document_legacy.clone(),
-			artboard: Box::new(self.artboard_message_handler.clone()),
 			layer_metadata: self.layer_metadata.clone(),
 		});
 	}
@@ -1380,20 +1350,16 @@ impl DocumentMessageHandler {
 	}
 
 	/// Replace the document with a new document save, returning the document save.
-	pub fn replace_document(&mut self, DocumentSave { document, artboard, layer_metadata }: DocumentSave) -> DocumentSave {
+	pub fn replace_document(&mut self, DocumentSave { document, layer_metadata }: DocumentSave) -> DocumentSave {
 		// Keeping the root is required if the bounds of the viewport have changed during the operation
-		let old_root = self.document_legacy.root.transform;
-		let old_artboard_root = self.artboard_message_handler.artboards_document.root.transform;
+		let old_root = self.document_legacy.metadata.document_to_viewport;
 		let document = std::mem::replace(&mut self.document_legacy, document);
-		let artboard = std::mem::replace(&mut self.artboard_message_handler, artboard);
-		self.document_legacy.root.transform = old_root;
-		self.artboard_message_handler.artboards_document.root.transform = old_artboard_root;
+		self.document_legacy.metadata.document_to_viewport = old_root;
 		self.document_legacy.root.cache_dirty = true;
-		self.artboard_message_handler.artboards_document.root.cache_dirty = true;
 
 		let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 
-		DocumentSave { document, artboard, layer_metadata }
+		DocumentSave { document, layer_metadata }
 	}
 
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
@@ -1403,7 +1369,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_undo_history.pop_back() {
-			Some(DocumentSave { document, artboard, layer_metadata }) => {
+			Some(DocumentSave { document, layer_metadata }) => {
 				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
 				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
 				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1412,7 +1378,7 @@ impl DocumentMessageHandler {
 					responses.add(BroadcastEvent::SelectionChanged);
 				}
 
-				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
+				let document_save = self.replace_document(DocumentSave { document, layer_metadata });
 
 				self.document_redo_history.push_back(document_save);
 				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
@@ -1438,7 +1404,7 @@ impl DocumentMessageHandler {
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
 		match self.document_redo_history.pop_back() {
-			Some(DocumentSave { document, artboard, layer_metadata }) => {
+			Some(DocumentSave { document, layer_metadata }) => {
 				// Update currently displayed layer on property panel if selection changes after redo action
 				// Also appropriately update property panel if redo action results in a layer being added
 				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
@@ -1447,7 +1413,7 @@ impl DocumentMessageHandler {
 					responses.add(BroadcastEvent::SelectionChanged);
 				}
 
-				let document_save = self.replace_document(DocumentSave { document, artboard, layer_metadata });
+				let document_save = self.replace_document(DocumentSave { document, layer_metadata });
 				self.document_undo_history.push_back(document_save);
 				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 					self.document_undo_history.pop_front();
@@ -1521,7 +1487,10 @@ impl DocumentMessageHandler {
 
 	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
 		let layer_metadata = self.layer_metadata(path);
-		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.document_legacy.root.transform.inverse())).ok()?;
+		let transform = self
+			.document_legacy
+			.generate_transform_across_scope(path, Some(self.document_legacy.metadata.document_to_viewport.inverse()))
+			.ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;
 
 		Some(LayerPanelEntry::new(layer_metadata, transform, layer, path.to_vec(), render_data))
@@ -1545,11 +1514,7 @@ impl DocumentMessageHandler {
 
 	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
 	pub fn document_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
-		if self.artboard_message_handler.is_infinite_canvas() {
-			self.all_layer_bounds(render_data)
-		} else {
-			self.artboard_message_handler.artboards_document.viewport_bounding_box(&[], render_data).ok().flatten()
-		}
+		self.all_layer_bounds(render_data)
 	}
 
 	/// Calculate the path that new layers should be inserted to.
