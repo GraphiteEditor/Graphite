@@ -609,7 +609,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let image_frame = ImageFrame { image, transform };
+				let image_frame = ImageFrame { image, transform: DAffine2::IDENTITY };
 				let network = new_raster_network(image_frame);
 
 				responses.add(DocumentOperation::AddFrame {

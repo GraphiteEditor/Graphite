@@ -69,12 +69,14 @@ fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<C
 	let data = bytemuck::cast_vec(image.data);
 
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	log::debug!("viewport_bounds: {viewport_bounds:?}");
 	let bbox = Bbox::from_transform(image_frame.transform);
+	log::debug!("local_bounds: {bbox:?}");
 	let bounds = viewport_bounds.intersect(&bbox.to_axis_aligned_bbox());
+	log::debug!("intersection: {bounds:?}");
 	let union = viewport_bounds.union(&bbox.to_axis_aligned_bbox());
+	log::debug!("union: {union:?}");
 	let size = bounds.size();
-
-
 
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
 
@@ -82,12 +84,15 @@ fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<C
 	let nwidth = 0;
 	let nheight = 0;
 	let offset = (bounds.start - viewport_bounds.start).as_uvec2();
-	let cropped = dynamic_image.crop_imm(offset.x , offset.y, size.x as u32, size.y as u32);
+	let cropped = dynamic_image.crop_imm(offset.x, offset.y, size.x as u32, size.y as u32);
 
+	log::debug!("transform: {:?}", footprint.transform);
+	log::debug!("size: {size:?}");
 	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
 	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
+	log::debug!("x: {viewport_resolution_x}, y: {viewport_resolution_y}");
 
-	let resized = dynamic_image.resize_exact(viewport_resolution_x as u32, viewport_resolution_y as u32, image::imageops::Lanczos3);
+	let resized = cropped.resize_exact(viewport_resolution_x as u32, viewport_resolution_y as u32, image::imageops::Lanczos3);
 	let buffer = resized.to_rgba32f();
 	let buffer = buffer.into_raw();
 	let vec = bytemuck::cast_vec(buffer);
