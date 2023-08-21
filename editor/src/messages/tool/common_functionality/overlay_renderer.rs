@@ -3,7 +3,7 @@ use crate::application::generate_uuid;
 use crate::consts::VIEWPORT_GRID_ROUNDING_BIAS;
 use crate::consts::{COLOR_ACCENT, HIDE_HANDLE_DISTANCE, MANIPULATOR_GROUP_MARKER_SIZE, PATH_OUTLINE_WEIGHT};
 use crate::messages::prelude::*;
-use crate::messages::tool::tool_messages::pen_tool::{get_manipulator_groups, get_subpaths};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_groups, get_subpaths};
 
 use bezier_rs::ManipulatorGroup;
 use document_legacy::document::Document;
