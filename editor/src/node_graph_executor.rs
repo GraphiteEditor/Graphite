@@ -485,7 +485,6 @@ impl NodeGraphExecutor {
 						affected_layer_path: execution_context.layer_path,
 					});
 					responses.add(DocumentMessage::RenderDocument);
-					responses.add(ArtboardMessage::RenderArtboards);
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);
 					responses.add(DocumentMessage::DirtyRenderDocument);

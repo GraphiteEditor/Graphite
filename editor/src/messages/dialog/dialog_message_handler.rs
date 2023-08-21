@@ -1,6 +1,7 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::is_artboard;
 
 #[derive(Debug, Default, Clone)]
 pub struct DialogMessageHandler {
@@ -55,23 +56,19 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 			}
 			DialogMessage::RequestExportDialog => {
 				if let Some(document) = portfolio.active_document() {
-					let artboard_handler = &document.artboard_message_handler;
 					let mut index = 0;
-					let artboards = artboard_handler
-						.artboard_ids
-						.iter()
-						.rev()
-						.filter_map(|&artboard| artboard_handler.artboards_document.layer(&[artboard]).ok().map(|layer| (artboard, layer)))
-						.map(|(artboard, layer)| {
+					let artboards = document
+						.document_legacy
+						.metadata
+						.all_layers()
+						.filter(|&layer| is_artboard(layer, &document.document_legacy))
+						.map(|layer| {
 							(
-								artboard,
-								format!(
-									"Artboard: {}",
-									layer.name.clone().unwrap_or_else(|| {
-										index += 1;
-										format!("Untitled {index}")
-									})
-								),
+								layer,
+								format!("Artboard: {}", {
+									index += 1;
+									format!("Untitled {index}")
+								}),
 							)
 						})
 						.collect();

@@ -1,6 +1,5 @@
 use super::utility_types::TransformOp;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
 use crate::messages::prelude::*;
 
 use document_legacy::layers::style::{Fill, Stroke};
@@ -24,7 +23,7 @@ pub enum PropertiesPanelMessage {
 	ModifyStroke { stroke: Stroke },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
-	SetActiveLayers { paths: Vec<Vec<LayerId>>, document: TargetDocument },
+	SetActiveLayers { paths: Vec<Vec<LayerId>> },
 	SetPivot { new_position: PivotPosition },
 	UpdateSelectedDocumentProperties,
 }
