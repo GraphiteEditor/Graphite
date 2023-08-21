@@ -116,7 +116,7 @@ enum GradientToolFsmState {
 
 /// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = document.document_legacy.metadata.bounding_box(layer, DAffine2::IDENTITY).unwrap();
+	let bounds = document.document_legacy.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 	let multiplied = document.document_legacy.metadata.transform_from_viewport(layer);
@@ -529,7 +529,7 @@ impl Fsm for GradientToolFsmState {
 					let selected_layer = document.document_legacy.metadata.click(input.mouse.position);
 
 					// Apply the gradient to the selected layer
-					if let Some((layer, _)) = selected_layer {
+					if let Some(layer) = selected_layer {
 						// let is_bitmap = document
 						// 	.document_legacy
 						// 	.layer(&layer)
