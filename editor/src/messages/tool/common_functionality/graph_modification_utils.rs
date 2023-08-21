@@ -91,6 +91,11 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document: &Document) -> Option<G
 	})
 }
 
+/// Is a specified layer an artboard?
+pub fn is_artboard(layer: LayerNodeIdentifier, document: &Document) -> bool {
+	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Artboard"))
+}
+
 /// Convert subpaths to an iterator of manipulator groups
 pub fn get_manipulator_groups(subpaths: &[Subpath<ManipulatorGroupId>]) -> impl Iterator<Item = &bezier_rs::ManipulatorGroup<ManipulatorGroupId>> + DoubleEndedIterator {
 	subpaths.iter().flat_map(|subpath| subpath.manipulator_groups())
@@ -145,14 +150,14 @@ impl<'a> NodeGraphLayer<'a> {
 		self.node_graph.primary_flow_from_opt(Some(self.layer_node))
 	}
 
+	/// Does a node exist in the layer's primary flow
+	pub fn uses_node(&self, node_name: &str) -> bool {
+		self.primary_layer_flow().any(|(node, _id)| node.name == node_name)
+	}
+
 	/// Find all of the inputs of a specific node within the layer's primary flow
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
-		for (node, _id) in self.primary_layer_flow() {
-			if node.name == node_name {
-				return Some(&node.inputs);
-			}
-		}
-		None
+		self.primary_layer_flow().find(|(node, _id)| node.name == node_name).map(|(node, _id)| &node.inputs)
 	}
 
 	/// Find a specific input of a node within the layer's primary flow

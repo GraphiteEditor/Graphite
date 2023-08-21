@@ -378,37 +378,42 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn delete_layer(&mut self, id: NodeId) {
-		if !self.network.nodes.contains_key(&id) {
+		let Some(node) = self.network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
-		}
+		};
 
-		let mut new_input = None;
-		let post_node = self.outwards_links.get(&id).and_then(|links| links.first().copied());
-		let mut delete_nodes = vec![id];
-		let mut is_artboard = false;
-		for (node, id) in self.network.primary_flow_from_opt(Some(id)) {
-			delete_nodes.push(id);
-			if node.name == "Artboard" {
-				new_input = Some(node.inputs[0].clone());
-				is_artboard = true;
-				break;
+		LayerNodeIdentifier::new(id, self.network).delete(self.document_metadata);
+
+		let new_input = node.inputs[7].clone();
+
+		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
+			let Some(node) = self.network.nodes.get_mut(post_node) else {
+				continue;
+			};
+
+			for input in &mut node.inputs {
+				if let NodeInput::Node { node_id, .. } = input {
+					if *node_id == id {
+						*input = new_input.clone();
+					}
+				}
 			}
 		}
-		if !is_artboard {
-			LayerNodeIdentifier::new(id, self.network).delete(self.document_metadata);
+
+		let mut delete_nodes = vec![id];
+		for (_node, id) in self.network.primary_flow_from_opt(Some(id)) {
+			if self.outwards_links.get(&id).is_some_and(|outwards| outwards.len() == 1) {
+				delete_nodes.push(id);
+			}
 		}
-		self.responses.add(DocumentMessage::DocumentStructureChanged);
 
 		for node_id in delete_nodes {
 			self.network.nodes.remove(&node_id);
 		}
 
-		if let (Some(new_input), Some(post_node)) = (new_input, post_node) {
-			if let Some(node) = self.network.nodes.get_mut(&post_node) {
-				node.inputs[0] = new_input;
-			}
-		}
+		self.responses.add(DocumentMessage::DocumentStructureChanged);
+		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 }
 

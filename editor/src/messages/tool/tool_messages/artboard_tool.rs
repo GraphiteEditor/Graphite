@@ -1,12 +1,10 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::SELECTION_TOLERANCE;
-use crate::messages::portfolio::document::utility_types::misc::TargetDocument;
+use crate::messages::tool::common_functionality::graph_modification_utils::is_artboard;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use document_legacy::intersection::Quad;
-use document_legacy::LayerId;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 
 use document_legacy::layers::RenderData;
 use glam::{IVec2, Vec2Swizzles};
@@ -96,7 +94,7 @@ enum ArtboardToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct ArtboardToolData {
 	bounding_box_overlays: Option<BoundingBoxOverlays>,
-	selected_artboard: Option<LayerId>,
+	selected_artboard: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	drag_start: DVec2,
@@ -104,15 +102,15 @@ struct ArtboardToolData {
 }
 
 impl ArtboardToolData {
-	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
-		let current_artboard = self.selected_artboard.and_then(|path| document.artboard_bounding_box_and_transform(&[path], render_data));
+	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let current_artboard = self.selected_artboard.and_then(|layer| document.document_legacy.metadata.bounding_box_document(layer));
 		match (current_artboard, self.bounding_box_overlays.take()) {
 			(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
-			(Some((bounds, transform)), paths) => {
+			(Some(bounds), paths) => {
 				let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
 
 				bounding_box_overlays.bounds = bounds;
-				bounding_box_overlays.transform = transform;
+				bounding_box_overlays.transform = document.document_legacy.metadata.document_to_viewport;
 
 				bounding_box_overlays.transform(responses);
 
@@ -130,6 +128,7 @@ impl ArtboardToolData {
 		let (top, bottom, left, right) = edges;
 		let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
 		bounding_box.opposite_pivot = selected_edges.calculate_pivot();
+		bounding_box.selected_edges = Some(selected_edges);
 
 		Some(edges)
 	}
@@ -140,29 +139,29 @@ impl ArtboardToolData {
 
 		let artboard = self.selected_artboard.unwrap();
 		self.snap_manager
-			.start_snap(document, input, document.bounding_boxes(None, Some(artboard), render_data), snap_x, snap_y);
+			.start_snap(document, input, document.bounding_boxes(None, Some(artboard.to_node()), render_data), snap_x, snap_y);
 		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 		if let Some(bounds) = &mut self.bounding_box_overlays {
-			let pivot = document.artboard_message_handler.artboards_document.pivot(&[artboard], render_data).unwrap_or_default();
-			let root = document.document_legacy.metadata.document_to_viewport;
-			let pivot = root.inverse().transform_point2(pivot);
-			bounds.center_of_transformation = pivot;
+			bounds.center_of_transformation = (bounds.bounds[0] + bounds.bounds[1]) / 2.;
 		}
 	}
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		responses.add(DocumentMessage::StartTransaction);
-		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-		let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-		let intersection = document.artboard_message_handler.artboards_document.intersects_quad_root(quad, render_data);
+
+		let mut intersections = document
+			.document_legacy
+			.metadata
+			.click_xray(input.mouse.position)
+			.filter(|&layer| is_artboard(layer, &document.document_legacy));
 
 		responses.add(BroadcastEvent::DocumentIsDirty);
-		if let Some(intersection) = intersection.last() {
-			self.selected_artboard = Some(intersection[0]);
+		if let Some(intersection) = intersections.next() {
+			self.selected_artboard = Some(intersection);
 
 			self.snap_manager
-				.start_snap(document, input, document.bounding_boxes(None, Some(intersection[0]), render_data), true, true);
+				.start_snap(document, input, document.bounding_boxes(None, Some(intersection.to_node()), render_data), true, true);
 			self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 			true
@@ -186,13 +185,8 @@ impl ArtboardToolData {
 		let snapped_mouse_position: DVec2 = self.snap_manager.snap_position(responses, document, mouse_position);
 
 		let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.center_of_transformation, constrain_square);
-		responses.add(ArtboardMessage::ResizeArtboard {
-			artboard: self.selected_artboard.unwrap(),
-			position: position.round().into(),
-			size: size.round().into(),
-		});
 		responses.add(GraphOperationMessage::ResizeArtboard {
-			id: self.selected_artboard.unwrap(),
+			id: self.selected_artboard.unwrap().to_node(),
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
@@ -214,7 +208,7 @@ impl Fsm for ArtboardToolFsmState {
 
 		match (self, event) {
 			(state, ArtboardToolMessage::DocumentIsDirty) if state != ArtboardToolFsmState::Drawing => {
-				tool_data.refresh_overlays(document, render_data, responses);
+				tool_data.refresh_overlays(document, responses);
 
 				self
 			}
@@ -255,13 +249,8 @@ impl Fsm for ArtboardToolFsmState {
 
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current + closest_move);
 
-					responses.add(ArtboardMessage::ResizeArtboard {
-						artboard: tool_data.selected_artboard.unwrap(),
-						position: position.round().into(),
-						size: size.round().into(),
-					});
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap(),
+						id: tool_data.selected_artboard.unwrap().to_node(),
 						location: position.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
@@ -294,28 +283,18 @@ impl Fsm for ArtboardToolFsmState {
 				let size = root_transform.transform_vector2(size);
 
 				if let Some(artboard) = tool_data.selected_artboard {
-					responses.add(ArtboardMessage::ResizeArtboard {
-						artboard,
-						position: start.round().into(),
-						size: size.round().into(),
-					});
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap(),
+						id: artboard.to_node(),
 						location: start.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
 				} else {
 					let id = generate_uuid();
-					tool_data.selected_artboard = Some(id);
+					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, Some(id), render_data), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					responses.add(ArtboardMessage::AddArtboard {
-						id: Some(id),
-						position: start.round().into(),
-						size: (1., 1.),
-					});
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						artboard: graphene_core::Artboard {
@@ -376,8 +355,8 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				if let Some(artboard) = tool_data.selected_artboard.take() {
-					responses.add(ArtboardMessage::DeleteArtboard { artboard });
-					responses.add(GraphOperationMessage::DeleteLayer { id: artboard });
+					let id = artboard.to_node();
+					responses.add(GraphOperationMessage::DeleteLayer { id });
 
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
@@ -385,13 +364,8 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
-					responses.add(ArtboardMessage::ResizeArtboard {
-						artboard: tool_data.selected_artboard.unwrap(),
-						position: (bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y),
-						size: (bounds.bounds[1] - bounds.bounds[0]).round().into(),
-					});
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap(),
+						id: tool_data.selected_artboard.unwrap().to_node(),
 						location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
 						dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 					});
@@ -407,7 +381,6 @@ impl Fsm for ArtboardToolFsmState {
 				// Register properties when switching back to other tools
 				responses.add(PropertiesPanelMessage::SetActiveLayers {
 					paths: document.selected_layers().map(|path| path.to_vec()).collect(),
-					document: TargetDocument::Artwork,
 				});
 
 				tool_data.snap_manager.cleanup(responses);
