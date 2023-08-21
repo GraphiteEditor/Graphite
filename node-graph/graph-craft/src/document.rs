@@ -239,6 +239,13 @@ impl NodeInput {
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 		}
 	}
+	pub fn as_value(&self) -> Option<&TaggedValue> {
+		if let NodeInput::Value { tagged_value, .. } = self {
+			Some(tagged_value)
+		} else {
+			None
+		}
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]

@@ -1,11 +1,10 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
+use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::Layer;
-use document_legacy::layers::layer_layer::CachedOutputData;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::{Fill, Gradient, GradientType, PathStyle, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
@@ -115,12 +114,12 @@ enum GradientToolFsmState {
 	Drawing,
 }
 
-/// Computes the transform from gradient space to layer space (where gradient space is 0..1 in layer space)
-fn gradient_space_transform(path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, render_data: &RenderData) -> DAffine2 {
-	let bounds = layer.aabb_for_transform(DAffine2::IDENTITY, render_data).unwrap();
+/// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
+fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
+	let bounds = document.document_legacy.metadata.bounding_box(layer, DAffine2::IDENTITY).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let multiplied = document.document_legacy.multiply_transforms(path).unwrap();
+	let multiplied = document.document_legacy.metadata.transform_from_viewport(layer);
 
 	multiplied * bound_transform
 }
@@ -131,7 +130,7 @@ pub struct GradientOverlay {
 	pub handles: [Vec<LayerId>; 2],
 	pub line: Vec<LayerId>,
 	pub steps: Vec<Vec<LayerId>>,
-	path: Vec<LayerId>,
+	layer: LayerNodeIdentifier,
 	transform: DAffine2,
 	gradient: Gradient,
 }
@@ -174,17 +173,9 @@ impl GradientOverlay {
 		path
 	}
 
-	pub fn new(
-		fill: &Gradient,
-		dragging: Option<GradientDragTarget>,
-		path: &[LayerId],
-		layer: &Layer,
-		document: &DocumentMessageHandler,
-		responses: &mut VecDeque<Message>,
-		render_data: &RenderData,
-	) -> Self {
-		let transform = gradient_space_transform(path, layer, document, render_data);
-		let Gradient { start, end, positions, .. } = fill;
+	pub fn new(gradient: Gradient, dragging: Option<GradientDragTarget>, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Self {
+		let transform = gradient_space_transform(layer, document);
+		let Gradient { start, end, positions, .. } = &gradient;
 		let [start, end] = [transform.transform_point2(*start), transform.transform_point2(*end)];
 
 		let line = Self::generate_overlay_line(start, end, responses);
@@ -197,14 +188,11 @@ impl GradientOverlay {
 		let create_step = |(index, pos)| Self::generate_overlay_handle(start.lerp(end, pos), responses, dragging == Some(GradientDragTarget::Step(index)));
 		let steps = positions.iter().map(|(pos, _)| *pos).enumerate().filter(not_at_end).map(create_step).collect();
 
-		let path = path.to_vec();
-		let gradient = fill.clone();
-
 		Self {
 			handles,
 			steps,
 			line,
-			path,
+			layer,
 			transform,
 			gradient,
 		}
@@ -240,17 +228,17 @@ pub enum GradientDragTarget {
 /// Contains information about the selected gradient handle
 #[derive(Clone, Debug, Default)]
 struct SelectedGradient {
-	path: Vec<LayerId>,
+	layer: LayerNodeIdentifier,
 	transform: DAffine2,
 	gradient: Gradient,
 	dragging: GradientDragTarget,
 }
 
 impl SelectedGradient {
-	pub fn new(gradient: Gradient, path: &[LayerId], layer: &Layer, document: &DocumentMessageHandler, render_data: &RenderData) -> Self {
-		let transform = gradient_space_transform(path, layer, document, render_data);
+	pub fn new(gradient: Gradient, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
+		let transform = gradient_space_transform(layer, document);
 		Self {
-			path: path.to_vec(),
+			layer,
 			transform,
 			gradient,
 			dragging: GradientDragTarget::End,
@@ -258,23 +246,23 @@ impl SelectedGradient {
 	}
 
 	/// Update the selected gradient, checking for removal or change of gradient.
-	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
+	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(inner_gradient) = gradient else {
 			return;
 		};
 
 		// Clear the gradient if layer deleted
-		let Ok(layer) = document.document_legacy.layer(&inner_gradient.path) else {
+		if !inner_gradient.layer.exists(&document.document_legacy.metadata) {
 			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;
 		};
 
 		// Update transform
-		inner_gradient.transform = gradient_space_transform(&inner_gradient.path, layer, document, render_data);
+		inner_gradient.transform = gradient_space_transform(inner_gradient.layer, document);
 
 		// Clear if no longer a gradient
-		let Some(gradient) = layer.style().ok().and_then(|style| style.fill().as_gradient()) else {
+		let Some(gradient) = get_gradient(inner_gradient.layer, &document.document_legacy) else {
 			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;
@@ -340,7 +328,7 @@ impl SelectedGradient {
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
 		let fill = Fill::Gradient(self.gradient.clone());
-		let layer = self.path.clone();
+		let layer = self.layer.to_path();
 		responses.add(GraphOperationMessage::FillSet { layer, fill });
 	}
 }
@@ -400,20 +388,16 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				if self != GradientToolFsmState::Drawing {
-					SelectedGradient::update(&mut tool_data.selected_gradient, document, render_data, responses);
+					SelectedGradient::update(&mut tool_data.selected_gradient, document, responses);
 				}
 
-				for path in document.selected_visible_layers() {
-					let layer = document.document_legacy.layer(path).unwrap();
-
-					if let Ok(Fill::Gradient(gradient)) = layer.style().map(|style| style.fill()) {
+				for layer in document.document_legacy.metadata.selected_visible_layers() {
+					if let Some(gradient) = get_gradient(layer, &document.document_legacy) {
 						let dragging = tool_data
 							.selected_gradient
 							.as_ref()
-							.and_then(|selected| if selected.path == path { Some(selected.dragging) } else { None });
-						tool_data
-							.gradient_overlays
-							.push(GradientOverlay::new(gradient, dragging, path, layer, document, responses, render_data))
+							.and_then(|selected| if selected.layer == layer { Some(selected.dragging) } else { None });
+						tool_data.gradient_overlays.push(GradientOverlay::new(gradient, dragging, layer, document, responses))
 					}
 				}
 
@@ -439,7 +423,7 @@ impl Fsm for GradientToolFsmState {
 				// The gradient has only one point and so should become a fill
 				if selected_gradient.gradient.positions.len() == 1 {
 					let fill = Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK));
-					let layer = selected_gradient.path.clone();
+					let layer = selected_gradient.layer.to_path();
 					responses.add(GraphOperationMessage::FillSet { layer, fill });
 					return self;
 				}
@@ -481,18 +465,15 @@ impl Fsm for GradientToolFsmState {
 						if let Some(index) = gradient.insert_stop(mouse, overlay.transform) {
 							document.backup_nonmut(responses);
 
-							let layer = document.document_legacy.layer(&overlay.path);
-							if let Ok(layer) = layer {
-								let mut selected_gradient = SelectedGradient::new(gradient, &overlay.path, layer, document, render_data);
+							let mut selected_gradient = SelectedGradient::new(gradient, overlay.layer, document);
 
-								// Select the new point
-								selected_gradient.dragging = GradientDragTarget::Step(index);
+							// Select the new point
+							selected_gradient.dragging = GradientDragTarget::Step(index);
 
-								// Update the layer fill
-								selected_gradient.render_gradient(responses);
+							// Update the layer fill
+							selected_gradient.render_gradient(responses);
 
-								tool_data.selected_gradient = Some(selected_gradient);
-							}
+							tool_data.selected_gradient = Some(selected_gradient);
 
 							break;
 						}
@@ -516,7 +497,7 @@ impl Fsm for GradientToolFsmState {
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
 							tool_data.selected_gradient = Some(SelectedGradient {
-								path: overlay.path.clone(),
+								layer: overlay.layer.clone(),
 								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging: GradientDragTarget::Step(index),
@@ -533,7 +514,7 @@ impl Fsm for GradientToolFsmState {
 							dragging = true;
 							start_snap(&mut tool_data.snap_manager, document, input, render_data);
 							tool_data.selected_gradient = Some(SelectedGradient {
-								path: overlay.path.clone(),
+								layer: overlay.layer.clone(),
 								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging: dragging_target,
@@ -545,34 +526,30 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-					let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-					let intersection = document.document_legacy.intersects_quad_root(quad, render_data).pop();
+					let selected_layer = document.document_legacy.metadata.click(input.mouse.position);
 
-					// the intersection is the layer where the gradient is being applied
-					if let Some(intersection) = intersection {
-						let is_bitmap = document
-							.document_legacy
-							.layer(&intersection)
-							.ok()
-							.and_then(|layer| layer.as_layer().ok())
-							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
-						if is_bitmap {
-							return self;
-						}
+					// Apply the gradient to the selected layer
+					if let Some((layer, _)) = selected_layer {
+						// let is_bitmap = document
+						// 	.document_legacy
+						// 	.layer(&layer)
+						// 	.ok()
+						// 	.and_then(|layer| layer.as_layer().ok())
+						// 	.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+						// if is_bitmap {
+						// 	return self;
+						// }
 
-						if !document.selected_layers_contains(&intersection) {
-							let replacement_selected_layers = vec![intersection.clone()];
+						if !document.document_legacy.metadata.selected_layers_contains(layer) {
+							let replacement_selected_layers = vec![layer.to_path()];
 
 							responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
 						}
 
-						let layer = document.document_legacy.layer(&intersection).unwrap();
-
 						responses.add(DocumentMessage::StartTransaction);
 
 						// Use the already existing gradient if it exists
-						let gradient = if let Some(gradient) = layer.style().ok().map(|style| style.fill()).and_then(|fill| fill.as_gradient()) {
+						let gradient = if let Some(gradient) = get_gradient(layer, &document.document_legacy) {
 							gradient.clone()
 						} else {
 							// Generate a new gradient
@@ -586,7 +563,7 @@ impl Fsm for GradientToolFsmState {
 								tool_options.gradient_type,
 							)
 						};
-						let selected_gradient = SelectedGradient::new(gradient, &intersection, layer, document, render_data).with_gradient_start(input.mouse.position);
+						let selected_gradient = SelectedGradient::new(gradient, layer, document).with_gradient_start(input.mouse.position);
 
 						tool_data.selected_gradient = Some(selected_gradient);
 
