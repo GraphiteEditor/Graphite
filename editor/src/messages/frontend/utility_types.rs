@@ -1,3 +1,4 @@
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
 use serde::{Deserialize, Serialize};
 
@@ -63,5 +64,5 @@ pub enum ExportBounds {
 	#[default]
 	AllArtwork,
 	Selection,
-	Artboard(LayerId),
+	Artboard(LayerNodeIdentifier),
 }
