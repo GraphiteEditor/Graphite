@@ -76,10 +76,10 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				padding_scale_factor,
 				prevent_zoom_past_100,
 			} => {
-				let pos1 = document.root.transform.inverse().transform_point2(bounds_corner_a);
-				let pos2 = document.root.transform.inverse().transform_point2(bounds_corner_b);
-				let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
-				let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_bounds.size());
+				let pos1 = document.metadata.document_to_viewport.inverse().transform_point2(bounds_corner_a);
+				let pos2 = document.metadata.document_to_viewport.inverse().transform_point2(bounds_corner_b);
+				let v1 = document.metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
+				let v2 = document.metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
 				let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
 				let size = (pos2 - pos1) / (v2 - v1);
@@ -221,7 +221,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.zooming = false;
 			}
 			TranslateCanvas { delta } => {
-				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
+				let transformed_delta = document.metadata.document_to_viewport.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
@@ -239,7 +239,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.mouse_position = ipp.mouse.position;
 			}
 			TranslateCanvasByViewportFraction { delta } => {
-				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+				let transformed_delta = document.metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);
