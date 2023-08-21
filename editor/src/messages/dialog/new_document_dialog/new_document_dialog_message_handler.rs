@@ -26,11 +26,6 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				if !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0 {
 					let id = generate_uuid();
-					responses.add(ArtboardMessage::AddArtboard {
-						id: Some(id),
-						position: (0., 0.),
-						size: (self.dimensions.x as f64, self.dimensions.y as f64),
-					});
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),

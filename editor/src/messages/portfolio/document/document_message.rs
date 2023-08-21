@@ -23,9 +23,6 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	#[remain::unsorted]
 	#[child]
-	Artboard(ArtboardMessage),
-	#[remain::unsorted]
-	#[child]
 	Navigation(NavigationMessage),
 	#[remain::unsorted]
 	#[child]
@@ -51,7 +48,6 @@ pub enum DocumentMessage {
 	},
 	BackupDocument {
 		document: DocumentLegacy,
-		artboard: Box<ArtboardMessageHandler>,
 		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
 	ClearLayerTree,

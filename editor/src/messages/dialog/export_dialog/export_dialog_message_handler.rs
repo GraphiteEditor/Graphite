@@ -2,7 +2,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-use document_legacy::LayerId;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 
 /// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]
@@ -12,7 +12,7 @@ pub struct ExportDialogMessageHandler {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
-	pub artboards: HashMap<LayerId, String>,
+	pub artboards: HashMap<LayerNodeIdentifier, String>,
 	pub has_selection: bool,
 }
 
@@ -61,7 +61,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			RadioInput::new(entries).selected_index(self.file_type as u32).widget_holder(),
 		];
 
-		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string(), false));
+		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false));
 		let mut export_area_options = vec![
 			(ExportBounds::AllArtwork, "All Artwork".to_string(), false),
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),

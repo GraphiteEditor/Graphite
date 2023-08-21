@@ -294,7 +294,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
-				let new_document = DocumentMessageHandler::with_name(name, ipp);
+				let new_document = DocumentMessageHandler::with_name(name, ipp, responses);
 				let document_id = generate_uuid();
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
