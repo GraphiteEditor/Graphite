@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
 
       - name: 🗑 Clear wasm-bindgen cache
         run: rm -r ~/.cache/.wasm-pack
