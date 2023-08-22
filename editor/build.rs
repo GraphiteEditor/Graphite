@@ -17,6 +17,6 @@ fn main() {
 	// They are accessed with the `env!("...")` macro in the codebase.
 	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_DATE={}", git_command(&["log", "-1", "--format=%cd"]));
 	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_HASH={}", git_command(&["rev-parse", "HEAD"]));
-	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={}", git_command(&["rev-parse", "--abbrev-ref", "HEAD"]));
+	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={}", git_command(&["name-rev", "--name-only", "HEAD"]));
 	println!("cargo:rustc-env=GRAPHITE_RELEASE_SERIES={}", GRAPHITE_RELEASE_SERIES);
 }
