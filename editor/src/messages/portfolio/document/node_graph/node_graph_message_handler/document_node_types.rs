@@ -2233,7 +2233,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "ColorFillNode".to_string(),
 						// NodeInput::node(1, 0)
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::Network(concrete!(Color))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::adjustments::ColorFillNode<_>")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::adjustments::ColorFillNode<_>")),
 						..Default::default()
 					},
 				]
