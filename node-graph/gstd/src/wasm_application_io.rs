@@ -305,7 +305,8 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 	match output_format {
 		ExportFormat::Svg => {
 			data.render_svg(&mut render, &render_params);
-			render.format_svg((0., 0.).into(), (1., 1.).into());
+			// TODO: reenable once we switch to full node graph
+			//render.format_svg((0., 0.).into(), (1., 1.).into());
 			RenderOutput::Svg(render.svg.to_string())
 		}
 		_ => todo!("Non svg render output"),

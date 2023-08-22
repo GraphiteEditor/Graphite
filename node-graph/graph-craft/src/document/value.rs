@@ -5,6 +5,7 @@ use crate::proto::{Any as DAny, FutureAny};
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::vector::VectorData;
 use graphene_core::{Color, Node, Type};
 
 use dyn_any::DynAny;
@@ -354,4 +355,3 @@ pub enum RenderOutput {
 	Svg(String),
 	Raster(Vec<u8>),
 }
-

@@ -535,7 +535,9 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
-				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				log::debug!("svg: {svg}");
+				responses.add(Operation::SetSvg { path: layer_path, svg });
+				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				//return Err("Graphic group (see console)".to_string());
 			}
