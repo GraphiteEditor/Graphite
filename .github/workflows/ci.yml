@@ -29,6 +29,9 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
+      - name: Check git branch
+        run: git branch && git checkout ${{ github.ref_name }} && git branch
+
       - name: 🗑 Clear wasm-bindgen cache
         run: rm -r ~/.cache/.wasm-pack
 
