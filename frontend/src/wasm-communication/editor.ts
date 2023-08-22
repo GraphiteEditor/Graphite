@@ -101,6 +101,9 @@ export function createEditor() {
 			const filename = url.pathname.split("/").pop() || "Untitled";
 			const content = await data.text();
 			instance.openDocumentFile(filename, content);
+
+			// Remove the hash fragment from the URL
+			window.location.hash = "";
 		} catch {}
 	})();
 

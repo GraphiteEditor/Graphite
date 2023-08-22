@@ -100,7 +100,7 @@ js = ["/image-interaction.js", "/fundraising.js"]
 		</div>
 		<div class="screenshot-description">
 			<p class="active" data-carousel-description>
-				<em>Valley of Spires</em> — <a href="https://static.graphite.rs/graphite-files/valley-of-spires.graphite">Download</a> the artwork and open it in <a href="https://79dda0fc.graphite.pages.dev/">this previous version</a> of the Graphite editor.
+				<em>Valley of Spires</em> — <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
 			</p>
 			<p data-carousel-description>
 				Design mockup for the work-in-progress node graph raster editing pipeline. Some raster nodes shown here are not implemented yet.
@@ -264,17 +264,17 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
 	</video>
 </div>
-<div class="download-artwork">
-	<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.png" alt="Vector art of Just of Potted Cactus" />
+<div class="demo-artwork">
+	<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">
+		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.png" alt="Vector art of Just of Potted Cactus" />
+	</a>
 	<p>
 		<span class="balance-text">
 			<em>Just a Potted Cactus</em>
 		</span>
 		<br />
 		<span class="balance-text">
-			<a href="https://static.graphite.rs/graphite-files/just-a-potted-cactus.graphite">Download</a>
-			the artwork and open it in the
-			<a href="https://editor.graphite.rs">Graphite editor</a>
+			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to explore it yourself.
 		</span>
 	</p>
 </div>
