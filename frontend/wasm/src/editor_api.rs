@@ -308,9 +308,15 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = documentOpen)]
-	pub fn document_open(&self) {
+	#[wasm_bindgen(js_name = openDocument)]
+	pub fn open_document(&self) {
 		let message = PortfolioMessage::OpenDocument;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = demoArtworkDialog)]
+	pub fn demo_artwork_dialog(&self) {
+		let message = DialogMessage::RequestDemoArtworkDialog;
 		self.dispatch(message);
 	}
 

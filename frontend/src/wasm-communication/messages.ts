@@ -513,6 +513,10 @@ export class TriggerLoadAutoSaveDocuments extends JsMessage { }
 
 export class TriggerLoadPreferences extends JsMessage { }
 
+export class TriggerFetchAndOpenDocument extends JsMessage {
+	readonly url!: string;
+}
+
 export class TriggerOpenDocument extends JsMessage { }
 
 export class TriggerImport extends JsMessage { }
@@ -874,6 +878,19 @@ export class IconLabel extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
+export class ImageLabel extends WidgetProps {
+	image!: IconName;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	width!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	height!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
 export class LayerReferenceInput extends WidgetProps {
 	@Transform(({ value }: { value: BigUint64Array | undefined }) => (value ? String(value) : undefined))
 	value!: string | undefined;
@@ -1120,6 +1137,7 @@ const widgetSubTypes = [
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: IconLabel, name: "IconLabel" },
+	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: LayerReferenceInput, name: "LayerReferenceInput" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: OptionalInput, name: "OptionalInput" },
@@ -1367,6 +1385,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
+	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,

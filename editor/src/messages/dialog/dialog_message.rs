@@ -33,6 +33,7 @@ pub enum DialogMessage {
 	RequestComingSoonDialog {
 		issue: Option<i32>,
 	},
+	RequestDemoArtworkDialog,
 	RequestExportDialog,
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,

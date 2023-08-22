@@ -89,6 +89,21 @@ export function createEditor() {
 	// Subscriptions: Allows subscribing to messages in JS that are sent from the WASM backend
 	const subscriptions: SubscriptionRouter = createSubscriptionRouter();
 
+	// Check if the URL hash fragment has any demo artwork to be loaded
+	(async () => {
+		const demoArtwork = window.location.hash.trim().match(/#demo\/(.*)/)?.[1];
+		if (!demoArtwork) return;
+
+		try {
+			const url = new URL(`https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/${demoArtwork}.graphite`);
+			const data = await fetch(url);
+			
+			const filename = url.pathname.split("/").pop() || "Untitled";
+			const content = await data.text();
+			instance.openDocumentFile(filename, content);
+		} catch {}
+	})();
+
 	return {
 		raw,
 		instance,

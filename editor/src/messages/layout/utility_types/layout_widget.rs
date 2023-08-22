@@ -288,6 +288,7 @@ impl LayoutGroup {
 				Widget::FontInput(x) => &mut x.tooltip,
 				Widget::IconButton(x) => &mut x.tooltip,
 				Widget::IconLabel(x) => &mut x.tooltip,
+				Widget::ImageLabel(x) => &mut x.tooltip,
 				Widget::LayerReferenceInput(x) => &mut x.tooltip,
 				Widget::NumberInput(x) => &mut x.tooltip,
 				Widget::OptionalInput(x) => &mut x.tooltip,
@@ -438,6 +439,7 @@ pub enum Widget {
 	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
+	ImageLabel(ImageLabel),
 	InvisibleStandinInput(InvisibleStandinInput),
 	LayerReferenceInput(LayerReferenceInput),
 	NumberInput(NumberInput),
@@ -516,6 +518,7 @@ impl DiffUpdate {
 				Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconLabel(_)
+				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
 				| Widget::PivotAssist(_)

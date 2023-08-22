@@ -24,6 +24,7 @@
 	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import { getContext } from "svelte";
@@ -119,6 +120,10 @@
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
 			<IconLabel {...exclude(iconLabel)} />
+		{/if}
+		{@const imageLabel = narrowWidgetProps(component.props, "ImageLabel")}
+		{#if imageLabel}
+			<ImageLabel {...exclude(imageLabel)} />
 		{/if}
 		{@const layerReferenceInput = narrowWidgetProps(component.props, "LayerReferenceInput")}
 		{#if layerReferenceInput}

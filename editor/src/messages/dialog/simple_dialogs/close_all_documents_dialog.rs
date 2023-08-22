@@ -8,6 +8,7 @@ impl LayoutHolder for CloseAllDocumentsDialog {
 	fn layout(&self) -> Layout {
 		let discard = TextButton::new("Discard All")
 			.min_width(96)
+			.emphasized(true)
 			.on_update(|_| {
 				DialogMessage::CloseDialogAndThen {
 					followups: vec![PortfolioMessage::CloseAllDocuments.into()],

@@ -555,7 +555,8 @@ mod test {
 			println!("-------------------------------------------------");
 			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file.");
 			println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-			println!("After bumping this version number, replace `graphite-test-document.graphite` with a valid file by saving a document from the editor.");
+			println!("After bumping this version number, update the documents in `/demo-artwork` by editing their JSON to");
+			println!("ensure they remain compatible with both the bumped version number and the serialization format change.");
 			println!("DisplayDialogError details:");
 			println!();
 			println!("Description: {}", value);
@@ -567,19 +568,25 @@ mod test {
 		init_logger();
 		let mut editor = Editor::create();
 
-		let test_file = include_str!("../graphite-test-document.graphite");
-		let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
-			document_name: "Graphite Version Test".into(),
-			document_serialized_content: test_file.into(),
-		});
+		let test_files = [
+			("Just a Potted Cactus", include_str!("../../demo-artwork/just-a-potted-cactus.graphite")),
+			("Valley of Spires", include_str!("../../demo-artwork/valley-of-spires.graphite")),
+		];
 
-		for response in responses {
-			// Check for the existence of the file format incompatibility warning dialog after opening the test file
-			if let FrontendMessage::UpdateDialogDetails { layout_target: _, diff } = response {
-				if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
-					if let LayoutGroup::Row { widgets } = &sub_layout[0] {
-						if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
-							print_problem_to_terminal_on_failure(value);
+		for (document_name, document_serialized_content) in test_files {
+			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+				document_name: document_name.into(),
+				document_serialized_content: document_serialized_content.into(),
+			});
+
+			for response in responses {
+				// Check for the existence of the file format incompatibility warning dialog after opening the test file
+				if let FrontendMessage::UpdateDialogDetails { layout_target: _, diff } = response {
+					if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
+						if let LayoutGroup::Row { widgets } = &sub_layout[0] {
+							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+								print_problem_to_terminal_on_failure(value);
+							}
 						}
 					}
 				}

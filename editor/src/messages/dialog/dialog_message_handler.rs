@@ -1,7 +1,8 @@
-use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog};
+use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
+/// Stores the dialogs which require state. These are the ones that have their own message handlers, and are not the ones defined in `simple_dialogs`.
 #[derive(Debug, Default, Clone)]
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
@@ -52,6 +53,11 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 				let coming_soon = ComingSoonDialog { issue };
 				coming_soon.send_layout(responses, LayoutTarget::DialogDetails);
 				responses.add(FrontendMessage::DisplayDialog { icon: "Warning".to_string() });
+			}
+			DialogMessage::RequestDemoArtworkDialog => {
+				let demo_artwork_dialog = DemoArtworkDialog;
+				demo_artwork_dialog.send_layout(responses, LayoutTarget::DialogDetails);
+				responses.add(FrontendMessage::DisplayDialog { icon: "Image".to_string() });
 			}
 			DialogMessage::RequestExportDialog => {
 				if let Some(document) = portfolio.active_document() {

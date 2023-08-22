@@ -84,6 +84,10 @@
 				height: auto;
 			}
 
+			.image-label {
+				border-radius: 2px;
+			}
+
 			.panic-buttons-row {
 				height: 32px;
 				align-items: center;

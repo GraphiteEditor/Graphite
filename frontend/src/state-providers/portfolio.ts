@@ -8,10 +8,10 @@ import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
 	TriggerCopyToClipboardBlobUrl,
+	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
-	TriggerImaginateCheckServerStatus,
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterizeRegionBelowLayer,
@@ -44,6 +44,19 @@ export function createPortfolioState(editor: Editor) {
 			state.activeDocumentIndex = activeId;
 			return state;
 		})
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
+		try {
+			const url = new URL(triggerFetchAndOpenDocument.url);
+			const data = await fetch(url);
+
+			const filename = url.pathname.split("/").pop() || "Untitled";
+			const content = await data.text();
+			
+			editor.instance.openDocumentFile(filename, content);
+		} catch {
+			editor.instance.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
+		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
 		const extension = editor.instance.fileSaveSuffix();

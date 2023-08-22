@@ -113,7 +113,7 @@ import NodeBlur from "@graphite-frontend/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@graphite-frontend/assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@graphite-frontend/assets/icon-16px-solid/node-color-correction.svg";
 import NodeGradient from "@graphite-frontend/assets/icon-16px-solid/node-gradient.svg";
-import NodeImage from "@graphite-frontend/assets/icon-16px-solid/node-image.svg";
+import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import NodeImaginate from "@graphite-frontend/assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@graphite-frontend/assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@graphite-frontend/assets/icon-16px-solid/node-mask.svg";
@@ -176,7 +176,7 @@ const SOLID_16PX = {
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
 	NodeGradient: { svg: NodeGradient, size: 16 },
-	NodeImage: { svg: NodeImage, size: 16 },
+	Image: { svg: Image, size: 16 },
 	NodeImaginate: { svg: NodeImaginate, size: 16 },
 	NodeMagicWand: { svg: NodeMagicWand, size: 16 },
 	NodeMask: { svg: NodeMask, size: 16 },

@@ -50,7 +50,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 impl LayoutHolder for NewDocumentDialogMessageHandler {
 	fn layout(&self) -> Layout {
-		let title = vec![TextLabel::new("New document").bold(true).widget_holder()];
+		let title = vec![TextLabel::new("New Document").bold(true).widget_holder()];
 
 		let name = vec![
 			TextLabel::new("Name").table_align(true).widget_holder(),

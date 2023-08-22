@@ -67,6 +67,9 @@ pub enum FrontendMessage {
 		document: String,
 		name: String,
 	},
+	TriggerFetchAndOpenDocument {
+		url: String,
+	},
 	TriggerFontLoad {
 		font: Font,
 		#[serde(rename = "isDefault")]

@@ -40,14 +40,6 @@
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
-	function newDocument() {
-		editor.instance.newDocumentDialog();
-	}
-
-	function openDocument() {
-		editor.instance.documentOpen();
-	}
-
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
 
@@ -128,7 +120,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton label="New Document" icon="File" action={() => newDocument()} />
+									<TextButton label="New Document" icon="File" action={() => editor.instance.newDocumentDialog()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
@@ -136,10 +128,15 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton label="Open Document" icon="Folder" action={() => openDocument()} />
+									<TextButton label="Open Document" icon="Folder" action={() => editor.instance.openDocument()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+								</td>
+							</tr>
+							<tr>
+								<td colspan="2">
+									<TextButton label="Open Demo Artwork" icon="Image" action={() => editor.instance.demoArtworkDialog()} />
 								</td>
 							</tr>
 						</table>

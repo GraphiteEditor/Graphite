@@ -49,8 +49,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 						},
 						MenuBarEntry {
 							label: "Open…".into(),
+							icon: Some("Folder".into()),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::OpenDocument),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::OpenDocument.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Open Demo Artwork…".into(),
+							icon: Some("Image".into()),
+							action: MenuBarEntry::create_action(|_| DialogMessage::RequestDemoArtworkDialog.into()),
 							..MenuBarEntry::default()
 						},
 					],

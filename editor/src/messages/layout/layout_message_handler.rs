@@ -158,6 +158,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::IconLabel(_) => {}
+					Widget::ImageLabel(_) => {}
 					Widget::InvisibleStandinInput(invisible) => {
 						let callback_message = (invisible.on_update.callback)(&());
 						responses.add(callback_message);
