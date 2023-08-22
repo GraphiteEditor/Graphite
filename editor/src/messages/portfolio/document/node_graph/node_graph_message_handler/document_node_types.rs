@@ -2218,31 +2218,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "ColorFillNode",
 			category: "Image Adjustments",
-			// identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1],
-				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: [
-					DocumentNode {
-						name: "Identity".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "ColorFillNode".to_string(),
-						// NodeInput::node(1, 0)
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::Network(concrete!(Color))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::adjustments::ColorFillNode<_>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-				..Default::default()
-			}),
+			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Solid Color", TaggedValue::Color(Color::BLACK), false),
