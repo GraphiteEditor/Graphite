@@ -2228,7 +2228,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			// TODO: add the colorfill node implementation to the network and feed it the image from the network
 			name: "Color Overlay",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
@@ -2244,15 +2243,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Color".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(Color))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						name: "ColorFillNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::Network(concrete!(Color))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::adjustments::ColorFillNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Blend".to_string(),
 						inputs: vec![
-							NodeInput::node(0, 0),
+							NodeInput::node(1, 0),
 							NodeInput::Network(concrete!(ImageFrame<Color>)),
 							NodeInput::Network(concrete!(BlendMode)),
 							NodeInput::Network(concrete!(f32)),
@@ -2270,7 +2269,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
-				DocumentInputType::value("Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), true),
 				DocumentInputType::value("Second", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
 				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),

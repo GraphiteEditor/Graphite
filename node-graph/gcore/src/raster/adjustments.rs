@@ -935,19 +935,12 @@ pub struct ColorFillNode<C> {
 }
 
 #[node_macro::node_fn(ColorFillNode)]
-pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
-	// let mut image = &image_frame.image;
-	// let v = &image.data;
-
-	// warn!("color vec len: {}", &v.len());
-	// warn!("image h: {}, w: {}", &image.height, &image.width);
-
-	// for mut data in &image.data {
-	// data = &color.clone()
-	// }
-
+pub fn color_fill_node(image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
 	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
 	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
+
+	warn!("h: {}, w: {}", target_height, target_width);
+	warn!("img pixel count: {}", target_height * target_width);
 
 	let mut image = Image {
 		width: target_width as u32,
@@ -955,17 +948,16 @@ pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> Imag
 		data: Vec::with_capacity(target_width * target_height),
 	};
 
-	// let color_pixel = color.to_bytes();
+	for x in 0..target_height {
+		for y in 0..target_width {
+			image.data.push(color.clone())
+		}
+	}
 
-	// for x in 0..target_height {
-	// 	for y in 0..target_width {
-	// 		// image.data.push(color.clone())
-	// 	}
-	// }
-
-	image_frame.image = image;
-	image_frame
-	// image_frame
+	ImageFrame {
+		transform: image_frame.transform,
+		image,
+	}
 }
 
 #[cfg(feature = "alloc")]
