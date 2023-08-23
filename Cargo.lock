@@ -2028,6 +2028,7 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "glam",
+ "image",
  "js-sys",
  "kurbo",
  "log",

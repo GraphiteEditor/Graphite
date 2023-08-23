@@ -145,7 +145,7 @@ where
 	/// Flattens each channel cast to a u8
 	pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
 		let Image { width, height, data } = self;
-		assert!(data.len() == width as usize * height as usize);
+		assert_eq!(data.len(), width as usize * height as usize);
 
 		// Cache the last sRGB value we computed, speeds up fills.
 		let mut last_r = 0.;

@@ -299,7 +299,7 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 	let footprint = editor.render_config.viewport;
 	let data = self.data.eval(footprint).await;
 	let mut render = SvgRender::new();
-	let render_params = RenderParams::new(ViewMode::Normal, None, false);
+	let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
 	let output_format = editor.render_config.export_format;
 
 	match output_format {

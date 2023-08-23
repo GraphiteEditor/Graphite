@@ -231,7 +231,7 @@ impl NodeRuntime {
 			};
 			use graphene_core::renderer::*;
 			let bounds = graphic_element_data.bounding_box(DAffine2::IDENTITY);
-			let render_params = RenderParams::new(ViewMode::Normal, bounds, true);
+			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true);
 			let mut render = SvgRender::new();
 			graphic_element_data.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
@@ -546,7 +546,7 @@ impl NodeGraphExecutor {
 
 				// Setup rendering
 				let mut render = SvgRender::new();
-				let render_params = RenderParams::new(ViewMode::Normal, None, false);
+				let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::BlobUrl, None, false);
 
 				// Render svg
 				graphic_group.render_svg(&mut render, &render_params);
