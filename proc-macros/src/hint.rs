@@ -7,8 +7,8 @@ fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec
 	fold_error_iter(
 		attrs
 			.iter()
-			.filter(|a| a.path.get_ident().map_or(false, |i| i == "hint"))
-			.map(|attr| syn::parse2::<AttrInnerKeyStringMap>(attr.tokens.clone())),
+			.filter(|a| a.path().get_ident().map_or(false, |i| i == "hint"))
+			.map(|attr| attr.parse_args::<AttrInnerKeyStringMap>()),
 	)
 	.and_then(|v: Vec<AttrInnerKeyStringMap>| {
 		fold_error_iter(AttrInnerKeyStringMap::multi_into_iter(v).map(|(k, mut v)| match v.len() {

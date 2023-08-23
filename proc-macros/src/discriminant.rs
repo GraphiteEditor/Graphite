@@ -1,8 +1,7 @@
-use crate::helper_structs::ParenthesizedTokens;
 use crate::helpers::call_site_ident;
 use proc_macro2::{Ident, Span, TokenStream};
 use syn::spanned::Spanned;
-use syn::{Attribute, Data, DeriveInput, Field, Fields, ItemEnum};
+use syn::{Attribute, Data, DeriveInput, Field, Fields, ItemEnum, MetaList};
 
 pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
@@ -16,7 +15,7 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 	let mut attr_errs = vec![];
 
 	for var in &mut data.variants {
-		if var.attrs.iter().any(|a| a.path.is_ident("sub_discriminant")) {
+		if var.attrs.iter().any(|a| a.path().is_ident("sub_discriminant")) {
 			match var.fields.len() {
 				1 => {
 					let Field { ty, .. } = var.fields.iter_mut().next().unwrap();
@@ -33,9 +32,9 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 		}
 		let mut retain = vec![];
 		for (i, a) in var.attrs.iter_mut().enumerate() {
-			if a.path.is_ident("discriminant_attr") {
-				match syn::parse2::<ParenthesizedTokens>(a.tokens.clone()) {
-					Ok(ParenthesizedTokens { tokens, .. }) => {
+			if a.path().is_ident("discriminant_attr") {
+				match a.meta.require_list() {
+					Ok(MetaList { tokens, .. }) => {
 						let attr: Attribute = syn::parse_quote! {
 							#[#tokens]
 						};
@@ -48,7 +47,7 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 				}
 			}
 		}
-		var.attrs = var.attrs.iter().enumerate().filter_map(|(i, x)| retain.contains(&i).then(|| x.clone())).collect();
+		var.attrs = var.attrs.iter().enumerate().filter(|(i, _)| retain.contains(&i)).map(|(_, x)| x.clone()).collect();
 	}
 
 	let attrs = input
@@ -57,10 +56,10 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 		.cloned()
 		.filter_map(|a| {
 			let a_span = a.span();
-			a.path
+			a.path()
 				.is_ident("discriminant_attr")
-				.then(|| match syn::parse2::<ParenthesizedTokens>(a.tokens) {
-					Ok(ParenthesizedTokens { tokens, .. }) => {
+				.then(|| match a.meta.require_list() {
+					Ok(MetaList { tokens, .. }) => {
 						let attr: Attribute = syn::parse_quote! {
 							#[#tokens]
 						};

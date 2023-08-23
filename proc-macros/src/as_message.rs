@@ -17,7 +17,7 @@ pub fn derive_as_message_impl(input_item: TokenStream) -> syn::Result<TokenStrea
 		.map(|var| {
 			let var_name = &var.ident;
 			let var_name_s = var.ident.to_string();
-			if var.attrs.iter().any(|a| a.path.is_ident("child")) {
+			if var.attrs.iter().any(|a| a.path().is_ident("child")) {
 				(
 					quote::quote! {
 						#input_type::#var_name(child)

@@ -76,7 +76,7 @@ where
 	type Output = T;
 	fn eval(&'input self, index: I) -> Self::Output {
 		let storage = self.storage.eval(());
-		storage.deref().index(index).deref().clone()
+		storage.deref().index(index).clone()
 	}
 }
 

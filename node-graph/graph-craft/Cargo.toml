@@ -23,6 +23,6 @@ base64 = "0.21"
 bezier-rs = { path = "../../libraries/bezier-rs", features = ["dyn-any"] }
 specta.workspace = true
 
-bytemuck = {version = "1.8"  }
+bytemuck = { version = "1.8" }
 anyhow = "1.0.66"
-rustc-hash = {workspace = true}
+rustc-hash = { workspace = true }

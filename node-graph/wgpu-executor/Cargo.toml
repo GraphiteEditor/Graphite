@@ -34,10 +34,10 @@ base64 = "0.21"
 
 bytemuck = { version = "1.8" }
 anyhow = "1.0.66"
-wgpu = { version = "0.16", features = ["spirv"] }
+wgpu = { version = "0.17", features = ["spirv"] }
 spirv = "0.2.0"
 futures-intrusive = "0.5.0"
 futures = "0.3.25"
 web-sys = { version = "0.3.4", features = ["HtmlCanvasElement"] }
 winit = "0.28.6"
-nvtx = { version = "1.1.1", optional = true }
+nvtx = { version = "1.2", optional = true }
