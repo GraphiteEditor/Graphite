@@ -2216,7 +2216,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		// applies the given color to each pixel of an image
 		DocumentNodeType {
-			name: "ColorFillNode",
+			name: "Color Fill",
 			category: "Image Adjustments",
 			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
 			inputs: vec![
@@ -2243,7 +2243,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						..Default::default()
 					},
 					DocumentNode {
-						name: "ColorFillNode".to_string(),
+						name: "Color Fill".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::Network(concrete!(Color))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::adjustments::ColorFillNode<_>")),
 						..Default::default()

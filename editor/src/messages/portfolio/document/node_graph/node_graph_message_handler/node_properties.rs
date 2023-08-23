@@ -1939,15 +1939,15 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![location, dimensions, background, clip]
 }
 
+pub fn color_fill_node(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
+	vec![color]
+}
+
 pub fn color_overlay(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
 
 	vec![color, blend_mode, LayoutGroup::Row { widgets: opacity }]
-}
-
-pub fn color_fill_node(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
-	vec![color]
 }
