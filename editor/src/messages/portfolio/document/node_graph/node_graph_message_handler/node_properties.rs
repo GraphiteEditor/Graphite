@@ -16,6 +16,7 @@ use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::{Cow, Type, TypeDescriptor};
 
 use glam::{DVec2, IVec2};
+use regex::Regex;
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -222,14 +223,22 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
 
 	let from_string = |string: &str| {
+		debug!("UUU-- String1: {}", string);
+		let string = &Regex::new(r",+").unwrap().replace_all(string, ",").to_string();
+		debug!("UUU-- String2: {}", string);
 		string
-			.split("],")
+			.trim()
+			.trim_end_matches(')')
+			.trim_start_matches('(')
+			.trim()
+			.split("),")
 			.map(|item| {
-				let parts: Vec<_> = item.split(",").collect();
-				let x = parts[0].parse::<f64>();
-				let y = parts[1].parse::<f64>();
-				if let (Ok(x_val), Ok(y_val)) = (x, y) {
-					Some(DVec2 { x: x_val, y: y_val })
+				debug!("UUU-- Point: {}", item);
+				let parts: Vec<_> = item.trim().split(",").collect();
+				if parts.len() == 2 {
+					let x = parts[0].trim().trim_end_matches(')').trim_start_matches('(').trim().parse::<f64>().ok()?;
+					let y = parts[1].trim().trim_end_matches(')').trim_start_matches('(').trim().parse::<f64>().ok()?;
+					Some(DVec2 { x: x, y: y })
 				} else {
 					None
 				}
@@ -237,6 +246,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 			.collect::<Option<Vec<_>>>()
 			.map(TaggedValue::VecDVec2)
 	};
+	debug!("Point END");
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(x),
@@ -246,7 +256,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			text_props
-				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ").replace("]", ")").replace("[", "("))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_holder(),
 		])
@@ -1224,7 +1234,7 @@ pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row {
-		widgets: vec_dvec2_input(document_node, node_id, 1, "Test", TextInput::default().centered(true), true),
+		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
 	}]
 }
 

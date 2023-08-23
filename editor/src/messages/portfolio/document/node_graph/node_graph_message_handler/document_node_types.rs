@@ -1995,7 +1995,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitSplineGenerator<_>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Test", TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
+				DocumentInputType::value(
+					"Points",
+					TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]),
+					false,
+				),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::spline_properties,

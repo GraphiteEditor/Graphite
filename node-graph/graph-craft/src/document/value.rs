@@ -101,7 +101,7 @@ impl Hash for TaggedValue {
 			Self::Fill(fill) => fill.hash(state),
 			Self::Stroke(stroke) => stroke.hash(state),
 			Self::VecF32(vec_f32) => vec_f32.iter().for_each(|val| val.to_bits().hash(state)),
-			Self::VecDVec2(vec_dvec2) => vec_dvec2.iter().for_each(|val| val.x.to_bits().hash(state)),
+			Self::VecDVec2(vec_dvec2) => vec_dvec2.iter().for_each(|val| val.to_array().iter().for_each(|x| x.to_bits().hash(state))),
 			Self::RedGreenBlue(red_green_blue) => red_green_blue.hash(state),
 			Self::NoiseType(noise_type) => noise_type.hash(state),
 			Self::RelativeAbsolute(relative_absolute) => relative_absolute.hash(state),
