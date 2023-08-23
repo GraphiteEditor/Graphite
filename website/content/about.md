@@ -118,7 +118,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 <div class="section">
 
-![Photo of Keavon Chambers](https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.png)
+<img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
 ## Keavon Chambers <span class="flag" title="American">🇺🇸</span>
 
@@ -133,7 +133,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 </div>
 <div class="section">
 
-![Photo of Dennis Kobert](https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.png)
+<img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
 ## Dennis Kobert <span class="flag" title="German">🇩🇪</span>
 
@@ -148,7 +148,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 </div>
 <div class="section">
 
-![Photo of Hypercube](https://static.graphite.rs/content/about/core-team-photo-hypercube.png)
+<img src="https://static.graphite.rs/content/about/core-team-photo-hypercube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
 ## "Hypercube" <span class="flag" title="British">🇬🇧</span>
 

@@ -3,7 +3,7 @@ title = "Graphite: a vision for the future of 2D content creation"
 date = 2022-03-12
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.png"
+banner = "https://static.graphite.rs/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.avif"
 author = "Keavon Chambers"
 reddit = "https://www.reddit.com/r/graphite/comments/unw3va/blog_post_graphite_a_vision_for_the_future_of_2d/"
 twitter = "https://twitter.com/GraphiteEditor/status/1524664010091556864"

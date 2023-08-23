@@ -19,7 +19,7 @@
 		<div class="details">
 			<h1 class="headline">{{ this.title }}</h2>
 			<span class="publication">By {{ this.extra.author }}. {{ this.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
-			<img class="banner" src="{{ this.extra.banner | safe }}" />
+			<img class="banner" src="{{ this.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
 		</div>
 		<hr />
 		<article>

@@ -44,4 +44,4 @@ Once you begin writing code, please open a pull request immediately and mark it 
 
 Open a new PR as a draft / convert an existing PR to a draft:
 
-![Screenhots showing GitHub's "Create pull request (arrow) > Create draft pull request" and "Still in progress? Convert to draft" buttons](https://static.graphite.rs/content/volunteer/guide/draft-pr.png)
+<img src="https://static.graphite.rs/content/volunteer/guide/draft-pr.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenhots showing GitHub's &quot;Create pull request (arrow) > Create draft pull request&quot; and &quot;Still in progress? Convert to draft&quot; buttons" />

@@ -4,7 +4,7 @@ template = "section.html"
 
 [extra]
 css = ["/index.css"]
-js = ["/image-interaction.js", "/fundraising.js"]
+js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 +++
 
 <!-- ▛ LOGO ▜ -->
@@ -13,7 +13,7 @@ js = ["/image-interaction.js", "/fundraising.js"]
 </section>
 <!-- ▙ LOGO ▟ -->
 
-<img class="pencil-texture" src="https://static.graphite.rs/textures/pencil-texture.png" alt="" />
+<img class="pencil-texture" src="https://static.graphite.rs/textures/pencil-texture.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" />
 
 <!-- ▛ QUICK LINKS ▜ -->
 <section id="quick-links">
@@ -66,19 +66,19 @@ js = ["/image-interaction.js", "/fundraising.js"]
 <!-- ▛ SCREENSHOTS ▜ -->
 <section id="screenshots" class="carousel window-size-1" data-carousel>
 	<div class="carousel-slide">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.png" alt="Graphite UI image #3" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.png" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.png" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.png" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="screenshot-details">
 		<div class="carousel-controls">
@@ -266,7 +266,7 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 </div>
 <div class="demo-artwork">
 	<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">
-		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.png" alt="Vector art of Just of Potted Cactus" />
+		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Just of Potted Cactus" />
 	</a>
 	<p>
 		<span class="balance-text">
@@ -304,10 +304,10 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 
 <div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/light-bulb-before.png" alt="Vector illustration of a light bulb" />
+		<img src="https://static.graphite.rs/content/index/light-bulb-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector illustration of a light bulb" />
 	</div>
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/light-bulb-after.png" alt="Watercolor painting of a light bulb" />
+		<img src="https://static.graphite.rs/content/index/light-bulb-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Watercolor painting of a light bulb" />
 	</div>
 	<div class="slide-bar">
 		<div class="arrows">
@@ -333,10 +333,10 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 
 <div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/california-poppies-before.png" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
+		<img src="https://static.graphite.rs/content/index/california-poppies-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
 	</div>
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/california-poppies-after.png" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
+		<img src="https://static.graphite.rs/content/index/california-poppies-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
 	</div>
 	<div class="slide-bar">
 		<div class="arrows">
@@ -475,9 +475,8 @@ Stop jumping between programs. Planned features will make Graphite a first-class
 <section id="demo-video">
 	<div class="section">
 		<div class="video-embed aspect-16x9">
-			<iframe width="1280" height="720" src="https://www.youtube.com/embed/JgJvAHQLnXA" title="Graphite Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+			<img data-video-embed="JgJvAHQLnXA" src="https://static.graphite.rs/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
 		</div>
-		<!-- <a href="/blog/mission-statement" class="link arrow">Mission Statement</a> -->
 	</div>
 </section>
 <!-- ▙ DEMO VIDEO ▟ -->
