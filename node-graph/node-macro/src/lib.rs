@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, Binding, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
+	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
 	PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
@@ -294,7 +294,7 @@ fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericPara
 					let Some(GenericArgument::Type(in_ty)) = args_iter.next() else {
 						panic!("Expected type argument in Node<> declaration")
 					};
-					let Some(GenericArgument::Binding(Binding { ty: out_ty, .. })) = args_iter.next() else {
+					let Some(GenericArgument::AssocType(AssocType { ty: out_ty, .. })) = args_iter.next() else {
 						panic!("Expected Output = in Node declaration")
 					};
 					(lifetime, in_ty.clone(), out_ty.clone())
@@ -302,7 +302,7 @@ fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericPara
 				ty => (
 					Lifetime::new("'input", Span::call_site()),
 					Type::Tuple(TypeTuple {
-						paren_token: syn::token::Paren { span: Span::call_site() },
+						paren_token: syn::token::Paren(Span::call_site()),
 						elems: Punctuated::new(),
 					}),
 					ty,

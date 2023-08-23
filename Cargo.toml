@@ -36,6 +36,8 @@ specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c086
 	"glam",
 ] }
 rustc-hash = "1.1.0"
+# wasm-bindgen upgrades may break various things so we pin the version
+wasm-bindgen = "=0.2.87"
 
 [profile.dev.package.graphite-editor]
 opt-level = 1
@@ -55,9 +57,6 @@ opt-level = 1
 opt-level = 3
 
 [profile.dev.package.image]
-opt-level = 3
-
-[profile.dev.package.xxhash-rust]
 opt-level = 3
 
 [profile.dev]
