@@ -2232,7 +2232,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				// this maps node inputs to the document nodes that will consume them
-				inputs: vec![0, 1, 2, 2, 2],
+				inputs: vec![0, 1, 2, 2],
 				// this maps to the outputs from the document nodes
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
@@ -2252,7 +2252,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Blend".to_string(),
 						inputs: vec![
 							NodeInput::node(1, 0),
-							NodeInput::Network(concrete!(ImageFrame<Color>)),
+							NodeInput::node(0, 0),
 							NodeInput::Network(concrete!(BlendMode)),
 							NodeInput::Network(concrete!(f32)),
 						],
@@ -2268,9 +2268,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				..Default::default()
 			}),
 			inputs: vec![
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), true),
-				DocumentInputType::value("Second", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
 				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 			],
