@@ -223,18 +223,16 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
 
 	let from_string = |string: &str| {
-		debug!("UUU-- String1: {}", string);
 		let string = &Regex::new(r",+").unwrap().replace_all(string, ",").to_string();
-		debug!("UUU-- String2: {}", string);
 		string
 			.trim()
 			.trim_end_matches(')')
 			.trim_start_matches('(')
 			.trim()
 			.split("),")
+			.filter(|x| !x.is_empty())
 			.map(|item| {
-				debug!("UUU-- Point: {}", item);
-				let parts: Vec<_> = item.trim().split(",").collect();
+				let parts: Vec<_> = item.trim().split(",").filter(|x| !x.is_empty()).collect();
 				if parts.len() == 2 {
 					let x = parts[0].trim().trim_end_matches(')').trim_start_matches('(').trim().parse::<f64>().ok()?;
 					let y = parts[1].trim().trim_end_matches(')').trim_start_matches('(').trim().parse::<f64>().ok()?;
@@ -246,7 +244,6 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 			.collect::<Option<Vec<_>>>()
 			.map(TaggedValue::VecDVec2)
 	};
-	debug!("Point END");
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::VecDVec2(x),
