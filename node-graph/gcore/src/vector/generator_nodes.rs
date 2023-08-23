@@ -95,7 +95,6 @@ pub struct UnitSplineGenerator<Positions> {
 
 #[node_macro::node_fn(UnitSplineGenerator)]
 fn unit_spline(_input: (), positions: Vec<DVec2>) -> VectorData {
-	debug!("Should work: First Y-{}", positions[0].y);
 	super::VectorData::from_subpaths(vec![Subpath::new_cubic_spline(positions)])
 }
 
