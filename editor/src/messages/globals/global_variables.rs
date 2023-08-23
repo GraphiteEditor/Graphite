@@ -1,5 +1,5 @@
 use crate::messages::portfolio::utility_types::Platform;
 
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 
-pub static GLOBAL_PLATFORM: OnceCell<Platform> = OnceCell::new();
+pub static GLOBAL_PLATFORM: OnceLock<Platform> = OnceLock::new();

@@ -180,7 +180,7 @@ deny = [
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
 	#{ name = "ansi_term", version = "=0.11.0" },
-	{ name = "cfg-if", version = "=0.1.10" },
+	#{ name = "cfg-if", version = "=0.1.10" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive

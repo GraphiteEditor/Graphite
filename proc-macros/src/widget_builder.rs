@@ -7,8 +7,8 @@ use syn::{Attribute, Data, DeriveInput, Field, PathArguments, Type};
 fn has_attribute(attrs: &[Attribute], target: &str) -> bool {
 	attrs
 		.iter()
-		.filter(|attr| attr.path.to_token_stream().to_string() == "widget_builder")
-		.any(|attr| attr.tokens.to_token_stream().to_string() == target)
+		.filter(|attr| attr.path().to_token_stream().to_string() == "widget_builder")
+		.any(|attr| attr.meta.require_list().is_ok_and(|list| list.tokens.to_string() == target))
 }
 
 /// Make setting strings easier by allowing all types that `impl Into<String>`
@@ -67,7 +67,7 @@ fn find_type_and_assignment(field: &Field) -> syn::Result<(TokenStream2, TokenSt
 // Construct a builder function for a specific field in the struct
 fn construct_builder(field: &Field) -> syn::Result<TokenStream2> {
 	// Check if this field should be skipped with `#[widget_builder(skip)]`
-	if has_attribute(&field.attrs, "(skip)") {
+	if has_attribute(&field.attrs, "skip") {
 		return Ok(Default::default());
 	}
 	let field_ident = extract_ident(field)?;
@@ -103,7 +103,7 @@ pub fn derive_widget_builder_impl(input_item: TokenStream2) -> syn::Result<Token
 	let builder_functions = fields.iter().map(construct_builder).collect::<Result<Vec<_>, _>>()?;
 
 	// Check if this should not have the `widget_holder()` function due to a `#[widget_builder(not_widget_holder)]` attribute
-	let widget_holder_fn = if !has_attribute(&input.attrs, "(not_widget_holder)") {
+	let widget_holder_fn = if !has_attribute(&input.attrs, "not_widget_holder") {
 		// A doc comment for the widget_holder function
 		let widget_holder_doc_comment = Literal::string(&format!("Wrap {struct_name_ident} as a WidgetHolder."));
 
@@ -123,7 +123,7 @@ pub fn derive_widget_builder_impl(input_item: TokenStream2) -> syn::Result<Token
 		// A doc comment for the new function
 		let new_doc_comment = Literal::string(&format!("Create a new {struct_name_ident}, based on default values."));
 
-		let is_constructor = |field: &Field| has_attribute(&field.attrs, "(constructor)");
+		let is_constructor = |field: &Field| has_attribute(&field.attrs, "constructor");
 
 		let idents = fields.iter().filter(|field| is_constructor(field)).map(extract_ident).collect::<Result<Vec<_>, _>>()?;
 		let types_and_assignments = fields.iter().filter(|field| is_constructor(field)).map(find_type_and_assignment).collect::<Result<Vec<_>, _>>()?;

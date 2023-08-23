@@ -77,8 +77,13 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 	}
 
 	for var in &mut input.variants {
-		if let Some(attr) = var.attrs.iter_mut().find(|a| a.path.is_ident("child")) {
-			let last_segment = attr.path.segments.last_mut().unwrap();
+		if let Some(attr) = var.attrs.iter_mut().find(|a| a.path().is_ident("child")) {
+			let path = match &mut attr.meta {
+				syn::Meta::Path(path) => path,
+				syn::Meta::List(list) => &mut list.path,
+				syn::Meta::NameValue(named_value) => &mut named_value.path,
+			};
+			let last_segment = path.segments.last_mut().unwrap();
 			last_segment.ident = call_site_ident("sub_discriminant");
 			var.attrs.push(syn::parse_quote! {
 				#[discriminant_attr(child)]
@@ -96,8 +101,13 @@ fn top_level_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	input.attrs.push(syn::parse_quote! { #[discriminant_attr(derive(Debug, Copy, Clone, PartialEq, Eq, Hash, AsMessage))] });
 
 	for var in &mut input.variants {
-		if let Some(attr) = var.attrs.iter_mut().find(|a| a.path.is_ident("child")) {
-			let last_segment = attr.path.segments.last_mut().unwrap();
+		if let Some(attr) = var.attrs.iter_mut().find(|a| a.path().is_ident("child")) {
+			let path = match &mut attr.meta {
+				syn::Meta::Path(path) => path,
+				syn::Meta::List(list) => &mut list.path,
+				syn::Meta::NameValue(named_value) => &mut named_value.path,
+			};
+			let last_segment = path.segments.last_mut().unwrap();
 			last_segment.ident = call_site_ident("sub_discriminant");
 			var.attrs.push(syn::parse_quote! {
 				#[discriminant_attr(child)]

@@ -27,6 +27,6 @@ dyn-clone = "1.0"
 log = "0.4"
 serde = { version = "1", features = ["derive"], optional = true }
 glam = { version = "0.24" }
-once_cell = "1.17.0"
+once_cell = "1.18" # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
 futures = "0.3.28"
 typed-arena = "2.0.2"
