@@ -123,7 +123,10 @@ impl DocumentNode {
 					output_index,
 					lambda,
 				};
-			} else if let Some(new_input) = default_input(self.name.clone(), index) {
+			} else if let Some(mut new_input) = default_input(self.name.clone(), index) {
+				if let NodeInput::Value { exposed, .. } = &mut new_input {
+					*exposed = true;
+				}
 				*input = new_input;
 			} else {
 				warn!("Node does not exist in library with that many inputs");
