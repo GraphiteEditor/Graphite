@@ -225,23 +225,11 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	let from_string = |string: &str| {
 		let string = &Regex::new(r",+").unwrap().replace_all(string, ",").to_string();
 		string
-			.trim()
-			.trim_end_matches(')')
-			.trim_start_matches('(')
-			.trim()
-			.split("),")
+			.split(|c: char| !c.is_alphanumeric() && !matches!(c, '.' | '+' | '-'))
 			.filter(|x| !x.is_empty())
-			.map(|item| {
-				let parts: Vec<_> = item.trim().split(",").filter(|x| !x.is_empty()).collect();
-				if parts.len() == 2 {
-					let x = parts[0].trim().trim_end_matches(')').trim_start_matches('(').trim().parse::<f64>().ok()?;
-					let y = parts[1].trim().trim_end_matches(')').trim_start_matches('(').trim().parse::<f64>().ok()?;
-					Some(DVec2 { x: x, y: y })
-				} else {
-					None
-				}
-			})
+			.map(|x| x.parse::<f64>().ok())
 			.collect::<Option<Vec<_>>>()
+			.map(|numbers| numbers.chunks_exact(2).map(|vals| DVec2::new(vals[0], vals[1])).collect())
 			.map(TaggedValue::VecDVec2)
 	};
 
@@ -253,7 +241,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			text_props
-				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ").replace("]", ")").replace("[", "("))
+				.value(x.iter().map(|v| format!("({}, {})", v.x, v.y)).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_holder(),
 		])
@@ -1184,12 +1172,9 @@ pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context
 }
 
 pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
-
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Radius", 1)]
+	vec![LayoutGroup::Row {
+		widgets: number_widget(document_node, node_id, 1, "Radius", NumberInput::default(), true),
+	}]
 }
 
 pub fn elipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
