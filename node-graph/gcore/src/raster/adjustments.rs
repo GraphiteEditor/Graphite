@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, Image, ImageFrame, Node};
+use super::{Channel, Color, ImageFrame, Node};
 
 use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
@@ -936,21 +936,13 @@ pub fn color_fill_node(image_frame: ImageFrame<Color>, color: Color) -> ImageFra
 	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
 	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
 
-	let mut image = Image {
-		width: target_width as u32,
-		height: target_height as u32,
-		data: Vec::with_capacity(target_width * target_height),
-	};
-
-	for x in 0..target_height {
-		for y in 0..target_width {
-			image.data.push(color)
-		}
+	for mut pixel in &image_frame.image.data {
+		pixel = &color;
 	}
 
 	ImageFrame {
 		transform: image_frame.transform,
-		image,
+		image: image_frame.image,
 	}
 }
 

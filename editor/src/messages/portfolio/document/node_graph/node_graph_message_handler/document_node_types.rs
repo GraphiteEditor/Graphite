@@ -2251,8 +2251,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					DocumentNode {
 						name: "Blend".to_string(),
 						inputs: vec![
-							NodeInput::node(1, 0),
 							NodeInput::node(0, 0),
+							NodeInput::node(1, 0),
 							NodeInput::Network(concrete!(BlendMode)),
 							NodeInput::Network(concrete!(f32)),
 						],
@@ -2268,8 +2268,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				..Default::default()
 			}),
 			inputs: vec![
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), true),
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
 				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 			],
