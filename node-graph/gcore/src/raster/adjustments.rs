@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, ImageFrame, Node};
+use super::{Channel, Color, ImageFrame, Node, RGBMut};
 
 use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
@@ -11,6 +11,7 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
+use std::collections::HashSet;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
@@ -932,12 +933,15 @@ pub struct ColorFillNode<C> {
 }
 
 #[node_macro::node_fn(ColorFillNode)]
-pub fn color_fill_node(image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
+pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
 	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
 	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
 
-	for mut pixel in &image_frame.image.data {
-		pixel = &color;
+	for pixel in &mut image_frame.image.data {
+		pixel.set_red(color.r());
+		pixel.set_blue(color.b());
+		pixel.set_green(color.g());
+		pixel.alpha_multiply(color);
 	}
 
 	ImageFrame {
