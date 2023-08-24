@@ -1913,6 +1913,51 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::no_properties,
 			..Default::default()
 		},
+		DocumentNodeType {
+			name: "Or",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicOrNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("First", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Second", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "And",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicAndNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("First", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Second", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "XOR",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicXorNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("First", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Second", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Not",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicNotNode"),
+			inputs: vec![DocumentInputType::value("First", TaggedValue::Bool(false), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeType {
 			name: "Circle",
