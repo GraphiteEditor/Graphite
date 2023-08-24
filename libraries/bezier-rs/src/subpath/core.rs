@@ -254,6 +254,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Construct a cubic spline from a list of points.
 	/// Based on <https://mathworld.wolfram.com/CubicSpline.html>.
 	pub fn new_cubic_spline(points: Vec<DVec2>) -> Self {
+		if points.is_empty() {
+			return Self::new(Vec::new(), false);
+		}
+
 		// Number of points = number of points to find handles for
 		let len_points = points.len();
 
