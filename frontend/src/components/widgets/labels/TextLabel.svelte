@@ -28,7 +28,7 @@
 	class:italic
 	class:multiline
 	class:table-align={tableAlign}
-	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+	style:min-width={minWidth > 0 ? `${minWidth}px` : null}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 >

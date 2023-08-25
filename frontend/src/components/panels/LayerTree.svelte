@@ -462,18 +462,18 @@
 						border-width: 3px 0 3px 6px;
 						border-color: transparent transparent transparent var(--color-e-nearwhite);
 
-						&:hover {
-							color: var(--color-f-white);
-						}
+						// &:hover {
+						// 	color: var(--color-f-white);
+						// }
 					}
 
 					&.expanded::after {
 						border-width: 6px 3px 0 3px;
 						border-color: var(--color-e-nearwhite) transparent transparent transparent;
 
-						&:hover {
-							color: var(--color-f-white);
-						}
+						// &:hover {
+						// 	color: var(--color-f-white);
+						// }
 					}
 				}
 

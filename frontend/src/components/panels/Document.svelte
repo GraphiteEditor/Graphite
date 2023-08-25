@@ -40,9 +40,6 @@
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
 
-	// Graph view overlay
-	let graphViewOverlayOpen = false;
-
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
@@ -68,7 +65,6 @@
 	let nodeRenderSvg = "";
 	let artboardSvg = "";
 	let overlaysSvg = "";
-	let artworkTransform = "";
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -338,11 +334,6 @@
 	}
 
 	onMount(() => {
-		// Show or hide the graph view overlay
-		editor.subscriptions.subscribeJsMessage(TriggerGraphViewOverlay, (triggerGraphViewOverlay) => {
-			graphViewOverlayOpen = triggerGraphViewOverlay.open;
-		});
-
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
@@ -363,11 +354,6 @@
 			await tick();
 
 			updateDocumentNodeRender(data.svg);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentTransform, async (data) => {
-			await tick();
-
-			updateDocumentTransform(data.transform);
 		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
@@ -436,8 +422,8 @@
 </script>
 
 <LayoutCol class="document">
-	<LayoutRow class="options-bar" classes={{ "for-graph": graphViewOverlayOpen }} scrollableX={true}>
-		{#if !graphViewOverlayOpen}
+	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
+		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
 			<WidgetLayout layout={$document.toolOptionsLayout} />
 			<LayoutRow class="spacer" />
@@ -448,7 +434,7 @@
 	</LayoutRow>
 	<LayoutRow class="shelf-and-table">
 		<LayoutCol class="shelf">
-			{#if !graphViewOverlayOpen}
+			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
 					<WidgetLayout layout={$document.toolShelfLayout} />
 				</LayoutCol>
@@ -483,7 +469,7 @@
 							{@html artboardSvg}
 						</svg>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							<g id="transform-group" transform={artworkTransform}>
+							<g id="transform-group" transform={$document.artworkTransform}>
 								{@html nodeRenderSvg}
 							</g>
 						</svg>
@@ -499,7 +485,7 @@
 							{/if}
 						</div>
 					</div>
-					<div class="graph-view" class:open={graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
+					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
 						<Graph />
 					</div>
 				</LayoutCol>

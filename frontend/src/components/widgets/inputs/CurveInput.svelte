@@ -234,7 +234,6 @@
 			fill: var(--color-1-nearblack);
 			stroke: var(--color-e-nearwhite);
 			stroke-width: 0.01;
-			r: 0.02;
 
 			&:hover {
 				fill: var(--color-f-white);

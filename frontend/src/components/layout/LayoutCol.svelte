@@ -53,7 +53,6 @@
 	on:mouseout
 	on:mouseup
 	on:select
-	on:wheel
 	on:drag
 	on:dragend
 	on:dragenter
@@ -63,8 +62,6 @@
 	on:drop
 	on:touchcancel
 	on:touchend
-	on:touchmove
-	on:touchstart
 	on:pointerover
 	on:pointerenter
 	on:pointerdown

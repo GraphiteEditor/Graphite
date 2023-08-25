@@ -207,9 +207,9 @@
 				border: 2px solid transparent;
 				border-radius: 10px;
 
-				&:hover {
-					box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
-				}
+				// &:hover {
+				// 	box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
+				// }
 			}
 
 			&::-webkit-scrollbar-thumb {
@@ -219,9 +219,9 @@
 				border-radius: 10px;
 				margin: 2px;
 
-				&:hover {
-					background-color: var(--color-6-lowergray);
-				}
+				// &:hover {
+				// 	background-color: var(--color-6-lowergray);
+				// }
 			}
 
 			&::-webkit-scrollbar-corner {
