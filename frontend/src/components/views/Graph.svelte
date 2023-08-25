@@ -567,14 +567,14 @@
 </script>
 
 <div
-	class=".layout-row graph"
+	class="graph"
 	bind:this={graph}
 	on:wheel|nonpassive={scroll}
 	on:pointerdown={pointerDown}
 	on:pointermove={pointerMove}
 	on:pointerup={pointerUp}
 	on:dblclick={doubleClick}
-	style:--grid-spacing={`${gridSpacing}px`},
+	style:--grid-spacing={`${gridSpacing}px`}
 	style:--grid-offset-x={`${transform.x * transform.scale}px`}
 	style:--grid-offset-y={`${transform.y * transform.scale}px`}
 	style:--dot-radius={`${dotRadius}px`}
@@ -805,6 +805,9 @@
 	.graph {
 		position: relative;
 		overflow: hidden;
+		display: flex;
+		flex-direction: row;
+		flex-grow: 1;
 
 		> img {
 			position: absolute;
