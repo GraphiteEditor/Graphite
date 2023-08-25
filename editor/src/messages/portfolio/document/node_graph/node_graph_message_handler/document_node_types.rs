@@ -2230,45 +2230,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Color Overlay",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				// this maps node inputs to the document nodes that will consume them
-				inputs: vec![0, 1, 2, 2],
-				// this maps to the outputs from the document nodes
-				outputs: vec![NodeOutput::new(2, 0)],
-				nodes: [
-					DocumentNode {
-						name: "Identity".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Color Fill".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::Network(concrete!(Color))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::adjustments::ColorFillNode<_>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Blend".to_string(),
-						inputs: vec![
-							NodeInput::node(0, 0),
-							NodeInput::node(1, 0),
-							NodeInput::Network(concrete!(BlendMode)),
-							NodeInput::Network(concrete!(f32)),
-						],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-
-				..Default::default()
-			}),
+			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>"),
 			inputs: vec![
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
 				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),

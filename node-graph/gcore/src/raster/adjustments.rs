@@ -416,9 +416,8 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f32) -> Col
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
-#[inline(always)]
-pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
-	let target_color = match blend_mode {
+pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
+	match blend_mode {
 		// Normal group
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
 		// Darken group
@@ -451,10 +450,19 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
-		// Other utility blend modes (hidden from the normal list)
+		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
+		_ => panic!("Used blend mode without alpha blend"),
+	}
+}
+
+#[inline(always)]
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	let target_color = match blend_mode {
+		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
 		BlendMode::Erase => return background.alpha_subtract(foreground),
 		BlendMode::Restore => return background.alpha_add(foreground),
 		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
+		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity))
@@ -934,9 +942,6 @@ pub struct ColorFillNode<C> {
 
 #[node_macro::node_fn(ColorFillNode)]
 pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
-	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
-	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
-
 	for pixel in &mut image_frame.image.data {
 		pixel.set_red(color.r());
 		pixel.set_blue(color.b());
@@ -944,10 +949,24 @@ pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> Imag
 		pixel.alpha_multiply(color);
 	}
 
-	ImageFrame {
-		transform: image_frame.transform,
-		image: image_frame.image,
+	image_frame
+}
+
+pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
+	color: Color,
+	blend_mode: BlendMode,
+	opacity: Opacity,
+}
+
+#[node_macro::node_fn(ColorOverlayNode)]
+pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+	let opacity = (opacity / 100.).clamp(0., 1.);
+	for pixel in &mut image.image.data {
+		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
+		let overlay = color.map_rgb(|channel| channel * opacity);
+		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
 	}
+	image
 }
 
 #[cfg(feature = "alloc")]

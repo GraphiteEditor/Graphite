@@ -429,6 +429,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
 		register_node!(graphene_core::raster::adjustments::ColorFillNode<_>, input: ImageFrame<Color>, params: [Color]),
+		register_node!(graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>, input: ImageFrame<Color>, params: [Color, BlendMode, f32]),
 		vec![(
 			NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
 			|args| {
