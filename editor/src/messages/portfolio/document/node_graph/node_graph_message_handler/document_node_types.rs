@@ -2339,33 +2339,6 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network
 }
 
-/// Creates a new custom vector network by resolving node names.
-///
-/// * `node_names`: The names of the nodes to be resolved and inserted between the path_generator and output nodes.
-/// * `subpaths`: The subpath that contains the vector data.
-pub fn new_custom_vector_network(node_names: Vec<String>, subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let mut network = NodeNetwork {
-		inputs: vec![0],
-		..Default::default()
-	};
-
-	let path_generator = resolve_document_node_type("Path Generator").expect("Path Generator node does not exist");
-	network.push_node(
-		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),
-		false,
-	);
-
-	for name in node_names {
-		let node = resolve_document_node_type(&name).expect(&format!("{} node does not exist", name));
-		network.push_node(node.to_document_node_default_inputs([None], Default::default()), true);
-	}
-
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
-
-	network
-}
-
 pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
