@@ -16,7 +16,6 @@ use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 use graphene_core::{Cow, Type, TypeDescriptor};
 
 use glam::{DVec2, IVec2};
-use regex::Regex;
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -223,7 +222,6 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
 
 	let from_string = |string: &str| {
-		let string = &Regex::new(r",+").unwrap().replace_all(string, ",").to_string();
 		string
 			.split(|c: char| !c.is_alphanumeric() && !matches!(c, '.' | '+' | '-'))
 			.filter(|x| !x.is_empty())

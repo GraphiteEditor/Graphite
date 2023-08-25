@@ -2143,7 +2143,6 @@ dependencies = [
  "log",
  "num_enum 0.6.1",
  "once_cell",
- "regex",
  "remain",
  "serde",
  "serde_json",

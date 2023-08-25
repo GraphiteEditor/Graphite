@@ -21,7 +21,6 @@ wasm = ["wasm-bindgen", "future-executor", "graphene-std/wasm"]
 
 [dependencies]
 log = "0.4"
-regex = "1.4"
 bitflags = { version = "2.3", features = ["serde"] }
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
