@@ -963,7 +963,7 @@ pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode
 	let opacity = (opacity / 100.).clamp(0., 1.);
 	for pixel in &mut image.image.data {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
-		let overlay = color.map_rgb(|channel| channel * opacity);
+		let overlay = apply_blend_mode(color, *pixel, blend_mode).map_rgb(|channel| channel * opacity);
 		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
 	}
 	image
