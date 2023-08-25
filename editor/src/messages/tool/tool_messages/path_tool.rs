@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::transformation_cage::{add_bound
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
 use document_legacy::intersection::Quad;
-use document_legacy::{LayerId, Operation};
+use document_legacy::{document::Document, LayerId, Operation};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
@@ -56,6 +56,31 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
+	SelectedPointXChanged {
+		new_x: f64,
+	},
+	SelectedPointYChanged {
+		new_y: f64,
+	},
+}
+
+// If there is one and only one selected control point this function yields its position.
+pub fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<DVec2> {
+	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).collect();
+	if selection_layers.len() != 1 || selection_layers[0].1.selected_points_count() != 1 {
+		None
+	} else {
+		let (layer, _) = selection_layers[0];
+		let vector_data = document.layer(layer).ok()?.as_vector_data()?;
+		let points: Vec<_> = shape_state.selected_points().take(2).collect();
+		if points.len() != 1 || points[0].manipulator_type.is_handle() {
+			None
+		} else {
+			let point = *points[0];
+			let group = vector_data.manipulator_from_id(point.group)?;
+			point.manipulator_type.get_position(group)
+		}
+	}
 }
 
 impl ToolMetadata for PathTool {
@@ -72,13 +97,49 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		if let Some(DVec2 { x, y }) = self.tool_data.single_selected_point {
+			let x_loc = NumberInput::new(Some(x))
+				.unit(" px")
+				.label("x")
+				.min(std::f64::MIN)
+				.max(std::f64::MAX)
+				.on_update(move |number_input: &NumberInput| {
+					let new_x = number_input.value.unwrap_or(x);
+					PathToolMessage::SelectedPointXChanged { new_x }.into()
+				})
+				.widget_holder();
+
+			let y_loc = NumberInput::new(Some(y))
+				.unit(" px")
+				.label("y")
+				.min(std::f64::MIN)
+				.max(std::f64::MAX)
+				.on_update(move |number_input: &NumberInput| {
+					let new_y = number_input.value.unwrap_or(y);
+					PathToolMessage::SelectedPointYChanged { new_y }.into()
+				})
+				.widget_holder();
+
+			let seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
+
+			Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+				widgets: vec![x_loc, seperator, y_loc],
+			}]))
+		} else {
+			Layout::WidgetLayout(WidgetLayout::default())
+		}
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+
+		let new_point = get_single_selected_point(&tool_data.document.document_legacy, tool_data.shape_editor);
+		if self.tool_data.single_selected_point != new_point {
+			self.tool_data.single_selected_point = new_point;
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
 	}
 
 	// Different actions depending on state may be wanted:
@@ -137,6 +198,7 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	single_selected_point: Option<DVec2>,
 }
 
 impl PathToolData {
@@ -414,6 +476,18 @@ impl Fsm for PathToolFsmState {
 				) => self,
 				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
+					if let Some(DVec2 { x, .. }) = tool_data.single_selected_point {
+						shape_editor.move_selected_points(&document.document_legacy, (new_x - x, 0.0).into(), true, responses);
+					}
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
+					if let Some(DVec2 { y, .. }) = tool_data.single_selected_point {
+						shape_editor.move_selected_points(&document.document_legacy, (0.0, new_y - y).into(), true, responses);
+					}
 					PathToolFsmState::Ready
 				}
 				(_, _) => PathToolFsmState::Ready,

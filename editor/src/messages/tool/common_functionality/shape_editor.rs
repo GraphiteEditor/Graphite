@@ -27,6 +27,10 @@ impl SelectedLayerState {
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
+
+	pub fn selected_points_count(&self) -> usize {
+		self.selected_points.len()
+	}
 }
 pub type SelectedShapeState = HashMap<Vec<LayerId>, SelectedLayerState>;
 #[derive(Debug, Default)]
