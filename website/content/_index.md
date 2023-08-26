@@ -64,21 +64,21 @@ js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 </div>
 
 <!-- ▛ SCREENSHOTS ▜ -->
-<section id="screenshots" class="carousel window-size-1" data-carousel>
+<section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 	<div class="carousel-slide">
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="screenshot-details">
 		<div class="carousel-controls">
@@ -103,7 +103,7 @@ js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 				<em>Valley of Spires</em> — <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
 			</p>
 			<p data-carousel-description>
-				Design mockup for the work-in-progress node graph raster editing pipeline. Some raster nodes shown here are not implemented yet.
+				Design mockup for the work-in-progress node graph raster editing pipeline. Some UI concepts and raster nodes shown here are not implemented yet.
 			</p>
 			<p data-carousel-description>
 				Design mockup for the work-in-progress viewport raster editing workflow. Some features shown here are not implemented yet.
