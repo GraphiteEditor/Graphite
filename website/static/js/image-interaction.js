@@ -21,8 +21,10 @@ function initializeCarousel() {
 		const directionNext = carouselContainer.querySelector("[data-carousel-next]");
 		const dots = carouselContainer.querySelectorAll("[data-carousel-dot]");
 		const descriptions = carouselContainer.querySelectorAll("[data-carousel-description]");
+		const performJostleHint = carouselContainer.hasAttribute("data-carousel-jostle-hint");
 		const dragLastClientX = undefined;
 		const velocityDeltaWindow = Array.from({ length: FLING_VELOCITY_WINDOW_SIZE }, () => ({ time: 0, delta: 0 }));
+		const jostleNoLongerNeeded = false;
 
 		const carousel = {
 			carouselContainer,
@@ -33,6 +35,7 @@ function initializeCarousel() {
 			descriptions,
 			dragLastClientX,
 			velocityDeltaWindow,
+			jostleNoLongerNeeded,
 		};
 		carousels.push(carousel);
 
@@ -47,6 +50,42 @@ function initializeCarousel() {
 				slideTo(carousel, index, true);
 			})
 		);
+
+		// Jostle hint is a feature to briefly shift the carousel by a bit as a hint to users that it can be interacted with
+		if (performJostleHint) {
+			window.addEventListener("load", () => {
+				new IntersectionObserver((entries) => {
+					entries.forEach((entry) => {
+						if (entry.intersectionRatio === 1 && currentTransform(carousel) === 0 && !carousel.jostleNoLongerNeeded) {
+							const JOSTLE_TIME = 1000;
+							const MAX_JOSTLE_DISTANCE = -10;
+
+							let startTime;
+							const buildUp = (timeStep) => {
+								if (carousel.jostleNoLongerNeeded) return;
+
+								if (!startTime) startTime = timeStep;
+								const elapsedTime = timeStep - startTime;
+
+								const easeOutCirc = (x) => Math.sqrt(1 - Math.pow(x - 1, 2));
+								const movementFactor = easeOutCirc(Math.min(1, elapsedTime / JOSTLE_TIME));
+
+								setCurrentTransform(carousel, movementFactor * MAX_JOSTLE_DISTANCE, "%", false, true);
+
+								if (elapsedTime < JOSTLE_TIME) {
+									requestAnimationFrame(buildUp);
+								} else {
+									carousel.jostleNoLongerNeeded = true;
+									slideTo(carousel, 0, true);
+								}
+							};
+							requestAnimationFrame(buildUp);
+						};
+					});
+				}, { threshold: 1 })
+					.observe(directionPrev);
+			});
+		}
 	});
 }
 
@@ -81,11 +120,16 @@ function currentTransform(carousel) {
 	return Number(currentTransformMatrix.split(",")[4] || "0");
 }
 
-function setCurrentTransform(carousel, x, unit, smooth) {
+function setCurrentTransform(carousel, x, unit, smooth, doNotTerminateJostle = false) {
+	const xInitial = currentTransform(carousel);
+	
 	Array.from(carousel.images).forEach((image) => {
 		image.style.transitionTimingFunction = smooth ? "ease-in-out" : "cubic-bezier(0, 0, 0.2, 1)";
 		image.style.transform = `translateX(${x}${unit})`;
 	});
+
+	// If the user caused the carousel to move, we can assume they know how to use it and don't need the jostle hint anymore
+	if (!doNotTerminateJostle && x !== xInitial) carousel.jostleNoLongerNeeded = true;
 }
 
 function currentClosestImageIndex(carousel) {
