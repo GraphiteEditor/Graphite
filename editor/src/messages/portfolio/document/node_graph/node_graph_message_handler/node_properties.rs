@@ -1207,7 +1207,7 @@ pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context
 }
 
 pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = bool_widget(document_node, node_id, 0, "Operator", true);
+	let widgets = bool_widget(document_node, node_id, 0, "Operand B", true);
 	vec![LayoutGroup::Row { widgets }]
 }
 
