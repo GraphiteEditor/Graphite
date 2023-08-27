@@ -18,13 +18,13 @@ fn circle_generator(_input: (), radius: f32) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ElipseGenerator<RadiusX, RadiusY> {
+pub struct EllipseGenerator<RadiusX, RadiusY> {
 	radius_x: RadiusX,
 	radius_y: RadiusY,
 }
 
-#[node_macro::node_fn(ElipseGenerator)]
-fn elipse_generator(_input: (), radius_x: f32, radius_y: f32) -> VectorData {
+#[node_macro::node_fn(EllipseGenerator)]
+fn ellipse_generator(_input: (), radius_x: f32, radius_y: f32) -> VectorData {
 	let radius = DVec2::new(radius_x as f64, radius_y as f64);
 	let corner1 = -radius;
 	let corner2 = radius;

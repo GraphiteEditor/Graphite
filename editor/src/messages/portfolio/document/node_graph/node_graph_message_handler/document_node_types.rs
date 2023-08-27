@@ -1924,16 +1924,16 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Elipse",
+			name: "Ellipse",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::ElipseGenerator<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Radius X", TaggedValue::F32(50.), false),
 				DocumentInputType::value("Radius Y", TaggedValue::F32(25.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::elipse_properties,
+			properties: node_properties::ellipse_properties,
 			..Default::default()
 		},
 		DocumentNodeType {

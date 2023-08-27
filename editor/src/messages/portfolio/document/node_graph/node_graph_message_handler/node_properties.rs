@@ -1175,7 +1175,7 @@ pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	}]
 }
 
-pub fn elipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
 		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
 
