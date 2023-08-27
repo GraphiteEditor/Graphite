@@ -23,6 +23,7 @@
 	}
 </script>
 
+<!-- Excluded events because these require `|passive` or `|nonpassive` modifiers. Use a <div> for these instead: `on:wheel`, `on:touchmove`, `on:touchstart` -->
 <div
 	class={`layout-col ${className} ${extraClasses}`.trim()}
 	class:scrollable-x={scrollableX}

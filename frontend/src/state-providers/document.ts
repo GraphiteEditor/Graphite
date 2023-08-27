@@ -95,7 +95,6 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	
 
 	// Other
 	editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {

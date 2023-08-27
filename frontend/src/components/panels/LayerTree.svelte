@@ -450,7 +450,7 @@
 					border-radius: 2px;
 
 					&:hover {
-						background: var(--color-6-lowergray);
+						background: var(--color-5-dullgray);
 					}
 
 					&::after {
@@ -480,7 +480,6 @@
 
 					&.selected {
 						background: var(--color-5-dullgray);
-						color: var(--color-f-white);
 					}
 
 					.layer-type-icon {
