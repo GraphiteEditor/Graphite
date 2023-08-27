@@ -64,13 +64,13 @@ pub struct DownresNode<ImageFrame> {
 
 #[node_macro::node_fn(DownresNode)]
 fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
-	// resize the image using imagers
+	// resize the image using the image crate
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
 
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 	log::debug!("viewport_bounds: {viewport_bounds:?}");
-	let bbox = Bbox::from_transform(image_frame.transform);
+	let bbox = Bbox::from_transform(image_frame.transform * DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64)));
 	log::debug!("local_bounds: {bbox:?}");
 	let bounds = viewport_bounds.intersect(&bbox.to_axis_aligned_bbox());
 	log::debug!("intersection: {bounds:?}");
@@ -86,8 +86,8 @@ fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<C
 
 	log::debug!("transform: {:?}", footprint.transform);
 	log::debug!("size: {size:?}");
-	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * image.width as f64 * size.x).length();
-	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * image.height as f64 * size.y).length();
+	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
+	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
 	let nwidth = viewport_resolution_x as u32;
 	let nheight = viewport_resolution_y as u32;
 	log::debug!("x: {viewport_resolution_x}, y: {viewport_resolution_y}");

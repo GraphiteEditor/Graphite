@@ -18,7 +18,7 @@ use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeG
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{ClickTarget, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
-use graphene_core::transform::Transform;
+use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 
 use graphene_core::{Color, SurfaceFrame, SurfaceId};
@@ -71,6 +71,7 @@ pub(crate) struct GenerationRequest {
 	graph: NodeNetwork,
 	path: Vec<LayerId>,
 	image_frame: Option<ImageFrame<Color>>,
+	transform: DAffine2,
 }
 
 pub(crate) struct GenerationResponse {
@@ -139,6 +140,7 @@ impl NodeRuntime {
 					generation_id,
 					graph,
 					image_frame,
+					transform,
 					path,
 					..
 				}) => {
@@ -150,7 +152,7 @@ impl NodeRuntime {
 						.map(|node| node.path.clone().unwrap_or_default())
 						.collect();
 
-					let result = self.execute_network(&path, network, image_frame).await;
+					let result = self.execute_network(&path, network, image_frame, transform).await;
 					let mut responses = VecDeque::new();
 					self.update_thumbnails(&path, monitor_nodes, &mut responses);
 					let response = GenerationResponse {
@@ -167,7 +169,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>) -> Result<TaggedValue, String> {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>, transform: DAffine2) -> Result<TaggedValue, String> {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -178,7 +180,10 @@ impl NodeRuntime {
 			application_io: self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			imaginate_preferences: &self.imaginate_preferences,
-			render_config: RenderConfig::default(),
+			render_config: RenderConfig {
+				viewport: Footprint { transform, ..Default::default() },
+				..Default::default()
+			},
 		};
 
 		// We assume only one output
@@ -339,13 +344,14 @@ impl Default for NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, network: NodeNetwork, image_frame: Option<ImageFrame<Color>>, layer_path: Vec<LayerId>) -> u64 {
+	fn queue_execution(&self, network: NodeNetwork, image_frame: Option<ImageFrame<Color>>, layer_path: Vec<LayerId>, transform: DAffine2) -> u64 {
 		let generation_id = generate_uuid();
 		let request = GenerationRequest {
 			path: layer_path,
 			graph: network,
 			image_frame,
 			generation_id,
+			transform,
 		};
 		self.sender.send(NodeRuntimeMessage::GenerationRequest(request)).expect("Failed to send generation request");
 
@@ -452,9 +458,10 @@ impl NodeGraphExecutor {
 		// Construct the input image frame
 		let transform = DAffine2::IDENTITY;
 		let image_frame = ImageFrame { image, transform };
+		let document_transform = document.document_legacy.metadata.document_to_viewport;
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, Some(image_frame), layer_path.clone());
+		let generation_id = self.queue_execution(network, Some(image_frame), layer_path.clone(), document_transform);
 
 		self.futures.insert(generation_id, ExecutionContext { layer_path, document_id });
 

@@ -307,8 +307,9 @@ impl GraphicElementRendered for ImageFrame<Color> {
 				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
 
 				render.leaf_tag("image", |attributes| {
-					attributes.push("width", 1.to_string());
-					attributes.push("height", 1.to_string());
+					attributes.push("width", image.width.to_string());
+
+					attributes.push("height", image.height.to_string());
 					attributes.push("preserveAspectRatio", "none");
 					attributes.push("transform", transform);
 					attributes.push("href", base64_string)
