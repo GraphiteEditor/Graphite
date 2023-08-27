@@ -463,9 +463,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					use graphene_core::raster::brightness_contrast::*;
 
 					let brightness: DowncastBothNode<(), f32> = DowncastBothNode::new(args[0].clone());
-					let brightness = ClonedNode::new(brightness.eval(()).await as f32);
+					let brightness = ClonedNode::new(brightness.eval(()).await);
 					let contrast: DowncastBothNode<(), f32> = DowncastBothNode::new(args[1].clone());
-					let contrast = ClonedNode::new(contrast.eval(()).await as f32);
+					let contrast = ClonedNode::new(contrast.eval(()).await);
 					let use_legacy: DowncastBothNode<(), bool> = DowncastBothNode::new(args[2].clone());
 
 					if use_legacy.eval(()).await {
