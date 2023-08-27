@@ -11,7 +11,6 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
-use std::collections::HashSet;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
