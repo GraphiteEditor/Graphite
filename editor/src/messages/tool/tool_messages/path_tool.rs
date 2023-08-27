@@ -56,6 +56,7 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
+	SelectAllPoints,
 }
 
 impl ToolMetadata for PathTool {
@@ -414,6 +415,10 @@ impl Fsm for PathToolFsmState {
 				) => self,
 				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::SelectAllPoints) => {
+					shape_editor.select_all_points(&document.document_legacy);
 					PathToolFsmState::Ready
 				}
 				(_, _) => PathToolFsmState::Ready,
