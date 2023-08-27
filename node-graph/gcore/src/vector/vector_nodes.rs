@@ -148,23 +148,23 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SetResampleCurveNode<Density> {
-	density: Density,
+pub struct SetResampleCurveNode<Spacing> {
+	spacing: Spacing,
 }
 
 #[node_macro::node_fn(SetResampleCurveNode)]
-fn set_vector_data_resample_curve(mut vector_data: VectorData, density: f64) -> VectorData {
+fn set_vector_data_resample_curve(mut vector_data: VectorData, spacing: f64) -> VectorData {
 	vector_data.subpaths = vector_data
 		.subpaths
 		.iter()
 		.map(|subpath| {
 			let length = subpath.length(None);
-			let rounded_count = (length / density).round();
-			let difference = length - rounded_count * density;
-			let adjusted_density = density + difference / rounded_count;
+			let rounded_count = (length / spacing).round();
+			let difference = length - rounded_count * spacing;
+			let adjusted_spacing = spacing + difference / rounded_count;
 
 			Subpath::from_anchors(
-				(0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean((c as f64 * adjusted_density / length).clamp(0.0, 0.99999)))),
+				(0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean((c as f64 * adjusted_spacing / length).clamp(0.0, 0.99999)))),
 				false,
 			)
 		})
