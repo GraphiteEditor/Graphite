@@ -1915,11 +1915,90 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeType {
-			name: "Unit Circle Generator",
+			name: "Circle",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitCircleGenerator"),
-			inputs: vec![DocumentInputType::none()],
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::CircleGenerator<_>"),
+			inputs: vec![DocumentInputType::none(), DocumentInputType::value("Radius", TaggedValue::F32(50.), false)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::circle_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Ellipse",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Radius X", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Radius Y", TaggedValue::F32(25.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::ellipse_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Rectangle",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Size X", TaggedValue::F32(100.), false),
+				DocumentInputType::value("Size Y", TaggedValue::F32(100.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::rectangle_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Regular Polygon",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Sides", TaggedValue::U32(6), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::regular_polygon_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Star",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Sides", TaggedValue::U32(5), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Inner Radius", TaggedValue::F32(25.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::star_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Line",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., -50.)), false),
+				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 50.)), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::line_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Spline",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator<_>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Points", TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::spline_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
