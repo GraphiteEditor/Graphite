@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use super::{Channel, Color, Node};
 
