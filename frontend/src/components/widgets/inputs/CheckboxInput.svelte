@@ -75,12 +75,12 @@
 				}
 			}
 
-			// Hovered
+			// Hovered while unchecked
 			&:hover .checkbox-box {
 				background: var(--color-6-lowergray);
 			}
 
-			// Disabled
+			// Disabled while unchecked
 			&.disabled .checkbox-box {
 				background: var(--color-4-dimgray);
 			}
@@ -96,12 +96,12 @@
 				}
 			}
 
-			// Hovered
+			// Hovered while checked
 			&:hover .checkbox-box {
 				background: var(--color-f-white);
 			}
 
-			// Hovered
+			// Disabled while checked
 			&.disabled .checkbox-box {
 				background: var(--color-8-uppergray);
 			}
