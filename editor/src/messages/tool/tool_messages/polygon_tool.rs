@@ -265,7 +265,7 @@ impl Fsm for PolygonToolFsmState {
 
 					let subpath = match tool_options.primitive_shape_type {
 						PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
-						PrimitiveShapeType::Star => bezier_rs::Subpath::new_regular_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
+						PrimitiveShapeType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
 					};
 					graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
 

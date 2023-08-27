@@ -47,13 +47,13 @@ fn square_generator(_input: (), size_x: f32, size_y: f32) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PolygonGenerator<Points, Radius> {
+pub struct RegularPolygonGenerator<Points, Radius> {
 	points: Points,
 	radius: Radius,
 }
 
-#[node_macro::node_fn(PolygonGenerator)]
-fn polygon_generator(_input: (), points: u32, radius: f32) -> VectorData {
+#[node_macro::node_fn(RegularPolygonGenerator)]
+fn regular_polygon_generator(_input: (), points: u32, radius: f32) -> VectorData {
 	let points = points.into();
 	let radius: f64 = (radius * 2.).into();
 	super::VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
@@ -72,7 +72,7 @@ fn star_generator(_input: (), points: u32, radius: f32, inner_radius: f32) -> Ve
 	let diameter: f64 = (radius * 2.).into();
 	let inner_diameter = (inner_radius * 2.).into();
 
-	super::VectorData::from_subpath(Subpath::new_regular_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))
+	super::VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))
 }
 
 #[derive(Debug, Clone, Copy)]

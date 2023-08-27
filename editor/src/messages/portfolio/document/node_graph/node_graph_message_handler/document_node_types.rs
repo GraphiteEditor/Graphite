@@ -1950,16 +1950,16 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Polygon",
+			name: "Regular Polygon",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PolygonGenerator<_, _>"),
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Sides", TaggedValue::U32(32), false),
+				DocumentInputType::value("Sides", TaggedValue::U32(6), false),
 				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::polygon_properties,
+			properties: node_properties::regular_polygon_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -1968,9 +1968,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Sides", TaggedValue::U32(32), false),
+				DocumentInputType::value("Sides", TaggedValue::U32(5), false),
 				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
-				DocumentInputType::value("Inner Radius", TaggedValue::F32(40.), false),
+				DocumentInputType::value("Inner Radius", TaggedValue::F32(25.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::star_properties,

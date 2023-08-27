@@ -1193,7 +1193,7 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	vec![operand("Size X", 1), operand("Size Y", 2)]
 }
 
-pub fn polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(3.), true);
 	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
 
