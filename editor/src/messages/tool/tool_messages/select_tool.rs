@@ -1352,9 +1352,7 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 fn recursive_search(document: &DocumentMessageHandler, layer_path: &[u64], incoming_layer_path_vector: &Vec<u64>) -> bool {
 	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
 	for path in layer_paths {
-		if path == *incoming_layer_path_vector {
-			return true;
-		} else if document.document_legacy.is_folder(&path) && recursive_search(document, &path, incoming_layer_path_vector) {
+		if path == *incoming_layer_path_vector || (document.document_legacy.is_folder(&path) && recursive_search(document, &path, incoming_layer_path_vector)) {
 			return true;
 		}
 	}
