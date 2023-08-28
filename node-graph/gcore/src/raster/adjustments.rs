@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, ImageFrame, Node, RGBMut};
+use super::{Channel, Color, ImageFrame, Node, RGBMut, Raster};
 
 use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
@@ -959,13 +959,58 @@ pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
 
 #[node_macro::node_fn(ColorOverlayNode)]
 pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+	info!(
+		"Before colour overlay pixel[200,200] = {:?} (between 0-255 = {:?})",
+		image.get_pixel(200, 200),
+		image.get_pixel(200, 200).map(|color| (color.r() * 255., color.g() * 255., color.b() * 255., color.a() * 255.))
+	);
+
 	let opacity = (opacity / 100.).clamp(0., 1.);
 	for pixel in &mut image.image.data {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
-		let overlay = apply_blend_mode(color, *pixel, blend_mode).map_rgb(|channel| channel * opacity);
+
+		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
+		let associated_pixel = Color::from_rgbaf32_unchecked(pixel.r() * pixel.a(), pixel.g() * pixel.a(), pixel.b() * pixel.a(), pixel.a());
+		let overlay = apply_blend_mode(color, associated_pixel, blend_mode).map_rgb(|channel| channel * opacity);
+
 		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
 	}
+
+	info!(
+		"After colour overlay pixel[200,200] = {:?} (between 0-255 = {:?})",
+		image.get_pixel(200, 200),
+		image.get_pixel(200, 200).map(|color| (color.r() * 255., color.g() * 255., color.b() * 255., color.a() * 255.))
+	);
+
 	image
+}
+
+#[test]
+fn color_overlay_multiply() {
+	use crate::raster::Image;
+	use crate::value::ClonedNode;
+
+	let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
+	let image = ImageFrame {
+		image: Image::new(1, 1, image_color),
+		..Default::default()
+	};
+
+	// Color { red: 0., green: 1., blue: 0., alpha: 1. }
+	let overlay_color = Color::GREEN;
+
+	// 100% of the output should come from the multiplied value
+	let opacity = 100_f32;
+
+	let result = ColorOverlayNode {
+		color: ClonedNode(overlay_color),
+		blend_mode: ClonedNode(BlendMode::Multiply),
+		opacity: ClonedNode(opacity),
+	}
+	.eval(image);
+
+	// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
+	assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 }
 
 #[cfg(feature = "alloc")]

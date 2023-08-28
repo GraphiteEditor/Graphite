@@ -92,6 +92,14 @@
 			if (file?.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
 
+				// Debug log some of the pixel values from the canvas (each 4 bytes is one pixel, each row is encoded from top to bottom)
+				//for (let y = 0; y < imageData.height; y += 20) {
+				//for (let x = 0; x < imageData.width; x += 20) {
+				const x = 200;
+				const y = 200;
+				console.info(`[${x}, ${y}] = (${imageData.data.slice((y * imageData.width + x) * 4, (y * imageData.width + x) * 4 + 4)}) after js rasterise on canvas pixel`);
+					
+
 				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
 			}
 		});
