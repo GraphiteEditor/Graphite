@@ -71,14 +71,17 @@ pub fn get_single_selected_point(document: &Document, shape_state: &mut ShapeSta
 		None
 	} else {
 		let (layer, _) = selection_layers[0];
-		let vector_data = document.layer(layer).ok()?.as_vector_data()?;
+		let layer_data = document.layer(layer).ok()?;
+		let vector_data = layer_data.as_vector_data()?;
 		let points: Vec<_> = shape_state.selected_points().take(2).collect();
 		if points.len() != 1 || points[0].manipulator_type.is_handle() {
 			None
 		} else {
+			// Get the first selected point and transform it to art board space.
 			let point = *points[0];
 			let group = vector_data.manipulator_from_id(point.group)?;
-			point.manipulator_type.get_position(group)
+			let local_position = point.manipulator_type.get_position(group)?;
+			Some(layer_data.transform.transform_point2(local_position) + layer_data.pivot)
 		}
 	}
 }
@@ -101,8 +104,8 @@ impl LayoutHolder for PathTool {
 			let x_loc = NumberInput::new(Some(x))
 				.unit(" px")
 				.label("x")
-				.min(std::f64::MIN)
-				.max(std::f64::MAX)
+				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(move |number_input: &NumberInput| {
 					let new_x = number_input.value.unwrap_or(x);
 					PathToolMessage::SelectedPointXChanged { new_x }.into()
@@ -112,8 +115,8 @@ impl LayoutHolder for PathTool {
 			let y_loc = NumberInput::new(Some(y))
 				.unit(" px")
 				.label("y")
-				.min(std::f64::MIN)
-				.max(std::f64::MAX)
+				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(move |number_input: &NumberInput| {
 					let new_y = number_input.value.unwrap_or(y);
 					PathToolMessage::SelectedPointYChanged { new_y }.into()
