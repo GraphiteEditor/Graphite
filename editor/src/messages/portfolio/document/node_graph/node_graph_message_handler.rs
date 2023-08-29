@@ -402,7 +402,7 @@ impl NodeGraphMessageHandler {
 				}
 			}
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				Self::remove_references_from_network(network, deleting_node_id);
+				return Self::remove_references_from_network(network, deleting_node_id);
 			}
 		}
 		true
