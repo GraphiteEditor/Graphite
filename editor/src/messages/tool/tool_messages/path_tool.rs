@@ -24,6 +24,13 @@ pub struct PathTool {
 	tool_data: PathToolData,
 }
 
+#[derive(Debug, PartialEq)]
+struct SingleSelectedPoint {
+	coordinates: DVec2,
+	id: ManipulatorPointId,
+	layer_path: Vec<u64>,
+}
+
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
@@ -65,25 +72,25 @@ pub enum PathToolMessage {
 }
 
 // If there is one and only one selected control point this function yields its position.
-pub fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<DVec2> {
-	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).collect();
-	if selection_layers.len() != 1 || selection_layers[0].1.selected_points_count() != 1 {
-		None
-	} else {
-		let (layer, _) = selection_layers[0];
-		let layer_data = document.layer(layer).ok()?;
-		let vector_data = layer_data.as_vector_data()?;
-		let points: Vec<_> = shape_state.selected_points().take(2).collect();
-		if points.len() != 1 || points[0].manipulator_type.is_handle() {
-			None
-		} else {
-			// Get the first selected point and transform it to art board space.
-			let point = *points[0];
-			let group = vector_data.manipulator_from_id(point.group)?;
-			let local_position = point.manipulator_type.get_position(group)?;
-			Some(layer_data.transform.transform_point2(local_position) + layer_data.pivot)
-		}
+fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
+	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
+	let [(layer, 1)] = selection_layers[..] else { return None; };
+	let layer_data = document.layer(layer).ok()?;
+	let vector_data = layer_data.as_vector_data()?;
+	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else { return None; };
+
+	if point.manipulator_type.is_handle() {
+		return None;
 	}
+
+	// Get the first selected point and transform it to artboard space.
+	let group = vector_data.manipulator_from_id(point.group)?;
+	let local_position = point.manipulator_type.get_position(group)?;
+	Some(SingleSelectedPoint {
+		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
+		layer_path: layer.clone(),
+		id: *point,
+	})
 }
 
 impl ToolMetadata for PathTool {
@@ -100,7 +107,7 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		if let Some(DVec2 { x, y }) = self.tool_data.single_selected_point {
+		if let Some(SingleSelectedPoint { coordinates: DVec2 { x, y }, .. }) = self.tool_data.single_selected_point {
 			let x_loc = NumberInput::new(Some(x))
 				.unit(" px")
 				.label("x")
@@ -201,7 +208,7 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	single_selected_point: Option<DVec2>,
+	single_selected_point: Option<SingleSelectedPoint>,
 }
 
 impl PathToolData {
@@ -482,14 +489,14 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
-					if let Some(DVec2 { x, .. }) = tool_data.single_selected_point {
-						shape_editor.move_selected_points(&document.document_legacy, (new_x - x, 0.0).into(), true, responses);
+					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+						shape_editor.reposition_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
-					if let Some(DVec2 { y, .. }) = tool_data.single_selected_point {
-						shape_editor.move_selected_points(&document.document_legacy, (0.0, new_y - y).into(), true, responses);
+					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+						shape_editor.reposition_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
