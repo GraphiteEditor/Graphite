@@ -152,9 +152,14 @@ impl ShapeState {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 
-	/// Moves a handle to a new position, new_position must be in art board space.
+	/// Moves an anchor to a new position, new_position must be in art board space.
 	/// Returns Some(()) if successful and None otherwise.
-	pub fn reposition_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
+	pub fn reposition_anchor_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
+		if point.manipulator_type.is_handle() {
+			trace!("cannot call `reposition anchor` on a handle");
+			return None;
+		}
+
 		let layer = document.layer(layer_path).ok()?;
 		let vector_data = layer.as_vector_data()?;
 		let transform = layer.transform.inverse();

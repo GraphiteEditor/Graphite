@@ -490,13 +490,13 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
-						shape_editor.reposition_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
+						shape_editor.reposition_anchor_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
-						shape_editor.reposition_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
+						shape_editor.reposition_anchor_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
