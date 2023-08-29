@@ -71,7 +71,7 @@ pub enum PathToolMessage {
 	},
 }
 
-// If there is one and only one selected control point this function yields its position.
+// If there is one and only one selected control point this function yields all the information needed to manipulate it.
 fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
 	let [(layer, 1)] = selection_layers[..] else { return None; };
