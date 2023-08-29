@@ -66,7 +66,7 @@
 	<LayoutRow
 		class="dropdown-box"
 		classes={{ disabled, open, "sharp-right-corners": sharpRightCorners }}
-		styles={{ minWidth: `${minWidth}px` }}
+		styles={{ "min-width": `${minWidth}px` }}
 		{tooltip}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}

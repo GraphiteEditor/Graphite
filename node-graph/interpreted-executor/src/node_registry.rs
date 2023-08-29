@@ -463,9 +463,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					use graphene_core::raster::brightness_contrast::*;
 
 					let brightness: DowncastBothNode<(), f32> = DowncastBothNode::new(args[0].clone());
-					let brightness = ClonedNode::new(brightness.eval(()).await as f32);
+					let brightness = ClonedNode::new(brightness.eval(()).await);
 					let contrast: DowncastBothNode<(), f32> = DowncastBothNode::new(args[1].clone());
-					let contrast = ClonedNode::new(contrast.eval(()).await as f32);
+					let contrast = ClonedNode::new(contrast.eval(()).await);
 					let use_legacy: DowncastBothNode<(), bool> = DowncastBothNode::new(args[2].clone());
 
 					if use_legacy.eval(()).await {
@@ -630,7 +630,13 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::RepeatNode<_, _>, input: VectorData, params: [DVec2, u32]),
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
-		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
+		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),
+		register_node!(graphene_core::vector::generator_nodes::EllipseGenerator<_, _>, input: (), params: [f32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::RectangleGenerator<_, _>, input: (), params: [f32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>, input: (), params: [u32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::StarGenerator<_, _, _>, input: (), params: [u32, f32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::LineGenerator<_, _>, input: (), params: [DVec2, DVec2]),
+		register_node!(graphene_core::vector::generator_nodes::SplineGenerator<_>, input: (), params: [Vec<DVec2>]),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
