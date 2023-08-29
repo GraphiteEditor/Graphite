@@ -75,10 +75,14 @@ pub enum PathToolMessage {
 // If there is one and only one selected control point this function yields all the information needed to manipulate it.
 fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
-	let [(layer, 1)] = selection_layers[..] else { return None; };
+	let [(layer, 1)] = selection_layers[..] else {
+        return None;
+    };
 	let layer_data = document.layer(layer).ok()?;
 	let vector_data = layer_data.as_vector_data()?;
-	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else { return None; };
+	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
+        return None;
+    };
 
 	if point.manipulator_type.is_handle() {
 		return None;
@@ -144,10 +148,11 @@ impl LayoutHolder for PathTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Path(PathToolMessage::SelectedPointUpdated) = &message {
+		let updating_point = ToolMessage::Path(PathToolMessage::SelectedPointUpdated) == message;
+		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+		if updating_point {
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 		}
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
 	}
 
 	// Different actions depending on state may be wanted:
@@ -251,6 +256,7 @@ impl Fsm for PathToolFsmState {
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 					shape_editor.set_selected_layers(layer_paths);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+					responses.add(PathToolMessage::SelectedPointUpdated);
 					// This can happen in any state (which is why we return self)
 					self
 				}
@@ -260,6 +266,7 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.selected_visible_layers() {
 						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
 					}
+					responses.add(PathToolMessage::SelectedPointUpdated);
 
 					self
 				}
@@ -302,6 +309,7 @@ impl Fsm for PathToolFsmState {
 
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 
+						responses.add(PathToolMessage::SelectedPointUpdated);
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -348,7 +356,6 @@ impl Fsm for PathToolFsmState {
 						}
 						.into(),
 					));
-					responses.add(PathToolMessage::SelectedPointUpdated);
 					PathToolFsmState::DrawingBox
 				}
 
@@ -386,7 +393,6 @@ impl Fsm for PathToolFsmState {
 					let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					shape_editor.move_selected_points(&document.document_legacy, snapped_position - tool_data.previous_mouse_position, shift_pressed, responses);
 					tool_data.previous_mouse_position = snapped_position;
-					responses.add(PathToolMessage::SelectedPointUpdated);
 					PathToolFsmState::Dragging
 				}
 
@@ -490,23 +496,19 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
 						shape_editor.reposition_anchor_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
-						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
 						shape_editor.reposition_anchor_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
-						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointUpdated) => {
 					let new_point = get_single_selected_point(&document.document_legacy, shape_editor);
-					if tool_data.single_selected_point != new_point {
-						tool_data.single_selected_point = new_point;
-					}
-					PathToolFsmState::Ready
+					tool_data.single_selected_point = new_point;
+					self
 				}
 				(_, _) => PathToolFsmState::Ready,
 			}

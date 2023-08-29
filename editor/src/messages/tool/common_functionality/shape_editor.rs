@@ -156,7 +156,7 @@ impl ShapeState {
 	/// Returns Some(()) if successful and None otherwise.
 	pub fn reposition_anchor_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
 		if point.manipulator_type.is_handle() {
-			trace!("cannot call `reposition anchor` on a handle");
+			warn!("cannot call `reposition anchor` on a handle");
 			return None;
 		}
 
