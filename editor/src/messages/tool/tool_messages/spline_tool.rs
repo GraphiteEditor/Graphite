@@ -202,7 +202,7 @@ impl Fsm for SplineToolFsmState {
 			..
 		} = tool_action_data;
 
-		let transform = document.document_legacy.metadata.document_to_viewport;
+		let transform = document.metadata().document_to_viewport;
 
 		let ToolMessage::Spline(event) = event else {
 			return self;

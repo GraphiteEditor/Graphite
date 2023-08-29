@@ -228,7 +228,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.mouse_position = ipp.mouse.position;
 			}
 			SelectionChanged => {
-				let target_layers = document.document_legacy.metadata.selected_layers().collect();
+				let target_layers = document.metadata().selected_layers().collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),

@@ -191,7 +191,7 @@ impl Fsm for FreehandToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let transform = document.document_legacy.metadata.document_to_viewport;
+		let transform = document.metadata().document_to_viewport;
 
 		let ToolMessage::Freehand(event) = event else {
 			return self;
