@@ -152,7 +152,7 @@ impl ShapeState {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 
-	/// Moves a point to a new position relative to it's layer transform
+	/// Moves a handle to a new position, new_position must be in art board space
 	/// returns Some(()) if successful and None otherwise
 	pub fn reposition_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
 		let layer = document.layer(layer_path).ok()?;
@@ -171,34 +171,8 @@ impl ShapeState {
 		};
 
 		move_point(*point);
-
-		if point.manipulator_type == SelectedType::Anchor {
-			move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-			move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-		}
-
-		if point.manipulator_type != SelectedType::Anchor {
-			let mut mirror = vector_data.mirror_angle.contains(&point.group);
-
-			// If there is no opposing handle, we mirror even if mirror_angle doesn't contain the group
-			// and set angle mirroring to true.
-			if !mirror && point.manipulator_type.opposite().get_position(group).is_none() {
-				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
-					modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: true },
-				});
-				mirror = true;
-			}
-
-			if mirror {
-				let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-				let position = group.anchor - (new_position - group.anchor);
-				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
-					modification: VectorDataModification::SetManipulatorPosition { point, position },
-				});
-			}
-		}
+		move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+		move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
 
 		Some(())
 	}
