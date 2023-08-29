@@ -76,13 +76,13 @@ pub enum PathToolMessage {
 fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
 	let [(layer, 1)] = selection_layers[..] else {
-        return None;
-    };
+		return None;
+	};
 	let layer_data = document.layer(layer).ok()?;
 	let vector_data = layer_data.as_vector_data()?;
 	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
-        return None;
-    };
+		return None;
+	};
 
 	if point.manipulator_type.is_handle() {
 		return None;

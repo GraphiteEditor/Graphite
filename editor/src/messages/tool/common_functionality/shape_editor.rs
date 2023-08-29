@@ -168,7 +168,9 @@ impl ShapeState {
 		let delta = position - point.manipulator_type.get_position(group)?;
 
 		let mut move_point = |point: ManipulatorPointId| {
-			let Some(position) = point.manipulator_type.get_position(group) else { return; };
+			let Some(position) = point.manipulator_type.get_position(group) else {
+				return;
+			};
 			responses.add(GraphOperationMessage::Vector {
 				layer: layer_path.to_vec(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: (position + delta) },
