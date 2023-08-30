@@ -37,7 +37,8 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				responses.add(InputMapperMessage::DoubleClick);
+				let key = mouse_state.mouse_keys.to_key();
+				responses.add(InputMapperMessage::DoubleClick(key));
 			}
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

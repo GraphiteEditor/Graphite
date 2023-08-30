@@ -20,9 +20,15 @@ pub enum InputMapperMessage {
 	#[remain::unsorted]
 	#[child]
 	KeyUpNoRepeat(Key),
+	/// The only valid [Key]s for `DoubleClick` are:
+	/// - [Key::Lmb]
+	/// - [Key::Rmb]
+	/// - [Key::Mmb]
+	#[remain::unsorted]
+	#[child]
+	DoubleClick(Key),
 
 	// Messages
-	DoubleClick,
 	PointerMove,
 	WheelScroll,
 }

@@ -1,3 +1,4 @@
+use super::input_keyboard::Key;
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::prelude::*;
 
@@ -144,5 +145,25 @@ bitflags! {
 		const LEFT   = 0b0000_0001;
 		const RIGHT  = 0b0000_0010;
 		const MIDDLE = 0b0000_0100;
+	}
+}
+
+impl MouseKeys {
+	pub fn from_key(key: &Key) -> Self {
+		match key {
+			Key::Lmb => Self::LEFT,
+			Key::Rmb => Self::RIGHT,
+			Key::Mmb => Self::MIDDLE,
+			_ => unreachable!(),
+		}
+	}
+
+	pub fn to_key(&self) -> Key {
+		match self {
+			&Self::LEFT => Key::Lmb,
+			&Self::RIGHT => Key::Rmb,
+			&Self::MIDDLE => Key::Mmb,
+			_ => unreachable!(),
+		}
 	}
 }

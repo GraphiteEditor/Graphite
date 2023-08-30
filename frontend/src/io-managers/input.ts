@@ -28,7 +28,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Event listeners
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: boolean | AddEventListenerOptions }[] = [
+	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
 		{ target: window, eventName: "resize", action: () => onWindowResize(window.document.body) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
@@ -36,7 +36,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		{ target: window, eventName: "pointermove", action: (e: PointerEvent) => onPointerMove(e) },
 		{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent) => onPointerUp(e) },
-		{ target: window, eventName: "dblclick", action: (e: PointerEvent) => onDoubleClick(e) },
+		{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
+		{ target: window, eventName: "mouseup", action: (e: MouseEvent) => onPotentialDoubleClick(e) },
 		{ target: window, eventName: "wheel", action: (e: WheelEvent) => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 		{ target: window, eventName: "focusout", action: () => (canvasFocused = false) },
@@ -147,6 +148,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		editor.instance.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
+	function onMouseDown(e: MouseEvent): void {
+		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
+		if (e.button === 1) e.preventDefault();
+	}
+
 	function onPointerDown(e: PointerEvent): void {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
@@ -168,27 +174,31 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.instance.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 		}
-
-		// Block middle mouse button auto-scroll mode (the circlar widget that appears and allows quick scrolling by moving the cursor above or below it)
-		if (e.button === 1) e.preventDefault();
 	}
 
 	function onPointerUp(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		if (!textToolInteractiveInputElement) {
-			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
-		}
+		if (textToolInteractiveInputElement) return;
+
+		const modifiers = makeKeyboardModifiersBitfield(e);
+		editor.instance.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
-	function onDoubleClick(e: PointerEvent): void {
-		if (!e.buttons) viewportPointerInteractionOngoing = false;
+	function onPotentialDoubleClick(e: MouseEvent): void {
+		if (textToolInteractiveInputElement) return;
+		
+		// Allow only double-clicks
+		if (e.detail !== 2) return;
+		
+		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
+		let buttons = 1;
+		if (e.button === 0) buttons = 1; // LMB
+		if (e.button === 1) buttons = 4; // MMB
+		if (e.button === 2) buttons = 2; // RMB
 
-		if (!textToolInteractiveInputElement) {
-			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onDoubleClick(e.clientX, e.clientY, e.buttons, modifiers);
-		}
+		const modifiers = makeKeyboardModifiersBitfield(e);
+		editor.instance.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
 	}
 
 	// Mouse events

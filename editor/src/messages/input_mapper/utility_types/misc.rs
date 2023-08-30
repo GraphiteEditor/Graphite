@@ -11,7 +11,7 @@ pub struct Mapping {
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_up_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_down_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
-	pub double_click: KeyMappingEntries,
+	pub double_click: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
 }
@@ -44,7 +44,7 @@ impl Mapping {
 			InputMapperMessage::KeyUp(key) => &self.key_up[*key as usize],
 			InputMapperMessage::KeyDownNoRepeat(key) => &self.key_down_no_repeat[*key as usize],
 			InputMapperMessage::KeyUpNoRepeat(key) => &self.key_up_no_repeat[*key as usize],
-			InputMapperMessage::DoubleClick => &self.double_click,
+			InputMapperMessage::DoubleClick(key) => &self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 		}
@@ -56,7 +56,7 @@ impl Mapping {
 			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
 			InputMapperMessage::KeyDownNoRepeat(key) => &mut self.key_down_no_repeat[*key as usize],
 			InputMapperMessage::KeyUpNoRepeat(key) => &mut self.key_up_no_repeat[*key as usize],
-			InputMapperMessage::DoubleClick => &mut self.double_click,
+			InputMapperMessage::DoubleClick(key) => &mut self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
 			InputMapperMessage::PointerMove => &mut self.pointer_move,
 		}
