@@ -160,7 +160,7 @@ fn set_vector_data_resample_curve(mut vector_data: VectorData, spacing: f64) -> 
 		let rounded_count = (length / spacing).round();
 
 		let new_anchors = (0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean(c as f64 / rounded_count)));
-		*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && new_anchors.len() > 1);
+		*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && rounded_count > 1);
 
 		subpath.apply_transform(vector_data.transform.inverse());
 	}
