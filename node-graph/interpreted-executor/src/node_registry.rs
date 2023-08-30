@@ -260,6 +260,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::logic::LogToConsoleNode, input: DVec2, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: VectorData, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: DAffine2, params: []),
+		register_node!(graphene_core::logic::LogicOrNode<_>, input: bool, params: [bool]),
+		register_node!(graphene_core::logic::LogicAndNode<_>, input: bool, params: [bool]),
+		register_node!(graphene_core::logic::LogicXorNode<_>, input: bool, params: [bool]),
+		register_node!(graphene_core::logic::LogicNotNode, input: bool, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>, input: ImageFrame<Color>, output: ImageFrame<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, output: ImageFrame<Color>, params: []),
 		#[cfg(feature = "gpu")]

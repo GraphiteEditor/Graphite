@@ -1861,8 +1861,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::MaxParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("First", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::max_properties,
@@ -1873,20 +1873,20 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::MinParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("First", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::min_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Equality",
+			name: "Equals",
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::EqParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("First", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::eq_properties,
@@ -1908,8 +1908,53 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Log to Console",
 			category: "Logic",
 			identifier: NodeImplementation::proto("graphene_core::logic::LogToConsoleNode"),
-			inputs: vec![DocumentInputType::value("First", TaggedValue::String("Not Connected to a value yet".into()), true)],
+			inputs: vec![DocumentInputType::value("Input", TaggedValue::String("Not Connected to a value yet".into()), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Or",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicOrNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "And",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicAndNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "XOR",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicXorNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Not",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicNotNode"),
+			inputs: vec![DocumentInputType::value("Input", TaggedValue::Bool(false), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
 			properties: node_properties::no_properties,
 			..Default::default()
 		},
