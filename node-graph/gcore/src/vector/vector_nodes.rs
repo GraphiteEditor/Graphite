@@ -148,16 +148,22 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ResampleAsPolyline<Spacing> {
+pub struct SetResampleCurveNode<Spacing> {
 	spacing: Spacing,
 }
 
-#[node_macro::node_fn(ResampleAsPolyline)]
+#[node_macro::node_fn(SetResampleCurveNode)]
 fn set_vector_data_resample_curve(mut vector_data: VectorData, spacing: f64) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
+		if subpath.is_empty() {
+			continue;
+		}
 		subpath.apply_transform(vector_data.transform);
 		let length = subpath.length(None);
 		let rounded_count = (length / spacing).round();
+		if rounded_count < 1. {
+			continue;
+		}
 
 		let new_anchors = (0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean(c as f64 / rounded_count)));
 		*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && rounded_count as usize > 1);
