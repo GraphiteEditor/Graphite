@@ -2171,9 +2171,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Resample Curve",
+			name: "Resample as Polyline",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::SetResampleCurveNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::vector::ResampleAsPolyline<_>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Spacing", TaggedValue::F64(100.), false),
@@ -2185,7 +2185,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Spline from Points",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::SetSplineFromPointsNode"),
+			identifier: NodeImplementation::proto("graphene_core::vector::SplineFromPointsNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::no_properties,
