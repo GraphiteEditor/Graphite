@@ -2171,15 +2171,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Resample as Polyline",
+			name: "Resample Points",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::ResampleAsPolyline<_>"),
+			identifier: NodeImplementation::proto("graphene_core::vector::ResamplePoints<_>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Spacing", TaggedValue::F64(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::resample_curve_properties,
+			properties: node_properties::resample_points_properties,
 			..Default::default()
 		},
 		DocumentNodeType {

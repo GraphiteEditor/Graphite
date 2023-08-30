@@ -149,12 +149,12 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ResampleAsPolyline<Spacing> {
+pub struct ResamplePoints<Spacing> {
 	spacing: Spacing,
 }
 
-#[node_macro::node_fn(ResampleAsPolyline)]
-fn resample_as_polyline(mut vector_data: VectorData, spacing: f64) -> VectorData {
+#[node_macro::node_fn(ResamplePoints)]
+fn resample_points(mut vector_data: VectorData, spacing: f64) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
 		if subpath.is_empty() || spacing.is_zero() || !spacing.is_finite() {
 			continue;
