@@ -11,8 +11,9 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box};
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
+use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
-use document_legacy::{document::Document, LayerId, Operation};
+use document_legacy::{LayerId, Operation};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
@@ -22,13 +23,6 @@ use serde::{Deserialize, Serialize};
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
 	tool_data: PathToolData,
-}
-
-#[derive(Debug, PartialEq)]
-struct SingleSelectedPoint {
-	coordinates: DVec2,
-	id: ManipulatorPointId,
-	layer_path: Vec<u64>,
 }
 
 #[remain::sorted]
@@ -72,28 +66,6 @@ pub enum PathToolMessage {
 	},
 }
 
-// If there is one and only one selected control point this function yields all the information needed to manipulate it.
-fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
-	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
-	let [(layer, 1)] = selection_layers[..] else {
-		return None;
-	};
-	let layer_data = document.layer(layer).ok()?;
-	let vector_data = layer_data.as_vector_data()?;
-	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
-		return None;
-	};
-
-	// Get the first selected point and transform it to artboard space.
-	let group = vector_data.manipulator_from_id(point.group)?;
-	let local_position = point.manipulator_type.get_position(group)?;
-	Some(SingleSelectedPoint {
-		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
-		layer_path: layer.clone(),
-		id: *point,
-	})
-}
-
 impl ToolMetadata for PathTool {
 	fn icon_name(&self) -> String {
 		"VectorPathTool".into()
@@ -109,7 +81,7 @@ impl ToolMetadata for PathTool {
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
 		if let Some(SingleSelectedPoint { coordinates: DVec2 { x, y }, .. }) = self.tool_data.single_selected_point {
-			let x_loc = NumberInput::new(Some(x))
+			let x_location = NumberInput::new(Some(x))
 				.unit(" px")
 				.label("X")
 				.min_width(120)
@@ -121,7 +93,7 @@ impl LayoutHolder for PathTool {
 				})
 				.widget_holder();
 
-			let y_loc = NumberInput::new(Some(y))
+			let y_location = NumberInput::new(Some(y))
 				.unit(" px")
 				.label("Y")
 				.min_width(120)
@@ -136,7 +108,7 @@ impl LayoutHolder for PathTool {
 			let seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
 			Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-				widgets: vec![x_loc, seperator, y_loc],
+				widgets: vec![x_location, seperator, y_location],
 			}]))
 		} else {
 			Layout::WidgetLayout(WidgetLayout::default())
@@ -146,8 +118,10 @@ impl LayoutHolder for PathTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let updating_point = ToolMessage::Path(PathToolMessage::SelectedPointUpdated) == message;
+		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
+
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+
 		if updating_point {
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 		}
@@ -253,7 +227,9 @@ impl Fsm for PathToolFsmState {
 					// Set the newly targeted layers to visible
 					let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
 					shape_editor.set_selected_layers(layer_paths);
+
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					// This can happen in any state (which is why we return self)
 					self
@@ -264,6 +240,7 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.selected_visible_layers() {
 						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
 					}
+
 					responses.add(PathToolMessage::SelectedPointUpdated);
 
 					self
@@ -541,4 +518,33 @@ impl Fsm for PathToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
+}
+
+#[derive(Debug, PartialEq)]
+struct SingleSelectedPoint {
+	coordinates: DVec2,
+	id: ManipulatorPointId,
+	layer_path: Vec<u64>,
+}
+
+// If there is one and only one selected control point this function yields all the information needed to manipulate it.
+fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
+	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
+	let [(layer, 1)] = selection_layers[..] else {
+		return None;
+	};
+	let layer_data = document.layer(layer).ok()?;
+	let vector_data = layer_data.as_vector_data()?;
+	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
+		return None;
+	};
+
+	// Get the first selected point and transform it to document space.
+	let group = vector_data.manipulator_from_id(point.group)?;
+	let local_position = point.manipulator_type.get_position(group)?;
+	Some(SingleSelectedPoint {
+		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
+		layer_path: layer.clone(),
+		id: *point,
+	})
 }

@@ -27,7 +27,6 @@ impl SelectedLayerState {
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
-
 	pub fn selected_points_count(&self) -> usize {
 		self.selected_points.len()
 	}
@@ -152,8 +151,8 @@ impl ShapeState {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 
-	/// Moves a control point to a new position, new_position must be in art board space.
-	/// Returns Some(()) if successful and None otherwise.
+	/// Moves a control point to a `new_position` in document space.
+	/// Returns `Some(())` if successful and `None` otherwise.
 	pub fn reposition_control_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
 		let layer = document.layer(layer_path).ok()?;
 		let vector_data = layer.as_vector_data()?;
