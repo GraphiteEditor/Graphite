@@ -148,12 +148,12 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SetResampleCurveNode<Spacing> {
+pub struct ResampleAsPolyline<Spacing> {
 	spacing: Spacing,
 }
 
-#[node_macro::node_fn(SetResampleCurveNode)]
-fn set_vector_data_resample_curve(mut vector_data: VectorData, spacing: f64) -> VectorData {
+#[node_macro::node_fn(ResampleAsPolyline)]
+fn resample_as_polyline(mut vector_data: VectorData, spacing: f64) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
 		if subpath.is_empty() {
 			continue;
@@ -177,7 +177,7 @@ fn set_vector_data_resample_curve(mut vector_data: VectorData, spacing: f64) -> 
 pub struct SplineFromPointsNode {}
 
 #[node_macro::node_fn(SplineFromPointsNode)]
-fn set_vector_data_spline_from_points(mut vector_data: VectorData) -> VectorData {
+fn spline_from_points(mut vector_data: VectorData) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
 		*subpath = Subpath::new_cubic_spline(subpath.anchors());
 	}
