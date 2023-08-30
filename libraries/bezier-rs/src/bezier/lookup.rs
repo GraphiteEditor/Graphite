@@ -6,6 +6,13 @@ use super::*;
 impl Bezier {
 	/// Convert a euclidean distance ratio along the `Bezier` curve to a parametric `t`-value.
 	pub fn euclidean_to_parametric(&self, ratio: f64, error: f64) -> f64 {
+		if ratio < error {
+			return 0.;
+		}
+		if 1. - ratio < error {
+			return 1.;
+		}
+
 		let mut low = 0.;
 		let mut mid = 0.;
 		let mut high = 1.;

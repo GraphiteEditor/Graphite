@@ -112,6 +112,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		&self.manipulator_groups
 	}
 
+	/// Returns a vector of all the anchors (DVec2) for this `Subpath`.
+	pub fn anchors(&self) -> Vec<DVec2> {
+		self.manipulator_groups().iter().map(|group| group.anchor).collect()
+	}
+
 	/// Returns if the Subpath is equivalent to a single point.
 	pub fn is_point(&self) -> bool {
 		if self.is_empty() {
@@ -254,7 +259,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Construct a cubic spline from a list of points.
 	/// Based on <https://mathworld.wolfram.com/CubicSpline.html>.
 	pub fn new_cubic_spline(points: Vec<DVec2>) -> Self {
-		if points.is_empty() {
+		if points.len() < 2 {
 			return Self::new(Vec::new(), false);
 		}
 

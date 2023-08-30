@@ -2,9 +2,9 @@ use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
 use crate::{Color, Node};
 
-use bezier_rs::Subpath;
-
+use bezier_rs::{Subpath, SubpathTValue};
 use glam::{DAffine2, DVec2};
+use num_traits::Zero;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform, Positions> {
@@ -146,4 +146,42 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 		vector_data.transform.transform_point2(bounding_box[0]),
 		vector_data.transform.transform_point2(bounding_box[1]),
 	)])
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ResamplePoints<Spacing> {
+	spacing: Spacing,
+}
+
+#[node_macro::node_fn(ResamplePoints)]
+fn resample_points(mut vector_data: VectorData, spacing: f64) -> VectorData {
+	for subpath in &mut vector_data.subpaths {
+		if subpath.is_empty() || spacing.is_zero() || !spacing.is_finite() {
+			continue;
+		}
+
+		subpath.apply_transform(vector_data.transform);
+		let length = subpath.length(None);
+		let rounded_count = (length / spacing).round();
+
+		if rounded_count >= 1. {
+			let new_anchors = (0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean(c as f64 / rounded_count)));
+			*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && rounded_count as usize > 1);
+		}
+
+		subpath.apply_transform(vector_data.transform.inverse());
+	}
+	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SplineFromPointsNode {}
+
+#[node_macro::node_fn(SplineFromPointsNode)]
+fn spline_from_points(mut vector_data: VectorData) -> VectorData {
+	for subpath in &mut vector_data.subpaths {
+		*subpath = Subpath::new_cubic_spline(subpath.anchors());
+	}
+
+	vector_data
 }
