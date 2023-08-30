@@ -93,10 +93,6 @@
 					background: var(--icon-expand-collapse-arrow-hover);
 				}
 
-				.text-label {
-					color: var(--color-f-white);
-				}
-
 				+ .body {
 					border: 1px solid var(--color-4-dimgray);
 				}

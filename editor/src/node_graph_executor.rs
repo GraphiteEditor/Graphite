@@ -222,7 +222,6 @@ impl NodeRuntime {
 			graphic_group.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
 			render.format_svg(min, max);
-			debug!("SVG {}", render.svg);
 
 			if let Some(node_id) = node_path.get(node_path.len() - 2).copied() {
 				let graph_identifier = GraphIdentifier::new(layer_path.last().copied());
@@ -498,11 +497,10 @@ impl NodeGraphExecutor {
 				}
 			}
 			TaggedValue::Artboard(artboard) => {
-				debug!("{artboard:#?}");
+				warn!("Rendered graph produced artboard (which is not currently rendered): {artboard:#?}");
 				return Err("Artboard (see console)".to_string());
 			}
 			TaggedValue::GraphicGroup(graphic_group) => {
-				debug!("{graphic_group:#?}");
 				use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 
 				// Setup rendering
@@ -521,8 +519,6 @@ impl NodeGraphExecutor {
 
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-
-				//return Err("Graphic group (see console)".to_string());
 			}
 			_ => {
 				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));

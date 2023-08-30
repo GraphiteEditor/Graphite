@@ -1861,8 +1861,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::MaxParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("First", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::max_properties,
@@ -1873,20 +1873,20 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::MinParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("First", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::min_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Equality",
+			name: "Equals",
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::EqParameterNode<_>"),
 			inputs: vec![
-				DocumentInputType::value("First", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Second", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
+				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::eq_properties,
@@ -1908,18 +1908,142 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Log to Console",
 			category: "Logic",
 			identifier: NodeImplementation::proto("graphene_core::logic::LogToConsoleNode"),
-			inputs: vec![DocumentInputType::value("First", TaggedValue::String("Not Connected to a value yet".into()), true)],
+			inputs: vec![DocumentInputType::value("Input", TaggedValue::String("Not Connected to a value yet".into()), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
+			properties: node_properties::no_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Or",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicOrNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "And",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicAndNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "XOR",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicXorNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
+				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			properties: node_properties::logic_operator_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Not",
+			category: "Logic",
+			identifier: NodeImplementation::proto("graphene_core::logic::LogicNotNode"),
+			inputs: vec![DocumentInputType::value("Input", TaggedValue::Bool(false), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
 			properties: node_properties::no_properties,
 			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeType {
-			name: "Unit Circle Generator",
+			name: "Circle",
 			category: "Vector",
-			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::UnitCircleGenerator"),
-			inputs: vec![DocumentInputType::none()],
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::CircleGenerator<_>"),
+			inputs: vec![DocumentInputType::none(), DocumentInputType::value("Radius", TaggedValue::F32(50.), false)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::circle_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Ellipse",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Radius X", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Radius Y", TaggedValue::F32(25.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::ellipse_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Rectangle",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Size X", TaggedValue::F32(100.), false),
+				DocumentInputType::value("Size Y", TaggedValue::F32(100.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::rectangle_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Regular Polygon",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Sides", TaggedValue::U32(6), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::regular_polygon_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Star",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Sides", TaggedValue::U32(5), false),
+				DocumentInputType::value("Radius", TaggedValue::F32(50.), false),
+				DocumentInputType::value("Inner Radius", TaggedValue::F32(25.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::star_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Line",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator<_, _>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., -50.)), false),
+				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 50.)), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::line_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Spline",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator<_>"),
+			inputs: vec![
+				DocumentInputType::none(),
+				DocumentInputType::value("Points", TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::spline_properties,
 			..Default::default()
 		},
 		DocumentNodeType {

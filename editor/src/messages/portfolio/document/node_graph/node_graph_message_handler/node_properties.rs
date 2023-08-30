@@ -217,6 +217,36 @@ fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	}
 	widgets
 }
+
+fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
+
+	let from_string = |string: &str| {
+		string
+			.split(|c: char| !c.is_alphanumeric() && !matches!(c, '.' | '+' | '-'))
+			.filter(|x| !x.is_empty())
+			.map(|x| x.parse::<f64>().ok())
+			.collect::<Option<Vec<_>>>()
+			.map(|numbers| numbers.chunks_exact(2).map(|vals| DVec2::new(vals[0], vals[1])).collect())
+			.map(TaggedValue::VecDVec2)
+	};
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::VecDVec2(x),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			text_props
+				.value(x.iter().map(|v| format!("({}, {})", v.x, v.y)).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
+				.widget_holder(),
+		])
+	}
+	widgets
+}
+
 fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
 	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let mut second_widgets = None;
@@ -708,11 +738,7 @@ pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let color = color_widget(document_node, node_id, index, name, ColorInput::default(), true);
-
-		color
-	};
+	let operand = |name: &str, index| color_widget(document_node, node_id, index, name, ColorInput::default(), true);
 	vec![operand("Color", 0)]
 }
 
@@ -760,20 +786,12 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let blend_mode = blend_mode(document_node, node_id, index, name, true);
-
-		blend_mode
-	};
+	let operand = |name: &str, index| blend_mode(document_node, node_id, index, name, true);
 	vec![operand("Blend Mode", 0)]
 }
 
 pub fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let color_channel = color_channel(document_node, node_id, index, name, true);
-
-		color_channel
-	};
+	let operand = |name: &str, index| color_channel(document_node, node_id, index, name, true);
 	vec![operand("Channel", 0)]
 }
 
@@ -1127,7 +1145,7 @@ pub fn eq_properties(document_node: &DocumentNode, node_id: NodeId, _context: &m
 
 		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Equality", 1)]
+	vec![operand("Equals", 1)]
 }
 
 pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1137,6 +1155,60 @@ pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context
 		LayoutGroup::Row { widgets }
 	};
 	vec![operand("Modulo", 1)]
+}
+
+pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![LayoutGroup::Row {
+		widgets: number_widget(document_node, node_id, 1, "Radius", NumberInput::default(), true),
+	}]
+}
+
+pub fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Radius X", 1), operand("Radius Y", 2)]
+}
+
+pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| {
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+
+		LayoutGroup::Row { widgets }
+	};
+	vec![operand("Size X", 1), operand("Size Y", 2)]
+}
+
+pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(3.), true);
+	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
+
+	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }]
+}
+
+pub fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(2.), true);
+	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
+	let inner_radius = number_widget(document_node, node_id, 3, "Inner Radius", NumberInput::default(), true);
+
+	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: inner_radius }]
+}
+
+pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", add_blank_assist);
+	vec![operand("Start", 1), operand("End", 2)]
+}
+pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![LayoutGroup::Row {
+		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
+	}]
+}
+
+pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let widgets = bool_widget(document_node, node_id, 0, "Operand B", true);
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

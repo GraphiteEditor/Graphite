@@ -47,7 +47,7 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 				}
 			}
 		}
-		var.attrs = var.attrs.iter().enumerate().filter(|(i, _)| retain.contains(&i)).map(|(_, x)| x.clone()).collect();
+		var.attrs = var.attrs.iter().enumerate().filter(|(i, _)| retain.contains(i)).map(|(_, x)| x.clone()).collect();
 	}
 
 	let attrs = input

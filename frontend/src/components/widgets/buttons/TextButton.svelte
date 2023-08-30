@@ -22,7 +22,7 @@
 	class:emphasized
 	class:disabled
 	class:sharp-right-corners={sharpRightCorners}
-	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+	style:min-width={minWidth > 0 ? `${minWidth}px` : ""}
 	title={tooltip}
 	data-emphasized={emphasized || undefined}
 	data-disabled={disabled || undefined}
