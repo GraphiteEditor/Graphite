@@ -1881,7 +1881,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Equality",
+			name: "Equals",
 			category: "Math",
 			identifier: NodeImplementation::proto("graphene_core::ops::EqParameterNode<_>"),
 			inputs: vec![

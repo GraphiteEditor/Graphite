@@ -1145,7 +1145,7 @@ pub fn eq_properties(document_node: &DocumentNode, node_id: NodeId, _context: &m
 
 		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Equality", 1)]
+	vec![operand("Equals", 1)]
 }
 
 pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
