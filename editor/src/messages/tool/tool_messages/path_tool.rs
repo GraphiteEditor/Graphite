@@ -111,7 +111,8 @@ impl LayoutHolder for PathTool {
 		if let Some(SingleSelectedPoint { coordinates: DVec2 { x, y }, .. }) = self.tool_data.single_selected_point {
 			let x_loc = NumberInput::new(Some(x))
 				.unit(" px")
-				.label("x")
+				.label("X")
+				.min_width(120)
 				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
 				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(move |number_input: &NumberInput| {
@@ -122,7 +123,8 @@ impl LayoutHolder for PathTool {
 
 			let y_loc = NumberInput::new(Some(y))
 				.unit(" px")
-				.label("y")
+				.label("Y")
+				.min_width(120)
 				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
 				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(move |number_input: &NumberInput| {
