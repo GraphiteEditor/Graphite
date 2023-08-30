@@ -84,10 +84,6 @@ fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) 
 		return None;
 	};
 
-	if point.manipulator_type.is_handle() {
-		return None;
-	}
-
 	// Get the first selected point and transform it to artboard space.
 	let group = vector_data.manipulator_from_id(point.group)?;
 	let local_position = point.manipulator_type.get_position(group)?;
@@ -495,13 +491,13 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
-						shape_editor.reposition_anchor_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
+						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
-						shape_editor.reposition_anchor_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
+						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
