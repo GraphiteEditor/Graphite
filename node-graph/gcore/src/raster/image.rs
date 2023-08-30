@@ -186,16 +186,17 @@ where
 				result[i + 2] = last_b_srgb;
 				result[i + 3] = (a * 255. + 0.5) as u8;
 
-				if i == (200 * width as usize + 200) * 4 {
-					info!(
-						"Encoding pixel[200,200].\nValue = {:?} (0-255 {:?})\ndivide by alpha = {:?} (0-255 = {:?})\nfloat_to_srgb_u8 = {:?}",
-						(color.r().to_f32(), color.g().to_f32(), color.b().to_f32(), color.a().to_f32()),
-						(color.r().to_f32() * 255., color.g().to_f32() * 255., color.b().to_f32() * 255., color.a().to_f32() * 255.),
-						(r, g, b, a),
-						(r * 255., g * 255., b * 255., a * 255.),
-						(last_r_srgb, last_g_srgb, last_b_srgb, (a * 255. + 0.5) as u8)
-					)
-				}
+				// Log a pixel as it is exported
+				// if i == (200 * width as usize + 200) * 4 {
+				// 	info!(
+				// 		"Encoding pixel[200,200].\nValue = {:?} (0-255 {:?})\ndivide by alpha = {:?} (0-255 = {:?})\nfloat_to_srgb_u8 = {:?}",
+				// 		(color.r().to_f32(), color.g().to_f32(), color.b().to_f32(), color.a().to_f32()),
+				// 		(color.r().to_f32() * 255., color.g().to_f32() * 255., color.b().to_f32() * 255., color.a().to_f32() * 255.),
+				// 		(r, g, b, a),
+				// 		(r * 255., g * 255., b * 255., a * 255.),
+				// 		(last_r_srgb, last_g_srgb, last_b_srgb, (a * 255. + 0.5) as u8)
+				// 	);
+				// }
 			}
 
 			i += 4;
