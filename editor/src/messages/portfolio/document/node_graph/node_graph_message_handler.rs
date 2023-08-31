@@ -372,7 +372,7 @@ impl NodeGraphMessageHandler {
 		});
 	}
 
-	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId) -> bool {
+	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, disconnect_nodes: bool) -> bool {
 		if network.inputs.contains(&deleting_node_id) {
 			warn!("Deleting input node");
 			return false;
@@ -384,12 +384,14 @@ impl NodeGraphMessageHandler {
 
 		let mut first_input_node: Option<NodeInput> = None;
 
-		// check whether the deleting node's first (primary) input is a node
-		for (node_id, node) in network.nodes.iter() {
-			if *node_id == deleting_node_id {
-				if node.inputs.len() > 0 {
-					if let NodeInput::Node { .. } = node.inputs[0] {
-						first_input_node = Some(node.inputs[0].clone());
+		if !disconnect_nodes {
+			// check whether the deleting node's first (primary) input is a node
+			for (node_id, node) in network.nodes.iter() {
+				if *node_id == deleting_node_id {
+					if node.inputs.len() > 0 {
+						if let NodeInput::Node { .. } = node.inputs[0] {
+							first_input_node = Some(node.inputs[0].clone());
+						}
 					}
 				}
 			}
@@ -432,15 +434,15 @@ impl NodeGraphMessageHandler {
 				}
 			}
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				return Self::remove_references_from_network(network, deleting_node_id);
+				return Self::remove_references_from_network(network, deleting_node_id, disconnect_nodes);
 			}
 		}
 		true
 	}
 
 	/// Tries to remove a node from the network, returning true on success.
-	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId) -> bool {
-		if Self::remove_references_from_network(network, node_id) {
+	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId, disconnect_nodes: bool) -> bool {
+		if Self::remove_references_from_network(network, node_id, disconnect_nodes) {
 			network.nodes.remove(&node_id);
 			self.selected_nodes.retain(|&id| id != node_id);
 			true
@@ -466,9 +468,14 @@ impl NodeGraphMessageHandler {
 	}
 }
 
-impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64, &str)> for NodeGraphMessageHandler {
+impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64, &str, &InputPreprocessorMessageHandler)> for NodeGraphMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, (document, executor, document_id, document_name): (&mut Document, &NodeGraphExecutor, u64, &str)) {
+	fn process_message(
+		&mut self,
+		message: NodeGraphMessage,
+		responses: &mut VecDeque<Message>,
+		(document, executor, document_id, document_name, input): (&mut Document, &NodeGraphExecutor, u64, &str, &InputPreprocessorMessageHandler),
+	) {
 		#[remain::sorted]
 		match message {
 			NodeGraphMessage::CloseNodeGraph => {
@@ -542,19 +549,27 @@ impl MessageHandler<NodeGraphMessage, (&mut Document, &NodeGraphExecutor, u64, &
 			}
 			NodeGraphMessage::Cut => {
 				responses.add(NodeGraphMessage::Copy);
-				responses.add(NodeGraphMessage::DeleteSelectedNodes);
+				// remove node connections on the cut operation
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { disconnect_input_nodes: None });
 			}
-			NodeGraphMessage::DeleteNode { node_id } => {
+			NodeGraphMessage::DeleteNode { node_id, disconnect_nodes } => {
 				if let Some(network) = self.get_active_network_mut(document) {
-					self.remove_node(network, node_id);
+					self.remove_node(network, node_id, disconnect_nodes);
 				}
 				self.update_selected(document, responses);
 			}
-			NodeGraphMessage::DeleteSelectedNodes => {
+			NodeGraphMessage::DeleteSelectedNodes { disconnect_input_nodes } => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				let disconnect_nodes: bool;
+				if let Some(key) = disconnect_input_nodes {
+					disconnect_nodes = input.keyboard.get(key as usize)
+				} else {
+					disconnect_nodes = false
+				}
+
 				for node_id in self.selected_nodes.clone() {
-					responses.add(NodeGraphMessage::DeleteNode { node_id });
+					responses.add(NodeGraphMessage::DeleteNode { node_id, disconnect_nodes });
 				}
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
