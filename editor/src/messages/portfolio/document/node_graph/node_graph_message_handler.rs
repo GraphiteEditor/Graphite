@@ -383,25 +383,26 @@ impl NodeGraphMessageHandler {
 		}
 
 		let mut first_input_node: Option<NodeInput> = None;
-		let mut first_output_node: Option<&NodeOutput> = None;
+
+		// check whether the deleting node's first (primary) input is a node
+		for (node_id, node) in network.nodes.iter() {
+			if *node_id == deleting_node_id {
+				if node.inputs.len() > 0 {
+					if let NodeInput::Node { .. } = node.inputs[0] {
+						first_input_node = Some(node.inputs[0].clone());
+					}
+				}
+			}
+		}
 
 		for (node_id, node) in network.nodes.iter_mut() {
 			if *node_id == deleting_node_id {
-				if node.inputs.len() > 0 {
-					first_input_node = Some(node.inputs[0].clone());
-					warn!("first node: {:?}", first_input_node);
-
-					// fetch output node only if there's an input node for comparison too
-					if network.outputs.len() > 0 {
-						first_output_node = Some(&network.outputs[0]);
-						warn!("first output node: {:?}", first_output_node);
-					}
-				}
-
 				continue;
 			}
 			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node { node_id, .. } = input else {
+				// skip iteration if not a node, otherwise extract its values for use
+				// node_id here shadows the node_id in the outer for-loop
+				let NodeInput::Node { node_id, output_index, .. } = input else {
 					continue;
 				};
 				if *node_id != deleting_node_id {
@@ -416,12 +417,12 @@ impl NodeGraphMessageHandler {
 				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
 					let mut refers_to_output_node = false;
 
+					// use the first input node as the new input if deleting node's first input is a node,
+					// and the current node uses its primary output too
 					if let Some(input_node) = &first_input_node {
-						if let Some(output_node) = first_output_node {
-							if output_node.node_id == *node_id {
-								refers_to_output_node = true;
-								*input = input_node.clone()
-							}
+						if *output_index == 0 {
+							refers_to_output_node = true;
+							*input = input_node.clone()
 						}
 					}
 
