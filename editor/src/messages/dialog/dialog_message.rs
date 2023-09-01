@@ -29,6 +29,7 @@ pub enum DialogMessage {
 	RequestAboutGraphiteDialog,
 	RequestAboutGraphiteDialogWithLocalizedCommitDate {
 		localized_commit_date: String,
+		localized_commit_year: String,
 	},
 	RequestComingSoonDialog {
 		issue: Option<i32>,

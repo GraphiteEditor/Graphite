@@ -120,7 +120,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton label="New Document" icon="File" action={() => editor.instance.newDocumentDialog()} />
+									<TextButton label="New Document" icon="File" noBackground={true} action={() => editor.instance.newDocumentDialog()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
@@ -128,7 +128,7 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton label="Open Document" icon="Folder" action={() => editor.instance.openDocument()} />
+									<TextButton label="Open Document" icon="Folder" noBackground={true} action={() => editor.instance.openDocument()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
@@ -136,7 +136,7 @@
 							</tr>
 							<tr>
 								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" action={() => editor.instance.demoArtworkDialog()} />
+									<TextButton label="Open Demo Artwork" icon="Image" noBackground={true} action={() => editor.instance.demoArtworkDialog()} />
 								</td>
 							</tr>
 						</table>
@@ -288,10 +288,6 @@
 
 							td {
 								padding: 0;
-							}
-
-							.text-button:not(:hover) {
-								background: none;
 							}
 						}
 					}

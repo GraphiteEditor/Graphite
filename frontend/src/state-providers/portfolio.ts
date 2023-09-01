@@ -90,10 +90,15 @@ export function createPortfolioState(editor: Editor) {
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
 
 		// Rasterize the SVG to an image file
-		const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
+		try {
+			const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
 
-		// Have the browser download the file to the user's disk
-		downloadFileBlob(name, blob);
+			// Have the browser download the file to the user's disk
+			downloadFileBlob(name, blob);
+		} catch {
+			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
+		}
+
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

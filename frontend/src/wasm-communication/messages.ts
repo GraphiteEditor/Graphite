@@ -425,13 +425,10 @@ export class UpdateActiveDocument extends JsMessage {
 
 export class DisplayDialogPanic extends JsMessage {
 	readonly panicInfo!: string;
-
-	readonly header!: string;
-
-	readonly description!: string;
 }
 
 export class DisplayDialog extends JsMessage {
+	readonly title!: string;
 	readonly icon!: IconName;
 }
 
@@ -1049,6 +1046,8 @@ export class TextButton extends WidgetProps {
 
 	emphasized!: boolean;
 
+	noBackground!: boolean;
+	
 	minWidth!: number;
 
 	disabled!: boolean;
@@ -1066,6 +1065,7 @@ export type TextButtonWidget = {
 		label: string;
 		icon?: IconName;
 		emphasized?: boolean;
+		noBackground?: boolean;
 		minWidth?: number;
 		disabled?: boolean;
 		tooltip?: string;
@@ -1222,7 +1222,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
-export function patchWidgetLayout(/* mut */ layout: WidgetLayout, updates: WidgetDiffUpdate): void {
+export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate): void {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
@@ -1320,7 +1320,11 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 }
 
 // WIDGET LAYOUTS
-export class UpdateDialogDetails extends WidgetDiffUpdate { }
+export class UpdateDialogButtons extends WidgetDiffUpdate { }
+
+export class UpdateDialogColumn1 extends WidgetDiffUpdate { }
+
+export class UpdateDialogColumn2 extends WidgetDiffUpdate { }
 
 export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
 
@@ -1407,7 +1411,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateDialogDetails,
+	UpdateDialogButtons,
+	UpdateDialogColumn1,
+	UpdateDialogColumn2,
 	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,

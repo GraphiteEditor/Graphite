@@ -44,7 +44,7 @@
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
 	let dragManagerDestructor = createDragManager();
-	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, fullscreen);
+	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready

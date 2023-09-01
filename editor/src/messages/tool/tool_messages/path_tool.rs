@@ -80,39 +80,40 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		if let Some(SingleSelectedPoint { coordinates: DVec2 { x, y }, .. }) = self.tool_data.single_selected_point {
-			let x_location = NumberInput::new(Some(x))
-				.unit(" px")
-				.label("X")
-				.min_width(120)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(move |number_input: &NumberInput| {
-					let new_x = number_input.value.unwrap_or(x);
-					PathToolMessage::SelectedPointXChanged { new_x }.into()
-				})
-				.widget_holder();
+		let coordinates = self.tool_data.single_selected_point.as_ref().map(|point| point.coordinates);
+		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
 
-			let y_location = NumberInput::new(Some(y))
-				.unit(" px")
-				.label("Y")
-				.min_width(120)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(move |number_input: &NumberInput| {
-					let new_y = number_input.value.unwrap_or(y);
-					PathToolMessage::SelectedPointYChanged { new_y }.into()
-				})
-				.widget_holder();
+		let x_location = NumberInput::new(x)
+			.unit(" px")
+			.label("X")
+			.min_width(120)
+			.disabled(x.is_none())
+			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.on_update(move |number_input: &NumberInput| {
+				let new_x = number_input.value.unwrap_or(x.unwrap());
+				PathToolMessage::SelectedPointXChanged { new_x }.into()
+			})
+			.widget_holder();
 
-			let seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
+		let y_location = NumberInput::new(y)
+			.unit(" px")
+			.label("Y")
+			.min_width(120)
+			.disabled(y.is_none())
+			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.on_update(move |number_input: &NumberInput| {
+				let new_y = number_input.value.unwrap_or(y.unwrap());
+				PathToolMessage::SelectedPointYChanged { new_y }.into()
+			})
+			.widget_holder();
 
-			Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-				widgets: vec![x_location, seperator, y_location],
-			}]))
-		} else {
-			Layout::WidgetLayout(WidgetLayout::default())
-		}
+		let seperator = Separator::new(SeparatorType::Related).widget_holder();
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+			widgets: vec![x_location, seperator, y_location],
+		}]))
 	}
 }
 
