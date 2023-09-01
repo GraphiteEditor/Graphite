@@ -114,6 +114,7 @@ import Folder from "@graphite-frontend/assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
 import GraphViewClosed from "@graphite-frontend/assets/icon-16px-solid/graph-view-closed.svg";
 import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-open.svg";
+import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
 import License from "@graphite-frontend/assets/icon-16px-solid/license.svg";
@@ -181,6 +182,7 @@ const SOLID_16PX = {
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
 	GraphViewClosed: { svg: GraphViewClosed, size: 16 },
 	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
+	IconsGrid: { svg: IconsGrid, size: 16 },
 	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },

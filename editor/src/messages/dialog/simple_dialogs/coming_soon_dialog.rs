@@ -19,11 +19,14 @@ impl DialogLayoutHolder for ComingSoonDialog {
 
 impl LayoutHolder for ComingSoonDialog {
 	fn layout(&self) -> Layout {
+		let header = vec![TextLabel::new("You've stumbled upon a placeholder").bold(true).widget_holder()];
+		let row1 = vec![TextLabel::new("This feature is not implemented yet.").widget_holder()];
+
+		let mut rows = vec![LayoutGroup::Row { widgets: header }, LayoutGroup::Row { widgets: row1 }];
+
 		if let Some(issue) = self.issue {
-			let row1 = vec![TextLabel::new("This feature is not implemented yet— but you can help add it!\n\nOpen its issue to learn more:")
-				.multiline(true)
-				.widget_holder()];
-			let row2 = vec![TextButton::new(format!("GitHub Issue #{issue}"))
+			let row2 = vec![TextLabel::new("But you can help build it! Visit its issue:").widget_holder()];
+			let row3 = vec![TextButton::new(format!("GitHub Issue #{issue}"))
 				.icon(Some("Website".into()))
 				.no_background(true)
 				.on_update(move |_| {
@@ -34,11 +37,10 @@ impl LayoutHolder for ComingSoonDialog {
 				})
 				.widget_holder()];
 
-			Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: row1 }, LayoutGroup::Row { widgets: row2 }]))
-		} else {
-			let widgets = vec![TextLabel::new("This feature is not implemented yet.").widget_holder()];
-
-			Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+			rows.push(LayoutGroup::Row { widgets: row2 });
+			rows.push(LayoutGroup::Row { widgets: row3 });
 		}
+
+		Layout::WidgetLayout(WidgetLayout::new(rows))
 	}
 }

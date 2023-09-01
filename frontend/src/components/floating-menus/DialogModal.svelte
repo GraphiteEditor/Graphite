@@ -23,6 +23,7 @@
 	});
 </script>
 
+<!-- TODO: Use https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog for improved accessibility -->
 <FloatingMenu open={true} class="dialog-modal" type="Dialog" direction="Center" bind:this={self} data-dialog-modal>
 	<LayoutRow class="header-area">
 		<!-- `$dialog.icon` class exists to provide special sizing in CSS to specific icons -->

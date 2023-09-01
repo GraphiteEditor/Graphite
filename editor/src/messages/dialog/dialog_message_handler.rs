@@ -1,4 +1,4 @@
-use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog};
+use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -96,6 +96,11 @@ impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessag
 					};
 					self.export_dialog.send_dialog_to_frontend(responses);
 				}
+			}
+			DialogMessage::RequestLicensesDialogWithLocalizedCommitDate { localized_commit_year } => {
+				let dialog = LicensesDialog { localized_commit_year };
+
+				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestNewDocumentDialog => {
 				self.new_document_dialog = NewDocumentDialogMessageHandler {

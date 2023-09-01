@@ -36,6 +36,9 @@ pub enum DialogMessage {
 	},
 	RequestDemoArtworkDialog,
 	RequestExportDialog,
+	RequestLicensesDialogWithLocalizedCommitDate {
+		localized_commit_year: String,
+	},
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,
 }

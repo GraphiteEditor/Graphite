@@ -108,6 +108,8 @@
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
 		const floatingMenuContentDiv = floatingMenuContent?.div();
 		if (type === "Dialog" && floatingMenuContentDiv) {
+			// TODO: Also use https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver to detect any changes which may affect the size of the content.
+			// TODO: The current method only notices when the dialog size increases but can't detect when it decreases.
 			const resizeObserver = new ResizeObserver((entries) => {
 				entries.forEach((entry) => {
 					let { width, height } = entry.contentRect;

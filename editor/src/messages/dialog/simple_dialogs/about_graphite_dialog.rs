@@ -13,7 +13,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 	const TITLE: &'static str = "About Graphite";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -21,12 +21,10 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 	fn layout_column_2(&self) -> Layout {
 		let links = [
 			("Website", "Website", "https://graphite.rs"),
-			("Volunteer", "Volunteer", "https://graphite.rs/volunteer"),
+			("Volunteer", "Volunteer", "https://graphite.rs/volunteer/"),
 			("Credits", "Credits", "https://github.com/GraphiteEditor/Graphite/graphs/contributors"),
-			("License", "License", "https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/LICENSE.txt"),
-			("License", "Third-Party Licenses", "/third-party-licenses.txt"),
 		];
-		let widgets = links
+		let mut widgets = links
 			.into_iter()
 			.map(|(icon, label, url)| {
 				TextButton::new(label)
@@ -35,7 +33,22 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
 					.widget_holder()
 			})
-			.collect();
+			.collect::<Vec<_>>();
+
+		// Cloning here and below seems to be necessary to appease the borrow checker, as far as I can tell.
+		let localized_commit_year = self.localized_commit_year.clone();
+		widgets.push(
+			TextButton::new("Licenses")
+				.icon(Some("License".into()))
+				.no_background(true)
+				.on_update(move |_| {
+					DialogMessage::RequestLicensesDialogWithLocalizedCommitDate {
+						localized_commit_year: localized_commit_year.clone(),
+					}
+					.into()
+				})
+				.widget_holder(),
+		);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Column { widgets }]))
 	}
