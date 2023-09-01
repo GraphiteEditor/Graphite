@@ -1,6 +1,7 @@
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
+use crate::messages::input_mapper::utility_types::input_mouse::MouseButton;
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
@@ -64,7 +65,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift, select_deepest: Accel }),
 		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
-		entry!(DoubleClick(Lmb); action_dispatch=SelectToolMessage::EditLayer),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(Rmb); action_dispatch=SelectToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=SelectToolMessage::Abort),
 		//
@@ -127,7 +128,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=GradientToolMessage::PointerDown),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(Lmb); action_dispatch=GradientToolMessage::PointerUp),
-		entry!(DoubleClick(Lmb); action_dispatch=GradientToolMessage::InsertStop),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStop),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
 		//
@@ -182,7 +183,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter {
 			add_to_selection: Shift
 		}),
-		entry!(DoubleClick(Lmb); action_dispatch=PathToolMessage::InsertPoint),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::InsertPoint),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
@@ -371,10 +372,13 @@ pub fn default_mapping() -> Mapping {
 	}
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
-	for list in [&mut key_up, &mut key_down, &mut key_up_no_repeat, &mut key_down_no_repeat, &mut double_click] {
+	for list in [&mut key_up, &mut key_down, &mut key_up_no_repeat, &mut key_down_no_repeat] {
 		for sublist in list {
 			sort(sublist);
 		}
+	}
+	for sublist in &mut double_click {
+		sort(sublist)
 	}
 	sort(&mut wheel_scroll);
 	sort(&mut pointer_move);

@@ -77,7 +77,7 @@ macro_rules! mapping {
 		let mut key_down = KeyMappingEntries::key_array();
 		let mut key_up_no_repeat = KeyMappingEntries::key_array();
 		let mut key_down_no_repeat = KeyMappingEntries::key_array();
-		let mut double_click = KeyMappingEntries::key_array();
+		let mut double_click = KeyMappingEntries::mouse_buttons_arrays();
 		let mut wheel_scroll = KeyMappingEntries::new();
 		let mut pointer_move = KeyMappingEntries::new();
 

@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::{input_keyboard::Key, input_mouse::MouseButton};
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -20,14 +20,9 @@ pub enum InputMapperMessage {
 	#[remain::unsorted]
 	#[child]
 	KeyUpNoRepeat(Key),
-	/// The only valid [Key]s for `DoubleClick` are:
-	/// - [Key::Lmb]
-	/// - [Key::Rmb]
-	/// - [Key::Mmb]
-	// TODO: Change this from `Key` to `MouseKeys` so the aforementioned valid keys can be enforced
 	#[remain::unsorted]
 	#[child]
-	DoubleClick(Key),
+	DoubleClick(MouseButton),
 
 	// Messages
 	PointerMove,

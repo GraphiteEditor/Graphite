@@ -1,6 +1,7 @@
 use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup, LayoutKeysGroup};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
+use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -11,7 +12,7 @@ pub struct Mapping {
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_up_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_down_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
-	pub double_click: [KeyMappingEntries; NUMBER_OF_KEYS],
+	pub double_click: [KeyMappingEntries; NUMBER_OF_MOUSE_BUTTONS],
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
 }
@@ -96,6 +97,11 @@ impl KeyMappingEntries {
 	pub fn key_array() -> [Self; NUMBER_OF_KEYS] {
 		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
 		[DEFAULT; NUMBER_OF_KEYS]
+	}
+
+	pub fn mouse_buttons_arrays() -> [Self; NUMBER_OF_MOUSE_BUTTONS] {
+		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
+		[DEFAULT; NUMBER_OF_MOUSE_BUTTONS]
 	}
 }
 

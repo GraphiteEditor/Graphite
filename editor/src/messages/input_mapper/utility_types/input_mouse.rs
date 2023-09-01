@@ -1,4 +1,3 @@
-use super::input_keyboard::Key;
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::prelude::*;
 
@@ -148,22 +147,13 @@ bitflags! {
 	}
 }
 
-impl MouseKeys {
-	pub fn from_key(key: &Key) -> Self {
-		match key {
-			Key::Lmb => Self::LEFT,
-			Key::Rmb => Self::RIGHT,
-			Key::Mmb => Self::MIDDLE,
-			_ => unreachable!(),
-		}
-	}
-
-	pub fn to_key(&self) -> Key {
-		match self {
-			&Self::LEFT => Key::Lmb,
-			&Self::RIGHT => Key::Rmb,
-			&Self::MIDDLE => Key::Mmb,
-			_ => unreachable!(),
-		}
-	}
+#[impl_message(Message, InputMapperMessage, DoubleClick)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type, num_enum::TryFromPrimitive)]
+#[repr(u8)]
+pub enum MouseButton {
+	Left,
+	Right,
+	Middle,
 }
+
+pub const NUMBER_OF_MOUSE_BUTTONS: usize = 3;
