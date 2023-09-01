@@ -24,6 +24,7 @@ pub enum InputMapperMessage {
 	/// - [Key::Lmb]
 	/// - [Key::Rmb]
 	/// - [Key::Mmb]
+	// TODO: Change this from `Key` to `MouseKeys` so the aforementioned valid keys can be enforced
 	#[remain::unsorted]
 	#[child]
 	DoubleClick(Key),
