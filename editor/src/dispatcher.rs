@@ -553,15 +553,18 @@ mod test {
 		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();
 			println!("-------------------------------------------------");
-			println!("Failed test due to receiving a DisplayDialogError while loading the Graphite sample file.");
-			println!("This is most likely caused by forgetting to bump the `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`");
-			println!("After bumping this version number, update the documents in `/demo-artwork` by editing their JSON to");
-			println!("ensure they remain compatible with both the bumped version number and the serialization format change.");
+			println!("Failed test due to receiving a DisplayDialogError while loading a Graphite demo file.");
+			println!();
+			println!("That probably means the document serialization format changed. In that case, you need to bump the constant value");
+			println!("`GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, then update the documents in `/demo-artwork` by editing");
+			println!("their JSON to ensure they remain compatible with both the bumped version number and the serialization format changes.");
+			println!();
 			println!("DisplayDialogError details:");
 			println!();
 			println!("Description: {}", value);
 			println!("-------------------------------------------------");
 			println!();
+
 			panic!()
 		};
 
@@ -581,7 +584,7 @@ mod test {
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogDetails { layout_target: _, diff } = response {
+				if let FrontendMessage::UpdateDialogColumn1 { layout_target: _, diff } = response {
 					if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
 						if let LayoutGroup::Row { widgets } = &sub_layout[0] {
 							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {

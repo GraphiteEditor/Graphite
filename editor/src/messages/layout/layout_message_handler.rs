@@ -289,7 +289,9 @@ impl LayoutMessageHandler {
 
 		#[remain::sorted]
 		let message = match layout_target {
-			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails { layout_target, diff },
+			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
+			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
+			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
 			LayoutTarget::GraphViewOverlayButton => FrontendMessage::UpdateGraphViewOverlayButtonLayout { layout_target, diff },

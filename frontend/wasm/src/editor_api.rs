@@ -354,8 +354,11 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = requestAboutGraphiteDialogWithLocalizedCommitDate)]
-	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String) {
-		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date };
+	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String, localized_commit_year: String) {
+		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {
+			localized_commit_date,
+			localized_commit_year,
+		};
 		self.dispatch(message);
 	}
 

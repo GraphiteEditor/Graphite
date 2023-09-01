@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-	import { afterUpdate, createEventDispatcher, tick } from "svelte";
+	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 
@@ -103,9 +103,42 @@
 		wasOpen = isOpen;
 	}
 
-	// Gets the client bounds of the elements and apply relevant styles to them
-	// TODO: Use DOM attribute bindings more whilst not causing recursive updates
+	onMount(() => {
+		// Measure the content and round up its width and height to the nearest even integer.
+		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
+		const floatingMenuContentDiv = floatingMenuContent?.div();
+		if (type === "Dialog" && floatingMenuContentDiv) {
+			// TODO: Also use https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver to detect any changes which may affect the size of the content.
+			// TODO: The current method only notices when the dialog size increases but can't detect when it decreases.
+			const resizeObserver = new ResizeObserver((entries) => {
+				entries.forEach((entry) => {
+					let { width, height } = entry.contentRect;
+
+					width = Math.ceil(width);
+					if (width % 2 === 1) width += 1;
+					height = Math.ceil(height);
+					if (height % 2 === 1) height += 1;
+
+					// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
+					floatingMenuContentDiv.style.setProperty("min-width", width === 0 ? "unset" : `${width}px`);
+					floatingMenuContentDiv.style.setProperty("min-height", height === 0 ? "unset" : `${height}px`);
+				});
+			});
+			resizeObserver.observe(floatingMenuContentDiv);
+		}
+	});
+
 	afterUpdate(() => {
+		// Remove the size constraint after the content updates so the resize observer can measure the content and reapply a newly calculated one
+		const floatingMenuContentDiv = floatingMenuContent?.div();
+		if (type === "Dialog" && floatingMenuContentDiv) {
+			// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
+			floatingMenuContentDiv.style.setProperty("min-width", "unset");
+			floatingMenuContentDiv.style.setProperty("min-height", "unset");
+		}
+
+		// Gets the client bounds of the elements and apply relevant styles to them
+		// TODO: Use DOM attribute bindings more whilst not causing recursive updates
 		// Turning measuring on and off both causes the component to change, which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop)
 		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});

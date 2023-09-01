@@ -11,9 +11,11 @@ const GRAPHICS = {
 import Add from "@graphite-frontend/assets/icon-12px-solid/add.svg";
 import Checkmark from "@graphite-frontend/assets/icon-12px-solid/checkmark.svg";
 import CloseX from "@graphite-frontend/assets/icon-12px-solid/close-x.svg";
+import Delay from "@graphite-frontend/assets/icon-12px-solid/delay.svg";
 import DropdownArrow from "@graphite-frontend/assets/icon-12px-solid/dropdown-arrow.svg";
 import Edit12px from "@graphite-frontend/assets/icon-12px-solid/edit-12px.svg";
 import Empty12px from "@graphite-frontend/assets/icon-12px-solid/empty-12px.svg";
+import Failure from "@graphite-frontend/assets/icon-12px-solid/failure.svg";
 import FullscreenEnter from "@graphite-frontend/assets/icon-12px-solid/fullscreen-enter.svg";
 import FullscreenExit from "@graphite-frontend/assets/icon-12px-solid/fullscreen-exit.svg";
 import Grid from "@graphite-frontend/assets/icon-12px-solid/grid.svg";
@@ -30,6 +32,7 @@ import KeyboardOption from "@graphite-frontend/assets/icon-12px-solid/keyboard-o
 import KeyboardShift from "@graphite-frontend/assets/icon-12px-solid/keyboard-shift.svg";
 import KeyboardSpace from "@graphite-frontend/assets/icon-12px-solid/keyboard-space.svg";
 import KeyboardTab from "@graphite-frontend/assets/icon-12px-solid/keyboard-tab.svg";
+import License12px from "@graphite-frontend/assets/icon-12px-solid/license-12px.svg";
 import Link from "@graphite-frontend/assets/icon-12px-solid/link.svg";
 import Overlays from "@graphite-frontend/assets/icon-12px-solid/overlays.svg";
 import Remove from "@graphite-frontend/assets/icon-12px-solid/remove.svg";
@@ -47,9 +50,11 @@ const SOLID_12PX = {
 	Add: { svg: Add, size: 12 },
 	Checkmark: { svg: Checkmark, size: 12 },
 	CloseX: { svg: CloseX, size: 12 },
+	Delay: { svg: Delay, size: 12 },
 	DropdownArrow: { svg: DropdownArrow, size: 12 },
 	Edit12px: { svg: Edit12px, size: 12 },
 	Empty12px: { svg: Empty12px, size: 12 },
+	Failure: { svg: Failure, size: 12 },
 	FullscreenEnter: { svg: FullscreenEnter, size: 12 },
 	FullscreenExit: { svg: FullscreenExit, size: 12 },
 	Grid: { svg: Grid, size: 12 },
@@ -66,6 +71,7 @@ const SOLID_12PX = {
 	KeyboardShift: { svg: KeyboardShift, size: 12 },
 	KeyboardSpace: { svg: KeyboardSpace, size: 12 },
 	KeyboardTab: { svg: KeyboardTab, size: 12 },
+	License12px: { svg: License12px, size: 12 },
 	Link: { svg: Link, size: 12 },
 	Overlays: { svg: Overlays, size: 12 },
 	Remove: { svg: Remove, size: 12 },
@@ -95,6 +101,7 @@ import BooleanUnion from "@graphite-frontend/assets/icon-16px-solid/boolean-unio
 import CheckboxChecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-checked.svg";
 import CheckboxUnchecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-unchecked.svg";
 import Copy from "@graphite-frontend/assets/icon-16px-solid/copy.svg";
+import Credits from "@graphite-frontend/assets/icon-16px-solid/credits.svg";
 import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
 import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
 import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
@@ -107,13 +114,15 @@ import Folder from "@graphite-frontend/assets/icon-16px-solid/folder.svg";
 import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
 import GraphViewClosed from "@graphite-frontend/assets/icon-16px-solid/graph-view-closed.svg";
 import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-open.svg";
+import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
+import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
+import License from "@graphite-frontend/assets/icon-16px-solid/license.svg";
 import NodeArtboard from "@graphite-frontend/assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@graphite-frontend/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@graphite-frontend/assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@graphite-frontend/assets/icon-16px-solid/node-color-correction.svg";
 import NodeGradient from "@graphite-frontend/assets/icon-16px-solid/node-gradient.svg";
-import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import NodeImaginate from "@graphite-frontend/assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@graphite-frontend/assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@graphite-frontend/assets/icon-16px-solid/node-mask.svg";
@@ -137,6 +146,8 @@ import ViewModePixels from "@graphite-frontend/assets/icon-16px-solid/view-mode-
 import ViewportDesignMode from "@graphite-frontend/assets/icon-16px-solid/viewport-design-mode.svg";
 import ViewportGuideMode from "@graphite-frontend/assets/icon-16px-solid/viewport-guide-mode.svg";
 import ViewportSelectMode from "@graphite-frontend/assets/icon-16px-solid/viewport-select-mode.svg";
+import Volunteer from "@graphite-frontend/assets/icon-16px-solid/volunteer.svg";
+import Website from "@graphite-frontend/assets/icon-16px-solid/website.svg";
 import WorkingColorsPrimary from "@graphite-frontend/assets/icon-16px-solid/working-colors-primary.svg";
 import WorkingColorsSecondary from "@graphite-frontend/assets/icon-16px-solid/working-colors-secondary.svg";
 import ZoomIn from "@graphite-frontend/assets/icon-16px-solid/zoom-in.svg";
@@ -158,6 +169,7 @@ const SOLID_16PX = {
 	CheckboxChecked: { svg: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { svg: CheckboxUnchecked, size: 16 },
 	Copy: { svg: Copy, size: 16 },
+	Credits: { svg: Credits, size: 16 },
 	CustomColor: { svg: CustomColor, size: 16 },
 	Edit: { svg: Edit, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
@@ -170,13 +182,15 @@ const SOLID_16PX = {
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
 	GraphViewClosed: { svg: GraphViewClosed, size: 16 },
 	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
+	IconsGrid: { svg: IconsGrid, size: 16 },
+	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
+	License: { svg: License, size: 16 },
 	NodeArtboard: { svg: NodeArtboard, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
 	NodeGradient: { svg: NodeGradient, size: 16 },
-	Image: { svg: Image, size: 16 },
 	NodeImaginate: { svg: NodeImaginate, size: 16 },
 	NodeMagicWand: { svg: NodeMagicWand, size: 16 },
 	NodeMask: { svg: NodeMask, size: 16 },
@@ -200,6 +214,8 @@ const SOLID_16PX = {
 	ViewportDesignMode: { svg: ViewportDesignMode, size: 16 },
 	ViewportGuideMode: { svg: ViewportGuideMode, size: 16 },
 	ViewportSelectMode: { svg: ViewportSelectMode, size: 16 },
+	Volunteer: { svg: Volunteer, size: 16 },
+	Website: { svg: Website, size: 16 },
 	WorkingColorsPrimary: { svg: WorkingColorsPrimary, size: 16 },
 	WorkingColorsSecondary: { svg: WorkingColorsSecondary, size: 16 },
 	ZoomIn: { svg: ZoomIn, size: 16 },
