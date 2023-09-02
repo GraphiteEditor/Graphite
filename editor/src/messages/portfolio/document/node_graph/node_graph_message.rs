@@ -27,8 +27,11 @@ pub enum NodeGraphMessage {
 	Cut,
 	DeleteNode {
 		node_id: NodeId,
+		reconnect: bool,
 	},
-	DeleteSelectedNodes,
+	DeleteSelectedNodes {
+		reconnect: bool,
+	},
 	DisconnectNodes {
 		node_id: NodeId,
 		input_index: usize,
