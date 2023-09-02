@@ -719,27 +719,20 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
-pub fn value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+pub fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let widgets = number_widget(document_node, node_id, 0, "Number", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Value", 0)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = bool_widget(document_node, node_id, index, name, true);
+	let widgets = bool_widget(document_node, node_id, 0, "Bool", true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Bool", 0)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| color_widget(document_node, node_id, index, name, ColorInput::default(), true);
-	vec![operand("Color", 0)]
+	vec![color_widget(document_node, node_id, 0, "Color", ColorInput::default(), true)]
 }
 
 pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -786,13 +779,11 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| blend_mode(document_node, node_id, index, name, true);
-	vec![operand("Blend Mode", 0)]
+	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
 }
 
 pub fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| color_channel(document_node, node_id, index, name, true);
-	vec![operand("Channel", 0)]
+	vec![color_channel(document_node, node_id, 0, "Channel", true)]
 }
 
 pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1068,93 +1059,63 @@ pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 }
 
 pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Addend", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Addend", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn subtract_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Subtrahend", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Subtrahend", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn divide_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Divisor", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Divisor", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn multiply_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Multiplicand", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Multiplicand", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn exponent_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Power", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Power", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn log_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Base", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Base", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn max_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Maximum", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Maximum", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn min_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Minimum", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Minimum", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn eq_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Equals", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Equals", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Modulo", NumberInput::default(), true);
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Modulo", 1)]
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

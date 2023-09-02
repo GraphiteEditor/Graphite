@@ -134,19 +134,19 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Value",
+			name: "Number",
 			category: "Inputs",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Value", TaggedValue::F32(0.), false)],
+			inputs: vec![DocumentInputType::value("Number", TaggedValue::F32(0.), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
-			properties: node_properties::value_properties,
+			properties: node_properties::number_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Color",
 			category: "Inputs",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Value", TaggedValue::OptionalColor(None), false)],
+			inputs: vec![DocumentInputType::value("Color", TaggedValue::OptionalColor(None), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Color)],
 			properties: node_properties::color_properties,
 			..Default::default()
@@ -1692,7 +1692,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Value", TaggedValue::F32(4.), false),
+				DocumentInputType::value("Levels", TaggedValue::F32(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::posterize_properties,
