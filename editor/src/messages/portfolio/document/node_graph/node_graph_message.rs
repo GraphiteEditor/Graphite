@@ -1,4 +1,3 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::prelude::*;
 
 use document_legacy::LayerId;
@@ -28,10 +27,10 @@ pub enum NodeGraphMessage {
 	Cut,
 	DeleteNode {
 		node_id: NodeId,
-		disconnect_nodes: bool,
+		reconnect: bool,
 	},
 	DeleteSelectedNodes {
-		disconnect_input_nodes: Option<Key>,
+		reconnect: bool,
 	},
 	DisconnectNodes {
 		node_id: NodeId,

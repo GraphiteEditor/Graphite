@@ -7,7 +7,7 @@ use crate::node_graph_executor::{GraphIdentifier, NodeGraphExecutor};
 use document_legacy::document::Document;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::*;
 mod document_node_types;
 mod node_properties;
@@ -372,7 +372,7 @@ impl NodeGraphMessageHandler {
 		});
 	}
 
-	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, disconnect_nodes: bool) -> bool {
+	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool) -> bool {
 		if network.inputs.contains(&deleting_node_id) {
 			warn!("Deleting input node");
 			return false;
@@ -384,8 +384,8 @@ impl NodeGraphMessageHandler {
 
 		let mut first_input_node: Option<NodeInput> = None;
 
-		if !disconnect_nodes {
-			// check whether the deleting node's first (primary) input is a node
+		if reconnect {
+			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
 				if matches!(node.inputs.first(), Some(NodeInput::Node { .. })) {
 					first_input_node = Some(node.inputs[0].clone());
@@ -418,7 +418,7 @@ impl NodeGraphMessageHandler {
 				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
 					let mut refers_to_output_node = false;
 
-					// use the first input node as the new input if deleting node's first input is a node,
+					// Use the first input node as the new input if deleting node's first input is a node,
 					// and the current node uses its primary output too
 					if let Some(input_node) = &first_input_node {
 						if *output_index == 0 {
@@ -437,8 +437,8 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Tries to remove a node from the network, returning true on success.
-	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId, disconnect_nodes: bool) -> bool {
-		if Self::remove_references_from_network(network, node_id, disconnect_nodes) {
+	fn remove_node(&mut self, network: &mut NodeNetwork, node_id: NodeId, reconnect: bool) -> bool {
+		if Self::remove_references_from_network(network, node_id, reconnect) {
 			network.nodes.remove(&node_id);
 			self.selected_nodes.retain(|&id| id != node_id);
 			true
@@ -549,27 +549,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::Cut => {
 				responses.add(NodeGraphMessage::Copy);
-				// remove node connections on the cut operation
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { disconnect_input_nodes: None });
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
-			NodeGraphMessage::DeleteNode { node_id, disconnect_nodes } => {
+			NodeGraphMessage::DeleteNode { node_id, reconnect } => {
 				if let Some(network) = self.get_active_network_mut(data.document) {
-					self.remove_node(network, node_id, disconnect_nodes);
+					self.remove_node(network, node_id, reconnect);
 				}
 				self.update_selected(data.document, responses);
 			}
-			NodeGraphMessage::DeleteSelectedNodes { disconnect_input_nodes } => {
+			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let disconnect_nodes: bool;
-				if let Some(key) = disconnect_input_nodes {
-					disconnect_nodes = data.input.keyboard.get(key as usize)
-				} else {
-					disconnect_nodes = false
-				}
-
 				for node_id in self.selected_nodes.clone() {
-					responses.add(NodeGraphMessage::DeleteNode { node_id, disconnect_nodes });
+					responses.add(NodeGraphMessage::DeleteNode { node_id, reconnect });
 				}
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
