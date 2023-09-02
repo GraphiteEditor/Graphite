@@ -398,7 +398,12 @@ impl NodeGraphMessageHandler {
 				continue;
 			}
 			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node { node_id: upstream_node_id, output_index, .. } = input else {
+				let NodeInput::Node {
+					node_id: upstream_node_id,
+					output_index,
+					..
+				} = input
+				else {
 					continue;
 				};
 				if *upstream_node_id != deleting_node_id {
@@ -426,9 +431,6 @@ impl NodeGraphMessageHandler {
 						*input = NodeInput::value(tagged_value.clone(), true);
 					}
 				}
-			}
-			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				return Self::remove_references_from_network(network, deleting_node_id, disconnect_nodes);
 			}
 		}
 		true

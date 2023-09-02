@@ -140,8 +140,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document_name: target_document.name.clone(),
 						document_id,
 					};
-					dialog.send_layout(responses, LayoutTarget::DialogDetails);
-					responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
+					dialog.send_dialog_to_frontend(responses);
 
 					// Select the document being closed
 					responses.add(PortfolioMessage::SelectDocument { document_id });
@@ -596,6 +595,10 @@ impl PortfolioMessageHandler {
 
 	pub fn active_document_id(&self) -> Option<u64> {
 		self.active_document_id
+	}
+
+	pub fn unsaved_document_names(&self) -> Vec<String> {
+		self.documents.values().filter(|document| !document.is_saved()).map(|document| document.name.clone()).collect()
 	}
 
 	pub fn generate_new_document_name(&self) -> String {

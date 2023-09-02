@@ -124,6 +124,8 @@ impl LayoutHolder for SelectTool {
 
 		let selected_layers_count = self.tool_data.selected_layers_count;
 		let deactivate_alignment = selected_layers_count < 2;
+		let deactivate_boolean_ops = selected_layers_count < 2;
+		let deactivate_flip = selected_layers_count < 1;
 		let deactivate_pivot = selected_layers_count < 1;
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
@@ -207,41 +209,48 @@ impl LayoutHolder for SelectTool {
 					})
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				PopoverButton::new("Align", "Coming soon").widget_holder(),
+				PopoverButton::new("Align", "Coming soon").disabled(deactivate_alignment).widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("FlipHorizontal", 24)
 					.tooltip("Flip Horizontal")
+					.disabled(deactivate_flip)
 					.on_update(|_| SelectToolMessage::FlipHorizontal.into())
 					.widget_holder(),
 				IconButton::new("FlipVertical", 24)
 					.tooltip("Flip Vertical")
+					.disabled(deactivate_flip)
 					.on_update(|_| SelectToolMessage::FlipVertical.into())
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				PopoverButton::new("Flip", "Coming soon").widget_holder(),
+				PopoverButton::new("Flip", "Coming soon").disabled(deactivate_flip).widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("BooleanUnion", 24)
-					.tooltip("Boolean Union (coming soon)")
+					.tooltip("Coming Soon: Boolean Union")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractFront", 24)
-					.tooltip("Boolean Subtract Front (coming soon)")
+					.tooltip("Coming Soon: Boolean Subtract Front")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractBack", 24)
-					.tooltip("Boolean Subtract Back (coming soon)")
+					.tooltip("Coming Soon: Boolean Subtract Back")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanIntersect", 24)
-					.tooltip("Boolean Intersect (coming soon)")
+					.tooltip("Coming Soon: Boolean Intersect")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanDifference", 24)
-					.tooltip("Boolean Difference (coming soon)")
+					.tooltip("Coming Soon: Boolean Difference")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
+				PopoverButton::new("Boolean Operations", "Coming soon").disabled(deactivate_boolean_ops).widget_holder(),
 			],
 		}]))
 	}

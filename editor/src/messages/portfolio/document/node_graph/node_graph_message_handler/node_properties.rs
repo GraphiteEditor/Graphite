@@ -1145,7 +1145,7 @@ pub fn eq_properties(document_node: &DocumentNode, node_id: NodeId, _context: &m
 
 		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Equality", 1)]
+	vec![operand("Equals", 1)]
 }
 
 pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1204,6 +1204,11 @@ pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![LayoutGroup::Row {
 		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
 	}]
+}
+
+pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let widgets = bool_widget(document_node, node_id, 0, "Operand B", true);
+	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1861,6 +1866,12 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	let count = number_widget(document_node, node_id, 3, "Count", NumberInput::default().min(1.), true);
 
 	vec![LayoutGroup::Row { widgets: angle_offset }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: count }]
+}
+
+pub fn resample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.), true);
+
+	vec![LayoutGroup::Row { widgets: spacing }]
 }
 
 /// Fill Node Widgets LayoutGroup
