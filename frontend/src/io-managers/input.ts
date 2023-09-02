@@ -60,8 +60,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Keyboard events
 
 	async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): Promise<boolean> {
-		// Don't redirect when a modal, or the overlaid graph, is covering the workspace
-		if (get(dialog).visible || get(document).graphViewOverlayOpen) return false;
+		// Don't redirect when a modal is covering the workspace
+		if (get(dialog).visible) return false;
 
 		const key = await getLocalizedScanCode(e);
 
@@ -130,12 +130,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	function onPointerMove(e: PointerEvent): void {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
+		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
 		// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
 		// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
 		// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
-		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
+		const inGraphOverlay = get(document).graphViewOverlayOpen;
+		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
 		const { target } = e;
 		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
