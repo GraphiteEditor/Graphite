@@ -604,8 +604,6 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
-						responses.add(DocumentMessage::StartTransaction);
-
 						if !input.keyboard.get(add_to_selection as usize) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
