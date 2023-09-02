@@ -4,6 +4,7 @@ use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
@@ -49,6 +50,8 @@ pub enum PathToolMessage {
 		add_to_selection: Key,
 	},
 	InsertPoint,
+	ManipulatorAngleMadeSharp,
+	ManipulatorAngleMadeSmooth,
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
@@ -80,7 +83,14 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		if let Some(SingleSelectedPoint { coordinates: DVec2 { x, y }, .. }) = self.tool_data.single_selected_point {
+		let mut option_contents = vec![];
+
+		if let Some(SingleSelectedPoint {
+			coordinates: DVec2 { x, y },
+			manipulator_angle,
+			..
+		}) = self.tool_data.single_selected_point
+		{
 			let x_location = NumberInput::new(Some(x))
 				.unit(" px")
 				.label("X")
@@ -92,6 +102,8 @@ impl LayoutHolder for PathTool {
 					PathToolMessage::SelectedPointXChanged { new_x }.into()
 				})
 				.widget_holder();
+
+			let seperator_1 = Separator::new(SeparatorType::Unrelated).widget_holder();
 
 			let y_location = NumberInput::new(Some(y))
 				.unit(" px")
@@ -105,14 +117,21 @@ impl LayoutHolder for PathTool {
 				})
 				.widget_holder();
 
-			let seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
+			let seperator_2 = Separator::new(SeparatorType::Unrelated).widget_holder();
 
-			Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-				widgets: vec![x_location, seperator, y_location],
-			}]))
-		} else {
-			Layout::WidgetLayout(WidgetLayout::default())
+			let index = if (manipulator_angle as u8) < 2 { manipulator_angle as u32 } else { 0 };
+
+			let manipulator_angle_radio = RadioInput::new(vec![
+				RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMadeSmooth.into()),
+				RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMadeSharp.into()),
+			])
+			.selected_index(index)
+			.widget_holder();
+
+			option_contents.extend([x_location, seperator_1, y_location, seperator_2, manipulator_angle_radio]);
 		}
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: option_contents }]))
 	}
 }
 
@@ -469,13 +488,13 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.single_selected_point {
 						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.single_selected_point {
 						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 					}
 					PathToolFsmState::Ready
@@ -483,6 +502,24 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::SelectedPointUpdated) => {
 					let new_point = get_single_selected_point(&document.document_legacy, shape_editor);
 					tool_data.single_selected_point = new_point;
+					self
+				}
+				(_, PathToolMessage::ManipulatorAngleMadeSharp) => {
+					if let Some(SingleSelectedPoint { id, ref layer_path, .. }) = tool_data.single_selected_point {
+						responses.add(GraphOperationMessage::Vector {
+							layer: layer_path.to_vec(),
+							modification: VectorDataModification::SetManipulatorHandleMirroring { id: id.group, mirror_angle: true },
+						});
+					}
+					self
+				}
+				(_, PathToolMessage::ManipulatorAngleMadeSmooth) => {
+					if let Some(SingleSelectedPoint { id, ref layer_path, .. }) = tool_data.single_selected_point {
+						responses.add(GraphOperationMessage::Vector {
+							layer: layer_path.to_vec(),
+							modification: VectorDataModification::SetManipulatorHandleMirroring { id: id.group, mirror_angle: false },
+						});
+					}
 					self
 				}
 				(_, _) => PathToolFsmState::Ready,
@@ -520,11 +557,18 @@ impl Fsm for PathToolFsmState {
 	}
 }
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum ManipulatorAngle {
+	Smooth = 0,
+	Sharp = 1,
+}
+
 #[derive(Debug, PartialEq)]
 struct SingleSelectedPoint {
 	coordinates: DVec2,
 	id: ManipulatorPointId,
 	layer_path: Vec<u64>,
+	manipulator_angle: ManipulatorAngle,
 }
 
 // If there is one and only one selected control point this function yields all the information needed to manipulate it.
@@ -542,9 +586,20 @@ fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) 
 	// Get the first selected point and transform it to document space.
 	let group = vector_data.manipulator_from_id(point.group)?;
 	let local_position = point.manipulator_type.get_position(group)?;
+	let mut manipulator_angle = if vector_data.mirror_angle.contains(&point.group) {
+		ManipulatorAngle::Smooth
+	} else {
+		ManipulatorAngle::Sharp
+	};
+
+	if group.in_handle == Some(group.anchor) && group.out_handle == Some(group.anchor) {
+		manipulator_angle = ManipulatorAngle::Sharp;
+	}
+
 	Some(SingleSelectedPoint {
 		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
 		layer_path: layer.clone(),
 		id: *point,
+		manipulator_angle,
 	})
 }
