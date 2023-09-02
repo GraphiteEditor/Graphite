@@ -2474,10 +2474,7 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 
-	let mut network = NodeNetwork {
-		inputs: vec![0],
-		..Default::default()
-	};
+	let mut network = NodeNetwork::default();
 
 	network.push_node(
 		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),
