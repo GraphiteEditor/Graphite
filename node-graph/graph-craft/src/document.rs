@@ -1131,7 +1131,7 @@ mod test {
 				(
 					14,
 					DocumentNode {
-						name: "Value".into(),
+						name: "Number".into(),
 						inputs: vec![NodeInput::Value {
 							tagged_value: TaggedValue::U32(2),
 							exposed: false,

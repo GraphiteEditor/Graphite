@@ -41,7 +41,7 @@ pub fn commit_info_localized(localized_commit_date: &str) -> String {
 	format!(
 		"Release Series: {}\n\
 		Branch: {}\n\
-		Hash: {}\n\
+		Commit: {}\n\
 		{}",
 		GRAPHITE_RELEASE_SERIES,
 		GRAPHITE_GIT_COMMIT_BRANCH,
