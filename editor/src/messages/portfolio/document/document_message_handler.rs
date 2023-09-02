@@ -589,16 +589,9 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			PasteImage { image, mouse } => {
-				let image_size = DVec2::new(image.width as f64, image.height as f64);
+				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
-				// All the image's pixels have been converted to 0..=1, linear and premultiplied by `Color::from_rgba8_srgb`
-				// Log a pixels
-				// use graphene_core::raster::Raster;
-				// info!(
-				// 	"Paste image {image_size} pixel[200,200] after Color::from_rgba8_srgb = {:?} (between 0-255 = {:?})",
-				// 	image.get_pixel(200, 200),
-				// 	image.get_pixel(200, 200).map(|color| (color.r() * 255., color.g() * 255., color.b() * 255., color.a() * 255.))
-				// );
+				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
 					warn!("Image node should be in registry");

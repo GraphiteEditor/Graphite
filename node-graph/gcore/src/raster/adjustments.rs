@@ -959,13 +959,6 @@ pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
 
 #[node_macro::node_fn(ColorOverlayNode)]
 pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
-	// Log the colour
-	// info!(
-	// 	"Before colour overlay pixel[200,200] = {:?} (between 0-255 = {:?})",
-	// 	image.get_pixel(200, 200),
-	// 	image.get_pixel(200, 200).map(|color| (color.r() * 255., color.g() * 255., color.b() * 255., color.a() * 255.))
-	// );
-
 	let opacity = (opacity / 100.).clamp(0., 1.);
 	for pixel in &mut image.image.data {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
@@ -976,13 +969,6 @@ pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode
 
 		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
 	}
-
-	// Log the colour
-	// info!(
-	// 	"After colour overlay pixel[200,200] = {:?} (between 0-255 = {:?})",
-	// 	image.get_pixel(200, 200),
-	// 	image.get_pixel(200, 200).map(|color| (color.r() * 255., color.g() * 255., color.b() * 255., color.a() * 255.))
-	// );
 
 	image
 }
