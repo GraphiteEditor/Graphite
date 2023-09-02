@@ -589,6 +589,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			PasteImage { image, mouse } => {
+				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
+
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {

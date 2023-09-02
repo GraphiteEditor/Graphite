@@ -2211,7 +2211,34 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Index", TaggedValue::U32(0), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::index_node_properties,
+			properties: node_properties::index_properties,
+			..Default::default()
+		},
+		// Applies the given color to each pixel of an image but maintains the alpha value
+		DocumentNodeType {
+			name: "Color Fill",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::color_fill_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Color Overlay",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::color_overlay_properties,
 			..Default::default()
 		},
 	]
