@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, ImageFrame, Node, RGBMut, Raster};
+use super::{Channel, Color, ImageFrame, Node, RGBMut};
 
 use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
@@ -922,7 +922,7 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 				bezier.find_tvalues_for_x(x)
 					.next()
 					.map(|t| bezier.evaluate(TValue::Parametric(t.clamp(0., 1.))).y)
-					// a very bad approximation if bezier_rs failes
+					// Fall back to a very bad approximation if Bezier-rs fails
 					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};
 			lut[index] = _Channel::from_f64(y);

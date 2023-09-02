@@ -1810,7 +1810,7 @@ pub fn no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: 
 	string_properties("Node has no properties")
 }
 
-pub fn index_node_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), true);
 
 	vec![LayoutGroup::Row { widgets: index }]
@@ -1939,12 +1939,12 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![location, dimensions, background, clip]
 }
 
-pub fn color_fill_node(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
 	vec![color]
 }
 
-pub fn color_overlay(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
