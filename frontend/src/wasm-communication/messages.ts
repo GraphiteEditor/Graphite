@@ -81,13 +81,13 @@ export class FrontendDocumentDetails extends DocumentDetails {
 
 export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "vec2" | "graphic" | "artboard";
 
-export class NodeGraphInput {
+export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
 }
 
-export class NodeGraphOutput {
+export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
@@ -98,13 +98,13 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
-	readonly primaryInput!: FrontendGraphDataType | undefined;
+	readonly primaryInput!: FrontendGraphInput | undefined;
 
-	readonly exposedInputs!: NodeGraphInput[];
+	readonly exposedInputs!: FrontendGraphInput[];
 
-	readonly primaryOutput!: NodeGraphOutput | undefined;
+	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
-	readonly exposedOutputs!: NodeGraphOutput[];
+	readonly exposedOutputs!: FrontendGraphOutput[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;

@@ -101,7 +101,7 @@ pub struct DocumentNodeType {
 	pub identifier: NodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
-	pub primary_output: bool,
+	pub has_primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 	pub manual_composition: Option<graphene_core::Type>,
 }
@@ -114,7 +114,7 @@ impl Default for DocumentNodeType {
 			identifier: Default::default(),
 			inputs: Default::default(),
 			outputs: Default::default(),
-			primary_output: Default::default(),
+			has_primary_output: true,
 			properties: node_properties::no_properties,
 			manual_composition: Default::default(),
 		}
@@ -836,12 +836,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
 						..Default::default()
 					},
-					DocumentNode {
-						name: "EmptyOutput".to_string(),
-						inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						..Default::default()
-					},
 				]
 				.into_iter()
 				.enumerate()
@@ -852,13 +846,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![
-				DocumentOutputType::new("Empty", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Red", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Green", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Blue", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 			],
-			primary_output: false,
+			has_primary_output: false,
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -2468,6 +2461,7 @@ impl DocumentNodeType {
 		DocumentNode {
 			name: self.name.to_string(),
 			inputs,
+			has_primary_output: self.has_primary_output,
 			implementation: self.generate_implementation(),
 			metadata,
 			manual_composition: self.manual_composition.clone(),

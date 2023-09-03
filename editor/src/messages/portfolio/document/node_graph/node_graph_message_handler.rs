@@ -58,14 +58,14 @@ impl FrontendGraphDataType {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct NodeGraphInput {
+pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct NodeGraphOutput {
+pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
@@ -77,13 +77,13 @@ pub struct FrontendNode {
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 	#[serde(rename = "primaryInput")]
-	pub primary_input: Option<FrontendGraphDataType>,
+	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]
-	pub exposed_inputs: Vec<NodeGraphInput>,
+	pub exposed_inputs: Vec<FrontendGraphInput>,
 	#[serde(rename = "primaryOutput")]
-	pub primary_output: Option<NodeGraphOutput>,
+	pub primary_output: Option<FrontendGraphOutput>,
 	#[serde(rename = "exposedOutputs")]
-	pub exposed_outputs: Vec<NodeGraphOutput>,
+	pub exposed_outputs: Vec<FrontendGraphOutput>,
 	pub position: (i32, i32),
 	pub disabled: bool,
 	pub previewed: bool,
@@ -291,34 +291,26 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (id, node) in &network.nodes {
+			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
 			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
 				warn!("Node '{}' does not exist in library", node.name);
 				continue;
 			};
 
-			let primary_input = node
-				.inputs
-				.first()
-				.filter(|input| input.is_exposed())
-				.and_then(|_| node_type.inputs.get(0))
-				.map(|input_type| input_type.data_type);
-			let exposed_inputs = node
-				.inputs
-				.iter()
-				.zip(node_type.inputs.iter())
-				.skip(1)
-				.filter(|(input, _)| input.is_exposed())
-				.map(|(_, input_type)| NodeGraphInput {
-					data_type: input_type.data_type,
-					name: input_type.name.to_string(),
-				})
-				.collect();
+			// Inputs
+			let mut inputs = node.inputs.iter().zip(node_type.inputs.iter().map(|input_type| FrontendGraphInput {
+				data_type: input_type.data_type,
+				name: input_type.name.to_string(),
+			}));
+			let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
+			let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
 
-			let mut outputs = node_type.outputs.iter().map(|output_type| NodeGraphOutput {
+			// Outputs
+			let mut outputs = node_type.outputs.iter().map(|output_type| FrontendGraphOutput {
 				data_type: output_type.data_type,
 				name: output_type.name.to_string(),
 			});
-			let primary_output = outputs.next();
+			let primary_output = if node.has_primary_output { outputs.next() } else { None };
 
 			let _graph_identifier = GraphIdentifier::new(layer_id);
 

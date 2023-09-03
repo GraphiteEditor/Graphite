@@ -31,12 +31,20 @@ impl DocumentNodeMetadata {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, Default)]
+/// Utility function for providing a default boolean value to serde.
+#[inline(always)]
+fn return_true() -> bool {
+	true
+}
+
+#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
+	#[serde(default = "return_true")]
+	pub has_primary_output: bool,
 	pub implementation: DocumentNodeImplementation,
 	pub metadata: DocumentNodeMetadata,
 	#[serde(default)]
@@ -45,6 +53,22 @@ pub struct DocumentNode {
 	#[serde(default)]
 	pub hash: u64,
 	pub path: Option<Vec<NodeId>>,
+}
+
+impl Default for DocumentNode {
+	fn default() -> Self {
+		Self {
+			name: Default::default(),
+			inputs: Default::default(),
+			manual_composition: Default::default(),
+			has_primary_output: true,
+			implementation: Default::default(),
+			metadata: Default::default(),
+			skip_deduplication: Default::default(),
+			hash: Default::default(),
+			path: Default::default(),
+		}
+	}
 }
 
 impl DocumentNode {

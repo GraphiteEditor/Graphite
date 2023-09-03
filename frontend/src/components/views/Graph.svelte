@@ -681,9 +681,9 @@
 						viewBox="0 0 8 8"
 						class="port"
 						data-port="input"
-						data-datatype={node.primaryInput}
-						style:--data-color={`var(--color-data-${node.primaryInput})`}
-						style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+						data-datatype={node.primaryInput?.dataType}
+						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
+						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 					>
 						<title>{node.primaryInput} data</title>
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -768,15 +768,15 @@
 				{/if}
 				<!-- Input ports -->
 				<div class="input ports">
-					{#if node.primaryInput}
+					{#if node.primaryInput?.dataType}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port primary-port"
 							data-port="input"
-							data-datatype={node.primaryInput}
-							style:--data-color={`var(--color-data-${node.primaryInput})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+							data-datatype={node.primaryInput?.dataType}
+							style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 						>
 							<title>{node.primaryInput} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -835,7 +835,7 @@
 						<clipPath id={clipPathId}>
 							<path
 								clip-rule="evenodd"
-								d={nodeBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+								d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
 							/>
 						</clipPath>
 					</defs>
