@@ -186,6 +186,8 @@ impl NodeRuntime {
 			},
 		};
 
+		log::debug!("Executing node graph with {:#?}", scoped_network.nodes);
+
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
@@ -202,7 +204,8 @@ impl NodeRuntime {
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			_ => Err("Invalid input type".to_string()),
+			Some(t) => Err(format!("Invalid input type {:?}", t)),
+			_ => Err("No input type".to_string()),
 		}?;
 
 		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {

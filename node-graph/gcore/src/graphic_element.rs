@@ -89,7 +89,7 @@ pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collaps
 }
 
 #[node_fn(ConstructLayerNode)]
-fn construct_layer<Data: Into<GraphicElementData>>(
+async fn construct_layer<Data: Into<GraphicElementData>>(
 	graphic_element_data: Data,
 	name: String,
 	blend_mode: BlendMode,
@@ -97,8 +97,9 @@ fn construct_layer<Data: Into<GraphicElementData>>(
 	visible: bool,
 	locked: bool,
 	collapsed: bool,
-	mut stack: GraphicGroup,
+	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
 ) -> GraphicGroup {
+	let mut stack = self.stack.eval();
 	stack.push(GraphicElement {
 		name,
 		blend_mode,

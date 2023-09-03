@@ -2517,6 +2517,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 
 	// if the network has no inputs, it doesn't need to be wrapped in a scope
 	if len == 0 {
+		log::warn!("Network has no inputs, not wrapping in scope");
 		return network;
 	}
 

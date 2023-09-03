@@ -275,6 +275,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, output: ImageFrame<Color>, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: ImageFrame<Color>, output: GraphicGroup, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: VectorData, output: GraphicGroup, params: []),
+		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: GraphicGroup, output: GraphicGroup, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: graphene_core::Artboard, output: GraphicGroup, params: []),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::ops::IntoNode<_, &WgpuExecutor>, input: WasmEditorApi, output: &WgpuExecutor, params: []),
@@ -747,7 +748,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: WasmEditorApi, params: []),
-		register_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::GraphicElementData, params: [String, BlendMode, f32, bool, bool, bool, graphene_core::GraphicGroup]),
+		async_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>, input: graphene_core::GraphicElementData, output: GraphicGroup, fn_params: [() => String, () => BlendMode, () => f32,  () => bool, () => bool, () => bool, Footprint => graphene_core::GraphicGroup]),
 		register_node!(graphene_core::ToGraphicElementData, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementData, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementData, input: graphene_core::GraphicGroup, params: []),
