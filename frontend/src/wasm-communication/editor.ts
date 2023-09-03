@@ -103,7 +103,7 @@ export function createEditor() {
 			instance.openDocumentFile(filename, content);
 
 			// Remove the hash fragment from the URL
-			window.location.hash = "";
+			history.replaceState("", "", `${window.location.pathname}${window.location.search}`);
 		} catch {}
 	})();
 

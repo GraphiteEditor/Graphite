@@ -146,3 +146,14 @@ bitflags! {
 		const MIDDLE = 0b0000_0100;
 	}
 }
+
+#[impl_message(Message, InputMapperMessage, DoubleClick)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type, num_enum::TryFromPrimitive)]
+#[repr(u8)]
+pub enum MouseButton {
+	Left,
+	Right,
+	Middle,
+}
+
+pub const NUMBER_OF_MOUSE_BUTTONS: usize = 3;

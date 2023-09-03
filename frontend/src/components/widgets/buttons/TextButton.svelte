@@ -7,6 +7,7 @@
 	export let label: string;
 	export let icon: IconName | undefined = undefined;
 	export let emphasized = false;
+	export let noBackground = false;
 	export let minWidth = 0;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
@@ -21,6 +22,7 @@
 	class="text-button"
 	class:emphasized
 	class:disabled
+	class:no-background={noBackground}
 	class:sharp-right-corners={sharpRightCorners}
 	style:min-width={minWidth > 0 ? `${minWidth}px` : ""}
 	title={tooltip}
@@ -76,8 +78,24 @@
 			}
 		}
 
-		&.text-button + .text-button {
+		&.no-background {
+			&:not(:hover) {
+				background: none;
+			}
+
+			.icon-label {
+				margin-right: 4px;
+			}
+		}
+
+		.widget-row > & + .text-button,
+		.layout-row > & + .text-button {
 			margin-left: 8px;
+		}
+
+		.widget-column > & + .text-button,
+		.layout-column > & + .text-button {
+			margin-top: 8px;
 		}
 
 		.icon-label {

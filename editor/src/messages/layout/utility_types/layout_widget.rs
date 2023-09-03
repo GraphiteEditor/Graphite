@@ -15,8 +15,12 @@ use std::sync::Arc;
 #[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize, specta::Type)]
 #[repr(u8)]
 pub enum LayoutTarget {
-	/// Contains the contents of the dialog, including the title and action buttons. Must be shown with the `FrontendMessage::DisplayDialog` message.
-	DialogDetails,
+	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	DialogButtons,
+	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	DialogColumn1,
+	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `FrontendMessage::DisplayDialog` message.
+	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
@@ -53,6 +57,40 @@ pub trait LayoutHolder {
 
 	fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
 		responses.add(LayoutMessage::SendLayout { layout: self.layout(), layout_target });
+	}
+}
+
+/// Structs implementing this hold the layout (like [`LayoutHolder`]) for dialog content, but it also requires defining the dialog's title, icon, and action buttons.
+pub trait DialogLayoutHolder: LayoutHolder {
+	const ICON: &'static str;
+	const TITLE: &'static str;
+
+	fn layout_buttons(&self) -> Layout;
+	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout_buttons(),
+			layout_target,
+		});
+	}
+
+	fn layout_column_2(&self) -> Layout {
+		Layout::default()
+	}
+	fn send_layout_column_2(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout_column_2(),
+			layout_target,
+		});
+	}
+
+	fn send_dialog_to_frontend(&self, responses: &mut VecDeque<Message>) {
+		self.send_layout(responses, LayoutTarget::DialogColumn1);
+		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
+		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
+		responses.add(FrontendMessage::DisplayDialog {
+			icon: Self::ICON.into(),
+			title: Self::TITLE.into(),
+		});
 	}
 }
 

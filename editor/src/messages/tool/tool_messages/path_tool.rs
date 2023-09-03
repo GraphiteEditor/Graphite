@@ -81,55 +81,53 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		let mut option_contents = vec![];
+		let coordinates = self.tool_data.single_selected_point.as_ref().map(|point| point.coordinates);
+		let manipulator_angle = self.tool_data.single_selected_point.as_ref().map(|point| point.manipulator_angle);
+		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
 
-		if let Some(SingleSelectedPoint {
-			coordinates: DVec2 { x, y },
-			manipulator_angle,
-			..
-		}) = self.tool_data.single_selected_point
-		{
-			let x_location = NumberInput::new(Some(x))
-				.unit(" px")
-				.label("X")
-				.min_width(120)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(move |number_input: &NumberInput| {
-					let new_x = number_input.value.unwrap_or(x);
-					PathToolMessage::SelectedPointXChanged { new_x }.into()
-				})
-				.widget_holder();
-
-			let seperator_1 = Separator::new(SeparatorType::Unrelated).widget_holder();
-
-			let y_location = NumberInput::new(Some(y))
-				.unit(" px")
-				.label("Y")
-				.min_width(120)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(move |number_input: &NumberInput| {
-					let new_y = number_input.value.unwrap_or(y);
-					PathToolMessage::SelectedPointYChanged { new_y }.into()
-				})
-				.widget_holder();
-
-			let seperator_2 = Separator::new(SeparatorType::Unrelated).widget_holder();
-
-			let index = if (manipulator_angle as u8) < 2 { manipulator_angle as u32 } else { 0 };
-
-			let manipulator_angle_radio = RadioInput::new(vec![
-				RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleChanged.into()),
-				RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleChanged.into()),
-			])
-			.selected_index(index)
+		let x_location = NumberInput::new(x)
+			.unit(" px")
+			.label("X")
+			.min_width(120)
+			.disabled(x.is_none())
+			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.on_update(move |number_input: &NumberInput| {
+				let new_x = number_input.value.unwrap_or(x.unwrap());
+				PathToolMessage::SelectedPointXChanged { new_x }.into()
+			})
 			.widget_holder();
 
-			option_contents.extend([x_location, seperator_1, y_location, seperator_2, manipulator_angle_radio]);
-		}
+		let y_location = NumberInput::new(y)
+			.unit(" px")
+			.label("Y")
+			.min_width(120)
+			.disabled(y.is_none())
+			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.on_update(move |number_input: &NumberInput| {
+				let new_y = number_input.value.unwrap_or(y.unwrap());
+				PathToolMessage::SelectedPointYChanged { new_y }.into()
+			})
+			.widget_holder();
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: option_contents }]))
+		let seperator = Separator::new(SeparatorType::Related).widget_holder();
+
+		let seperator_2 = Separator::new(SeparatorType::Unrelated).widget_holder();
+
+		let index = manipulator_angle.map(|angle| angle as u32).unwrap_or(0);
+
+		let manipulator_angle_radio = RadioInput::new(vec![
+			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMadeSmooth.into()),
+			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMadeSharp.into()),
+		])
+		.disabled(manipulator_angle.is_none())
+		.selected_index(index)
+		.widget_holder();
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+			widgets: vec![x_location, seperator, y_location, seperator_2, manipulator_angle_radio],
+		}]))
 	}
 }
 

@@ -134,19 +134,19 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Value",
+			name: "Number",
 			category: "Inputs",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Value", TaggedValue::F32(0.), false)],
+			inputs: vec![DocumentInputType::value("Number", TaggedValue::F32(0.), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
-			properties: node_properties::value_properties,
+			properties: node_properties::number_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
 			name: "Color",
 			category: "Inputs",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Value", TaggedValue::OptionalColor(None), false)],
+			inputs: vec![DocumentInputType::value("Color", TaggedValue::OptionalColor(None), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Color)],
 			properties: node_properties::color_properties,
 			..Default::default()
@@ -1692,7 +1692,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Value", TaggedValue::F32(4.), false),
+				DocumentInputType::value("Levels", TaggedValue::F32(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::posterize_properties,
@@ -2211,7 +2211,34 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				DocumentInputType::value("Index", TaggedValue::U32(0), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::index_node_properties,
+			properties: node_properties::index_properties,
+			..Default::default()
+		},
+		// Applies the given color to each pixel of an image but maintains the alpha value
+		DocumentNodeType {
+			name: "Color Fill",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::color_fill_properties,
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Color Overlay",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Color", TaggedValue::Color(Color::BLACK), false),
+				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::color_overlay_properties,
 			..Default::default()
 		},
 	]
@@ -2447,10 +2474,7 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 
-	let mut network = NodeNetwork {
-		inputs: vec![0],
-		..Default::default()
-	};
+	let mut network = NodeNetwork::default();
 
 	network.push_node(
 		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),

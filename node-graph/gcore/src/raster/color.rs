@@ -336,14 +336,16 @@ impl Color {
 	/// ```
 	#[inline(always)]
 	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+		let alpha = alpha as f32 / 255.;
 		let map_range = |int_color| int_color as f32 / 255.0;
 		Color {
 			red: map_range(red),
 			green: map_range(green),
 			blue: map_range(blue),
-			alpha: map_range(alpha),
+			alpha,
 		}
 		.to_linear_srgb()
+		.map_rgb(|channel| channel * alpha)
 	}
 
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)

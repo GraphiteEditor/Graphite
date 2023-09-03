@@ -6,6 +6,7 @@ use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
@@ -205,8 +206,17 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			NodeGraph(message) => {
-				self.node_graph_handler
-					.process_message(message, responses, (&mut self.document_legacy, executor, document_id, self.name.as_str()));
+				self.node_graph_handler.process_message(
+					message,
+					responses,
+					NodeGraphHandlerData {
+						document: &mut self.document_legacy,
+						executor,
+						document_id,
+						document_name: self.name.as_str(),
+						input: ipp,
+					},
+				);
 			}
 			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
@@ -579,6 +589,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			PasteImage { image, mouse } => {
+				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
+
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {

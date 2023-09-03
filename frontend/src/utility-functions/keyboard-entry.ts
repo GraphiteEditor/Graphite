@@ -1,4 +1,4 @@
-export function makeKeyboardModifiersBitfield(e: WheelEvent | PointerEvent | KeyboardEvent): number {
+export function makeKeyboardModifiersBitfield(e: WheelEvent | PointerEvent | MouseEvent | KeyboardEvent): number {
 	return (
 		// Shift (all platforms)
 		(Number(e.shiftKey) << 0) |

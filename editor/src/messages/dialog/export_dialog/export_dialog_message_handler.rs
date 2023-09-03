@@ -7,7 +7,6 @@ use document_legacy::LayerId;
 /// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]
 pub struct ExportDialogMessageHandler {
-	pub file_name: String,
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
@@ -16,17 +15,16 @@ pub struct ExportDialogMessageHandler {
 	pub has_selection: bool,
 }
 
-impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
-	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, _data: ()) {
+impl MessageHandler<ExportDialogMessage, &PortfolioMessageHandler> for ExportDialogMessageHandler {
+	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, portfolio: &PortfolioMessageHandler) {
 		match message {
-			ExportDialogMessage::FileName(name) => self.file_name = name,
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
 			ExportDialogMessage::ScaleFactor(factor) => self.scale_factor = factor,
 			ExportDialogMessage::TransparentBackground(transparent_background) => self.transparent_background = transparent_background,
 			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
 
 			ExportDialogMessage::Submit => responses.add_front(DocumentMessage::ExportDocument {
-				file_name: self.file_name.clone(),
+				file_name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 				file_type: self.file_type,
 				scale_factor: self.scale_factor,
 				bounds: self.bounds,
@@ -34,31 +32,58 @@ impl MessageHandler<ExportDialogMessage, ()> for ExportDialogMessageHandler {
 			}),
 		}
 
-		self.send_layout(responses, LayoutTarget::DialogDetails);
+		self.send_dialog_to_frontend(responses);
 	}
 
 	advertise_actions! {ExportDialogUpdate;}
 }
 
-impl LayoutHolder for ExportDialogMessageHandler {
-	fn layout(&self) -> Layout {
-		let file_name = vec![
-			TextLabel::new("File Name").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextInput::new(&self.file_name)
-				.on_update(|text_input: &TextInput| ExportDialogMessage::FileName(text_input.value.clone()).into())
+impl DialogLayoutHolder for ExportDialogMessageHandler {
+	const ICON: &'static str = "File";
+	const TITLE: &'static str = "Export";
+
+	fn layout_buttons(&self) -> Layout {
+		let widgets = vec![
+			TextButton::new("Export")
+				.emphasized(true)
+				.on_update(|_| {
+					DialogMessage::CloseDialogAndThen {
+						followups: vec![ExportDialogMessage::Submit.into()],
+					}
+					.into()
+				})
 				.widget_holder(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
 		];
 
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+}
+
+impl LayoutHolder for ExportDialogMessageHandler {
+	fn layout(&self) -> Layout {
 		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
 			.into_iter()
 			.map(|(val, name)| RadioEntryData::new(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).widget_holder(),
+			TextLabel::new("File Type").table_align(true).min_width(100).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries).selected_index(self.file_type as u32).widget_holder(),
+		];
+
+		let resolution = vec![
+			TextLabel::new("Scale Factor").table_align(true).min_width(100).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(self.scale_factor))
+				.unit("")
+				.min(0.)
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.disabled(self.file_type == FileType::Svg)
+				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into())
+				.min_width(200)
+				.widget_holder(),
 		];
 
 		let artboards = self.artboards.iter().map(|(&val, name)| (ExportBounds::Artboard(val), name.to_string(), false));
@@ -74,13 +99,13 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.collect()];
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).widget_holder(),
+			TextLabel::new("Bounds").table_align(true).min_width(100).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
 		];
 
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).widget_holder(),
+			TextLabel::new("Transparency").table_align(true).min_width(100).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
@@ -88,42 +113,11 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(self.scale_factor))
-				.unit(" ")
-				.min(0.)
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.disabled(self.file_type == FileType::Svg)
-				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into())
-				.widget_holder(),
-		];
-
-		let button_widgets = vec![
-			TextButton::new("Export")
-				.min_width(96)
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![ExportDialogMessage::Submit.into()],
-					}
-					.into()
-				})
-				.widget_holder(),
-			TextButton::new("Cancel").min_width(96).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
-		];
-
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Export").bold(true).widget_holder()],
-			},
-			LayoutGroup::Row { widgets: file_name },
 			LayoutGroup::Row { widgets: export_type },
 			LayoutGroup::Row { widgets: resolution },
 			LayoutGroup::Row { widgets: export_area },
 			LayoutGroup::Row { widgets: transparent_background },
-			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
 }
