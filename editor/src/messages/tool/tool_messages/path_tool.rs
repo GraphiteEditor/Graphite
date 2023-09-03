@@ -14,7 +14,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, Hin
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::{LayerId, Operation};
-use graphene_core::vector::{manipulator_point, ManipulatorPointId, SelectedType};
+use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
