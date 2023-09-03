@@ -187,8 +187,8 @@ impl ShapeState {
 		Some(())
 	}
 
-	// Reinsert a manipulator group at the same point to make its handles
-	// recalculator their positions based on a new constraint
+	// Reinsert a control point at the same point to make its handles
+	// recalculate their positions based on a new constraint.
 	pub fn blink_manipulator_group(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, layer_path: &[u64]) -> Option<()> {
 		let layer = document.layer(layer_path).ok()?;
 		let vector_data = layer.as_vector_data()?;
@@ -204,8 +204,12 @@ impl ShapeState {
 			});
 		};
 
-		move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-		move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+		if point.manipulator_type.is_handle() {
+			move_point(ManipulatorPointId::new(point.group, point.manipulator_type));
+		} else {
+			move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+			move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+		}
 
 		Some(())
 	}

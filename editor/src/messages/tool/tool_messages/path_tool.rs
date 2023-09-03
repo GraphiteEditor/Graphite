@@ -14,7 +14,7 @@ use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, Hin
 use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::{LayerId, Operation};
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
+use graphene_core::vector::{manipulator_point, ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -556,7 +556,7 @@ struct SingleSelectedPoint {
 	manipulator_angle: ManipulatorAngle,
 }
 
-// If there is one and only one selected control point this function yields all the information needed to manipulate it.
+// If there is one selected and only one control point this yields the selected control point.
 fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
 	let [(layer, 1)] = selection_layers[..] else {
@@ -564,6 +564,7 @@ fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) 
 	};
 	let layer_data = document.layer(layer).ok()?;
 	let vector_data = layer_data.as_vector_data()?;
+
 	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
 		return None;
 	};
