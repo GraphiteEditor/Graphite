@@ -4,7 +4,6 @@ use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
@@ -50,8 +49,7 @@ pub enum PathToolMessage {
 		add_to_selection: Key,
 	},
 	InsertPoint,
-	ManipulatorAngleMadeSharp,
-	ManipulatorAngleMadeSmooth,
+	ManipulatorAngleChanged,
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
@@ -122,8 +120,8 @@ impl LayoutHolder for PathTool {
 			let index = if (manipulator_angle as u8) < 2 { manipulator_angle as u32 } else { 0 };
 
 			let manipulator_angle_radio = RadioInput::new(vec![
-				RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMadeSmooth.into()),
-				RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMadeSharp.into()),
+				RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleChanged.into()),
+				RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleChanged.into()),
 			])
 			.selected_index(index)
 			.widget_holder();
@@ -504,23 +502,12 @@ impl Fsm for PathToolFsmState {
 					tool_data.single_selected_point = new_point;
 					self
 				}
-				(_, PathToolMessage::ManipulatorAngleMadeSharp) => {
+				(_, PathToolMessage::ManipulatorAngleChanged) => {
 					if let Some(SingleSelectedPoint { id, ref layer_path, .. }) = tool_data.single_selected_point {
-						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.to_vec(),
-							modification: VectorDataModification::SetManipulatorHandleMirroring { id: id.group, mirror_angle: true },
-						});
+						shape_editor.toggle_handle_mirroring_on_selected(responses);
+						shape_editor.blink_manipulator_group(&id, responses, &document.document_legacy, layer_path);
 					}
-					self
-				}
-				(_, PathToolMessage::ManipulatorAngleMadeSmooth) => {
-					if let Some(SingleSelectedPoint { id, ref layer_path, .. }) = tool_data.single_selected_point {
-						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.to_vec(),
-							modification: VectorDataModification::SetManipulatorHandleMirroring { id: id.group, mirror_angle: false },
-						});
-					}
-					self
+					PathToolFsmState::Ready
 				}
 				(_, _) => PathToolFsmState::Ready,
 			}
@@ -586,15 +573,11 @@ fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) 
 	// Get the first selected point and transform it to document space.
 	let group = vector_data.manipulator_from_id(point.group)?;
 	let local_position = point.manipulator_type.get_position(group)?;
-	let mut manipulator_angle = if vector_data.mirror_angle.contains(&point.group) {
+	let manipulator_angle = if vector_data.mirror_angle.contains(&point.group) {
 		ManipulatorAngle::Smooth
 	} else {
 		ManipulatorAngle::Sharp
 	};
-
-	if group.in_handle == Some(group.anchor) && group.out_handle == Some(group.anchor) {
-		manipulator_angle = ManipulatorAngle::Sharp;
-	}
 
 	Some(SingleSelectedPoint {
 		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,

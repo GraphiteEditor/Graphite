@@ -187,6 +187,29 @@ impl ShapeState {
 		Some(())
 	}
 
+	// Reinsert a manipulator group at the same point to make its handles
+	// recalculator their positions based on a new constraint
+	pub fn blink_manipulator_group(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, layer_path: &[u64]) -> Option<()> {
+		let layer = document.layer(layer_path).ok()?;
+		let vector_data = layer.as_vector_data()?;
+		let group = vector_data.manipulator_from_id(point.group)?;
+
+		let mut move_point = |point: ManipulatorPointId| {
+			let Some(position) = point.manipulator_type.get_position(group) else {
+				return;
+			};
+			responses.add(GraphOperationMessage::Vector {
+				layer: layer_path.to_vec(),
+				modification: VectorDataModification::SetManipulatorPosition { point, position },
+			});
+		};
+
+		move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+		move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+
+		Some(())
+	}
+
 	/// Move the selected points by dragging the mouse.
 	pub fn move_selected_points(&self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
 		for (layer_path, state) in &self.selected_shape_state {
