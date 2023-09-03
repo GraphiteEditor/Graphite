@@ -93,19 +93,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				NudgeSelectedPoints,
 				Enter,
+				SelectAllPoints,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
+				SelectAllPoints,
 			),
 			DrawingBox => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
-				Enter
+				Enter,
+				SelectAllPoints,
 			),
 		}
 	}
@@ -419,6 +422,7 @@ impl Fsm for PathToolFsmState {
 				}
 				(_, PathToolMessage::SelectAllPoints) => {
 					shape_editor.select_all_points(&document.document_legacy);
+					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					PathToolFsmState::Ready
 				}
 				(_, _) => PathToolFsmState::Ready,
