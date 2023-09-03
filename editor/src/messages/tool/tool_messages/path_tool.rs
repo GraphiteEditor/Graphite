@@ -118,8 +118,8 @@ impl LayoutHolder for PathTool {
 		let index = manipulator_angle.map(|angle| angle as u32).unwrap_or(0);
 
 		let manipulator_angle_radio = RadioInput::new(vec![
-			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMadeSmooth.into()),
-			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMadeSharp.into()),
+			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleChanged.into()),
+			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleChanged.into()),
 		])
 		.disabled(manipulator_angle.is_none())
 		.selected_index(index)
