@@ -205,7 +205,6 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	single_selected_point: Option<SingleSelectedPoint>,
 	selection_status: SelectionStatus,
 }
 
@@ -498,13 +497,13 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.single_selected_point {
+					if let Some(&SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.selection_status.as_one() {
 						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.single_selected_point {
+					if let Some(&SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.selection_status.as_one() {
 						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 					}
 					PathToolFsmState::Ready
@@ -516,14 +515,14 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::ManipulatorAngleMadeSmooth) => {
 					for group in shape_editor.selected_manipulator_groups().iter() {
 						shape_editor.set_handle_mirroring_on_selected(true, responses);
-						//shape_editor.blink_manipulator_group(&group, responses, &document.document_legacy);
+						shape_editor.blink_manipulator_group(&group, responses, &document.document_legacy);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::ManipulatorAngleMadeSharp) => {
 					for group in shape_editor.selected_manipulator_groups().iter() {
 						shape_editor.set_handle_mirroring_on_selected(false, responses);
-						//shape_editor.toggle_handle_mirroring_on_selected(responses);
+						shape_editor.blink_manipulator_group(&group, responses, &document.document_legacy);
 					}
 					PathToolFsmState::Ready
 				}
@@ -646,7 +645,7 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 			ManipulatorAngle::Sharp
 		};
 
-		SelectionStatus::One(SingleSelectedPoint {
+		return SelectionStatus::One(SingleSelectedPoint {
 			coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
 			layer_path: layer.clone(),
 			id: point,
