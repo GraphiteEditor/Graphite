@@ -109,8 +109,9 @@ impl ShapeState {
 			let Some(vector_data) = layer.as_vector_data() else { continue };
 
 			for group in vector_data.manipulator_groups() {
-				for selected_type in &[SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-					selected_layer_state.select_point(ManipulatorPointId::new(group.id, *selected_type));
+				selected_layer_state.select_point(ManipulatorPointId::new(group.id, SelectedType::Anchor));
+				for selected_type in &[SelectedType::InHandle, SelectedType::OutHandle] {
+					selected_layer_state.deselect_point(ManipulatorPointId::new(group.id, *selected_type));
 				}
 			}
 		}
