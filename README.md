@@ -8,15 +8,19 @@
 
 <h1 align="center">Redefining state-of-the-art graphics editing</h1>
 
-**Graphite** is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully non-destructive editing experience.
+**Graphite** is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully nondestructive editing experience.
 
-Graphite is a lightweight vector graphics editor that runs in your browser. Its nascent node-based compositor lets you apply raster effects and co-create amazing art with AI in a non-destructive workflow. Fully-featured raster image editing and a native desktop application are the current focus of development and will be made available in the coming months.
+Presently, Graphite is a lightweight vector graphics editor that runs in your browser. Its node-based compositor lets you apply image effects and co-create art with generative AI.
 
-Launch the latest alpha release of the [Graphite editor](https://editor.graphite.rs) and learn more on the [project website](https://graphite.rs/).
+Photo editing, digital painting, desktop publishing, VFX compositing, and motion graphics are additional competencies planned on the [roadmap](https://graphite.rs/features/#roadmap) to make Graphite a highly versatile content creation tool.
+
+Launch the latest alpha release of the [Graphite editor](https://editor.graphite.rs) and learn more at the [project website](https://graphite.rs/).
 
 ⭐ Please remember to star this project here on GitHub! ⭐
 
-![Vector artwork: "Valley of Spires"](https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png)
+[![Vector artwork: "Valley of Spires"](https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.png)](https://editor.graphite.rs/#demo/valley-of-spires)
+
+*[Click here](https://editor.graphite.rs/#demo/valley-of-spires) to open this artwork and explore it yourself.*
 
 ## Discord community
 

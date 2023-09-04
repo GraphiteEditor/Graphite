@@ -11,19 +11,18 @@ impl MessageHandler<PreferencesDialogMessage, &PreferencesMessageHandler> for Pr
 			PreferencesDialogMessage::Confirm => {}
 		}
 
-		self.send_layout(responses, LayoutTarget::DialogDetails, preferences);
+		self.send_dialog_to_frontend(responses, preferences);
 	}
 
 	advertise_actions! {PreferencesDialogUpdate;}
 }
 
+// This doesn't actually implement the `DialogLayoutHolder` trait like the other dialog message handlers.
+// That's because we need to give `send_layout` the `preferences` argument, which is not part of the trait.
+// However, it's important to keep the methods in sync with those from the trait for consistency.
 impl PreferencesDialogMessageHandler {
-	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
-		responses.add(LayoutMessage::SendLayout {
-			layout: self.layout(preferences),
-			layout_target,
-		})
-	}
+	const ICON: &'static str = "Settings";
+	const TITLE: &'static str = "Editor Preferences";
 
 	fn layout(&self, preferences: &PreferencesMessageHandler) -> Layout {
 		let zoom_with_scroll = vec![
@@ -64,9 +63,32 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let button_widgets = vec![
-			TextButton::new("Ok")
-				.min_width(96)
+		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row { widgets: zoom_with_scroll },
+			LayoutGroup::Row { widgets: imaginate_server_hostname },
+			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
+		]))
+	}
+	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout(preferences),
+			layout_target,
+		})
+	}
+
+	fn layout_column_2(&self) -> Layout {
+		Layout::default()
+	}
+	fn send_layout_column_2(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout_column_2(),
+			layout_target,
+		});
+	}
+
+	fn layout_buttons(&self) -> Layout {
+		let widgets = vec![
+			TextButton::new("OK")
 				.emphasized(true)
 				.on_update(|_| {
 					DialogMessage::CloseDialogAndThen {
@@ -75,20 +97,25 @@ impl PreferencesDialogMessageHandler {
 					.into()
 				})
 				.widget_holder(),
-			TextButton::new("Reset to Defaults")
-				.min_width(96)
-				.on_update(|_| PreferencesMessage::ResetToDefaults.into())
-				.widget_holder(),
+			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_holder(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Editor Preferences").bold(true).widget_holder()],
-			},
-			LayoutGroup::Row { widgets: zoom_with_scroll },
-			LayoutGroup::Row { widgets: imaginate_server_hostname },
-			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
-			LayoutGroup::Row { widgets: button_widgets },
-		]))
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout_buttons(),
+			layout_target,
+		});
+	}
+
+	pub fn send_dialog_to_frontend(&self, responses: &mut VecDeque<Message>, preferences: &PreferencesMessageHandler) {
+		self.send_layout(responses, LayoutTarget::DialogColumn1, preferences);
+		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
+		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
+		responses.add(FrontendMessage::DisplayDialog {
+			icon: Self::ICON.into(),
+			title: Self::TITLE.into(),
+		});
 	}
 }

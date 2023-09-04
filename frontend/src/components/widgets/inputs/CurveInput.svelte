@@ -200,11 +200,11 @@
 			{@const group = groups[selectedNodeIndex]}
 			{#each [0, 1] as i}
 				<path d={`M ${group.anchor[0]} ${1 - group.anchor[1]} L ${group.handles[i][0]} ${1 - group.handles[i][1]}`} class="handle-line" />
-				<circle cx={group.handles[i][0]} cy={1 - group.handles[i][1]} class="manipulator handle" on:pointerdown={(e) => handleManipulatorPointerDown(e, -i - 1)} />
+				<circle cx={group.handles[i][0]} cy={1 - group.handles[i][1]} class="manipulator handle" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, -i - 1)} />
 			{/each}
 		{/if}
 		{#each groups as group, i}
-			<circle cx={group.anchor[0]} cy={1 - group.anchor[1]} class="manipulator" on:pointerdown={(e) => handleManipulatorPointerDown(e, i)} />
+			<circle cx={group.anchor[0]} cy={1 - group.anchor[1]} class="manipulator" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, i)} />
 		{/each}
 	</svg>
 	<slot />
@@ -234,7 +234,6 @@
 			fill: var(--color-1-nearblack);
 			stroke: var(--color-e-nearwhite);
 			stroke-width: 0.01;
-			r: 0.02;
 
 			&:hover {
 				fill: var(--color-f-white);

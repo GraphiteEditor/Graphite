@@ -1,4 +1,3 @@
-import {tick} from "svelte";
 import {writable} from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";

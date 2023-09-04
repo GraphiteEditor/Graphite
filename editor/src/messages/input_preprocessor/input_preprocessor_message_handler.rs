@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, ModifierKeys};
-use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, MouseState, ViewportBounds};
+use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState, ViewportBounds};
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
@@ -37,7 +37,14 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
 
-				responses.add(InputMapperMessage::DoubleClick);
+				for key in mouse_state.mouse_keys {
+					responses.add(InputMapperMessage::DoubleClick(match key {
+						MouseKeys::LEFT => MouseButton::Left,
+						MouseKeys::RIGHT => MouseButton::Right,
+						MouseKeys::MIDDLE => MouseButton::Middle,
+						_ => unimplemented!(),
+					}));
+				}
 			}
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

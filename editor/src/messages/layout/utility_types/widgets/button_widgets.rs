@@ -84,6 +84,9 @@ pub struct TextButton {
 
 	pub icon: Option<String>,
 
+	#[serde(rename = "noBackground")]
+	pub no_background: bool,
+
 	pub emphasized: bool,
 
 	#[serde(rename = "minWidth")]

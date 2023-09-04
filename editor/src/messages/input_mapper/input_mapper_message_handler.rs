@@ -51,7 +51,7 @@ impl InputMapperMessageHandler {
 			.chain(self.mapping.key_down.iter())
 			.chain(self.mapping.key_up_no_repeat.iter())
 			.chain(self.mapping.key_down_no_repeat.iter())
-			.chain(std::iter::once(&self.mapping.double_click))
+			.chain(self.mapping.double_click.iter())
 			.chain(std::iter::once(&self.mapping.wheel_scroll))
 			.chain(std::iter::once(&self.mapping.pointer_move));
 		let all_mapping_entries = all_key_mapping_entries.flat_map(|entry| entry.0.iter());

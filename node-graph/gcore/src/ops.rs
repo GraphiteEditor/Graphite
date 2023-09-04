@@ -183,7 +183,7 @@ fn max<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
 	}
 }
 
-// Equality
+// Equals
 pub struct EqParameterNode<Second> {
 	second: Second,
 }

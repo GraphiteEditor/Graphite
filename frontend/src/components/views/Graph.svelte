@@ -5,7 +5,6 @@
 	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
 	import type { FrontendNodeLink, FrontendNodeType, FrontendNode } from "@graphite/wasm-communication/messages";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -24,7 +23,7 @@
 
 	type LinkPath = { pathString: string; dataType: string; thick: boolean };
 
-	let graph: LayoutRow | undefined;
+	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
 
@@ -52,7 +51,7 @@
 	let appearRightOfMouse = false;
 
 	$: (() => {
-		const bounds = graph?.div()?.getBoundingClientRect();
+		const bounds = graph?.getBoundingClientRect();
 		if (!bounds) return;
 		const { width, height } = bounds;
 
@@ -239,7 +238,7 @@
 			let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 			if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
-			const bounds = graph?.div()?.getBoundingClientRect();
+			const bounds = graph?.getBoundingClientRect();
 			if (!bounds) return;
 			const { x, y, width, height } = bounds;
 
@@ -286,7 +285,7 @@
 
 		// Create the add node popup on right click, then exit
 		if (rmb) {
-			const graphBounds = graph?.div()?.getBoundingClientRect();
+			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
 			nodeListLocation = {
 				x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
@@ -567,20 +566,18 @@
 	});
 </script>
 
-<LayoutRow
+<div
 	class="graph"
 	bind:this={graph}
-	on:wheel={scroll}
+	on:wheel|nonpassive={scroll}
 	on:pointerdown={pointerDown}
 	on:pointermove={pointerMove}
 	on:pointerup={pointerUp}
 	on:dblclick={doubleClick}
-	styles={{
-		"--grid-spacing": `${gridSpacing}px`,
-		"--grid-offset-x": `${transform.x * transform.scale}px`,
-		"--grid-offset-y": `${transform.y * transform.scale}px`,
-		"--dot-radius": `${dotRadius}px`,
-	}}
+	style:--grid-spacing={`${gridSpacing}px`}
+	style:--grid-offset-x={`${transform.x * transform.scale}px`}
+	style:--grid-offset-y={`${transform.y * transform.scale}px`}
+	style:--dot-radius={`${dotRadius}px`}
 >
 	<!-- Right click menu for adding nodes -->
 	{#if nodeListLocation}
@@ -595,7 +592,7 @@
 			}}
 		>
 			<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-			<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|stopPropagation>
+			<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|passive|stopPropagation>
 				{#each nodeCategories as nodeCategory}
 					<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
 						<summary>
@@ -802,12 +799,15 @@
 			</div>
 		{/each}
 	</div>
-</LayoutRow>
+</div>
 
 <style lang="scss" global>
 	.graph {
 		position: relative;
 		overflow: hidden;
+		display: flex;
+		flex-direction: row;
+		flex-grow: 1;
 
 		> img {
 			position: absolute;

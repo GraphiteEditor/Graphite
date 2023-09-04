@@ -109,7 +109,7 @@
 	<LayoutRow
 		class="dropdown-box"
 		classes={{ disabled, "sharp-right-corners": sharpRightCorners }}
-		styles={{ minWidth: `${minWidth}px` }}
+		styles={{ "min-width": `${minWidth}px` }}
 		{tooltip}
 		tabindex={disabled ? -1 : 0}
 		on:click={toggleOpen}

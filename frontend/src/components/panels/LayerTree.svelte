@@ -450,7 +450,7 @@
 					border-radius: 2px;
 
 					&:hover {
-						background: var(--color-6-lowergray);
+						background: var(--color-5-dullgray);
 					}
 
 					&::after {
@@ -461,19 +461,11 @@
 						border-style: solid;
 						border-width: 3px 0 3px 6px;
 						border-color: transparent transparent transparent var(--color-e-nearwhite);
-
-						&:hover {
-							color: var(--color-f-white);
-						}
 					}
 
 					&.expanded::after {
 						border-width: 6px 3px 0 3px;
 						border-color: var(--color-e-nearwhite) transparent transparent transparent;
-
-						&:hover {
-							color: var(--color-f-white);
-						}
 					}
 				}
 
@@ -488,7 +480,6 @@
 
 					&.selected {
 						background: var(--color-5-dullgray);
-						color: var(--color-f-white);
 					}
 
 					.layer-type-icon {

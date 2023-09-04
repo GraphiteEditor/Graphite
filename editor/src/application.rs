@@ -37,32 +37,17 @@ pub const GRAPHITE_GIT_COMMIT_DATE: &str = env!("GRAPHITE_GIT_COMMIT_DATE");
 pub const GRAPHITE_GIT_COMMIT_HASH: &str = env!("GRAPHITE_GIT_COMMIT_HASH");
 pub const GRAPHITE_GIT_COMMIT_BRANCH: &str = env!("GRAPHITE_GIT_COMMIT_BRANCH");
 
-pub fn release_series() -> String {
-	format!("Release Series: {}", GRAPHITE_RELEASE_SERIES)
-}
-
-pub fn commit_info() -> String {
-	format!("{}\n{}\n{}", commit_timestamp(), commit_hash(), commit_branch())
-}
-
 pub fn commit_info_localized(localized_commit_date: &str) -> String {
-	format!("{}\n{}\n{}", commit_timestamp_localized(localized_commit_date), commit_hash(), commit_branch())
-}
-
-pub fn commit_timestamp() -> String {
-	format!("Date: {}", GRAPHITE_GIT_COMMIT_DATE)
-}
-
-pub fn commit_timestamp_localized(localized_commit_date: &str) -> String {
-	format!("Date: {}", localized_commit_date)
-}
-
-pub fn commit_hash() -> String {
-	format!("Hash: {}", &GRAPHITE_GIT_COMMIT_HASH[..8])
-}
-
-pub fn commit_branch() -> String {
-	format!("Branch: {}", GRAPHITE_GIT_COMMIT_BRANCH)
+	format!(
+		"Release Series: {}\n\
+		Branch: {}\n\
+		Commit: {}\n\
+		{}",
+		GRAPHITE_RELEASE_SERIES,
+		GRAPHITE_GIT_COMMIT_BRANCH,
+		&GRAPHITE_GIT_COMMIT_HASH[..8],
+		localized_commit_date
+	)
 }
 
 #[cfg(test)]

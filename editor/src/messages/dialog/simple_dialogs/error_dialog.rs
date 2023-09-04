@@ -7,6 +7,17 @@ pub struct ErrorDialog {
 	pub description: String,
 }
 
+impl DialogLayoutHolder for ErrorDialog {
+	const ICON: &'static str = "Warning";
+	const TITLE: &'static str = "Error";
+
+	fn layout_buttons(&self) -> Layout {
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+}
+
 impl LayoutHolder for ErrorDialog {
 	fn layout(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::new(vec![
@@ -15,13 +26,6 @@ impl LayoutHolder for ErrorDialog {
 			},
 			LayoutGroup::Row {
 				widgets: vec![TextLabel::new(&self.description).multiline(true).widget_holder()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![TextButton::new("OK")
-					.emphasized(true)
-					.min_width(96)
-					.on_update(|_| FrontendMessage::DisplayDialogDismiss.into())
-					.widget_holder()],
 			},
 		]))
 	}
