@@ -428,6 +428,7 @@ impl Fsm for PathToolFsmState {
 						if clicked_selected {
 							shape_editor.deselect_all();
 							shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false);
+							tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 						}
 					}
 
