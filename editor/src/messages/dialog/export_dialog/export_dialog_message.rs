@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, DialogMessage, ExportDialog)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ExportDialogMessage {
-	FileName(String),
 	FileType(FileType),
 	ScaleFactor(f64),
 	TransparentBackground(bool),

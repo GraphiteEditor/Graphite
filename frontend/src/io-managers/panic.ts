@@ -1,11 +1,8 @@
-import { wipeDocuments } from "@graphite/io-managers/persistence";
 import { type DialogState } from "@graphite/state-providers/dialog";
-import { type IconName } from "@graphite/utility-functions/icons";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { type Editor } from "@graphite/wasm-communication/editor";
-import type { TextLabel } from "@graphite/wasm-communication/messages";
-import { type TextButtonWidget, type WidgetLayout, Widget, DisplayDialogPanic } from "@graphite/wasm-communication/messages";
+import { DisplayDialogPanic } from "@graphite/wasm-communication/messages";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState): void {
 	// Code panic dialog and console error
@@ -19,45 +16,11 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): vo
 		// eslint-disable-next-line no-console
 		console.error(panicDetails);
 
-		const crashDialog = prepareCrashDialog(displayDialogPanic.header, displayDialogPanic.description, panicDetails);
-		dialogState.createCrashDialog(...crashDialog);
+		dialogState.createCrashDialog(panicDetails);
 	});
 }
 
-function prepareCrashDialog(header: string, details: string, panicDetails: string): [IconName, WidgetLayout, TextButtonWidget[]] {
-	const headerLabel: TextLabel = { kind: "TextLabel", value: header, disabled: false, bold: true, italic: false, tableAlign: false, minWidth: 0, multiline: false, tooltip: "" };
-	const detailsLabel: TextLabel = { kind: "TextLabel", value: details, disabled: false, bold: false, italic: false, tableAlign: false, minWidth: 0, multiline: true, tooltip: "" };
-
-	const widgets: WidgetLayout = {
-		layout: [{ rowWidgets: [new Widget(headerLabel, 0n)] }, { rowWidgets: [new Widget(detailsLabel, 1n)] }],
-		layoutTarget: undefined,
-	};
-
-	const reloadButton: TextButtonWidget = {
-		callback: async () => window.location.reload(),
-		props: { kind: "TextButton", label: "Reload", emphasized: true, minWidth: 96 },
-	};
-	const copyErrorLogButton: TextButtonWidget = {
-		callback: async () => navigator.clipboard.writeText(panicDetails),
-		props: { kind: "TextButton", label: "Copy Error Log", emphasized: false, minWidth: 96 },
-	};
-	const reportOnGithubButton: TextButtonWidget = {
-		callback: async () => window.open(githubUrl(panicDetails), "_blank"),
-		props: { kind: "TextButton", label: "Report Bug", emphasized: false, minWidth: 96 },
-	};
-	const clearPersistedDataButton: TextButtonWidget = {
-		callback: async () => {
-			await wipeDocuments();
-			window.location.reload();
-		},
-		props: { kind: "TextButton", label: "Clear Saved Data", emphasized: false, minWidth: 96 },
-	};
-	const crashDialogButtons = [reloadButton, copyErrorLogButton, reportOnGithubButton, clearPersistedDataButton];
-
-	return ["Warning", widgets, crashDialogButtons];
-}
-
-function githubUrl(panicDetails: string): string {
+export function githubUrl(panicDetails: string): string {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
 	let body = stripIndents`

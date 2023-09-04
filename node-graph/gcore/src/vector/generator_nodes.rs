@@ -6,19 +6,94 @@ use bezier_rs::Subpath;
 
 use glam::DVec2;
 
-pub struct UnitCircleGenerator;
+#[derive(Debug, Clone, Copy)]
+pub struct CircleGenerator<Radius> {
+	radius: Radius,
+}
 
-#[node_macro::node_fn(UnitCircleGenerator)]
-fn unit_circle(_input: ()) -> VectorData {
-	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE))
+#[node_macro::node_fn(CircleGenerator)]
+fn circle_generator(_input: (), radius: f32) -> VectorData {
+	let radius: f64 = radius.into();
+	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct UnitSquareGenerator;
+pub struct EllipseGenerator<RadiusX, RadiusY> {
+	radius_x: RadiusX,
+	radius_y: RadiusY,
+}
 
-#[node_macro::node_fn(UnitSquareGenerator)]
-fn unit_square(_input: ()) -> VectorData {
-	super::VectorData::from_subpaths(vec![Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE)])
+#[node_macro::node_fn(EllipseGenerator)]
+fn ellipse_generator(_input: (), radius_x: f32, radius_y: f32) -> VectorData {
+	let radius = DVec2::new(radius_x as f64, radius_y as f64);
+	let corner1 = -radius;
+	let corner2 = radius;
+	super::VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RectangleGenerator<SizeX, SizeY> {
+	size_x: SizeX,
+	size_y: SizeY,
+}
+
+#[node_macro::node_fn(RectangleGenerator)]
+fn square_generator(_input: (), size_x: f32, size_y: f32) -> VectorData {
+	let size = DVec2::new(size_x as f64, size_y as f64);
+	let corner1 = -size / 2.;
+	let corner2 = size / 2.;
+
+	super::VectorData::from_subpaths(vec![Subpath::new_rect(corner1, corner2)])
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RegularPolygonGenerator<Points, Radius> {
+	points: Points,
+	radius: Radius,
+}
+
+#[node_macro::node_fn(RegularPolygonGenerator)]
+fn regular_polygon_generator(_input: (), points: u32, radius: f32) -> VectorData {
+	let points = points.into();
+	let radius: f64 = (radius * 2.).into();
+	super::VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StarGenerator<Points, Radius, InnerRadius> {
+	points: Points,
+	radius: Radius,
+	inner_radius: InnerRadius,
+}
+
+#[node_macro::node_fn(StarGenerator)]
+fn star_generator(_input: (), points: u32, radius: f32, inner_radius: f32) -> VectorData {
+	let points = points.into();
+	let diameter: f64 = (radius * 2.).into();
+	let inner_diameter = (inner_radius * 2.).into();
+
+	super::VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LineGenerator<Pos1, Pos2> {
+	pos_1: Pos1,
+	pos_2: Pos2,
+}
+
+#[node_macro::node_fn(LineGenerator)]
+fn line_generator(_input: (), pos_1: DVec2, pos_2: DVec2) -> VectorData {
+	super::VectorData::from_subpaths(vec![Subpath::new_line(pos_1, pos_2)])
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SplineGenerator<Positions> {
+	positions: Positions,
+}
+
+#[node_macro::node_fn(SplineGenerator)]
+fn spline_generator(_input: (), positions: Vec<DVec2>) -> VectorData {
+	super::VectorData::from_subpaths(vec![Subpath::new_cubic_spline(positions)])
 }
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node

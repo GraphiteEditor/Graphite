@@ -18,14 +18,13 @@ use serde::{Deserialize, Serialize};
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
+		title: String,
 		icon: String,
 	},
 	DisplayDialogDismiss,
 	DisplayDialogPanic {
 		#[serde(rename = "panicInfo")]
 		panic_info: String,
-		header: String,
-		description: String,
 	},
 	DisplayEditableTextbox {
 		text: String,
@@ -122,7 +121,17 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: u64,
 	},
-	UpdateDialogDetails {
+	UpdateDialogButtons {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateDialogColumn1 {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateDialogColumn2 {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

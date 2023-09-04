@@ -112,6 +112,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		&self.manipulator_groups
 	}
 
+	/// Returns a vector of all the anchors (DVec2) for this `Subpath`.
+	pub fn anchors(&self) -> Vec<DVec2> {
+		self.manipulator_groups().iter().map(|group| group.anchor).collect()
+	}
+
 	/// Returns if the Subpath is equivalent to a single point.
 	pub fn is_point(&self) -> bool {
 		if self.is_empty() {
@@ -235,8 +240,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors(anchor_positions, true)
 	}
 
-	/// Constructs a regular star polygon (n-star). See [new_regular_polygon], but with interspersed vertices at an `inner_radius`.
-	pub fn new_regular_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
+	/// Constructs a star polygon (n-star). See [new_regular_polygon], but with interspersed vertices at an `inner_radius`.
+	pub fn new_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
 		let anchor_positions = (0..sides * 2).map(|i| {
 			let angle = (i as f64) * 0.5 * std::f64::consts::TAU / (sides as f64);
 			let center = center + DVec2::ONE * radius;
@@ -254,6 +259,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Construct a cubic spline from a list of points.
 	/// Based on <https://mathworld.wolfram.com/CubicSpline.html>.
 	pub fn new_cubic_spline(points: Vec<DVec2>) -> Self {
+		if points.len() < 2 {
+			return Self::new(Vec::new(), false);
+		}
+
 		// Number of points = number of points to find handles for
 		let len_points = points.len();
 

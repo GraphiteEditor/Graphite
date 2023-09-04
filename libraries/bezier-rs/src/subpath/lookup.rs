@@ -252,4 +252,16 @@ mod tests {
 		assert_eq!(closed_subpath.t_value_to_parametric(SubpathTValue::GlobalParametric(0.)), (0, 0.));
 		assert_eq!(closed_subpath.t_value_to_parametric(SubpathTValue::GlobalParametric(1.)), (4, 1.));
 	}
+
+	#[test]
+	fn exact_start_end() {
+		let start = DVec2::new(20., 30.);
+		let end = DVec2::new(60., 45.);
+		let handle = DVec2::new(75., 85.);
+
+		let subpath: Subpath<EmptyId> = Subpath::from_bezier(&Bezier::from_quadratic_dvec2(start, handle, end));
+
+		assert_eq!(subpath.evaluate(SubpathTValue::GlobalEuclidean(0.0)), start);
+		assert_eq!(subpath.evaluate(SubpathTValue::GlobalEuclidean(1.0)), end);
+	}
 }

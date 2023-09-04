@@ -354,8 +354,11 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = requestAboutGraphiteDialogWithLocalizedCommitDate)]
-	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String) {
-		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date };
+	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String, localized_commit_year: String) {
+		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {
+			localized_commit_date,
+			localized_commit_year,
+		};
 		self.dispatch(message);
 	}
 
@@ -418,6 +421,7 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = onDoubleClick)]
 	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
 		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };

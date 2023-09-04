@@ -27,6 +27,9 @@ impl SelectedLayerState {
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
+	pub fn selected_points_count(&self) -> usize {
+		self.selected_points.len()
+	}
 }
 pub type SelectedShapeState = HashMap<Vec<LayerId>, SelectedLayerState>;
 #[derive(Debug, Default)]
@@ -160,6 +163,42 @@ impl ShapeState {
 	/// Provide the currently selected points by reference.
 	pub fn selected_points(&self) -> impl Iterator<Item = &'_ ManipulatorPointId> {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
+	}
+
+	/// Moves a control point to a `new_position` in document space.
+	/// Returns `Some(())` if successful and `None` otherwise.
+	pub fn reposition_control_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
+		let layer = document.layer(layer_path).ok()?;
+		let vector_data = layer.as_vector_data()?;
+		let transform = layer.transform.inverse();
+		let position = transform.transform_point2(new_position - layer.pivot);
+		let group = vector_data.manipulator_from_id(point.group)?;
+		let delta = position - point.manipulator_type.get_position(group)?;
+
+		if point.manipulator_type.is_handle() {
+			responses.add(GraphOperationMessage::Vector {
+				layer: layer_path.to_vec(),
+				modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: false },
+			});
+		}
+
+		let mut move_point = |point: ManipulatorPointId| {
+			let Some(position) = point.manipulator_type.get_position(group) else {
+				return;
+			};
+			responses.add(GraphOperationMessage::Vector {
+				layer: layer_path.to_vec(),
+				modification: VectorDataModification::SetManipulatorPosition { point, position: (position + delta) },
+			});
+		};
+
+		move_point(*point);
+		if !point.manipulator_type.is_handle() {
+			move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+			move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+		}
+
+		Some(())
 	}
 
 	/// Move the selected points by dragging the mouse.

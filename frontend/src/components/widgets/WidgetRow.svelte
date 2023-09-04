@@ -69,13 +69,6 @@
 		editor.instance.updateLayout(layoutTarget, widgets[index].widgetId, value);
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	// function exclude<T extends Record<string, any>>(props: T, additional?: (keyof T)[]): Pick<T, Exclude<keyof T, "kind" | (typeof additional extends Array<infer K> ? K : never)>> {
-	// 	const exclusions = ["kind", ...(additional || [])];
-
-	// 	return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
-	// }
-
 	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283
 	function exclude<T extends object>(props: T, additional?: (keyof T)[]): Omit<T, typeof additional extends Array<infer K> ? K : never> {
 		const exclusions = ["kind", ...(additional || [])];
