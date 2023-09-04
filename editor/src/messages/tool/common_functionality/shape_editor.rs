@@ -50,6 +50,51 @@ pub struct ManipulatorPointInfo<'a> {
 
 pub type OpposingHandleLengths = HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, Option<f64>>>;
 
+const OUT_HANDLE: u8 = 0b001;
+const IN_HANDLE: u8 = 0b010;
+const BOTH_HANDLES: u8 = 0b011;
+const ANCHOR: u8 = 0b100;
+const ANCHOR_OUT: u8 = 0b101;
+const ANCHOR_IN: u8 = 0b110;
+const ALL: u8 = 0b111;
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ManipulatorGroupData {
+	pub selection_type: u8,
+	pub group_id: ManipulatorGroupId,
+	pub layer_id: Vec<LayerId>,
+}
+
+impl ManipulatorGroupData {
+	pub fn new(id: &ManipulatorPointId, layer: &[LayerId]) -> Self {
+		let flag = match id.manipulator_type {
+			SelectedType::Anchor => ANCHOR,
+			SelectedType::InHandle => IN_HANDLE,
+			SelectedType::OutHandle => OUT_HANDLE,
+		};
+		Self {
+			group_id: id.group,
+			selection_type: flag,
+			layer_id: layer.to_vec(),
+		}
+	}
+
+	pub fn update(&mut self, id: &ManipulatorPointId) {
+		let flag = match id.manipulator_type {
+			SelectedType::Anchor => ANCHOR,
+			SelectedType::InHandle => IN_HANDLE,
+			SelectedType::OutHandle => OUT_HANDLE,
+		};
+		self.selection_type |= flag;
+	}
+
+	pub fn is_smooth(&self, document: &Document) -> bool {
+		let Ok(layer) = document.layer(&self.layer_id) else { return false };
+		let Some(vector_data) = layer.as_vector_data() else { return false };
+		vector_data.mirror_angle.contains(&self.group_id)
+	}
+}
+
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
 	/// Select the first point within the selection threshold.
@@ -189,27 +234,36 @@ impl ShapeState {
 
 	// Reinsert a control point at the same point to make its handles
 	// recalculate their positions based on a new constraint.
-	pub fn blink_manipulator_group(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, layer_path: &[u64]) -> Option<()> {
-		let layer = document.layer(layer_path).ok()?;
+	pub fn blink_manipulator_group(&self, group_data: &ManipulatorGroupData, responses: &mut VecDeque<Message>, document: &Document) -> Option<()> {
+		let layer = document.layer(&group_data.layer_id).ok()?;
 		let vector_data = layer.as_vector_data()?;
-		let group = vector_data.manipulator_from_id(point.group)?;
+		let group = vector_data.manipulator_from_id(group_data.group_id)?;
 
 		let mut move_point = |point: ManipulatorPointId| {
 			let Some(position) = point.manipulator_type.get_position(group) else {
 				return;
 			};
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: group_data.layer_id.clone(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position },
 			});
 		};
 
-		if point.manipulator_type.is_handle() {
-			move_point(ManipulatorPointId::new(point.group, point.manipulator_type));
-		} else {
-			move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-			move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-		}
+		match group_data.selection_type {
+			OUT_HANDLE | ANCHOR_OUT => {
+				move_point(ManipulatorPointId::new(group_data.group_id, SelectedType::OutHandle));
+			}
+			IN_HANDLE | ANCHOR_IN => {
+				move_point(ManipulatorPointId::new(group_data.group_id, SelectedType::InHandle));
+			}
+			ANCHOR | BOTH_HANDLES | ALL => {
+				// TODO: AVERAGE BOTH HANDLES
+				move_point(ManipulatorPointId::new(group_data.group_id, SelectedType::Anchor));
+			}
+			_ => {
+				warn!("The current selection type is invalid");
+			}
+		};
 
 		Some(())
 	}
@@ -452,6 +506,32 @@ impl ShapeState {
 				responses.add(GraphOperationMessage::Vector {
 					layer: layer.to_vec(),
 					modification: VectorDataModification::ToggleManipulatorHandleMirroring { id: point.group },
+				})
+			}
+		}
+	}
+
+	pub fn selected_manipulator_groups(&self) -> Vec<ManipulatorGroupData> {
+		self.selected_shape_state
+			.iter()
+			.fold(HashMap::new(), |mut map, (layer, selected_points)| {
+				for point in selected_points.selected_points.iter() {
+					let entry = map.entry(point.group).or_insert_with(|| ManipulatorGroupData::new(point, &layer));
+					entry.update(&point);
+				}
+				map
+			})
+			.into_values()
+			.collect()
+	}
+
+	/// Toggle if the handles should mirror angle across the anchor position.
+	pub fn set_handle_mirroring_on_selected(&self, mirror_angle: bool, responses: &mut VecDeque<Message>) {
+		for (layer, state) in &self.selected_shape_state {
+			for point in &state.selected_points {
+				responses.add(GraphOperationMessage::Vector {
+					layer: layer.to_vec(),
+					modification: VectorDataModification::SetManipulatorHandleMirroring { id: point.group, mirror_angle },
 				})
 			}
 		}
