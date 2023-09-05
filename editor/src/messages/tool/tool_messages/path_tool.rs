@@ -57,6 +57,7 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
+	SelectAllPoints,
 	SelectedPointUpdated,
 	SelectedPointXChanged {
 		new_x: f64,
@@ -139,19 +140,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				NudgeSelectedPoints,
 				Enter,
+				SelectAllPoints,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
+				SelectAllPoints,
 			),
 			DrawingBox => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
 				DragStop,
 				PointerMove,
 				Delete,
-				Enter
+				Enter,
+				SelectAllPoints,
 			),
 		}
 	}
@@ -424,6 +428,7 @@ impl Fsm for PathToolFsmState {
 						if clicked_selected {
 							shape_editor.deselect_all();
 							shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false);
+							tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 						}
 					}
 
@@ -467,6 +472,11 @@ impl Fsm for PathToolFsmState {
 				) => self,
 				(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::SelectAllPoints) => {
+					shape_editor.select_all_points(&document.document_legacy);
+					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
