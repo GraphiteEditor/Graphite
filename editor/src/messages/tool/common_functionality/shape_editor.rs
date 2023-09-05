@@ -254,13 +254,13 @@ impl ShapeState {
 		for (subpath_index, subpath) in vector_data.subpaths.iter().enumerate() {
 			for (manipulator_index, manipulator) in subpath.manipulator_groups().iter().enumerate() {
 				if manipulator.id == group_data.group_id {
-					result = Some((subpath_index, manipulator_index, manipulator));
+					result = Some((subpath_index, manipulator_index));
 					break;
 				}
 			}
 		}
 
-		let (subpath_index, index, manipulator) = result?;
+		let (subpath_index, index) = result?;
 		let subpath = &vector_data.subpaths[subpath_index];
 		let manipulator_groups = subpath.manipulator_groups();
 
