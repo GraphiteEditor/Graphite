@@ -249,6 +249,21 @@ impl ShapeState {
 			});
 		};
 
+		let mut result = None;
+
+		for (subpath_index, subpath) in vector_data.subpaths.iter().enumerate() {
+			for (manipulator_index, manipulator) in subpath.manipulator_groups().iter().enumerate() {
+				if manipulator.id == group_data.group_id {
+					result = Some((subpath_index, manipulator_index, manipulator));
+					break;
+				}
+			}
+		}
+
+		let (subpath_index, index, manipulator) = result?;
+		let subpath = &vector_data.subpaths[subpath_index];
+		let manipulator_groups = subpath.manipulator_groups();
+
 		match group_data.selection_type {
 			OUT_HANDLE | ANCHOR_OUT => {
 				blink(ManipulatorPointId::new(group_data.group_id, SelectedType::OutHandle));
@@ -262,10 +277,35 @@ impl ShapeState {
 				let in_position = SelectedType::InHandle.get_position(group)?;
 
 				let anchor_out = anchor_position - out_position;
+				let anchor_out_norm = anchor_out.normalize_or_zero();
 				let anchor_in = anchor_position - in_position;
-				// force the bisectors into an isoceles triangle so they are easier
-				// to get a perpendicular vector out of
-				let perpendicular = (anchor_out.normalize() - anchor_in.normalize()).normalize();
+				let anchor_in_norm = anchor_in.normalize_or_zero();
+
+				// Force the bisectors into an isoceles triangle so they are easier
+				// to get a perpendicular vector out of.
+				let perpendicular_prenorm = anchor_out_norm - anchor_in_norm;
+				// We need to align the perpendicular vector with the flow of the
+				// adjacent subpaths when the handles are identical, we use this variable
+				// to do that.
+				let mut flip_in_and_out = 1.0;
+
+				let perpendicular = if anchor_out.abs_diff_eq(anchor_in, 1e-10) {
+					// Flip the vector if it is not facing towards the same direction as the anchor
+					let handle_vector_perp = anchor_out_norm.perp();
+
+					let previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.get(index)).map(|group| group.anchor);
+					let next_position = manipulator_groups.get(index + 1).map(|group| group.anchor);
+
+					if previous_position.filter(|&pos| (pos - anchor_position).normalize().dot(handle_vector_perp) < 0.).is_some()
+						|| next_position.filter(|&pos| (pos - anchor_position).normalize().dot(handle_vector_perp) > 0.).is_some()
+					{
+						flip_in_and_out = -1.0;
+					}
+
+					handle_vector_perp
+				} else {
+					(perpendicular_prenorm).normalize_or_zero()
+				};
 
 				blink(ManipulatorPointId::new(group_data.group_id, SelectedType::Anchor));
 
@@ -273,7 +313,7 @@ impl ShapeState {
 					layer: group_data.layer_id.clone(),
 					modification: VectorDataModification::SetManipulatorPosition {
 						point: ManipulatorPointId::new(group_data.group_id, SelectedType::OutHandle),
-						position: anchor_position - (perpendicular * anchor_out.length()),
+						position: anchor_position - (flip_in_and_out * perpendicular * anchor_out.length()),
 					},
 				});
 
@@ -281,7 +321,7 @@ impl ShapeState {
 					layer: group_data.layer_id.clone(),
 					modification: VectorDataModification::SetManipulatorPosition {
 						point: ManipulatorPointId::new(group_data.group_id, SelectedType::InHandle),
-						position: anchor_position + (perpendicular * anchor_in.length()),
+						position: anchor_position + (flip_in_and_out * perpendicular * anchor_in.length()),
 					},
 				});
 			}
