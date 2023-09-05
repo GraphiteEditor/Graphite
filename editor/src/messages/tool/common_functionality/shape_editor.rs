@@ -239,7 +239,7 @@ impl ShapeState {
 		let vector_data = layer.as_vector_data()?;
 		let group = vector_data.manipulator_from_id(group_data.group_id)?;
 
-		let mut move_point = |point: ManipulatorPointId| {
+		let mut blink = |point: ManipulatorPointId| {
 			let Some(position) = point.manipulator_type.get_position(group) else {
 				return;
 			};
@@ -251,14 +251,39 @@ impl ShapeState {
 
 		match group_data.selection_type {
 			OUT_HANDLE | ANCHOR_OUT => {
-				move_point(ManipulatorPointId::new(group_data.group_id, SelectedType::OutHandle));
+				blink(ManipulatorPointId::new(group_data.group_id, SelectedType::OutHandle));
 			}
 			IN_HANDLE | ANCHOR_IN => {
-				move_point(ManipulatorPointId::new(group_data.group_id, SelectedType::InHandle));
+				blink(ManipulatorPointId::new(group_data.group_id, SelectedType::InHandle));
 			}
 			ANCHOR | BOTH_HANDLES | ALL => {
-				// TODO: AVERAGE BOTH HANDLES
-				move_point(ManipulatorPointId::new(group_data.group_id, SelectedType::Anchor));
+				let anchor_position = SelectedType::Anchor.get_position(group)?;
+				let out_position = SelectedType::OutHandle.get_position(group)?;
+				let in_position = SelectedType::InHandle.get_position(group)?;
+
+				let anchor_out = anchor_position - out_position;
+				let anchor_in = anchor_position - in_position;
+				// force the bisectors into an isoceles triangle so they are easier
+				// to get a perpendicular vector out of
+				let perpendicular = (anchor_out.normalize() - anchor_in.normalize()).normalize();
+
+				blink(ManipulatorPointId::new(group_data.group_id, SelectedType::Anchor));
+
+				responses.add(GraphOperationMessage::Vector {
+					layer: group_data.layer_id.clone(),
+					modification: VectorDataModification::SetManipulatorPosition {
+						point: ManipulatorPointId::new(group_data.group_id, SelectedType::OutHandle),
+						position: anchor_position - (perpendicular * anchor_out.length()),
+					},
+				});
+
+				responses.add(GraphOperationMessage::Vector {
+					layer: group_data.layer_id.clone(),
+					modification: VectorDataModification::SetManipulatorPosition {
+						point: ManipulatorPointId::new(group_data.group_id, SelectedType::InHandle),
+						position: anchor_position + (perpendicular * anchor_in.length()),
+					},
+				});
 			}
 			_ => {
 				warn!("The current selection type is invalid");

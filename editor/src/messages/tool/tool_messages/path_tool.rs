@@ -118,17 +118,14 @@ impl LayoutHolder for PathTool {
 
 		let mut index = manipulator_angle.map(|angle| angle as u32).unwrap_or(0);
 
-		let mut options = vec![
+		if let Some(many) = self.tool_data.selection_status.as_many() {
+			index = many.manipulator_angle as u32;
+		}
+
+		let options = vec![
 			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMadeSmooth.into()),
 			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMadeSharp.into()),
 		];
-
-		if let Some(many) = self.tool_data.selection_status.as_many() {
-			if many.manipulator_angle == ManipulatorAngle::Mixed {
-				options.push(RadioEntryData::new("Mixed"));
-			}
-			index = many.manipulator_angle as u32;
-		}
 
 		let manipulator_angle_radio = RadioInput::new(options).disabled(self.tool_data.selection_status.is_none()).selected_index(index).widget_holder();
 
@@ -513,17 +510,18 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				(_, PathToolMessage::ManipulatorAngleMadeSmooth) => {
+					responses.add(DocumentMessage::StartTransaction);
+					shape_editor.set_handle_mirroring_on_selected(true, responses);
 					for group in shape_editor.selected_manipulator_groups().iter() {
-						shape_editor.set_handle_mirroring_on_selected(true, responses);
 						shape_editor.blink_manipulator_group(&group, responses, &document.document_legacy);
 					}
+					responses.add(DocumentMessage::CommitTransaction);
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::ManipulatorAngleMadeSharp) => {
-					for group in shape_editor.selected_manipulator_groups().iter() {
-						shape_editor.set_handle_mirroring_on_selected(false, responses);
-						shape_editor.blink_manipulator_group(&group, responses, &document.document_legacy);
-					}
+					responses.add(DocumentMessage::StartTransaction);
+					shape_editor.set_handle_mirroring_on_selected(false, responses);
+					responses.add(DocumentMessage::CommitTransaction);
 					PathToolFsmState::Ready
 				}
 				(_, _) => PathToolFsmState::Ready,
@@ -616,22 +614,13 @@ struct SingleSelectedPoint {
 fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> SelectionStatus {
 	// Check to see if only one manipulator group is selected
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
-	if let [(layer, 1..=3)] = selection_layers[..] {
+	if let [(layer, 1)] = selection_layers[..] {
 		let Some(layer_data) = document.layer(layer).ok() else { return SelectionStatus::None };
 		let Some(vector_data) = layer_data.as_vector_data() else { return SelectionStatus::None };
-		let Some(first) = shape_state.selected_points().next() else {
+		let Some(point) = shape_state.selected_points().next() else {
 			return SelectionStatus::None;
 		};
-		// At this point we know there are at max 3 points selected so this collect should be fine.
-		let points: Vec<_> = shape_state.selected_points().collect();
-		if points.iter().all(|manipulator_point| manipulator_point.group == first.group) {}
-		let point = match points[..] {
-			[one] => *one,
-			_ => ManipulatorPointId {
-				group: first.group,
-				manipulator_type: SelectedType::Anchor,
-			},
-		};
+
 		let Some(group) = vector_data.manipulator_from_id(point.group) else {
 			return SelectionStatus::None;
 		};
@@ -648,7 +637,7 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 		return SelectionStatus::One(SingleSelectedPoint {
 			coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
 			layer_path: layer.clone(),
-			id: point,
+			id: *point,
 			manipulator_angle,
 		});
 	};
