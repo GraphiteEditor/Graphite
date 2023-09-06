@@ -45,8 +45,9 @@ impl OverlayRenderer {
 	}
 
 	pub fn render_subpath_overlays(&mut self, selected_shape_state: &SelectedShapeState, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-		let transform = document.generate_transform_relative_to_viewport(&layer_path).ok().unwrap();
-		if let Ok(layer) = document.layer(&layer_path) {
+		let transform = document.generate_transform_relative_to_viewport(&layer_path).ok();
+		let layer = document.layer(&layer_path);
+		if let (Ok(layer), Some(transform)) = (layer, transform) {
 			let layer_id = layer_path.last().unwrap();
 			self.layer_overlay_visibility(document, layer_path.clone(), true, responses);
 
