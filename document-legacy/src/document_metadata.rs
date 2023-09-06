@@ -92,7 +92,7 @@ impl DocumentMetadata {
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
-	pub fn click_xray<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		let point = self.document_to_viewport.inverse().transform_point2(viewport_location);
 		self.root()
 			.decendants(self)

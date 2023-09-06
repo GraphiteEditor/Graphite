@@ -1,7 +1,9 @@
 use crate::raster::{Image, ImageFrame};
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
+use base64::Engine;
 use bezier_rs::Subpath;
+use image::ImageEncoder;
 pub use quad::Quad;
 
 use glam::{DAffine2, DVec2};
@@ -124,16 +126,28 @@ impl Default for SvgRender {
 	}
 }
 
+pub enum ImageRenderMode {
+	BlobUrl,
+	Canvas,
+	Base64,
+}
+
 /// Static state used whilst rendering
 pub struct RenderParams {
 	pub view_mode: crate::vector::style::ViewMode,
+	pub image_render_mode: ImageRenderMode,
 	pub culling_bounds: Option<[DVec2; 2]>,
 	pub thumbnail: bool,
 }
 
 impl RenderParams {
-	pub fn new(view_mode: crate::vector::style::ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool) -> Self {
-		Self { view_mode, culling_bounds, thumbnail }
+	pub fn new(view_mode: crate::vector::style::ViewMode, image_render_mode: ImageRenderMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool) -> Self {
+		Self {
+			view_mode,
+			image_render_mode,
+			culling_bounds,
+			thumbnail,
+		}
 	}
 }
 
@@ -263,17 +277,48 @@ impl GraphicElementRendered for Artboard {
 }
 
 impl GraphicElementRendered for ImageFrame<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);
 		let uuid = generate_uuid();
-		render.leaf_tag("image", |attributes| {
-			attributes.push("width", 1.to_string());
-			attributes.push("height", 1.to_string());
-			attributes.push("preserveAspectRatio", "none");
-			attributes.push("transform", transform);
-			attributes.push("href", SvgSegment::BlobUrl(uuid))
-		});
-		render.image_data.push((uuid, self.image.clone()))
+
+		match render_params.image_render_mode {
+			ImageRenderMode::BlobUrl => {
+				render.leaf_tag("image", move |attributes| {
+					attributes.push("width", 1.to_string());
+					attributes.push("height", 1.to_string());
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("transform", transform);
+					attributes.push("href", SvgSegment::BlobUrl(uuid))
+				});
+				render.image_data.push((uuid, self.image.clone()))
+			}
+			ImageRenderMode::Base64 => {
+				let image = &self.image;
+				let (flat_data, _, _) = image.clone().into_flat_u8();
+				let mut output = Vec::new();
+				let encoder = image::codecs::png::PngEncoder::new(&mut output);
+				encoder
+					.write_image(&flat_data, image.width, image.height, image::ColorType::Rgba8)
+					.expect("failed to encode image as png");
+				let preamble = "data:image/png;base64,";
+				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+				base64_string.push_str(preamble);
+				log::debug!("len: {}", image.data.len());
+				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+
+				render.leaf_tag("image", |attributes| {
+					attributes.push("width", image.width.to_string());
+
+					attributes.push("height", image.height.to_string());
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("transform", transform);
+					attributes.push("href", base64_string)
+				});
+			}
+			ImageRenderMode::Canvas => {
+				todo!("Canvas rendering is not yet implemented")
+			}
+		}
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let transform = self.transform * transform;

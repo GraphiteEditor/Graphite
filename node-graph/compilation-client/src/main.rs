@@ -3,11 +3,9 @@ use gpu_executor::{ShaderIO, ShaderInput};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
-use graph_craft::*;
 use graphene_core::raster::adjustments::BlendMode;
 use graphene_core::Color;
 
-use std::borrow::Cow;
 use std::time::Duration;
 
 fn main() {

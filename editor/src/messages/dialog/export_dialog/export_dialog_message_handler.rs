@@ -86,19 +86,6 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width(100).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(self.scale_factor))
-				.unit("")
-				.min(0.)
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.disabled(self.file_type == FileType::Svg)
-				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into())
-				.min_width(200)
-				.widget_holder(),
-		];
-
 		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false));
 		let mut export_area_options = vec![
 			(ExportBounds::AllArtwork, "All Artwork".to_string(), false),

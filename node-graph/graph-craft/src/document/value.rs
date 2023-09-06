@@ -65,6 +65,8 @@ pub enum TaggedValue {
 	Curve(graphene_core::raster::curve::Curve),
 	IVec2(glam::IVec2),
 	SurfaceFrame(graphene_core::SurfaceFrame),
+	Footprint(graphene_core::transform::Footprint),
+	RenderOutput(RenderOutput),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -134,6 +136,8 @@ impl Hash for TaggedValue {
 			Self::Curve(curve) => curve.hash(state),
 			Self::IVec2(v) => v.hash(state),
 			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
+			Self::Footprint(footprint) => footprint.hash(state),
+			Self::RenderOutput(render_output) => render_output.hash(state),
 		}
 	}
 }
@@ -190,6 +194,8 @@ impl<'a> TaggedValue {
 			TaggedValue::Curve(x) => Box::new(x),
 			TaggedValue::IVec2(x) => Box::new(x),
 			TaggedValue::SurfaceFrame(x) => Box::new(x),
+			TaggedValue::Footprint(x) => Box::new(x),
+			TaggedValue::RenderOutput(x) => Box::new(x),
 		}
 	}
 
@@ -208,8 +214,6 @@ impl<'a> TaggedValue {
 	}
 
 	pub fn ty(&self) -> Type {
-		use graphene_core::TypeDescriptor;
-		use std::borrow::Cow;
 		match self {
 			TaggedValue::None => concrete!(()),
 			TaggedValue::String(_) => concrete!(String),
@@ -259,6 +263,8 @@ impl<'a> TaggedValue {
 			TaggedValue::Curve(_) => concrete!(graphene_core::raster::curve::Curve),
 			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
+			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
+			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
 		}
 	}
 
@@ -314,10 +320,12 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::Artboard>() => Ok(TaggedValue::Artboard(*downcast(input).unwrap())),
 			x if x == TypeId::of::<glam::IVec2>() => Ok(TaggedValue::IVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
+			x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
 				let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
 				Ok(TaggedValue::SurfaceFrame(frame.into()))
 			}
+			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}
@@ -337,4 +345,12 @@ impl UpcastNode {
 	pub fn new(value: TaggedValue) -> Self {
 		Self { value }
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RenderOutput {
+	CanvasFrame(graphene_core::SurfaceFrame),
+	Svg(String),
+	Raster(Vec<u8>),
 }

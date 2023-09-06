@@ -126,7 +126,7 @@ pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(pivot),
 		..
-	} = inputs[5]
+	} = inputs[4]
 	{
 		pivot
 	} else {
