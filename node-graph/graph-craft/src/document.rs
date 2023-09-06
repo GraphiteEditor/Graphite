@@ -362,7 +362,7 @@ impl NodeNetwork {
 	}
 
 	/// Appends a new node to the network after the output node and sets it as the new output
-	pub fn push_node(&mut self, mut node: DocumentNode, connect_to_previous: bool) -> NodeId {
+	pub fn push_node(&mut self, mut node: DocumentNode) -> NodeId {
 		let id = self.nodes.len().try_into().expect("Too many nodes in network");
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {
@@ -370,7 +370,7 @@ impl NodeNetwork {
 				node.metadata.position = pos + IVec2::new(8, 0);
 			}
 		}
-		if connect_to_previous && !self.outputs.is_empty() {
+		if !self.outputs.is_empty() {
 			let input = NodeInput::node(self.outputs[0].node_id, self.outputs[0].node_output_index);
 			if node.inputs.is_empty() {
 				node.inputs.push(input);
@@ -391,7 +391,7 @@ impl NodeNetwork {
 			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 			..Default::default()
 		};
-		self.push_node(node, true)
+		self.push_node(node)
 	}
 
 	/// Adds a Cache and a Clone node to the network
@@ -430,7 +430,7 @@ impl NodeNetwork {
 			metadata: DocumentNodeMetadata { position: (0, 0).into() },
 			..Default::default()
 		};
-		self.push_node(node, true)
+		self.push_node(node)
 	}
 
 	/// Get the nested network given by the path of node ids

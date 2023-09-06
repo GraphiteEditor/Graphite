@@ -10,7 +10,7 @@ use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
 use crate::GraphicElementData;
-use crate::{Artboard, Node};
+use crate::Node;
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -139,7 +139,7 @@ pub enum RenderQuality {
 	Scale(f32),
 	/// Flip a coin to decide if the render should be available with the current quality or done at full quality
 	/// This should be used to gradually update the render quality of a cached node
-	Propability(f32),
+	Probabilty(f32),
 	/// Render at full quality
 	Full,
 }

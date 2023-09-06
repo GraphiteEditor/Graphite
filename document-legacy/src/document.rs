@@ -104,7 +104,7 @@ impl Default for Document {
 					metadata: graph_craft::document::DocumentNodeMetadata::position((8, 4)),
 					..Default::default()
 				};
-				network.push_node(node, false);
+				network.push_node(node);
 				network
 			},
 			metadata: Default::default(),

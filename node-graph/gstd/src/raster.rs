@@ -92,7 +92,7 @@ fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<C
 	let nheight = viewport_resolution_y as u32;
 	log::debug!("x: {viewport_resolution_x}, y: {viewport_resolution_y}");
 
-	let resized = cropped.resize_exact(nwidth as u32, nheight as u32, image::imageops::Lanczos3);
+	let resized = cropped.resize_exact(nwidth, nheight, image::imageops::Lanczos3);
 	let buffer = resized.to_rgba32f();
 	let buffer = buffer.into_raw();
 	let vec = bytemuck::cast_vec(buffer);

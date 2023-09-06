@@ -2087,6 +2087,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Downres",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_std::raster::DownresNode<_>"),
+			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
 			..Default::default()
@@ -2507,13 +2508,11 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		resolve_document_node_type("Input Frame")
 			.expect("Input Frame node does not exist")
 			.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
-		false,
 	);
 	network.push_node(
 		resolve_document_node_type("Output")
 			.expect("Output node does not exist")
 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
-		false,
 	);
 	network
 }
@@ -2528,15 +2527,12 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 
 	let mut network = NodeNetwork::default();
 
-	network.push_node(
-		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),
-		false,
-	);
-	network.push_node(cull_node.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
-	network.push_node(transform.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
+	network.push_node(path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))));
+	network.push_node(cull_node.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(fill.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
 	network
 }
 
@@ -2549,17 +2545,13 @@ pub fn new_raster_network(image_frame: ImageFrame<Color>) -> NodeNetwork {
 
 	let image_node_type = resolve_document_node_type("Image").expect("Image node should be in registry");
 
-	network.push_node(
-		image_node_type.to_document_node(
-			[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::ImageFrame(image_frame), false)],
-			Default::default(),
-		),
-		false,
-	);
-	network.push_node(sample_node.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
-	network.push_node(transform.to_document_node_default_inputs([None, Some(network.output_as_input(0))], Default::default()), false);
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
-	log::debug!("network: {:#?}", &network);
+	network.push_node(image_node_type.to_document_node(
+		[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::ImageFrame(image_frame), false)],
+		Default::default(),
+	));
+	network.push_node(sample_node.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
 	network
 }
 
@@ -2574,21 +2566,18 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 		inputs: vec![0],
 		..Default::default()
 	};
-	network.push_node(
-		text_generator.to_document_node(
-			[
-				NodeInput::Network(concrete!(WasmEditorApi)),
-				NodeInput::value(TaggedValue::String(text), false),
-				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F64(size), false),
-			],
-			DocumentNodeMetadata::position((0, 4)),
-		),
-		false,
-	);
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
+	network.push_node(text_generator.to_document_node(
+		[
+			NodeInput::Network(concrete!(WasmEditorApi)),
+			NodeInput::value(TaggedValue::String(text), false),
+			NodeInput::value(TaggedValue::Font(font), false),
+			NodeInput::value(TaggedValue::F64(size), false),
+		],
+		DocumentNodeMetadata::position((0, 4)),
+	));
+	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(fill.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
 	network
 }
