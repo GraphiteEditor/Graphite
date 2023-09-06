@@ -6,7 +6,6 @@ use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::new_raster_network;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -589,15 +588,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				let path = vec![generate_uuid()];
-
-				// Transform of parent folder
-				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
-
 				// Align the layer with the mouse or center of viewport
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
 				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
-				let center_in_viewport_layerspace = to_parent_folder.inverse() * center_in_viewport;
+				let center_in_viewport_layerspace = center_in_viewport;
 
 				// Scale the image to fit into a 512x512 box
 				let image_size = image_size / DVec2::splat((image_size.max_element() / 512.).max(1.));
@@ -610,26 +604,23 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(DocumentMessage::StartTransaction);
 
 				let image_frame = ImageFrame { image, transform: DAffine2::IDENTITY };
-				let network = new_raster_network(image_frame);
 
-				responses.add(DocumentOperation::AddFrame {
-					path: path.clone(),
-					insert_index: -1,
-					transform: DAffine2::ZERO.to_cols_array(),
-					network,
-				});
+				let layer_path = self.get_path_for_new_layer();
+				use crate::messages::tool::common_functionality::graph_modification_utils;
+				graph_modification_utils::new_image_layer(image_frame, layer_path.clone(), responses);
+
 				responses.add(DocumentMessage::SetSelectedLayers {
-					replacement_selected_layers: vec![path.clone()],
+					replacement_selected_layers: vec![layer_path.clone()],
 				});
 
 				responses.add(GraphOperationMessage::TransformSet {
-					layer: path.clone(),
+					layer: layer_path.clone(),
 					transform,
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
 
-				responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: path });
+				responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });

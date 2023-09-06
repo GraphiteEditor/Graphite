@@ -2084,9 +2084,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Downres",
+			name: "Sample",
 			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_std::raster::DownresNode<_>"),
+			identifier: NodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
@@ -2517,7 +2517,7 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 	network
 }
 
-pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
+fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
 	let path_generator = resolve_document_node_type("Shape").expect("Shape node does not exist");
 	let cull_node = resolve_document_node_type("Cull").expect("Cull node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
@@ -2536,8 +2536,8 @@ pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGrou
 	network
 }
 
-pub fn new_raster_network(image_frame: ImageFrame<Color>) -> NodeNetwork {
-	let sample_node = resolve_document_node_type("Downres").expect("Downres node does not exist");
+fn new_raster_network(image_frame: ImageFrame<Color>) -> NodeNetwork {
+	let sample_node = resolve_document_node_type("Sample").expect("Sample node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 

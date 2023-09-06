@@ -4,8 +4,10 @@ use crate::messages::prelude::*;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use document_legacy::{document::Document, document_metadata::LayerNodeIdentifier, LayerId, Operation};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
+use graphene_core::raster::ImageFrame;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
+use graphene_core::Color;
 
 use glam::DAffine2;
 use std::collections::VecDeque;
@@ -15,6 +17,14 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: 
 	responses.add(GraphOperationMessage::NewVectorLayer {
 		id: *layer_path.last().unwrap(),
 		subpaths,
+	});
+}
+
+/// Creat a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
+pub fn new_image_layer(image_frame: ImageFrame<Color>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+	responses.add(GraphOperationMessage::NewBitmapLayer {
+		id: *layer_path.last().unwrap(),
+		image_frame,
 	});
 }
 

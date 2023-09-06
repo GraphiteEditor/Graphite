@@ -58,12 +58,12 @@ fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
 	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-pub struct DownresNode<ImageFrame> {
+pub struct SampleNode<ImageFrame> {
 	image_frame: ImageFrame,
 }
 
-#[node_macro::node_fn(DownresNode)]
-fn downres(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+#[node_macro::node_fn(SampleNode)]
+fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
 	// resize the image using the image crate
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
