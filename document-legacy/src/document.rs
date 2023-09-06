@@ -77,7 +77,8 @@ impl Default for Document {
 							},
 							DocumentNode {
 								name: "Cache".to_string(),
-								inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+								manual_composition: Some(concrete!(())),
+								inputs: vec![NodeInput::node(1, 0)],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 								..Default::default()
 							},

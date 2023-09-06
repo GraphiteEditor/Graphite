@@ -186,8 +186,6 @@ impl NodeRuntime {
 			},
 		};
 
-		log::debug!("Executing node graph with {:#?}", scoped_network.nodes);
-
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
@@ -546,7 +544,8 @@ impl NodeGraphExecutor {
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
 				log::debug!("svg: {svg}");
-				responses.add(Operation::SetSvg { path: layer_path, svg });
+				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				responses.add(DocumentMessage::RenderScrollbars);
 				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				//return Err("Graphic group (see console)".to_string());

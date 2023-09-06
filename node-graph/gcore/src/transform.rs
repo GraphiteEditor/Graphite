@@ -10,7 +10,7 @@ use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
 use crate::GraphicElementData;
-use crate::Node;
+use crate::{Artboard, Node};
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -182,7 +182,7 @@ pub struct CullNode<VectorData> {
 }
 
 #[node_macro::node_fn(CullNode)]
-fn cull_vector_data(footprint: Footprint, vector_data: VectorData) -> VectorData {
+fn cull_vector_data<T>(footprint: Footprint, vector_data: T) -> T {
 	// TODO: Implement culling
 	vector_data
 }

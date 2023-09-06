@@ -102,6 +102,7 @@ pub struct DocumentNodeType {
 	pub outputs: Vec<DocumentOutputType>,
 	pub primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
+	pub manual_composition: Option<graphene_core::Type>,
 }
 
 impl Default for DocumentNodeType {
@@ -114,6 +115,7 @@ impl Default for DocumentNodeType {
 			outputs: Default::default(),
 			primary_output: Default::default(),
 			properties: node_properties::no_properties,
+			manual_composition: Default::default(),
 		}
 	}
 }
@@ -188,7 +190,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					(
 						0,
 						DocumentNode {
-							inputs: vec![NodeInput::Network(concrete!(graphene_core::vector::VectorData))],
+							name: "To Graphic Element".to_string(),
+							inputs: vec![NodeInput::Network(generic!(T))],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementData"),
 							..Default::default()
 						},
@@ -197,6 +200,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					(
 						1,
 						DocumentNode {
+							name: "Monitor".to_string(),
 							inputs: vec![NodeInput::node(0, 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
 							skip_deduplication: true,
@@ -206,6 +210,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					(
 						2,
 						DocumentNode {
+							name: "ConstructLayer".to_string(),
+							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
 								NodeInput::node(1, 0),
 								NodeInput::Network(concrete!(String)),
@@ -214,9 +220,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 								NodeInput::Network(concrete!(bool)),
 								NodeInput::Network(concrete!(bool)),
 								NodeInput::Network(concrete!(bool)),
-								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
+								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(graphene_core::GraphicGroup)))),
 							],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>"),
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _, _>"),
 							..Default::default()
 						},
 					),
@@ -253,64 +259,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			properties: node_properties::artboard_properties,
 			..Default::default()
 		},
-		/*
 		DocumentNodeType {
-			name: "Downres",
-			category: "Raster",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 0],
-				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: [
-					DocumentNode {
-						name: "Downres".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(Footprint)), NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode<_>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(Footprint)), NodeInput::node(0, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
-						..Default::default()
-					},
-					// We currently just clone by default
-					/*DocumentNode {
-						name: "Clone".to_string(),
-						inputs: vec![NodeInput::node(1, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
-						..Default::default()
-					},*/
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType {
-					name: "ShortCircut",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::ShortCircut(concrete!(Footprint)),
-				},
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false),
-			],
-			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
+			name: "Empty Stack",
+			category: "Hidden",
+			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			..Default::default()
-		},*/
-		// DocumentNodeType {
-		// 	name: "Input Frame",
-		// 	category: "Ignore",
-		// 	identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-		// 	inputs: vec![DocumentInputType {
-		// 		name: "In",
-		// 		data_type: FrontendGraphDataType::Raster,
-		// 		default: NodeInput::Network,
-		// 	}],
-		// 	outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Raster)],
-		// 	properties: node_properties::input_properties,
-		// },
+		},
 		DocumentNodeType {
 			name: "Input Frame",
 			category: "Ignore",
@@ -388,7 +345,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -432,7 +390,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -476,7 +435,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(WasmEditorApi))],
+						manual_composition: Some(concrete!(WasmEditorApi)),
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						..Default::default()
 					},
@@ -488,7 +447,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "RefNode".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::lambda(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::lambda(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 						..Default::default()
 					},
@@ -563,7 +523,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -925,11 +886,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Memoize",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
-			inputs: vec![
-				DocumentInputType::value("ShortCircut", TaggedValue::None, false),
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			],
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			manual_composition: Some(concrete!(())),
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -963,7 +922,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1014,7 +974,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1065,7 +1026,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1127,7 +1089,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1223,7 +1186,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1274,7 +1238,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1319,7 +1284,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1417,7 +1383,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -2120,14 +2087,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Downres",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_std::raster::DownresNode<_>"),
-			inputs: vec![
-				DocumentInputType {
-					name: "ShortCircut",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::ShortCircut(concrete!(Footprint)),
-				},
-				DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			],
+			inputs: vec![DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
 			..Default::default()
 		},
@@ -2135,14 +2095,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Cull",
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
-			inputs: vec![
-				DocumentInputType {
-					name: "ShortCircut",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::ShortCircut(concrete!(Footprint)),
-				},
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
-			],
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			..Default::default()
 		},
@@ -2164,12 +2118,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Transform",
 			category: "Transform",
 			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
-				DocumentInputType {
-					name: "ShortCircut",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::ShortCircut(concrete!(Footprint)),
-				},
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
@@ -2473,6 +2423,7 @@ impl DocumentNodeType {
 			inputs,
 			implementation: self.generate_implementation(),
 			metadata,
+			manual_composition: self.manual_composition.clone(),
 			..Default::default()
 		}
 	}
@@ -2507,7 +2458,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 				if input_type.is_none() {
 					input_type = Some(input.clone());
 				}
-				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type");
+				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type {network:#?}");
 				network_inputs.push(*id);
 			}
 		}

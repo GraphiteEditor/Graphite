@@ -5,6 +5,7 @@ use crate::{Color, Node};
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 
+use core::future::Future;
 use core::ops::{Deref, DerefMut};
 use glam::IVec2;
 
@@ -78,7 +79,8 @@ impl Artboard {
 	}
 }
 
-pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
+pub struct ConstructLayerNode<GraphicElementData, Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
+	graphic_element_data: GraphicElementData,
 	name: Name,
 	blend_mode: BlendMode,
 	opacity: Opacity,
@@ -89,17 +91,19 @@ pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collaps
 }
 
 #[node_fn(ConstructLayerNode)]
-async fn construct_layer<Data: Into<GraphicElementData>>(
-	graphic_element_data: Data,
+async fn construct_layer<Data: Into<GraphicElementData>, Fut1: Future<Output = Data>, Fut2: Future<Output = GraphicGroup>>(
+	footprint: crate::transform::Footprint,
+	graphic_element_data: impl Node<crate::transform::Footprint, Output = Fut1>,
 	name: String,
 	blend_mode: BlendMode,
 	opacity: f32,
 	visible: bool,
 	locked: bool,
 	collapsed: bool,
-	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
+	mut stack: impl Node<crate::transform::Footprint, Output = Fut2>,
 ) -> GraphicGroup {
-	let mut stack = self.stack.eval();
+	let graphic_element_data = self.graphic_element_data.eval(footprint).await;
+	let mut stack = self.stack.eval(footprint).await;
 	stack.push(GraphicElement {
 		name,
 		blend_mode,
