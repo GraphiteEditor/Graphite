@@ -241,6 +241,9 @@ impl ComposeTypeErased {
 }
 
 pub fn input_node<O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<(), O> {
+	downcast_node(n)
+}
+pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<I, O> {
 	DowncastBothNode::new(n)
 }
 

@@ -6,6 +6,7 @@ use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::new_raster_network;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -588,21 +589,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				let Some(image_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Image") else {
-					warn!("Image node should be in registry");
-					return;
-				};
-				let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
-					warn!("Transform node should be in registry");
-					return;
-				};
-				let Some(downres_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Downres") else {
-					warn!("Downres node should be in registry");
-					return;
-				};
-
 				let path = vec![generate_uuid()];
-				let mut network = NodeNetwork::default();
 
 				// Transform of parent folder
 				let to_parent_folder = self.document_legacy.generate_transform_across_scope(&path[..path.len() - 1], None).unwrap_or_default();
@@ -622,19 +609,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				network.push_node(
-					image_node_type.to_document_node(
-						[graph_craft::document::NodeInput::value(
-							graph_craft::document::value::TaggedValue::ImageFrame(ImageFrame { image, transform: DAffine2::IDENTITY }),
-							false,
-						)],
-						graph_craft::document::DocumentNodeMetadata::position((8, 4)),
-					),
-					false,
-				);
-				network.push_node(transform_node_type.to_document_node_default_inputs([], Default::default()), true);
-				network.push_node(downres_node_type.to_document_node_default_inputs([], Default::default()), true);
-				network.push_output_node();
+				let image_frame = ImageFrame { image, transform: DAffine2::IDENTITY };
+				let network = new_raster_network(image_frame);
 
 				responses.add(DocumentOperation::AddFrame {
 					path: path.clone(),

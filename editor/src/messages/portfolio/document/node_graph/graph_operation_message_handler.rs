@@ -97,20 +97,24 @@ impl<'a> ModifyInputsContext<'a> {
 		// Locate the node output of the first sibling layer to the new layer
 		let new_id = if let NodeInput::Node { node_id, output_index, .. } = &self.network.nodes.get(&output_node_id)?.inputs[input_index] {
 			let sibling_node = &self.network.nodes.get(node_id)?;
+			let node_id = *node_id;
+			let output_index = *output_index;
 			let sibling_layer = if sibling_node.name == "Layer" {
 				// There is already a layer node
-				NodeOutput::new(*node_id, 0)
+				NodeOutput::new(node_id, 0)
 			} else {
 				// The user has connected another node to the output. Insert a layer node between the output and the node.
-				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-				let node_id = self.insert_between(generate_uuid(), NodeOutput::new(*node_id, *output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
+				let mut node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+				self.add_empty_stack(&mut node);
+				let node_id = self.insert_between(generate_uuid(), NodeOutput::new(node_id, output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
 				NodeOutput::new(node_id, 0)
 			};
 
 			let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
 			self.insert_between(new_id, sibling_layer, output, node, 7, 0, IVec2::new(0, 3))
 		} else {
-			let layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
+			let mut layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
+			self.add_empty_stack(&mut layer_node);
 			self.insert_node_before(new_id, output_node_id, input_index, layer_node, IVec2::new(-5, 3))
 		};
 
@@ -125,7 +129,15 @@ impl<'a> ModifyInputsContext<'a> {
 		new_id
 	}
 
+	fn add_empty_stack(&mut self, node: &mut DocumentNode) {
+		let empty_stack = resolve_document_node_type("Empty Stack").expect("EmptyStack node").default_document_node();
+		let empty_id = generate_uuid();
+		self.network.nodes.insert(empty_id, empty_stack);
+		*node.inputs.last_mut().unwrap() = NodeInput::node(empty_id, 0);
+	}
+
 	fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
+		let cull_node = resolve_document_node_type("Cull").expect("Node").default_document_node();
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
 				None,
@@ -137,7 +149,9 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
-		self.insert_node_before(generate_uuid(), layer, 0, artboard_node, IVec2::new(-8, 0))
+		let cull_id = generate_uuid();
+		self.insert_node_before(cull_id, layer, 0, cull_node, IVec2::new(-8, 0));
+		self.insert_node_before(generate_uuid(), cull_id, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
 	fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
@@ -145,6 +159,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let node_type = resolve_document_node_type("Shape").expect("Shape node does not exist");
 			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], Default::default())
 		};
+		let cull = resolve_document_node_type("Cull").expect("Cull node does not exist").default_document_node();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
@@ -155,8 +170,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
 		let transform_id = generate_uuid();
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
+		let cull_id = generate_uuid();
+		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
 		let shape_id = generate_uuid();
-		self.insert_node_before(shape_id, transform_id, 0, shape, IVec2::new(-8, 0));
+		self.insert_node_before(shape_id, cull_id, 0, shape, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 

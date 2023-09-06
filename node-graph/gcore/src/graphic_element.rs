@@ -5,6 +5,7 @@ use crate::{Color, Node};
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 
+use core::future::Future;
 use core::ops::{Deref, DerefMut};
 use glam::IVec2;
 
@@ -40,6 +41,20 @@ pub struct GraphicElement {
 	pub graphic_element_data: GraphicElementData,
 }
 
+impl Default for GraphicElement {
+	fn default() -> Self {
+		Self {
+			name: "".to_owned(),
+			blend_mode: BlendMode::Normal,
+			opacity: 1.,
+			visible: true,
+			locked: false,
+			collapsed: false,
+			graphic_element_data: GraphicElementData::VectorShape(Box::new(VectorData::empty())),
+		}
+	}
+}
+
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 /// Similar to an Inkscape page: https://media.inkscape.org/media/doc/release_notes/1.2/Inkscape_1.2.html#Page_tool
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
@@ -64,7 +79,8 @@ impl Artboard {
 	}
 }
 
-pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
+pub struct ConstructLayerNode<GraphicElementData, Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
+	graphic_element_data: GraphicElementData,
 	name: Name,
 	blend_mode: BlendMode,
 	opacity: Opacity,
@@ -75,16 +91,19 @@ pub struct ConstructLayerNode<Name, BlendMode, Opacity, Visible, Locked, Collaps
 }
 
 #[node_fn(ConstructLayerNode)]
-fn construct_layer<Data: Into<GraphicElementData>>(
-	graphic_element_data: Data,
+async fn construct_layer<Data: Into<GraphicElementData>, Fut1: Future<Output = Data>, Fut2: Future<Output = GraphicGroup>>(
+	footprint: crate::transform::Footprint,
+	graphic_element_data: impl Node<crate::transform::Footprint, Output = Fut1>,
 	name: String,
 	blend_mode: BlendMode,
 	opacity: f32,
 	visible: bool,
 	locked: bool,
 	collapsed: bool,
-	mut stack: GraphicGroup,
+	mut stack: impl Node<crate::transform::Footprint, Output = Fut2>,
 ) -> GraphicGroup {
+	let graphic_element_data = self.graphic_element_data.eval(footprint).await;
+	let mut stack = self.stack.eval(footprint).await;
 	stack.push(GraphicElement {
 		name,
 		blend_mode,
@@ -137,7 +156,6 @@ impl From<GraphicGroup> for GraphicElementData {
 		GraphicElementData::GraphicGroup(graphic_group)
 	}
 }
-
 impl From<Artboard> for GraphicElementData {
 	fn from(artboard: Artboard) -> Self {
 		GraphicElementData::Artboard(artboard)
@@ -153,6 +171,28 @@ impl Deref for GraphicGroup {
 impl DerefMut for GraphicGroup {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.0
+	}
+}
+
+/// This is a helper trait used for the Into Implementation.
+/// We can't just implement this for all for which from is implemented
+/// as that would conflict with the implementation for `Self`
+trait ToGraphicElement: Into<GraphicElementData> {}
+
+impl ToGraphicElement for VectorData {}
+impl ToGraphicElement for ImageFrame<Color> {}
+impl ToGraphicElement for Artboard {}
+
+impl<T> From<T> for GraphicGroup
+where
+	T: ToGraphicElement,
+{
+	fn from(value: T) -> Self {
+		let element = GraphicElement {
+			graphic_element_data: value.into(),
+			..Default::default()
+		};
+		Self(vec![element])
 	}
 }
 
