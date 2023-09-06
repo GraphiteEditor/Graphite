@@ -616,7 +616,7 @@ fn dimensions_node<_P>(input: ImageSlice<'input, _P>) -> (u32, u32) {
 }
 
 #[cfg(feature = "alloc")]
-pub use image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode};
+pub use self::image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode};
 #[cfg(feature = "alloc")]
 pub(crate) mod image;
 

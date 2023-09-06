@@ -8,12 +8,18 @@ use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use glam::{DAffine2, DVec2};
+use graphene_core::transform::Footprint;
+use graphene_std::wasm_application_io::WasmEditorApi;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::vec;
+
+use graph_craft::document::{DocumentNode, NodeOutput};
+use graph_craft::document::{DocumentNodeImplementation, NodeId};
+use graphene_core::{concrete, generic, NodeIdentifier};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
@@ -51,12 +57,54 @@ impl Default for Document {
 				let mut network = NodeNetwork::default();
 				let node = graph_craft::document::DocumentNode {
 					name: "Output".into(),
-					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)],
-					implementation: graph_craft::document::DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
+					implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
+						inputs: vec![3, 0],
+						outputs: vec![NodeOutput::new(4, 0)],
+						nodes: [
+							DocumentNode {
+								name: "EditorApi".to_string(),
+								inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+								..Default::default()
+							},
+							DocumentNode {
+								name: "Create Canvas".to_string(),
+								inputs: vec![NodeInput::node(0, 0)],
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+								skip_deduplication: true,
+								..Default::default()
+							},
+							DocumentNode {
+								name: "Cache".to_string(),
+								manual_composition: Some(concrete!(())),
+								inputs: vec![NodeInput::node(1, 0)],
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+								..Default::default()
+							},
+							DocumentNode {
+								name: "Conversion".to_string(),
+								inputs: vec![NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))))],
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
+								..Default::default()
+							},
+							DocumentNode {
+								name: "RenderNode".to_string(),
+								inputs: vec![NodeInput::node(0, 0), NodeInput::node(3, 0), NodeInput::node(2, 0)],
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (id as NodeId, node))
+						.collect(),
+						..Default::default()
+					}),
 					metadata: graph_craft::document::DocumentNodeMetadata::position((8, 4)),
 					..Default::default()
 				};
-				network.push_node(node, false);
+				network.push_node(node);
 				network
 			},
 			metadata: Default::default(),
@@ -883,6 +931,12 @@ impl Document {
 			Operation::SetSurface { path, surface_id } => {
 				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
 					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
+				}
+				Some(Vec::new())
+			}
+			Operation::SetSvg { path, svg } => {
+				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
+					layer.cached_output_data = CachedOutputData::Svg(svg);
 				}
 				Some(Vec::new())
 			}

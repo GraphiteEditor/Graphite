@@ -1,7 +1,11 @@
+use core::future::Future;
+
+use dyn_any::StaticType;
 use glam::DAffine2;
 
 use glam::DVec2;
 
+use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
@@ -116,7 +120,8 @@ impl TransformMut for DAffine2 {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
+pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
+	pub(crate) transform_target: TransformTarget,
 	pub(crate) translate: Translation,
 	pub(crate) rotate: Rotation,
 	pub(crate) scale: Scale,
@@ -124,11 +129,107 @@ pub struct TransformNode<Translation, Rotation, Scale, Shear, Pivot> {
 	pub(crate) pivot: Pivot,
 }
 
-#[node_macro::node_fn(TransformNode)]
-pub(crate) fn transform_vector_data<Data: TransformMut>(mut data: Data, translate: DVec2, rotate: f32, scale: DVec2, shear: DVec2, pivot: DVec2) -> Data {
-	let pivot = DAffine2::from_translation(data.local_pivot(pivot));
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RenderQuality {
+	/// Low quality, fast rendering
+	Preview,
+	/// Ensure that the render is available with at least the specified quality
+	/// A value of 0.5 means that the render is available with at least 50% of the final image resolution
+	Scale(f32),
+	/// Flip a coin to decide if the render should be available with the current quality or done at full quality
+	/// This should be used to gradually update the render quality of a cached node
+	Probabilty(f32),
+	/// Render at full quality
+	Full,
+}
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Footprint {
+	/// Inverse of the transform which will be applied to the node output during the rendering process
+	pub transform: DAffine2,
+	/// Resolution of the target output area in pixels
+	pub resolution: glam::UVec2,
+	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
+	pub quality: RenderQuality,
+	/// When the transform is set downstream, all upsream modifications have to be ignored
+	pub ignore_modifications: bool,
+}
 
-	let modification = pivot * DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]) * pivot.inverse();
+impl Default for Footprint {
+	fn default() -> Self {
+		Self {
+			transform: DAffine2::IDENTITY,
+			resolution: glam::UVec2::new(1920, 1080),
+			quality: RenderQuality::Full,
+			ignore_modifications: false,
+		}
+	}
+}
+
+impl Footprint {
+	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
+		let inverse = self.transform.inverse();
+		let start = inverse.transform_point2((0., 0.).into());
+		let end = inverse.transform_point2(self.resolution.as_dvec2());
+		AxisAlignedBbox { start, end }
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CullNode<VectorData> {
+	pub(crate) vector_data: VectorData,
+}
+
+#[node_macro::node_fn(CullNode)]
+fn cull_vector_data<T>(footprint: Footprint, vector_data: T) -> T {
+	// TODO: Implement culling
+	vector_data
+}
+
+impl core::hash::Hash for Footprint {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
+		self.resolution.hash(state)
+	}
+}
+
+impl Transform for Footprint {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl TransformMut for Footprint {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
+	}
+}
+
+#[node_macro::node_fn(TransformNode)]
+pub(crate) async fn transform_vector_data<Fut: Future>(
+	mut footprint: Footprint,
+	transform_target: impl Node<Footprint, Output = Fut>,
+	translate: DVec2,
+	rotate: f32,
+	scale: DVec2,
+	shear: DVec2,
+	pivot: DVec2,
+) -> Fut::Output
+where
+	Fut::Output: TransformMut,
+{
+	// TOOD: This is hack and might break for Vector data because the pivot may be incorrect
+	let transform = DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	if !footprint.ignore_modifications {
+		let pivot_transform = DAffine2::from_translation(pivot);
+		let modification = pivot_transform * transform * pivot_transform.inverse();
+		*footprint.transform_mut() = footprint.transform() * modification;
+	}
+
+	let mut data = self.transform_target.eval(footprint).await;
+	let pivot_transform = DAffine2::from_translation(data.local_pivot(pivot));
+
+	let modification = pivot_transform * transform * pivot_transform.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 

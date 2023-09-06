@@ -80,6 +80,10 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		surface_id: graphene_core::SurfaceId,
 	},
+	SetSvg {
+		path: Vec<LayerId>,
+		svg: String,
+	},
 	TransformLayerInScope {
 		path: Vec<LayerId>,
 		transform: [f64; 6],

@@ -10,6 +10,7 @@ pub struct AxisAlignedBbox {
 
 impl AxisAlignedBbox {
 	pub const ZERO: Self = Self { start: DVec2::ZERO, end: DVec2::ZERO };
+	pub const ONE: Self = Self { start: DVec2::ZERO, end: DVec2::ONE };
 
 	pub fn size(&self) -> DVec2 {
 		self.end - self.start
@@ -42,6 +43,13 @@ impl AxisAlignedBbox {
 				start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
 				end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
 			}),
+		}
+	}
+
+	pub fn intersect(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
+		AxisAlignedBbox {
+			start: DVec2::new(self.start.x.max(other.start.x), self.start.y.max(other.start.y)),
+			end: DVec2::new(self.end.x.min(other.end.x), self.end.y.min(other.end.y)),
 		}
 	}
 }
