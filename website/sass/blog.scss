@@ -46,10 +46,16 @@
 		@media screen and (max-width: 960px) {
 			flex-wrap: wrap;
 			justify-content: center;
+			flex-direction: column;
 
 			.banner.banner {
 				width: 100%;
-				max-width: 540px;
+				background: var(--color-fog);
+
+				img {
+					margin: auto;
+					max-width: 480px;
+				}
 			}
 		}
 
@@ -75,6 +81,7 @@
 				flex-direction: column;
 				gap: 20px;
 				text-align: justify;
+				-webkit-hyphens: auto;
 				hyphens: auto;
 				overflow: hidden;
 				text-overflow: ellipsis;

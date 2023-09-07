@@ -11,6 +11,10 @@ import {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
+	UpdateGraphViewOverlayButtonLayout,
+	UpdateNodeGraphBarLayout,
+	UpdateDocumentTransform,
+	TriggerGraphViewOverlay,
 } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -21,7 +25,13 @@ export function createDocumentState(editor: Editor) {
 		toolOptionsLayout: defaultWidgetLayout(),
 		documentBarLayout: defaultWidgetLayout(),
 		toolShelfLayout: defaultWidgetLayout(),
+		graphViewOverlayButtonLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
+		nodeGraphBarLayout: defaultWidgetLayout(),
+		// Graph view overlay
+		graphViewOverlayOpen: false,
+		// CSS transform property to be applied to artwork
+		artworkTransform: "",
 	});
 	const { subscribe, update } = state;
 
@@ -62,6 +72,14 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlayButtonLayout, async (updateGraphViewOverlayButtonLayout) => {
+		await tick();
+
+		update((state) => {
+			patchWidgetLayout(state.graphViewOverlayButtonLayout, updateGraphViewOverlayButtonLayout);
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
 		await tick();
 		
@@ -71,6 +89,14 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
+		update((state) => {
+			patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+			return state;
+		});
+	});
+
+	// Other
 	editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
 		// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
 		await tick();
@@ -79,6 +105,21 @@ export function createDocumentState(editor: Editor) {
 
 		// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
 		window.dispatchEvent(new CustomEvent("resize"));
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateDocumentTransform, async (data) => {
+		await tick();
+
+		update((state) => {
+			state.artworkTransform = data.transform;
+			return state;
+		});
+	});
+	// Show or hide the graph view overlay
+	editor.subscriptions.subscribeJsMessage(TriggerGraphViewOverlay, (triggerGraphViewOverlay) => {
+		update((state) => {
+			state.graphViewOverlayOpen = triggerGraphViewOverlay.open;
+			return state;
+		});
 	});
 
 	return {

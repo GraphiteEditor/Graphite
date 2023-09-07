@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
+	import { githubUrl } from "@graphite/io-managers/panic";
+	import { wipeDocuments } from "@graphite/io-managers/persistence";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 
@@ -20,24 +23,52 @@
 	});
 </script>
 
+<!-- TODO: Use https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog for improved accessibility -->
 <FloatingMenu open={true} class="dialog-modal" type="Dialog" direction="Center" bind:this={self} data-dialog-modal>
-	<LayoutRow>
-		<LayoutCol class="icon-column">
-			<!-- `$dialog.icon` class exists to provide special sizing in CSS to specific icons -->
-			<IconLabel icon={$dialog.icon} class={$dialog.icon.toLowerCase()} />
-		</LayoutCol>
-		<LayoutCol class="main-column">
-			{#if $dialog.widgets.layout.length > 0}
-				<WidgetLayout layout={$dialog.widgets} class="details" />
+	<LayoutRow class="header-area">
+		<!-- `$dialog.icon` class exists to provide special sizing in CSS to specific icons -->
+		<IconLabel icon={$dialog.icon} class={$dialog.icon.toLowerCase()} />
+		<TextLabel>{$dialog.title}</TextLabel>
+	</LayoutRow>
+	<LayoutRow class="content">
+		<LayoutCol class="column-1">
+			{#if $dialog.column1.layout.length > 0}
+				<WidgetLayout layout={$dialog.column1} class="details" />
 			{/if}
-			{#if ($dialog.crashDialogButtons?.length || NaN) > 0}
-				<LayoutRow class="panic-buttons-row">
-					{#each $dialog.crashDialogButtons || [] as button, index (index)}
-						<TextButton action={() => button.callback?.()} {...button.props} />
-					{/each}
-				</LayoutRow>
+			{#if $dialog.panicDetails}
+				<div class="widget-layout details">
+					<div class="widget-row"><TextLabel bold={true}>The editor crashed — sorry about that</TextLabel></div>
+					<div class="widget-row"><TextLabel>Please report this by filing an issue on GitHub:</TextLabel></div>
+					<div class="widget-row"><TextButton label="Report Bug" icon="Warning" noBackground={true} action={() => window.open(githubUrl($dialog.panicDetails), "_blank")} /></div>
+					<div class="widget-row"><TextLabel multiline={true}>Reload the editor to continue. If this occurs<br />immediately on repeated reloads, clear storage:</TextLabel></div>
+					<div class="widget-row">
+						<TextButton
+							label="Clear Saved Documents"
+							icon="Trash"
+							noBackground={true}
+							action={async () => {
+								await wipeDocuments();
+								window.location.reload();
+							}}
+						/>
+					</div>
+				</div>
 			{/if}
 		</LayoutCol>
+		{#if $dialog.column2.layout.length > 0}
+			<LayoutCol class="column-2">
+				<WidgetLayout layout={$dialog.column2} class="details" />
+			</LayoutCol>
+		{/if}
+	</LayoutRow>
+	<LayoutRow class="footer-area">
+		{#if $dialog.buttons.layout.length > 0}
+			<WidgetLayout layout={$dialog.buttons} class="details" />
+		{/if}
+		{#if $dialog.panicDetails}
+			<TextButton label="Copy Error Log" action={() => navigator.clipboard.writeText($dialog.panicDetails)} />
+			<TextButton label="Reload" emphasized={true} action={() => window.location.reload()} />
+		{/if}
 	</LayoutRow>
 </FloatingMenu>
 
@@ -50,31 +81,44 @@
 
 		> .floating-menu-container > .floating-menu-content {
 			pointer-events: auto;
-			padding: 24px;
+			padding: 0;
 		}
 
-		.icon-column {
-			margin-right: 24px;
+		.header-area,
+		.footer-area {
+			background: var(--color-1-nearblack);
+		}
+
+		.header-area,
+		.footer-area,
+		.content {
+			padding: 16px 24px;
+		}
+
+		.header-area {
+			border-radius: 4px 4px 0 0;
 
 			.icon-label {
-				width: 80px;
-				height: 80px;
+				width: 24px;
+				height: 24px;
+			}
 
-				&.file,
-				&.copy {
-					width: 60px;
-
-					svg {
-						width: 80px;
-						height: 80px;
-						margin: 0 -10px;
-					}
-				}
+			.text-label {
+				margin-left: 12px;
+				line-height: 24px;
 			}
 		}
 
-		.main-column {
+		.content {
 			margin: -4px 0;
+
+			.column-1 + .column-2 {
+				margin-left: 48px;
+
+				.text-button {
+					justify-content: left;
+				}
+			}
 
 			.details.text-label {
 				-webkit-user-select: text; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
@@ -84,9 +128,22 @@
 				height: auto;
 			}
 
-			.panic-buttons-row {
-				height: 32px;
-				align-items: center;
+			.radio-input button {
+				flex-grow: 1;
+			}
+
+			// Used by the "Open Demo Artwork" dialog
+			.image-label {
+				border-radius: 2px;
+			}
+		}
+
+		.footer-area {
+			border-radius: 0 0 4px 4px;
+			justify-content: right;
+
+			.text-button {
+				min-width: 96px;
 			}
 		}
 	}

@@ -2,7 +2,7 @@
 title = "Graphite license"
 +++
 
-<section class="section-row reading-material">
+<section class="reading-material">
 <div class="section">
 
 # Graphite license

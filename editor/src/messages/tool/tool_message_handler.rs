@@ -194,13 +194,13 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				document_data.primary_color = Color::BLACK;
 				document_data.secondary_color = Color::WHITE;
 
-				document_data.update_working_colors(responses);
+				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
 			ToolMessage::SelectPrimaryColor { color } => {
 				let document_data = &mut self.tool_state.document_tool_data;
 				document_data.primary_color = color;
 
-				self.tool_state.document_tool_data.update_working_colors(responses);
+				self.tool_state.document_tool_data.update_working_colors(responses); // TODO: Make this an event
 			}
 			ToolMessage::SelectRandomPrimaryColor => {
 				// Select a random primary color (rgba) based on an UUID
@@ -213,20 +213,20 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 				let random_color = Color::from_rgba8_srgb(r, g, b, 255);
 				document_data.primary_color = random_color;
 
-				document_data.update_working_colors(responses);
+				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
 			ToolMessage::SelectSecondaryColor { color } => {
 				let document_data = &mut self.tool_state.document_tool_data;
 				document_data.secondary_color = color;
 
-				document_data.update_working_colors(responses);
+				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
 			ToolMessage::SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				std::mem::swap(&mut document_data.primary_color, &mut document_data.secondary_color);
 
-				document_data.update_working_colors(responses);
+				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
 
 			// Sub-messages

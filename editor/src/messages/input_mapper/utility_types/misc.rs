@@ -1,6 +1,7 @@
 use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup, LayoutKeysGroup};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
+use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;
 use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,9 @@ use serde::{Deserialize, Serialize};
 pub struct Mapping {
 	pub key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
-	pub double_click: KeyMappingEntries,
+	pub key_up_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
+	pub key_down_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
+	pub double_click: [KeyMappingEntries; NUMBER_OF_MOUSE_BUTTONS],
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
 }
@@ -40,7 +43,9 @@ impl Mapping {
 		match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
 			InputMapperMessage::KeyUp(key) => &self.key_up[*key as usize],
-			InputMapperMessage::DoubleClick => &self.double_click,
+			InputMapperMessage::KeyDownNoRepeat(key) => &self.key_down_no_repeat[*key as usize],
+			InputMapperMessage::KeyUpNoRepeat(key) => &self.key_up_no_repeat[*key as usize],
+			InputMapperMessage::DoubleClick(key) => &self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 		}
@@ -50,7 +55,9 @@ impl Mapping {
 		match message {
 			InputMapperMessage::KeyDown(key) => &mut self.key_down[*key as usize],
 			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
-			InputMapperMessage::DoubleClick => &mut self.double_click,
+			InputMapperMessage::KeyDownNoRepeat(key) => &mut self.key_down_no_repeat[*key as usize],
+			InputMapperMessage::KeyUpNoRepeat(key) => &mut self.key_up_no_repeat[*key as usize],
+			InputMapperMessage::DoubleClick(key) => &mut self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
 			InputMapperMessage::PointerMove => &mut self.pointer_move,
 		}
@@ -91,6 +98,11 @@ impl KeyMappingEntries {
 		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
 		[DEFAULT; NUMBER_OF_KEYS]
 	}
+
+	pub fn mouse_buttons_arrays() -> [Self; NUMBER_OF_MOUSE_BUTTONS] {
+		const DEFAULT: KeyMappingEntries = KeyMappingEntries::new();
+		[DEFAULT; NUMBER_OF_MOUSE_BUTTONS]
+	}
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -115,19 +127,19 @@ pub enum ActionKeys {
 impl ActionKeys {
 	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> String {
 		match self {
-			ActionKeys::Action(action) => {
+			Self::Action(action) => {
 				if let Some(keys) = action_input_mapping(action).get_mut(0) {
 					let mut taken_keys = KeysGroup::default();
 					std::mem::swap(keys, &mut taken_keys);
 					let description = taken_keys.to_string();
-					*self = ActionKeys::Keys(taken_keys.into());
+					*self = Self::Keys(taken_keys.into());
 					description
 				} else {
-					*self = ActionKeys::Keys(KeysGroup::default().into());
+					*self = Self::Keys(KeysGroup::default().into());
 					String::new()
 				}
 			}
-			ActionKeys::Keys(keys) => {
+			Self::Keys(keys) => {
 				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
 				String::new()
 			}

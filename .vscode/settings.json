@@ -18,6 +18,12 @@
 			"source.fixAll.eslint": true
 		},
 		"editor.formatOnSave": true,
+		// Configured in `.prettierrc`
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[yaml][github-actions-workflow]": {
+		"editor.formatOnSave": true,
+		// Configured in `.prettierrc`
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	// Handlebars: don't save on format
@@ -37,9 +43,5 @@
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
-	"files.insertFinalNewline": true,
-	"prettier.singleQuote": false,
-	"prettier.useTabs": true,
-	"prettier.tabWidth": 4,
-	"prettier.printWidth": 200
+	"files.insertFinalNewline": true
 }

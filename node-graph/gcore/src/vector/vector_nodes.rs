@@ -2,9 +2,9 @@ use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
 use crate::{Color, Node};
 
-use bezier_rs::Subpath;
-
+use bezier_rs::{Subpath, SubpathTValue};
 use glam::{DAffine2, DVec2};
+use num_traits::Zero;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform, Positions> {
@@ -102,14 +102,14 @@ fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32)
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CircularRepeatNode<RotationOffset, Radius, Count> {
-	rotation_offset: RotationOffset,
+pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
+	angle_offset: AngleOffset,
 	radius: Radius,
 	count: Count,
 }
 
 #[node_macro::node_fn(CircularRepeatNode)]
-fn circular_repeat_vector_data(mut vector_data: VectorData, rotation_offset: f32, radius: f32, count: u32) -> VectorData {
+fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f32, radius: f32, count: u32) -> VectorData {
 	// repeat the vector data
 	let VectorData { subpaths, transform, .. } = &vector_data;
 
@@ -123,7 +123,7 @@ fn circular_repeat_vector_data(mut vector_data: VectorData, rotation_offset: f32
 	let base_transform = DVec2::new(0., radius as f64) - center;
 
 	for i in 0..count {
-		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + rotation_offset.to_radians() as f64;
+		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians() as f64;
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
 		for mut subpath in subpaths.clone() {
@@ -146,4 +146,42 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 		vector_data.transform.transform_point2(bounding_box[0]),
 		vector_data.transform.transform_point2(bounding_box[1]),
 	)])
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ResamplePoints<Spacing> {
+	spacing: Spacing,
+}
+
+#[node_macro::node_fn(ResamplePoints)]
+fn resample_points(mut vector_data: VectorData, spacing: f64) -> VectorData {
+	for subpath in &mut vector_data.subpaths {
+		if subpath.is_empty() || spacing.is_zero() || !spacing.is_finite() {
+			continue;
+		}
+
+		subpath.apply_transform(vector_data.transform);
+		let length = subpath.length(None);
+		let rounded_count = (length / spacing).round();
+
+		if rounded_count >= 1. {
+			let new_anchors = (0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean(c as f64 / rounded_count)));
+			*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && rounded_count as usize > 1);
+		}
+
+		subpath.apply_transform(vector_data.transform.inverse());
+	}
+	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SplineFromPointsNode {}
+
+#[node_macro::node_fn(SplineFromPointsNode)]
+fn spline_from_points(mut vector_data: VectorData) -> VectorData {
+	for subpath in &mut vector_data.subpaths {
+		*subpath = Subpath::new_cubic_spline(subpath.anchors());
+	}
+
+	vector_data
 }

@@ -40,12 +40,11 @@
 		cursor: default;
 	}
 
-	p:first-child {
-		width: 100%;
-		text-align: center;
+	.section {
+		align-items: center;
+	}
 
-		img {
-			max-width: Min(100%, 480px);
-		}
+	img {
+		max-width: Min(100%, 480px);
 	}
 }

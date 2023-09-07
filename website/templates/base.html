@@ -25,8 +25,9 @@
 	<script src="/js/{{ js | safe }}"></script>
 	{% endfor %}
 	{% endif %}
+	<script src="/js/text-justification.js"></script>
 	<script src="/js/navbar.js"></script>
-	<script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.outbound-links.file-downloads.js"></script>
+	<!-- INDEX_HTML_HEAD_REPLACEMENT -->
 	<style>
 	.balance-text {
 		visibility: hidden;
@@ -81,14 +82,14 @@
 		</main>
 		<footer>
 			<hr />
-			<nav>
+			<nav class="balance-text require-polyfill">
 				<a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="link not-uppercase">Credits</a>
 				<a href="/license" class="link not-uppercase">License</a>
 				<a href="/logo" class="link not-uppercase">Logo</a>
 				<a href="/press" class="link not-uppercase">Press</a>
 				<a href="/contact" class="link not-uppercase">Contact</a>
 			</nav>
-			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite contributors</span>
+			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite Labs, LLC</span>
 		</footer>
 	</div>
 	<script src="https://static.graphite.rs/text-balancer/text-balancer.js"></script>

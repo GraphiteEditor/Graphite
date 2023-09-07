@@ -1,23 +1,23 @@
 use crate::helper_structs::Pair;
 use proc_macro2::{Span, TokenStream};
-use syn::{Attribute, DeriveInput, Expr, Type};
+use syn::{DeriveInput, Expr, Type};
 
 pub fn derive_transitive_child_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
 
-	let Attribute { tokens, .. } = input
+	let attribute = input
 		.attrs
 		.iter()
-		.find(|a| a.path.is_ident("parent"))
+		.find(|a| a.path().is_ident("parent"))
 		.ok_or_else(|| syn::Error::new(Span::call_site(), format!("tried to derive TransitiveChild without a #[parent] attribute (on {})", input.ident)))?;
 
-	let parent_is_top = input.attrs.iter().any(|a| a.path.is_ident("parent_is_top"));
+	let parent_is_top = input.attrs.iter().any(|a| a.path().is_ident("parent_is_top"));
 
 	let Pair {
 		first: parent_type,
 		second: to_parent,
 		..
-	} = syn::parse2::<Pair<Type, Expr>>(tokens.clone())?;
+	} = attribute.parse_args::<Pair<Type, Expr>>()?;
 
 	let top_parent_type: Type = syn::parse_quote! { <#parent_type as TransitiveChild>::TopParent };
 

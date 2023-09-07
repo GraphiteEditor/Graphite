@@ -15,17 +15,23 @@ use std::sync::Arc;
 #[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize, specta::Type)]
 #[repr(u8)]
 pub enum LayoutTarget {
-	/// Contains the contents of the dialog, including the title and action buttons. Must be shown with the `FrontendMessage::DisplayDialog` message.
-	DialogDetails,
+	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	DialogButtons,
+	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	DialogColumn1,
+	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `FrontendMessage::DisplayDialog` message.
+	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
+	/// The button below the tool shelf and directly above the working colors which lets the user toggle the node graph overlaid on the canvas.
+	GraphViewOverlayButton,
 	/// Options for opacity seen at the top of the Layers panel.
 	LayerTreeOptions,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
-	/// Bar at the top of the node graph containing the location and the 'preview' and 'hide' buttons.
+	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphBar,
 	/// The bar at the top of the Properties panel containing the layer name and icon.
 	PropertiesOptions,
@@ -51,6 +57,40 @@ pub trait LayoutHolder {
 
 	fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
 		responses.add(LayoutMessage::SendLayout { layout: self.layout(), layout_target });
+	}
+}
+
+/// Structs implementing this hold the layout (like [`LayoutHolder`]) for dialog content, but it also requires defining the dialog's title, icon, and action buttons.
+pub trait DialogLayoutHolder: LayoutHolder {
+	const ICON: &'static str;
+	const TITLE: &'static str;
+
+	fn layout_buttons(&self) -> Layout;
+	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout_buttons(),
+			layout_target,
+		});
+	}
+
+	fn layout_column_2(&self) -> Layout {
+		Layout::default()
+	}
+	fn send_layout_column_2(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout_column_2(),
+			layout_target,
+		});
+	}
+
+	fn send_dialog_to_frontend(&self, responses: &mut VecDeque<Message>) {
+		self.send_layout(responses, LayoutTarget::DialogColumn1);
+		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
+		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
+		responses.add(FrontendMessage::DisplayDialog {
+			icon: Self::ICON.into(),
+			title: Self::TITLE.into(),
+		});
 	}
 }
 
@@ -286,6 +326,7 @@ impl LayoutGroup {
 				Widget::FontInput(x) => &mut x.tooltip,
 				Widget::IconButton(x) => &mut x.tooltip,
 				Widget::IconLabel(x) => &mut x.tooltip,
+				Widget::ImageLabel(x) => &mut x.tooltip,
 				Widget::LayerReferenceInput(x) => &mut x.tooltip,
 				Widget::NumberInput(x) => &mut x.tooltip,
 				Widget::OptionalInput(x) => &mut x.tooltip,
@@ -436,6 +477,7 @@ pub enum Widget {
 	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
+	ImageLabel(ImageLabel),
 	InvisibleStandinInput(InvisibleStandinInput),
 	LayerReferenceInput(LayerReferenceInput),
 	NumberInput(NumberInput),
@@ -514,6 +556,7 @@ impl DiffUpdate {
 				Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconLabel(_)
+				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
 				| Widget::PivotAssist(_)

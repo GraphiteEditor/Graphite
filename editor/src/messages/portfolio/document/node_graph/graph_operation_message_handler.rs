@@ -113,7 +113,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let layer_node = resolve_document_node_type("Layer").expect("Node").to_document_node_default_inputs([], Default::default());
-		let layer_node = self.insert_node_before(new_id, current_node, input_index, layer_node, IVec2::new(0, 3))?;
+		let layer_node = self.insert_node_before(new_id, current_node, input_index, layer_node, IVec2::new(-4, 3))?;
 
 		Some(layer_node)
 	}

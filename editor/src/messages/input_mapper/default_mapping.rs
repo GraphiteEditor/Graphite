@@ -1,6 +1,7 @@
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
+use crate::messages::input_mapper::utility_types::input_mouse::MouseButton;
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
@@ -39,8 +40,10 @@ pub fn default_mapping() -> Mapping {
 		// NORMAL PRIORITY:
 		//
 		// NodeGraphMessage
-		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes),
-		entry!(KeyDown(Backspace); action_dispatch=NodeGraphMessage::DeleteSelectedNodes),
+		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
+		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
+		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
+		entry!(KeyDown(Backspace); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=NodeGraphMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=NodeGraphMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),
@@ -64,7 +67,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift, select_deepest: Accel }),
 		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
-		entry!(DoubleClick; action_dispatch=SelectToolMessage::EditLayer),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(Rmb); action_dispatch=SelectToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=SelectToolMessage::Abort),
 		//
@@ -126,7 +129,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=GradientToolMessage::PointerDown),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(Lmb); action_dispatch=GradientToolMessage::PointerUp),
-		entry!(DoubleClick; action_dispatch=GradientToolMessage::InsertStop),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStop),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
 		//
@@ -181,7 +184,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter {
 			add_to_selection: Shift
 		}),
-		entry!(DoubleClick; action_dispatch=PathToolMessage::InsertPoint),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::InsertPoint),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
@@ -330,13 +333,17 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
-		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
-		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
+		entry!(KeyUp(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
+		entry!(KeyDownNoRepeat(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false }),
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
+		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
+		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
+		//
+		// FrontendMessage
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
 		//
 		// DialogMessage
@@ -351,7 +358,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Digit1); modifiers=[Alt], action_dispatch=DebugMessage::MessageNames),
 		entry!(KeyDown(Digit2); modifiers=[Alt], action_dispatch=DebugMessage::MessageContents),
 	];
-	let (mut key_up, mut key_down, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 
 	// TODO: Hardcode these 10 lines into 10 lines of declarations, or make this use a macro to do all 10 in one line
 	const NUMBER_KEYS: [Key; 10] = [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9];
@@ -367,18 +374,22 @@ pub fn default_mapping() -> Mapping {
 	}
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
-	for list in [&mut key_up, &mut key_down] {
+	for list in [&mut key_up, &mut key_down, &mut key_up_no_repeat, &mut key_down_no_repeat] {
 		for sublist in list {
 			sort(sublist);
 		}
 	}
-	sort(&mut double_click);
+	for sublist in &mut double_click {
+		sort(sublist)
+	}
 	sort(&mut wheel_scroll);
 	sort(&mut pointer_move);
 
 	Mapping {
 		key_up,
 		key_down,
+		key_up_no_repeat,
+		key_down_no_repeat,
 		double_click,
 		wheel_scroll,
 		pointer_move,

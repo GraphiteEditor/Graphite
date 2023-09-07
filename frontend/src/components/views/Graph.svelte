@@ -5,12 +5,10 @@
 	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
 	import type { FrontendNodeLink, FrontendNodeType, FrontendNode } from "@graphite/wasm-communication/messages";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
@@ -25,7 +23,7 @@
 
 	type LinkPath = { pathString: string; dataType: string; thick: boolean };
 
-	let graph: LayoutRow | undefined;
+	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
 
@@ -45,7 +43,6 @@
 
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
-	$: nodeGraphBarLayout = $nodeGraph.nodeGraphBarLayout;
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 	$: nodeListX = ((nodeListLocation?.x || 0) * GRID_SIZE + transform.x) * transform.scale;
 	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
@@ -54,7 +51,7 @@
 	let appearRightOfMouse = false;
 
 	$: (() => {
-		const bounds = graph?.div()?.getBoundingClientRect();
+		const bounds = graph?.getBoundingClientRect();
 		if (!bounds) return;
 		const { width, height } = bounds;
 
@@ -180,12 +177,12 @@
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
-		const outY = verticalOut ? outputBounds.y + 1 : outputBounds.y + outputBounds.height / 2;
+		const outY = verticalOut ? outputBounds.y - 1 : outputBounds.y + outputBounds.height / 2;
 		const outConnectorX = (outX - containerBounds.x) / transform.scale;
 		const outConnectorY = (outY - containerBounds.y) / transform.scale;
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
-		const inY = verticalIn ? inputBounds.y + inputBounds.height - 1 : inputBounds.y + inputBounds.height / 2;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height + 2 : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / transform.scale;
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
@@ -241,7 +238,7 @@
 			let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
 			if (scrollY > 0) zoomFactor = 1 / zoomFactor;
 
-			const bounds = graph?.div()?.getBoundingClientRect();
+			const bounds = graph?.getBoundingClientRect();
 			if (!bounds) return;
 			const { x, y, width, height } = bounds;
 
@@ -288,7 +285,7 @@
 
 		// Create the add node popup on right click, then exit
 		if (rmb) {
-			const graphBounds = graph?.div()?.getBoundingClientRect();
+			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
 			nodeListLocation = {
 				x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
@@ -364,7 +361,7 @@
 				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 			}
 
-			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected) : null);
+			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected) : undefined);
 
 			return;
 		}
@@ -372,7 +369,7 @@
 		// Clicked on the graph background
 		if (lmb && selected.length !== 0) {
 			selected = [];
-			editor.instance.selectNodes(null);
+			editor.instance.selectNodes(undefined);
 		}
 
 		// LMB clicked on the graph background or MMB clicked anywhere
@@ -524,15 +521,40 @@
 		nodeListLocation = undefined;
 	}
 
-	function buildBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
+	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
 		const nodeHeight = Math.max(1 + parameters, 1 + exposedOutputs) * 24;
 
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+
+		// Primary input
 		if (primaryInputExists) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
+		// Parameter inputs
 		for (let i = 0; i < parameters; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+
+		// Primary output
 		if (primaryOutputExists) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
+		// Exposed outputs
 		for (let i = 0; i < exposedOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
+		return borderMask(boxes, nodeWidth, nodeHeight);
+	}
+
+	function layerBorderMask(nodeWidth: number): string {
+		const NODE_HEIGHT = 2 * 24;
+		const THUMBNAIL_WIDTH = 96;
+		const FUDGE = 2;
+
+		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+		// Left input
+		boxes.push({ x: -8, y: 16, width: 16, height: 16 });
+
+		// Thumbnail
+		boxes.push({ x: 24, y: -FUDGE, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE * 2 });
+
+		return borderMask(boxes, nodeWidth, NODE_HEIGHT);
+	}
+
+	function borderMask(boxes: { x: number; y: number; width: number; height: number }[], nodeWidth: number, nodeHeight: number): string {
 		const rectangles = boxes.map((box) => `M${box.x},${box.y} L${box.x + box.width},${box.y} L${box.x + box.width},${box.y + box.height} L${box.x},${box.y + box.height}z`);
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
@@ -544,92 +566,173 @@
 	});
 </script>
 
-<LayoutCol class="node-graph">
-	<LayoutRow class="options-bar"><WidgetLayout layout={nodeGraphBarLayout} /></LayoutRow>
-	<LayoutRow
-		class="graph"
-		bind:this={graph}
-		on:wheel={scroll}
-		on:pointerdown={pointerDown}
-		on:pointermove={pointerMove}
-		on:pointerup={pointerUp}
-		on:dblclick={doubleClick}
-		styles={{
-			"--grid-spacing": `${gridSpacing}px`,
-			"--grid-offset-x": `${transform.x * transform.scale}px`,
-			"--grid-offset-y": `${transform.y * transform.scale}px`,
-			"--dot-radius": `${dotRadius}px`,
-		}}
-	>
-		<!-- <img src="https://files.keavon.com/-/MountainousDroopyBlueshark/flyover.jpg" /> -->
-		<div class="fade-artwork" />
-		<!-- Right click menu for adding nodes -->
-		{#if nodeListLocation}
-			<LayoutCol
-				class="node-list"
-				data-node-list
-				styles={{
-					left: `${nodeListX}px`,
-					top: `${nodeListY}px`,
-					transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
-					width: `${ADD_NODE_MENU_WIDTH}px`,
-				}}
-			>
-				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|stopPropagation>
-					{#each nodeCategories as nodeCategory}
-						<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
-							<summary>
-								<IconLabel icon="DropdownArrow" />
-								<TextLabel>{nodeCategory[0]}</TextLabel>
-							</summary>
-							{#each nodeCategory[1].nodes as nodeType}
-								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-							{/each}
-						</details>
-					{:else}
-						<div style="margin-right: 4px;"><TextLabel>No search results</TextLabel></div>
-					{/each}
-				</div>
-			</LayoutCol>
-		{/if}
-		<!-- Node connection links -->
-		<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
-			<svg>
-				{#each linkPaths as { pathString, dataType, thick }}
-					<path
-						d={pathString}
-						style:--data-line-width={`${thick ? 5 : 2}px`}
-						style:--data-color={`var(--color-data-${dataType})`}
-						style:--data-color-dim={`var(--color-data-${dataType}-dim)`}
-					/>
+<div
+	class="graph"
+	bind:this={graph}
+	on:wheel|nonpassive={scroll}
+	on:pointerdown={pointerDown}
+	on:pointermove={pointerMove}
+	on:pointerup={pointerUp}
+	on:dblclick={doubleClick}
+	style:--grid-spacing={`${gridSpacing}px`}
+	style:--grid-offset-x={`${transform.x * transform.scale}px`}
+	style:--grid-offset-y={`${transform.y * transform.scale}px`}
+	style:--dot-radius={`${dotRadius}px`}
+>
+	<!-- Right click menu for adding nodes -->
+	{#if nodeListLocation}
+		<LayoutCol
+			class="node-list"
+			data-node-list
+			styles={{
+				left: `${nodeListX}px`,
+				top: `${nodeListY}px`,
+				transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+				width: `${ADD_NODE_MENU_WIDTH}px`,
+			}}
+		>
+			<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+			<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|passive|stopPropagation>
+				{#each nodeCategories as nodeCategory}
+					<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
+						<summary>
+							<IconLabel icon="DropdownArrow" />
+							<TextLabel>{nodeCategory[0]}</TextLabel>
+						</summary>
+						{#each nodeCategory[1].nodes as nodeType}
+							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
+						{/each}
+					</details>
+				{:else}
+					<div style="margin-right: 4px;"><TextLabel>No search results</TextLabel></div>
 				{/each}
-			</svg>
-		</div>
-		<!-- Layers and nodes -->
-		<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
-			<!-- Layers -->
-			{#each $nodeGraph.nodes.filter((node) => node.displayName === "Layer") as node (String(node.id))}
-				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
-				{@const clipPathId = `${Math.random()}`.substring(2)}
-				{@const stackDatainput = node.exposedInputs[0]}
-				<div
-					class="layer"
-					class:selected={selected.includes(node.id)}
-					class:previewed={node.previewed}
-					class:disabled={node.disabled}
-					style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-					style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
-					style:--clip-path-id={`url(#${clipPathId})`}
-					data-node={node.id}
-				>
-					<div class="node-chain" />
-					<!-- Layer input port (from left) -->
-					<div class="input ports">
+			</div>
+		</LayoutCol>
+	{/if}
+	<!-- Node connection links -->
+	<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
+		<svg>
+			{#each linkPaths as { pathString, dataType, thick }}
+				<path d={pathString} style:--data-line-width={`${thick ? 8 : 2}px`} style:--data-color={`var(--color-data-${dataType})`} style:--data-color-dim={`var(--color-data-${dataType}-dim)`} />
+			{/each}
+		</svg>
+	</div>
+	<!-- Layers and nodes -->
+	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
+		<!-- Layers -->
+		{#each $nodeGraph.nodes.filter((node) => node.displayName === "Layer") as node (String(node.id))}
+			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
+			{@const clipPathId = `${Math.random()}`.substring(2)}
+			{@const stackDatainput = node.exposedInputs[0]}
+			<div
+				class="layer"
+				class:selected={selected.includes(node.id)}
+				class:previewed={node.previewed}
+				class:disabled={node.disabled}
+				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
+				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--clip-path-id={`url(#${clipPathId})`}
+				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
+				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
+				data-node={node.id}
+			>
+				<div class="node-chain" />
+				<!-- Layer input port (from left) -->
+				<div class="input ports">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="port"
+						data-port="input"
+						data-datatype={node.primaryInput}
+						style:--data-color={`var(--color-data-${node.primaryInput})`}
+						style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+					>
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+					</svg>
+				</div>
+				<div class="thumbnail">
+					{#if node.thumbnailSvg}
+						{@html node.thumbnailSvg}
+					{/if}
+					{#if node.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port"
+							class="port top"
+							data-port="output"
+							data-datatype={node.primaryOutput.dataType}
+							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+						>
+							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
+						</svg>
+					{/if}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="port bottom"
+						data-port="input"
+						data-datatype={stackDatainput.dataType}
+						style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
+						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
+					>
+						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
+					</svg>
+				</div>
+				<div class="details">
+					<TextLabel tooltip={node.displayName}>{node.displayName}</TextLabel>
+				</div>
+
+				<svg class="border-mask" width="0" height="0">
+					<defs>
+						<clipPath id={clipPathId}>
+							<path clip-rule="evenodd" d={layerBorderMask(216)} />
+						</clipPath>
+					</defs>
+				</svg>
+			</div>
+		{/each}
+		<!-- Nodes -->
+		{#each $nodeGraph.nodes.filter((node) => node.displayName !== "Layer") as node (String(node.id))}
+			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
+			{@const clipPathId = `${Math.random()}`.substring(2)}
+			<div
+				class="node"
+				class:selected={selected.includes(node.id)}
+				class:previewed={node.previewed}
+				class:disabled={node.disabled}
+				class:is-layer={node.thumbnailSvg !== undefined}
+				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
+				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--clip-path-id={`url(#${clipPathId})`}
+				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
+				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
+				data-node={node.id}
+			>
+				<!-- Primary row -->
+				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
+					<IconLabel icon={nodeIcon(node.displayName)} />
+					<TextLabel tooltip={node.displayName}>{node.displayName}</TextLabel>
+				</div>
+				<!-- Parameter rows -->
+				{#if exposedInputsOutputs.length > 0}
+					<div class="parameters">
+						{#each exposedInputsOutputs as parameter, index}
+							<div class={`parameter expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
+								<div class="expand-arrow" />
+								<TextLabel tooltip={parameter.name}>{parameter.name}</TextLabel>
+							</div>
+						{/each}
+					</div>
+				{/if}
+				<!-- Input ports -->
+				<div class="input ports">
+					{#if node.primaryInput}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port primary-port"
 							data-port="input"
 							data-datatype={node.primaryInput}
 							style:--data-color={`var(--color-data-${node.primaryInput})`}
@@ -637,158 +740,92 @@
 						>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
-					</div>
-					<div class="thumbnail">
-						{@html node.thumbnailSvg}
-						{#if node.primaryOutput}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 8 8"
-								class="port top"
-								data-port="output"
-								data-datatype={node.primaryOutput.dataType}
-								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
-								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
-							>
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-							</svg>
-						{/if}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port bottom"
-							data-port="input"
-							data-datatype={stackDatainput.dataType}
-							style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
-							style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
-						>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-						</svg>
-					</div>
-					<div class="details">
-						<TextLabel>{node.displayName}</TextLabel>
-					</div>
-
-					<svg class="border-mask" width="0" height="0">
-						<defs>
-							<clipPath id={clipPathId}>
-								<path clip-rule="evenodd" d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs)} />
-							</clipPath>
-						</defs>
-					</svg>
-				</div>
-			{/each}
-			<!-- Nodes -->
-			{#each $nodeGraph.nodes.filter((node) => node.displayName !== "Layer") as node (String(node.id))}
-				{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
-				{@const clipPathId = `${Math.random()}`.substring(2)}
-				<div
-					class="node"
-					class:selected={selected.includes(node.id)}
-					class:previewed={node.previewed}
-					class:disabled={node.disabled}
-					class:is-layer={node.thumbnailSvg !== undefined}
-					style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-					style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
-					style:--clip-path-id={`url(#${clipPathId})`}
-					data-node={node.id}
-				>
-					<!-- Primary row -->
-					<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
-						<IconLabel icon={nodeIcon(node.displayName)} />
-						<TextLabel>{node.displayName}</TextLabel>
-					</div>
-					<!-- Parameter rows -->
-					{#if exposedInputsOutputs.length > 0}
-						<div class="parameters">
-							{#each exposedInputsOutputs as parameter, index}
-								<div class="parameter expanded">
-									<div class="expand-arrow" />
-									<TextLabel class={index < node.exposedInputs.length ? "name" : "output"}>{parameter.name}</TextLabel>
-								</div>
-							{/each}
-						</div>
 					{/if}
-					<!-- Input ports -->
-					<div class="input ports">
-						{#if node.primaryInput}
+					{#each node.exposedInputs as parameter, index}
+						{#if index < node.exposedInputs.length}
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="port"
 								data-port="input"
-								data-datatype={node.primaryInput}
-								style:--data-color={`var(--color-data-${node.primaryInput})`}
-								style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
-							>
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-							</svg>
-						{/if}
-						{#each node.exposedInputs as parameter, index}
-							{#if index < node.exposedInputs.length}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 8 8"
-									class="port"
-									data-port="input"
-									data-datatype={parameter.dataType}
-									style:--data-color={`var(--color-data-${parameter.dataType})`}
-									style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
-								>
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-								</svg>
-							{/if}
-						{/each}
-					</div>
-					<!-- Output ports -->
-					<div class="output ports">
-						{#if node.primaryOutput}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 8 8"
-								class="port"
-								data-port="output"
-								data-datatype={node.primaryOutput.dataType}
-								style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
-								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
-							>
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
-							</svg>
-						{/if}
-						{#each node.exposedOutputs as parameter}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 8 8"
-								class="port"
-								data-port="output"
 								data-datatype={parameter.dataType}
 								style:--data-color={`var(--color-data-${parameter.dataType})`}
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 							</svg>
-						{/each}
-					</div>
-					<svg class="border-mask" width="0" height="0">
-						<defs>
-							<clipPath id={clipPathId}>
-								<path
-									clip-rule="evenodd"
-									d={buildBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
-								/>
-							</clipPath>
-						</defs>
-					</svg>
+						{/if}
+					{/each}
 				</div>
-			{/each}
-		</div>
-	</LayoutRow>
-</LayoutCol>
+				<!-- Output ports -->
+				<div class="output ports">
+					{#if node.primaryOutput}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port primary-port"
+							data-port="output"
+							data-datatype={node.primaryOutput.dataType}
+							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					{/if}
+					{#each node.exposedOutputs as parameter}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port"
+							data-port="output"
+							data-datatype={parameter.dataType}
+							style:--data-color={`var(--color-data-${parameter.dataType})`}
+							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+						>
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						</svg>
+					{/each}
+				</div>
+				<svg class="border-mask" width="0" height="0">
+					<defs>
+						<clipPath id={clipPathId}>
+							<path
+								clip-rule="evenodd"
+								d={nodeBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+							/>
+						</clipPath>
+					</defs>
+				</svg>
+			</div>
+		{/each}
+	</div>
+</div>
 
 <style lang="scss" global>
-	.node-graph {
-		height: 100%;
+	.graph {
 		position: relative;
+		overflow: hidden;
+		display: flex;
+		flex-direction: row;
+		flex-grow: 1;
+
+		> img {
+			position: absolute;
+			bottom: 0;
+		}
+
+		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
+		&::before {
+			content: "";
+			position: absolute;
+			width: 100%;
+			height: 100%;
+			background-size: var(--grid-spacing) var(--grid-spacing);
+			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
+			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			image-rendering: pixelated;
+			mix-blend-mode: screen;
+		}
 
 		.node-list {
 			width: max-content;
@@ -836,338 +873,315 @@
 			}
 		}
 
-		.options-bar {
-			height: 32px;
-			margin: 0 4px;
-			flex: 0 0 auto;
-			align-items: center;
-
-			.widget-layout {
-				flex-direction: row;
-				flex-grow: 1;
-				justify-content: space-between;
-			}
-		}
-
-		.fade-artwork {
-			background: var(--color-2-mildblack);
-			opacity: 0.8;
-			width: 100%;
-			height: 100%;
-		}
-
-		.graph {
-			position: relative;
-			background: var(--color-2-mildblack);
-			width: calc(100% - 8px);
-			margin-left: 4px;
-			margin-bottom: 4px;
-			border-radius: 2px;
-			overflow: hidden;
-
-			> img {
-				position: absolute;
-				bottom: 0;
-			}
-
-			// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
-			&::before {
-				content: "";
-				position: absolute;
-				width: 100%;
-				height: 100%;
-				background-size: var(--grid-spacing) var(--grid-spacing);
-				background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-				background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
-				image-rendering: pixelated;
-				mix-blend-mode: screen;
-			}
-		}
-
-		.layers-and-nodes,
 		.wires {
+			pointer-events: none;
 			position: absolute;
 			width: 100%;
 			height: 100%;
 
-			&.wires {
+			svg {
+				width: 100%;
+				height: 100%;
+				overflow: visible;
+
+				path {
+					fill: none;
+					stroke: var(--data-color-dim);
+					stroke-width: var(--data-line-width);
+				}
+			}
+		}
+
+		.layers-and-nodes {
+			position: absolute;
+			width: 100%;
+			height: 100%;
+		}
+
+		.layer,
+		.node {
+			position: absolute;
+			display: flex;
+			left: calc(var(--offset-left) * 24px);
+			top: calc(var(--offset-top) * 24px);
+			// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
+			// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above.
+			// TODO: Reenable the `backdrop-filter` property once a solution can be found for the black whole-page flickering problems it causes in Chrome.
+			// TODO: Additionally, find a solution for this having no effect in Firefox due to a browser bug caused when the two
+			// ancestor elements, `.graph` and `.panel`, each have the simultaneous pairing of `overflow: hidden` and `border-radius`.
+			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
+			// backdrop-filter: blur(4px);
+			background: rgba(0, 0, 0, 0.33);
+
+			&::after {
+				content: "";
+				position: absolute;
+				box-sizing: border-box;
+				top: 0;
+				left: 0;
 				width: 100%;
 				height: 100%;
 				pointer-events: none;
+				clip-path: var(--clip-path-id);
+			}
 
-				svg {
-					width: 100%;
-					height: 100%;
-					overflow: visible;
+			.border-mask {
+				position: absolute;
+				top: 0;
+			}
 
-					path {
-						fill: none;
-						stroke: var(--data-color-dim);
-						stroke-width: var(--data-line-width);
+			&.disabled {
+				background: var(--color-3-darkgray);
+				color: var(--color-a-softgray);
+
+				.icon-label {
+					fill: var(--color-a-softgray);
+				}
+
+				.expand-arrow::after {
+					background: var(--icon-expand-collapse-arrow-disabled);
+				}
+			}
+
+			&.previewed::after {
+				border: 1px dashed var(--data-color);
+			}
+
+			.ports {
+				position: absolute;
+
+				&.input {
+					left: -3px;
+				}
+
+				&.output {
+					right: -5px;
+				}
+			}
+
+			.port {
+				fill: var(--data-color);
+				// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
+				margin: calc(24px - 8px) 0;
+				width: 8px;
+				height: 8px;
+			}
+
+			.expand-arrow {
+				width: 16px;
+				height: 16px;
+				margin: 0;
+				padding: 0;
+				position: relative;
+				flex: 0 0 auto;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+
+				&::after {
+					content: "";
+					position: absolute;
+					width: 8px;
+					height: 8px;
+					background: var(--icon-expand-collapse-arrow);
+				}
+
+				&:hover::after {
+					background: var(--icon-expand-collapse-arrow-hover);
+				}
+			}
+
+			.expanded .expand-arrow::after {
+				transform: rotate(90deg);
+			}
+
+			.text-label {
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+		}
+
+		.layer {
+			border-radius: 8px;
+			width: 216px;
+
+			&::after {
+				border: 1px solid var(--color-5-dullgray);
+				border-radius: 8px;
+			}
+
+			&.selected {
+				// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
+				background: rgba(66, 66, 66, 0.4);
+			}
+
+			.node-chain {
+				width: 36px;
+			}
+
+			.thumbnail {
+				background: var(--color-2-mildblack);
+				border: 1px solid var(--data-color-dim);
+				border-radius: 2px;
+				position: relative;
+				box-sizing: border-box;
+				width: 72px;
+				height: 48px;
+
+				&::before {
+					content: "";
+					background: var(--color-transparent-checkered-background);
+					background-size: var(--color-transparent-checkered-background-size);
+					background-position: var(--color-transparent-checkered-background-position);
+				}
+
+				&::before,
+				svg:not(.port) {
+					pointer-events: none;
+					position: absolute;
+					margin: auto;
+					top: 1px;
+					left: 1px;
+					width: calc(100% - 2px);
+					height: calc(100% - 2px);
+				}
+
+				.port {
+					position: absolute;
+					margin: 0 auto;
+					left: 0;
+					right: 0;
+
+					&.top {
+						top: -9px;
+					}
+
+					&.bottom {
+						bottom: -9px;
 					}
 				}
 			}
 
-			&.layers-and-nodes {
-				.layer,
-				.node {
-					position: absolute;
-					display: flex;
-					left: calc(var(--offset-left) * 24px);
-					top: calc(var(--offset-top) * 24px);
-					// TODO: Reenable the `transition` property below after dealing with all edge cases where the wires need to be updated until the transition is complete
-					// transition: top 0.1s cubic-bezier(0, 0, 0.2, 1), left 0.1s cubic-bezier(0, 0, 0.2, 1); // Update `DRAG_SMOOTHING_TIME` in the JS above
-					// TODO: Find a solution for this having no effect in Firefox due to a browser bug caused when the two ancestor
-					// elements, `.graph` and `.panel`, have the simultaneous pairing of `overflow: hidden` and `border-radius`.
-					// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
-					backdrop-filter: blur(4px);
-					background: rgba(0, 0, 0, 0.33);
+			.details {
+				margin-left: 12px;
 
-					&::after {
-						content: "";
-						position: absolute;
-						box-sizing: border-box;
-						top: 0;
-						left: 0;
-						width: 100%;
-						height: 100%;
-						pointer-events: none;
-						clip-path: var(--clip-path-id);
-					}
+				.text-label {
+					line-height: 48px;
+				}
+			}
 
-					.border-mask {
-						position: absolute;
-						top: 0;
-					}
+			.input.ports,
+			.input.ports .port {
+				position: absolute;
+				margin: auto 0;
+				top: 0;
+				bottom: 0;
+			}
+		}
 
-					&.selected {
-						.primary {
-							background: rgba(255, 255, 255, 0.15);
-						}
+		.node {
+			flex-direction: column;
+			border-radius: 2px;
+			width: 120px;
+			top: calc((var(--offset-top) + 0.5) * 24px);
 
-						.parameters {
-							background: rgba(255, 255, 255, 0.1);
-						}
-					}
+			&::after {
+				border: 1px solid var(--data-color-dim);
+				border-radius: 2px;
+			}
 
-					&.disabled {
-						background: var(--color-3-darkgray);
-						color: var(--color-a-softgray);
+			&.selected {
+				.primary {
+					background: rgba(255, 255, 255, 0.15);
+				}
 
-						.icon-label {
-							fill: var(--color-a-softgray);
-						}
+				.parameters {
+					background: rgba(255, 255, 255, 0.1);
+				}
+			}
 
-						.expand-arrow::after {
-							background: var(--icon-expand-collapse-arrow-disabled);
-						}
-					}
+			.port {
+				&:first-of-type {
+					margin-top: calc((24px - 8px) / 2);
 
-					&.previewed::after {
-						border: 1px dashed var(--color-data-vector);
-					}
-
-					.ports {
-						position: absolute;
-
-						&.input {
-							left: -3px;
-						}
-
-						&.output {
-							right: -5px;
-						}
-					}
-
-					.port {
-						fill: var(--data-color);
-						// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
-						margin: calc(24px - 8px) 0;
-						width: 8px;
-						height: 8px;
-
-						&:first-of-type {
-							margin-top: calc((24px - 8px) / 2);
-						}
-
-						&:last-of-type {
-							margin-bottom: calc((24px - 8px) / 2);
-						}
-					}
-
-					.expand-arrow {
-						width: 16px;
-						height: 16px;
-						margin: 0;
-						padding: 0;
-						position: relative;
-						flex: 0 0 auto;
-						display: flex;
-						align-items: center;
-						justify-content: center;
-
-						&::after {
-							content: "";
-							position: absolute;
-							width: 8px;
-							height: 8px;
-							background: var(--icon-expand-collapse-arrow);
-						}
-
-						&:hover::after {
-							background: var(--icon-expand-collapse-arrow-hover);
-						}
-					}
-
-					.expanded .expand-arrow::after {
-						transform: rotate(90deg);
+					&:not(.primary-port) {
+						margin-top: calc((24px - 8px) / 2 + 24px);
 					}
 				}
 
-				.layer {
-					border-radius: 8px;
-					min-width: 216px;
-
-					&::after {
-						border: 1px solid var(--color-5-dullgray);
-						border-radius: 8px;
-					}
-
-					.node-chain {
-						width: 36px;
-					}
-
-					.thumbnail {
-						background: var(--color-2-mildblack);
-						border: 1px solid var(--color-data-vector-dim);
-						border-radius: 2px;
-						position: relative;
-						box-sizing: border-box;
-						width: 72px;
-						height: 48px;
-
-						&::before {
-							content: "";
-							background: var(--color-transparent-checkered-background);
-							background-size: var(--color-transparent-checkered-background-size);
-							background-position: var(--color-transparent-checkered-background-position);
-						}
-
-						&::before,
-						svg:not(.port) {
-							pointer-events: none;
-							position: absolute;
-							margin: auto;
-							inset: 1px;
-							width: 100%;
-							height: 100%;
-						}
-
-						.port {
-							position: absolute;
-							margin: 0 auto;
-							left: 0;
-							right: 0;
-
-							&.top {
-								top: -12px;
-							}
-
-							&.bottom {
-								bottom: -12px;
-							}
-						}
-					}
-
-					.details {
-						margin-left: 12px;
-
-						.text-label {
-							line-height: 48px;
-						}
-					}
-
-					.input.ports,
-					.input.ports .port {
-						position: absolute;
-						margin: auto 0;
-						top: 0;
-						bottom: 0;
-					}
+				&:last-of-type {
+					margin-bottom: calc((24px - 8px) / 2);
 				}
+			}
 
-				.node {
-					flex-direction: column;
+			.primary {
+				display: flex;
+				align-items: center;
+				position: relative;
+				width: 100%;
+				height: 24px;
+				border-radius: 2px 2px 0 0;
+				font-style: italic;
+				background: rgba(255, 255, 255, 0.05);
+
+				&.no-parameter-section {
 					border-radius: 2px;
-					min-width: 120px;
-					top: calc((var(--offset-top) + 0.5) * 24px);
+				}
 
-					&::after {
-						border: 1px solid var(--color-data-vector-dim);
-						border-radius: 2px;
+				.icon-label {
+					display: none; // Remove after we have unique icons for the nodes
+					margin: 0 8px;
+				}
+
+				.text-label {
+					margin-left: 8px; // Remove after reenabling icon-label
+					margin-right: 4px;
+				}
+			}
+
+			.parameters {
+				display: flex;
+				flex-direction: column;
+				width: 100%;
+				position: relative;
+
+				.parameter {
+					position: relative;
+					display: flex;
+					align-items: center;
+					width: 100%;
+					height: 24px;
+
+					&:last-of-type {
+						border-radius: 0 0 2px 2px;
 					}
 
-					.primary {
-						display: flex;
-						align-items: center;
-						position: relative;
+					.text-label {
 						width: 100%;
-						height: 24px;
-						border-radius: 2px 2px 0 0;
-						font-style: italic;
-						background: rgba(255, 255, 255, 0.05);
+					}
 
-						&.no-parameter-section {
-							border-radius: 2px;
+					&.input {
+						.expand-arrow {
+							margin-left: 4px;
 						}
+					}
 
-						.icon-label {
-							margin: 0 8px;
-						}
+					&.output {
+						flex-direction: row-reverse;
+						text-align: right;
 
-						.text-label {
+						.expand-arrow {
 							margin-right: 4px;
 						}
 					}
+				}
 
-					.parameters {
-						display: flex;
-						flex-direction: column;
-						width: 100%;
-						position: relative;
+				&::before {
+					left: 0;
+				}
 
-						.parameter {
-							position: relative;
-							display: flex;
-							align-items: center;
-							width: 100%;
-							height: 24px;
-
-							&:last-of-type {
-								border-radius: 0 0 2px 2px;
-							}
-
-							.expand-arrow {
-								margin-left: 4px;
-							}
-
-							.text-label {
-								width: 100%;
-
-								&.output {
-									text-align: right;
-								}
-							}
-						}
-
-						&::before {
-							left: 0;
-						}
-
-						&::after {
-							right: 0;
-						}
-					}
+				&::after {
+					right: 0;
 				}
 			}
 		}

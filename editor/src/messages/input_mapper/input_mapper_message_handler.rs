@@ -46,13 +46,14 @@ impl InputMapperMessageHandler {
 	}
 
 	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant) -> Vec<KeysGroup> {
-		let key_up = self.mapping.key_up.iter();
-		let key_down = self.mapping.key_down.iter();
-		let double_click = std::iter::once(&self.mapping.double_click);
-		let wheel_scroll = std::iter::once(&self.mapping.wheel_scroll);
-		let pointer_move = std::iter::once(&self.mapping.pointer_move);
-
-		let all_key_mapping_entries = key_up.chain(key_down).chain(double_click).chain(wheel_scroll).chain(pointer_move);
+		let all_key_mapping_entries = std::iter::empty()
+			.chain(self.mapping.key_up.iter())
+			.chain(self.mapping.key_down.iter())
+			.chain(self.mapping.key_up_no_repeat.iter())
+			.chain(self.mapping.key_down_no_repeat.iter())
+			.chain(self.mapping.double_click.iter())
+			.chain(std::iter::once(&self.mapping.wheel_scroll))
+			.chain(std::iter::once(&self.mapping.pointer_move));
 		let all_mapping_entries = all_key_mapping_entries.flat_map(|entry| entry.0.iter());
 
 		// Filter for the desired message
@@ -69,15 +70,18 @@ impl InputMapperMessageHandler {
 						// TODO: Use a safe solution eventually
 						assert!(
 							i < input_keyboard::NUMBER_OF_KEYS,
-							"Attempting to convert a Key with enum index {}, which is larger than the number of Key enums",
-							i
+							"Attempting to convert a Key with enum index {i}, which is larger than the number of Key enums",
 						);
 						(i as u8).try_into().unwrap()
 					})
 					.collect::<Vec<_>>();
 
-				if let InputMapperMessage::KeyDown(key) = entry.input {
-					keys.push(key);
+				match entry.input {
+					InputMapperMessage::KeyDown(key) => keys.push(key),
+					InputMapperMessage::KeyUp(key) => keys.push(key),
+					InputMapperMessage::KeyDownNoRepeat(key) => keys.push(key),
+					InputMapperMessage::KeyUpNoRepeat(key) => keys.push(key),
+					_ => (),
 				}
 
 				keys.sort_by(|a, b| {

@@ -235,9 +235,13 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
+
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])]),
 				});
+				// Because the pan key shares the Spacebar with toggling the graph view overlay, now that we've begun panning,
+				// we need to prevent the graph view overlay from toggling when the Spacebar is released.
+				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;

@@ -158,6 +158,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::IconLabel(_) => {}
+					Widget::ImageLabel(_) => {}
 					Widget::InvisibleStandinInput(invisible) => {
 						let callback_message = (invisible.on_update.callback)(&());
 						responses.add(callback_message);
@@ -288,9 +289,12 @@ impl LayoutMessageHandler {
 
 		#[remain::sorted]
 		let message = match layout_target {
-			LayoutTarget::DialogDetails => FrontendMessage::UpdateDialogDetails { layout_target, diff },
+			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
+			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
+			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
+			LayoutTarget::GraphViewOverlayButton => FrontendMessage::UpdateGraphViewOverlayButtonLayout { layout_target, diff },
 			LayoutTarget::LayerTreeOptions => FrontendMessage::UpdateLayerTreeOptionsLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout { layout_target, diff },

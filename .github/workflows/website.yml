@@ -1,0 +1,94 @@
+name: "Website"
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - website/**
+  pull_request:
+    branches:
+      - master
+    paths:
+      - website/**
+env:
+  CARGO_TERM_COLOR: always
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.js"></script>
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🕸 Install Zola
+        uses: taiki-e/install-action@v2
+        with:
+          tool: zola@0.17.2
+
+      - name: ✂ Replace template in <head> of index.html
+        run: |
+          # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
+          git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_REPLACEMENT=""
+          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" website/templates/base.html
+
+      - name: 🌐 Build Graphite website with Zola
+        run: |
+          cd website
+          zola build
+
+      - name: 🔍 Check if `website/other` directory changed
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            other:
+              - "website/other/**"
+
+      - name: 💿 Restore cache of `website/other/dist` directory, if available and `website/other` didn't change
+        if: steps.changes.outputs.other != 'true'
+        id: cache-website-other-dist
+        uses: actions/cache/restore@v3
+        with:
+          path: website/other/dist
+          key: website-other-dist-${{ runner.os }}
+
+      - name: 🟢 Set up Node only if we are going to build in the next step
+        if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+
+      - name: 📁 Build `website/other` directory only if changed or not cached
+        if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
+        id: build-website-other
+        run: |
+          sh website/other/build.sh
+
+      - name: 💾 Save cache of `website/other/dist` directory if it was built above
+        if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v3
+        with:
+          path: website/other/dist
+          key: ${{ steps.cache-website-other-dist.outputs.cache-primary-key }}
+
+      - name: 🚚 Move `website/other/dist` contents to `website/public`
+        run: |
+          mv website/other/dist/* website/public
+
+      - name: 📤 Publish to Cloudflare Pages
+        id: cloudflare
+        uses: cloudflare/pages-action@1
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: graphite-website
+          directory: website/public

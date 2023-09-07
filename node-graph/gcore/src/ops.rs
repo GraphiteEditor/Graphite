@@ -83,6 +83,80 @@ where
 	first.pow(second)
 }
 
+// Floor
+pub struct FloorNode;
+
+#[node_macro::node_fn(FloorNode)]
+fn floor(input: f32) -> f32 {
+	input.floor()
+}
+
+// Ceil
+pub struct CeilNode;
+
+#[node_macro::node_fn(CeilNode)]
+fn ceil(input: f32) -> f32 {
+	input.ceil()
+}
+
+// Round
+pub struct RoundNode;
+
+#[node_macro::node_fn(RoundNode)]
+fn round(input: f32) -> f32 {
+	input.round()
+}
+
+// Absolute Value
+pub struct AbsoluteNode;
+
+#[node_macro::node_fn(AbsoluteNode)]
+fn abs(input: f32) -> f32 {
+	input.abs()
+}
+
+// Log
+pub struct LogParameterNode<Second> {
+	second: Second,
+}
+
+#[node_macro::node_fn(LogParameterNode)]
+fn ln<U: num_traits::float::Float>(first: U, second: U) -> U {
+	first.log(second)
+}
+
+// Natural Log
+pub struct NaturalLogNode;
+
+#[node_macro::node_fn(NaturalLogNode)]
+fn ln(input: f32) -> f32 {
+	input.ln()
+}
+
+// Sine
+pub struct SineNode;
+
+#[node_macro::node_fn(SineNode)]
+fn ln(input: f32) -> f32 {
+	input.sin()
+}
+
+// Cos
+pub struct CosineNode;
+
+#[node_macro::node_fn(CosineNode)]
+fn ln(input: f32) -> f32 {
+	input.cos()
+}
+
+// Tan
+pub struct TangentNode;
+
+#[node_macro::node_fn(TangentNode)]
+fn ln(input: f32) -> f32 {
+	input.tan()
+}
+
 // Minimum
 pub struct MinParameterNode<Second> {
 	second: Second,
@@ -109,7 +183,7 @@ fn max<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
 	}
 }
 
-// Equality
+// Equals
 pub struct EqParameterNode<Second> {
 	second: Second,
 }

@@ -42,26 +42,47 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::DialogDetails);
+		self.send_dialog_to_frontend(responses);
 	}
 
 	advertise_actions! {NewDocumentDialogUpdate;}
 }
 
+impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
+	const ICON: &'static str = "File";
+	const TITLE: &'static str = "New Document";
+
+	fn layout_buttons(&self) -> Layout {
+		let widgets = vec![
+			TextButton::new("OK")
+				.emphasized(true)
+				.on_update(|_| {
+					DialogMessage::CloseDialogAndThen {
+						followups: vec![NewDocumentDialogMessage::Submit.into()],
+					}
+					.into()
+				})
+				.widget_holder(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
+		];
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+}
+
 impl LayoutHolder for NewDocumentDialogMessageHandler {
 	fn layout(&self) -> Layout {
-		let title = vec![TextLabel::new("New document").bold(true).widget_holder()];
-
 		let name = vec![
-			TextLabel::new("Name").table_align(true).widget_holder(),
+			TextLabel::new("Name").table_align(true).min_width(90).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(&self.name)
 				.on_update(|text_input: &TextInput| NewDocumentDialogMessage::Name(text_input.value.clone()).into())
+				.min_width(204) // Matches the 100px of both NumberInputs below + the 4px of the Unrelated-type separator
 				.widget_holder(),
 		];
 
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).widget_holder(),
+			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into())
@@ -69,7 +90,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 		];
 
 		let scale = vec![
-			TextLabel::new("Dimensions").table_align(true).widget_holder(),
+			TextLabel::new("Dimensions").table_align(true).min_width(90).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(self.dimensions.x as f64))
 				.label("W")
@@ -94,26 +115,10 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let button_widgets = vec![
-			TextButton::new("OK")
-				.min_width(96)
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![NewDocumentDialogMessage::Submit.into()],
-					}
-					.into()
-				})
-				.widget_holder(),
-			TextButton::new("Cancel").min_width(96).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
-		];
-
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutGroup::Row { widgets: title },
 			LayoutGroup::Row { widgets: name },
 			LayoutGroup::Row { widgets: infinite },
 			LayoutGroup::Row { widgets: scale },
-			LayoutGroup::Row { widgets: button_widgets },
 		]))
 	}
 }

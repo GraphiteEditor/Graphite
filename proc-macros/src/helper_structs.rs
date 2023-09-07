@@ -55,17 +55,13 @@ impl Parse for KeyEqString {
 
 /// Parses `(key="value", key="value", …)`
 pub struct AttrInnerKeyStringMap {
-	_paren_token: Paren,
 	parts: Punctuated<KeyEqString, Token![,]>,
 }
 
 impl Parse for AttrInnerKeyStringMap {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
-		let content;
-		let _paren_token = parenthesized!(content in input);
 		Ok(Self {
-			_paren_token,
-			parts: Punctuated::parse_terminated(&content)?,
+			parts: Punctuated::parse_terminated(input)?,
 		})
 	}
 }
@@ -96,7 +92,6 @@ impl AttrInnerKeyStringMap {
 
 /// Parses `(left, right)`
 pub struct Pair<F, S> {
-	pub paren_token: Paren,
 	pub first: F,
 	pub sep: Token![,],
 	pub second: S,
@@ -108,13 +103,10 @@ where
 	S: Parse,
 {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
-		let content;
-		let paren_token = parenthesized!(content in input);
 		Ok(Self {
-			paren_token,
-			first: content.parse()?,
-			sep: content.parse()?,
-			second: content.parse()?,
+			first: input.parse()?,
+			sep: input.parse()?,
+			second: input.parse()?,
 		})
 	}
 }
@@ -180,7 +172,7 @@ mod tests {
 	#[test]
 	fn attr_inner_key_string_map() {
 		let res = syn::parse2::<AttrInnerKeyStringMap>(quote::quote! {
-			(key="value", key2="value2")
+			key="value", key2="value2"
 		});
 		assert!(res.is_ok());
 		let res = res.ok().unwrap();
@@ -190,7 +182,7 @@ mod tests {
 		}
 
 		let res = syn::parse2::<AttrInnerKeyStringMap>(quote::quote! {
-			(key="value", key2="value2",)
+			key="value", key2="value2",
 		});
 		assert!(res.is_ok());
 		let res = res.ok().unwrap();

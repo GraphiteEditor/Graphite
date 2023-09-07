@@ -16,7 +16,6 @@
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
-	import { createWorkspaceState } from "@graphite/state-providers/workspace";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -37,8 +36,6 @@
 	setContext("nodeGraph", nodeGraph);
 	let portfolio = createPortfolioState(editor);
 	setContext("portfolio", portfolio);
-	let workspace = createWorkspaceState(editor);
-	setContext("workspace", workspace);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);
@@ -47,7 +44,7 @@
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
 	let dragManagerDestructor = createDragManager();
-	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, fullscreen);
+	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
@@ -209,10 +206,10 @@
 				box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
 				border: 2px solid transparent;
 				border-radius: 10px;
+			}
 
-				&:hover {
-					box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
-				}
+			&:hover::-webkit-scrollbar-track {
+				box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
 			}
 
 			&::-webkit-scrollbar-thumb {
@@ -221,10 +218,10 @@
 				border: 2px solid transparent;
 				border-radius: 10px;
 				margin: 2px;
+			}
 
-				&:hover {
-					background-color: var(--color-6-lowergray);
-				}
+			&:hover::-webkit-scrollbar-thumb {
+				background-color: var(--color-6-lowergray);
 			}
 
 			&::-webkit-scrollbar-corner {

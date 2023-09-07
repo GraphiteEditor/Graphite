@@ -17,6 +17,8 @@ fn main() {
 	// They are accessed with the `env!("...")` macro in the codebase.
 	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_DATE={}", git_command(&["log", "-1", "--format=%cd"]));
 	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_HASH={}", git_command(&["rev-parse", "HEAD"]));
-	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={}", git_command(&["rev-parse", "--abbrev-ref", "HEAD"]));
+	let branch = std::env::var("GITHUB_HEAD_REF").unwrap_or_default();
+	let branch = if branch.is_empty() { git_command(&["name-rev", "--name-only", "HEAD"]) } else { branch };
+	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={}", branch);
 	println!("cargo:rustc-env=GRAPHITE_RELEASE_SERIES={}", GRAPHITE_RELEASE_SERIES);
 }

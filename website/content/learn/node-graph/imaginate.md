@@ -5,7 +5,7 @@ title = "Imaginate"
 order = 2
 +++
 
-<!-- <section id="imaginate-creative-concepts" class="section-row feature-explainer">
+<!-- <section id="imaginate-creative-concepts">
 <div class="diptych">
 
 <div class="section">

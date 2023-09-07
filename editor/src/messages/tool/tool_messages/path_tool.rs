@@ -11,6 +11,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box};
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 
+use document_legacy::document::Document;
 use document_legacy::intersection::Quad;
 use document_legacy::{LayerId, Operation};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -56,6 +57,13 @@ pub enum PathToolMessage {
 		alt_mirror_angle: Key,
 		shift_mirror_distance: Key,
 	},
+	SelectedPointUpdated,
+	SelectedPointXChanged {
+		new_x: f64,
+	},
+	SelectedPointYChanged {
+		new_y: f64,
+	},
 }
 
 impl ToolMetadata for PathTool {
@@ -72,13 +80,52 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		let coordinates = self.tool_data.single_selected_point.as_ref().map(|point| point.coordinates);
+		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
+
+		let x_location = NumberInput::new(x)
+			.unit(" px")
+			.label("X")
+			.min_width(120)
+			.disabled(x.is_none())
+			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.on_update(move |number_input: &NumberInput| {
+				let new_x = number_input.value.unwrap_or(x.unwrap());
+				PathToolMessage::SelectedPointXChanged { new_x }.into()
+			})
+			.widget_holder();
+
+		let y_location = NumberInput::new(y)
+			.unit(" px")
+			.label("Y")
+			.min_width(120)
+			.disabled(y.is_none())
+			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.on_update(move |number_input: &NumberInput| {
+				let new_y = number_input.value.unwrap_or(y.unwrap());
+				PathToolMessage::SelectedPointYChanged { new_y }.into()
+			})
+			.widget_holder();
+
+		let seperator = Separator::new(SeparatorType::Related).widget_holder();
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+			widgets: vec![x_location, seperator, y_location],
+		}]))
 	}
 }
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
+
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+
+		if updating_point {
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
 	}
 
 	// Different actions depending on state may be wanted:
@@ -137,6 +184,7 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	single_selected_point: Option<SingleSelectedPoint>,
 }
 
 impl PathToolData {
@@ -182,6 +230,8 @@ impl Fsm for PathToolFsmState {
 					shape_editor.set_selected_layers(layer_paths);
 
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+
+					responses.add(PathToolMessage::SelectedPointUpdated);
 					// This can happen in any state (which is why we return self)
 					self
 				}
@@ -191,6 +241,8 @@ impl Fsm for PathToolFsmState {
 					for layer_path in document.selected_visible_layers() {
 						shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer_path.to_vec(), responses);
 					}
+
+					responses.add(PathToolMessage::SelectedPointUpdated);
 
 					self
 				}
@@ -233,6 +285,7 @@ impl Fsm for PathToolFsmState {
 
 						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
 
+						responses.add(PathToolMessage::SelectedPointUpdated);
 						PathToolFsmState::Dragging
 					}
 					// We didn't find a point nearby, so consider selecting the nearest shape instead
@@ -416,6 +469,23 @@ impl Fsm for PathToolFsmState {
 					shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
 					PathToolFsmState::Ready
 				}
+				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
+					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
+					}
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
+					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
+					}
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::SelectedPointUpdated) => {
+					let new_point = get_single_selected_point(&document.document_legacy, shape_editor);
+					tool_data.single_selected_point = new_point;
+					self
+				}
 				(_, _) => PathToolFsmState::Ready,
 			}
 		} else {
@@ -449,4 +519,33 @@ impl Fsm for PathToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
+}
+
+#[derive(Debug, PartialEq)]
+struct SingleSelectedPoint {
+	coordinates: DVec2,
+	id: ManipulatorPointId,
+	layer_path: Vec<u64>,
+}
+
+// If there is one and only one selected control point this function yields all the information needed to manipulate it.
+fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
+	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
+	let [(layer, 1)] = selection_layers[..] else {
+		return None;
+	};
+	let layer_data = document.layer(layer).ok()?;
+	let vector_data = layer_data.as_vector_data()?;
+	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
+		return None;
+	};
+
+	// Get the first selected point and transform it to document space.
+	let group = vector_data.manipulator_from_id(point.group)?;
+	let local_position = point.manipulator_type.get_position(group)?;
+	Some(SingleSelectedPoint {
+		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
+		layer_path: layer.clone(),
+		id: *point,
+	})
 }

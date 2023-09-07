@@ -6,7 +6,7 @@ sort_by = "date"
 generate_feed = true
 +++
 
-<section id="intro" class="section-row">
+<section id="intro">
 <div class="section">
 
 # Blog

@@ -2,7 +2,7 @@
 title = "Contact the team"
 +++
 
-<section class="section-row reading-material">
+<section class="reading-material">
 <div class="section">
 
 # Contact the team

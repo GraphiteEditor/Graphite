@@ -8,10 +8,10 @@ import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
 	TriggerCopyToClipboardBlobUrl,
+	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadRaster,
 	TriggerDownloadTextFile,
-	TriggerImaginateCheckServerStatus,
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRasterizeRegionBelowLayer,
@@ -45,6 +45,19 @@ export function createPortfolioState(editor: Editor) {
 			return state;
 		})
 	});
+	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
+		try {
+			const url = new URL(triggerFetchAndOpenDocument.url);
+			const data = await fetch(url);
+
+			const filename = url.pathname.split("/").pop() || "Untitled";
+			const content = await data.text();
+			
+			editor.instance.openDocumentFile(filename, content);
+		} catch {
+			editor.instance.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
+		}
+	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
 		const extension = editor.instance.fileSaveSuffix();
 		const data = await upload(extension, "text");
@@ -77,10 +90,15 @@ export function createPortfolioState(editor: Editor) {
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
 
 		// Rasterize the SVG to an image file
-		const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
+		try {
+			const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
 
-		// Have the browser download the file to the user's disk
-		downloadFileBlob(name, blob);
+			// Have the browser download the file to the user's disk
+			downloadFileBlob(name, blob);
+		} catch {
+			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
+		}
+
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {

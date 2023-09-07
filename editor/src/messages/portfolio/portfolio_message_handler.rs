@@ -3,6 +3,7 @@ use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
+use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::prelude::*;
@@ -24,10 +25,12 @@ pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
-	pub executor: NodeGraphExecutor,
 	active_document_id: Option<u64>,
+	graph_view_overlay_open: bool,
+	graph_view_overlay_toggle_disabled: bool,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
+	pub executor: NodeGraphExecutor,
 }
 
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
@@ -137,8 +140,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document_name: target_document.name.clone(),
 						document_id,
 					};
-					dialog.send_layout(responses, LayoutTarget::DialogDetails);
-					responses.add(FrontendMessage::DisplayDialog { icon: "File".to_string() });
+					dialog.send_dialog_to_frontend(responses);
 
 					// Select the document being closed
 					responses.add(PortfolioMessage::SelectDocument { document_id });
@@ -220,6 +222,31 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 			}
+			PortfolioMessage::GraphViewOverlay { open } => {
+				self.graph_view_overlay_open = open;
+
+				let layout = WidgetLayout::new(vec![LayoutGroup::Row {
+					widgets: vec![IconButton::new(if open { "GraphViewOpen" } else { "GraphViewClosed" }, 32)
+						.tooltip(if open { "Hide Node Graph" } else { "Show Node Graph" })
+						.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::GraphViewOverlayToggle))
+						.on_update(move |_| PortfolioMessage::GraphViewOverlay { open: !open }.into())
+						.widget_holder()],
+				}]);
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(layout),
+					layout_target: LayoutTarget::GraphViewOverlayButton,
+				});
+
+				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
+			}
+			PortfolioMessage::GraphViewOverlayToggle => {
+				if !self.graph_view_overlay_toggle_disabled {
+					responses.add(PortfolioMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
+				}
+			}
+			PortfolioMessage::GraphViewOverlayToggleDisabled { disabled } => {
+				self.graph_view_overlay_toggle_disabled = disabled;
+			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				let server_status = self.persistent_data.imaginate.server_status().clone();
 				self.persistent_data.imaginate.poll_server_check();
@@ -247,7 +274,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
 			PortfolioMessage::ImaginateServerHostname => {
-				debug!("setting imaginate persistent data");
 				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}
 			PortfolioMessage::Import => {
@@ -519,6 +545,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
+			GraphViewOverlayToggle,
+			GraphViewOverlayToggleDisabled,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			Import,
@@ -567,6 +595,10 @@ impl PortfolioMessageHandler {
 
 	pub fn active_document_id(&self) -> Option<u64> {
 		self.active_document_id
+	}
+
+	pub fn unsaved_document_names(&self) -> Vec<String> {
+		self.documents.values().filter(|document| !document.is_saved()).map(|document| document.name.clone()).collect()
 	}
 
 	pub fn generate_new_document_name(&self) -> String {
@@ -618,6 +650,7 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::SelectDocument { document_id });
 		responses.add(PortfolioMessage::LoadDocumentResources { document_id });
 		responses.add(PortfolioMessage::UpdateDocumentWidgets);
+		responses.add(PortfolioMessage::GraphViewOverlay { open: self.graph_view_overlay_open });
 		responses.add(ToolMessage::InitTools);
 		responses.add(PropertiesPanelMessage::Init);
 		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });

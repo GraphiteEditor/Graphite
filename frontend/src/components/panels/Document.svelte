@@ -20,11 +20,13 @@
 		UpdateMouseCursor,
 		UpdateDocumentNodeRender,
 		UpdateDocumentTransform,
+		TriggerGraphViewOverlay,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import Graph from "@graphite/components/views/Graph.svelte";
 	import CanvasRuler from "@graphite/components/widgets/metrics/CanvasRuler.svelte";
 	import PersistentScrollbar from "@graphite/components/widgets/metrics/PersistentScrollbar.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
@@ -33,7 +35,7 @@
 
 	let rulerHorizontal: CanvasRuler | undefined;
 	let rulerVertical: CanvasRuler | undefined;
-	let canvasContainer: HTMLDivElement | undefined;
+	let viewport: HTMLDivElement | undefined;
 
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
@@ -63,7 +65,6 @@
 	let nodeRenderSvg = "";
 	let artboardSvg = "";
 	let overlaysSvg = "";
-	let artworkTransform = "";
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -121,7 +122,7 @@
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
 
-		if (!onEditbox) canvasContainer?.setPointerCapture(e.pointerId);
+		if (!onEditbox) viewport?.setPointerCapture(e.pointerId);
 	}
 
 	// Update rendered SVGs
@@ -131,10 +132,11 @@
 
 		await tick();
 
-		const placeholders = window.document.querySelectorAll("[data-canvas] [data-canvas-placeholder]");
+		const placeholders = window.document.querySelectorAll("[data-viewport] [data-canvas-placeholder]");
 		// Replace the placeholders with the actual canvas elements
 		placeholders.forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
+			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			const canvas = (window as any).imageCanvases[canvasName];
 			placeholder.replaceWith(canvas);
@@ -311,11 +313,11 @@
 
 	// Resize elements to render the new viewport size
 	export function viewportResize() {
-		if (!canvasContainer) return;
+		if (!viewport) return;
 
 		// Resize the canvas
-		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(canvasContainer).width));
-		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(canvasContainer).height));
+		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
+		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -352,11 +354,6 @@
 			await tick();
 
 			updateDocumentNodeRender(data.svg);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentTransform, async (data) => {
-			await tick();
-
-			updateDocumentTransform(data.transform);
 		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
@@ -425,35 +422,38 @@
 </script>
 
 <LayoutCol class="document">
-	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={$document.documentModeLayout} />
-		<WidgetLayout layout={$document.toolOptionsLayout} />
-
-		<LayoutRow class="spacer" />
-
-		<WidgetLayout layout={$document.documentBarLayout} />
+	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
+		{#if !$document.graphViewOverlayOpen}
+			<WidgetLayout layout={$document.documentModeLayout} />
+			<WidgetLayout layout={$document.toolOptionsLayout} />
+			<LayoutRow class="spacer" />
+			<WidgetLayout layout={$document.documentBarLayout} />
+		{:else}
+			<WidgetLayout layout={$document.nodeGraphBarLayout} />
+		{/if}
 	</LayoutRow>
-	<LayoutRow class="shelf-and-viewport">
+	<LayoutRow class="shelf-and-table">
 		<LayoutCol class="shelf">
-			<LayoutCol class="tools" scrollableY={true}>
-				<WidgetLayout layout={$document.toolShelfLayout} />
-			</LayoutCol>
-
+			{#if !$document.graphViewOverlayOpen}
+				<LayoutCol class="tools" scrollableY={true}>
+					<WidgetLayout layout={$document.toolShelfLayout} />
+				</LayoutCol>
+			{/if}
 			<LayoutCol class="spacer" />
-
-			<LayoutCol class="working-colors">
+			<LayoutCol class="shelf-bottom-widgets">
+				<WidgetLayout layout={$document.graphViewOverlayButtonLayout} />
 				<WidgetLayout layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
-		<LayoutCol class="viewport">
-			<LayoutRow class="bar-area top-ruler">
+		<LayoutCol class="table">
+			<LayoutRow class="ruler-or-scrollbar top-ruler">
 				<CanvasRuler origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 			</LayoutRow>
-			<LayoutRow class="canvas-area">
-				<LayoutCol class="bar-area">
+			<LayoutRow class="viewport-container">
+				<LayoutCol class="ruler-or-scrollbar">
 					<CanvasRuler origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 				</LayoutCol>
-				<LayoutCol class="canvas-area" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -464,12 +464,12 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="canvas" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={canvasContainer} data-canvas>
+					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={viewport} data-viewport>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artboardSvg}
 						</svg>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							<g id="transform-group" transform={artworkTransform}>
+							<g id="transform-group" transform={$document.artworkTransform}>
 								{@html nodeRenderSvg}
 							</g>
 						</svg>
@@ -485,8 +485,11 @@
 							{/if}
 						</div>
 					</div>
+					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
+						<Graph />
+					</div>
 				</LayoutCol>
-				<LayoutCol class="bar-area right-scrollbar">
+				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<PersistentScrollbar
 						direction="Vertical"
 						handleLength={scrollbarSize.y}
@@ -496,7 +499,7 @@
 					/>
 				</LayoutCol>
 			</LayoutRow>
-			<LayoutRow class="bar-area bottom-scrollbar">
+			<LayoutRow class="ruler-or-scrollbar bottom-scrollbar">
 				<PersistentScrollbar
 					direction="Horizontal"
 					handleLength={scrollbarSize.x}
@@ -521,9 +524,15 @@
 			.spacer {
 				min-width: 40px;
 			}
+
+			&.for-graph .widget-layout {
+				flex-direction: row;
+				flex-grow: 1;
+				justify-content: space-between;
+			}
 		}
 
-		.shelf-and-viewport {
+		.shelf-and-table {
 			.shelf {
 				width: 32px;
 				flex: 0 0 auto;
@@ -557,35 +566,39 @@
 
 				.spacer {
 					flex: 1 0 auto;
-					min-height: 8px;
+					min-height: 20px;
 				}
 
-				.working-colors {
+				.shelf-bottom-widgets {
 					flex: 0 0 auto;
 
-					.widget-row {
-						min-height: 0;
+					.widget-layout:first-of-type {
+						height: auto;
+						align-items: center;
+					}
 
-						.swatch-pair {
-							margin: 0;
-						}
+					.widget-layout:last-of-type {
+						height: auto;
 
-						.icon-button {
-							--widget-height: 0;
+						.widget-row {
+							min-height: 0;
+
+							.swatch-pair {
+								margin: 0;
+							}
+
+							.icon-button {
+								--widget-height: 0;
+							}
 						}
 					}
 				}
 			}
 
-			.viewport {
+			.table {
 				flex: 1 1 100%;
 
-				.canvas-area {
-					flex: 1 1 100%;
-					position: relative;
-				}
-
-				.bar-area {
+				.ruler-or-scrollbar {
 					flex: 0 0 auto;
 				}
 
@@ -602,51 +615,89 @@
 					margin-right: 16px;
 				}
 
-				.canvas {
-					background: var(--color-2-mildblack);
-					width: 100%;
-					height: 100%;
-					// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
+				.viewport-container {
+					flex: 1 1 100%;
 					position: relative;
-					overflow: hidden;
 
-					svg {
-						position: absolute;
-						// Fallback values if JS hasn't set these to integers yet
+					.viewport {
+						background: var(--color-2-mildblack);
 						width: 100%;
 						height: 100%;
-						// Allows dev tools to select the artwork without being blocked by the SVG containers
-						pointer-events: none;
+						// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
+						position: relative;
+						overflow: hidden;
 
-						canvas {
+						svg {
+							position: absolute;
+							// Fallback values if JS hasn't set these to integers yet
 							width: 100%;
 							height: 100%;
+							// Allows dev tools to select the artwork without being blocked by the SVG containers
+							pointer-events: none;
+
+							canvas {
+								width: 100%;
+								height: 100%;
+							}
+
+							// Prevent inheritance from reaching the child elements
+							> * {
+								pointer-events: auto;
+							}
 						}
 
-						// Prevent inheritance from reaching the child elements
-						> * {
-							pointer-events: auto;
+						.text-input div {
+							cursor: text;
+							background: none;
+							border: none;
+							margin: 0;
+							padding: 0;
+							overflow: visible;
+							white-space: pre-wrap;
+							display: inline-block;
+							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
+							padding-left: 1px;
+							margin-left: -1px;
+
+							&:focus {
+								border: none;
+								outline: none; // Ok for contenteditable element
+								margin: -1px;
+							}
 						}
 					}
 
-					.text-input div {
-						cursor: text;
-						background: none;
-						border: none;
-						margin: 0;
-						padding: 0;
-						overflow: visible;
-						white-space: pre-wrap;
-						display: inline-block;
-						// Workaround to force Chrome to display the flashing text entry cursor when text is empty
-						padding-left: 1px;
-						margin-left: -1px;
+					.graph-view {
+						pointer-events: none;
+						transition: opacity 0.1s ease-in-out;
+						opacity: 0;
 
-						&:focus {
-							border: none;
-							outline: none; // Ok for contenteditable element
-							margin: -1px;
+						&.open {
+							cursor: auto;
+							pointer-events: auto;
+							opacity: 1;
 						}
+
+						&::before {
+							content: "";
+							position: absolute;
+							top: 0;
+							left: 0;
+							width: 100%;
+							height: 100%;
+							background: var(--color-2-mildblack);
+							opacity: var(--fade-artwork);
+							pointer-events: none;
+						}
+					}
+
+					.fade-artwork,
+					.graph {
+						position: absolute;
+						top: 0;
+						left: 0;
+						width: 100%;
+						height: 100%;
 					}
 				}
 			}

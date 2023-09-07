@@ -3,7 +3,7 @@ title = "Announcing Graphite alpha"
 date = 2022-02-12
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.png"
+banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.avif"
 author = "Keavon Chambers"
 reddit = "https://www.reddit.com/r/graphite/comments/unw3hi/blog_post_announcing_graphite_alpha/"
 twitter = "https://twitter.com/GraphiteEditor/status/1524663930697568256"

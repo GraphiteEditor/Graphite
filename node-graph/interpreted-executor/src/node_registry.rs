@@ -227,6 +227,15 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ops::ExponentParameterNode<_>, input: f32, params: [f32]),
 		register_node!(graphene_core::ops::ExponentParameterNode<_>, input: &f32, params: [f32]),
 		register_node!(graphene_core::ops::ExponentParameterNode<_>, input: f32, params: [&f32]),
+		register_node!(graphene_core::ops::FloorNode, input: f32, params: []),
+		register_node!(graphene_core::ops::CeilNode, input: f32, params: []),
+		register_node!(graphene_core::ops::RoundNode, input: f32, params: []),
+		register_node!(graphene_core::ops::AbsoluteNode, input: f32, params: []),
+		register_node!(graphene_core::ops::LogParameterNode<_>, input: f32, params: [f32]),
+		register_node!(graphene_core::ops::NaturalLogNode, input: f32, params: []),
+		register_node!(graphene_core::ops::SineNode, input: f32, params: []),
+		register_node!(graphene_core::ops::CosineNode, input: f32, params: []),
+		register_node!(graphene_core::ops::TangentNode, input: f32, params: []),
 		register_node!(graphene_core::ops::MaxParameterNode<_>, input: u32, params: [u32]),
 		register_node!(graphene_core::ops::MaxParameterNode<_>, input: f32, params: [f32]),
 		register_node!(graphene_core::ops::MinParameterNode<_>, input: u32, params: [u32]),
@@ -251,6 +260,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::logic::LogToConsoleNode, input: DVec2, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: VectorData, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: DAffine2, params: []),
+		register_node!(graphene_core::logic::LogicOrNode<_>, input: bool, params: [bool]),
+		register_node!(graphene_core::logic::LogicAndNode<_>, input: bool, params: [bool]),
+		register_node!(graphene_core::logic::LogicXorNode<_>, input: bool, params: [bool]),
+		register_node!(graphene_core::logic::LogicNotNode, input: bool, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>, input: ImageFrame<Color>, output: ImageFrame<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, output: ImageFrame<Color>, params: []),
 		#[cfg(feature = "gpu")]
@@ -415,6 +428,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f32, f32, f32, f32, f32]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
+		register_node!(graphene_core::raster::adjustments::ColorFillNode<_>, input: ImageFrame<Color>, params: [Color]),
+		register_node!(graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>, input: ImageFrame<Color>, params: [Color, BlendMode, f32]),
 		vec![(
 			NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
 			|args| {
@@ -454,9 +469,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					use graphene_core::raster::brightness_contrast::*;
 
 					let brightness: DowncastBothNode<(), f32> = DowncastBothNode::new(args[0].clone());
-					let brightness = ClonedNode::new(brightness.eval(()).await as f32);
+					let brightness = ClonedNode::new(brightness.eval(()).await);
 					let contrast: DowncastBothNode<(), f32> = DowncastBothNode::new(args[1].clone());
-					let contrast = ClonedNode::new(contrast.eval(()).await as f32);
+					let contrast = ClonedNode::new(contrast.eval(()).await);
 					let use_legacy: DowncastBothNode<(), bool> = DowncastBothNode::new(args[2].clone());
 
 					if use_legacy.eval(()).await {
@@ -603,6 +618,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: SurfaceFrame, params: [SurfaceFrame]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
+		register_node!(graphene_std::raster::PixelNoiseNode<_, _, _>, input: u32, params: [u32, u32, NoiseType]),
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
 		register_node!(graphene_core::quantization::QuantizeNode<_>, input: Color, params: [QuantizationChannels]),
@@ -620,7 +636,15 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::RepeatNode<_, _>, input: VectorData, params: [DVec2, u32]),
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
-		register_node!(graphene_core::vector::generator_nodes::UnitCircleGenerator, input: (), params: []),
+		register_node!(graphene_core::vector::ResamplePoints<_>, input: VectorData, params: [f64]),
+		register_node!(graphene_core::vector::SplineFromPointsNode, input: VectorData, params: []),
+		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),
+		register_node!(graphene_core::vector::generator_nodes::EllipseGenerator<_, _>, input: (), params: [f32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::RectangleGenerator<_, _>, input: (), params: [f32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>, input: (), params: [u32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::StarGenerator<_, _, _>, input: (), params: [u32, f32, f32]),
+		register_node!(graphene_core::vector::generator_nodes::LineGenerator<_, _>, input: (), params: [DVec2, DVec2]),
+		register_node!(graphene_core::vector::generator_nodes::SplineGenerator<_>, input: (), params: [Vec<DVec2>]),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,

@@ -1,5 +1,7 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, Node};
+use super::{Channel, Color, ImageFrame, Node, RGBMut};
 
 use bezier_rs::{Bezier, TValue};
 use dyn_any::{DynAny, StaticType};
@@ -413,9 +415,8 @@ fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f32) -> Col
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
-#[inline(always)]
-pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
-	let target_color = match blend_mode {
+pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
+	match blend_mode {
 		// Normal group
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
 		// Darken group
@@ -448,10 +449,19 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
-		// Other utility blend modes (hidden from the normal list)
+		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
+		_ => panic!("Used blend mode without alpha blend"),
+	}
+}
+
+#[inline(always)]
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	let target_color = match blend_mode {
+		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
 		BlendMode::Erase => return background.alpha_subtract(foreground),
 		BlendMode::Restore => return background.alpha_add(foreground),
 		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
+		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity))
@@ -529,6 +539,27 @@ impl core::fmt::Display for RedGreenBlue {
 			RedGreenBlue::Green => write!(f, "Green"),
 			RedGreenBlue::Blue => write!(f, "Blue"),
 		}
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum NoiseType {
+	WhiteNoise,
+}
+
+impl core::fmt::Display for NoiseType {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			NoiseType::WhiteNoise => write!(f, "White Noise"),
+		}
+	}
+}
+
+impl NoiseType {
+	pub fn list() -> [NoiseType; 1] {
+		[NoiseType::WhiteNoise]
 	}
 }
 
@@ -891,7 +922,7 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 				bezier.find_tvalues_for_x(x)
 					.next()
 					.map(|t| bezier.evaluate(TValue::Parametric(t.clamp(0., 1.))).y)
-					// a very bad approximation if bezier_rs failes
+					// Fall back to a very bad approximation if Bezier-rs fails
 					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};
 			lut[index] = _Channel::from_f64(y);
@@ -901,6 +932,73 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 		param = sample.handles[1];
 	}
 	ValueMapperNode::new(lut)
+}
+
+#[derive(Debug, Clone)]
+pub struct ColorFillNode<C> {
+	color: C,
+}
+
+#[node_macro::node_fn(ColorFillNode)]
+pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
+	for pixel in &mut image_frame.image.data {
+		pixel.set_red(color.r());
+		pixel.set_blue(color.b());
+		pixel.set_green(color.g());
+		pixel.alpha_multiply(color);
+	}
+
+	image_frame
+}
+
+pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
+	color: Color,
+	blend_mode: BlendMode,
+	opacity: Opacity,
+}
+
+#[node_macro::node_fn(ColorOverlayNode)]
+pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+	let opacity = (opacity / 100.).clamp(0., 1.);
+	for pixel in &mut image.image.data {
+		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
+
+		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
+		let associated_pixel = Color::from_rgbaf32_unchecked(pixel.r() * pixel.a(), pixel.g() * pixel.a(), pixel.b() * pixel.a(), pixel.a());
+		let overlay = apply_blend_mode(color, associated_pixel, blend_mode).map_rgb(|channel| channel * opacity);
+
+		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
+	}
+
+	image
+}
+
+#[test]
+fn color_overlay_multiply() {
+	use crate::raster::Image;
+	use crate::value::ClonedNode;
+
+	let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
+	let image = ImageFrame {
+		image: Image::new(1, 1, image_color),
+		..Default::default()
+	};
+
+	// Color { red: 0., green: 1., blue: 0., alpha: 1. }
+	let overlay_color = Color::GREEN;
+
+	// 100% of the output should come from the multiplied value
+	let opacity = 100_f32;
+
+	let result = ColorOverlayNode {
+		color: ClonedNode(overlay_color),
+		blend_mode: ClonedNode(BlendMode::Multiply),
+		opacity: ClonedNode(opacity),
+	}
+	.eval(image);
+
+	// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
+	assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 }
 
 #[cfg(feature = "alloc")]

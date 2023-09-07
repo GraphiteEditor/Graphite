@@ -308,9 +308,15 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = documentOpen)]
-	pub fn document_open(&self) {
+	#[wasm_bindgen(js_name = openDocument)]
+	pub fn open_document(&self) {
 		let message = PortfolioMessage::OpenDocument;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = demoArtworkDialog)]
+	pub fn demo_artwork_dialog(&self) {
+		let message = DialogMessage::RequestDemoArtworkDialog;
 		self.dispatch(message);
 	}
 
@@ -348,8 +354,11 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = requestAboutGraphiteDialogWithLocalizedCommitDate)]
-	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String) {
-		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate { localized_commit_date };
+	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String, localized_commit_year: String) {
+		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {
+			localized_commit_date,
+			localized_commit_year,
+		};
 		self.dispatch(message);
 	}
 
@@ -412,6 +421,7 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = onDoubleClick)]
 	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
 		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };
@@ -420,25 +430,25 @@ impl JsEditorHandle {
 
 	/// A keyboard button depressed within screenspace the bounds of the viewport
 	#[wasm_bindgen(js_name = onKeyDown)]
-	pub fn on_key_down(&self, name: String, modifiers: u8) {
+	pub fn on_key_down(&self, name: String, modifiers: u8, key_repeat: bool) {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		trace!("Key down {:?}, name: {}, modifiers: {:?}", key, name, modifiers);
+		trace!("Key down {:?}, name: {}, modifiers: {:?}, key repeat: {}", key, name, modifiers, key_repeat);
 
-		let message = InputPreprocessorMessage::KeyDown { key, modifier_keys };
+		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// A keyboard button released
 	#[wasm_bindgen(js_name = onKeyUp)]
-	pub fn on_key_up(&self, name: String, modifiers: u8) {
+	pub fn on_key_up(&self, name: String, modifiers: u8, key_repeat: bool) {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		trace!("Key up {:?}, name: {}, modifiers: {:?}", key, name, modifier_keys);
+		trace!("Key up {:?}, name: {}, modifiers: {:?}, key repeat: {}", key, name, modifier_keys, key_repeat);
 
-		let message = InputPreprocessorMessage::KeyUp { key, modifier_keys };
+		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
 		self.dispatch(message);
 	}
 

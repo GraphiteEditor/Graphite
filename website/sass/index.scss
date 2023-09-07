@@ -2,6 +2,7 @@
 	overflow: hidden;
 }
 
+// ▛ LOGO ▜
 #logo {
 	display: flex;
 
@@ -11,6 +12,7 @@
 		max-height: 240px;
 	}
 }
+// ▙ LOGO ▟
 
 .pencil-texture {
 	position: absolute;
@@ -26,6 +28,7 @@
 	}
 }
 
+// ▛ QUICK LINKS ▜
 #quick-links {
 	margin-top: calc(80 * var(--variable-px));
 	display: flex;
@@ -36,15 +39,18 @@
 		display: flex;
 		gap: calc(var(--font-size-link) * 0.8);
 		flex-direction: row;
+		flex-wrap: wrap;
 
 		img {
-			width: 48px;
+			width: calc(var(--font-size-link) * 2);
 			display: block;
 		}
 	}
 }
+// ▙ QUICK LINKS ▟
 
-#hero-message {
+// ▛ TAGLINE ▜
+#tagline {
 	h1 {
 		font-size: var(--font-size-intro-heading);
 	}
@@ -57,6 +63,7 @@
 		}
 	}
 }
+// ▙ TAGLINE ▟
 
 .hexagons {
 	max-width: var(--max-width);
@@ -90,157 +97,13 @@
 	}
 }
 
-#graphite-tomorrow > img {
-	margin: 16px 0;
-}
+// ▛ SCREENSHOTS ▜
+// ▙ SCREENSHOTS ▟
 
-#disciplines {
-	align-items: center;
-
-	.informational-group {
-		margin-top: 0;
-
-		.informational {
-			margin-top: 40px;
-		}
-	}
-}
-
-// #node-graph {
-// 	#node-graph-intro {
-// 		.section {
-// 			align-items: center;
-// 		}
-
-// 		~ section {
-// 			margin-top: calc(80 * var(--variable-px));
-// 		}
-// 	}
-// }
-
-#vector-art {
-	.section {
-		align-items: center;
-
-		.background-video {
-			position: relative;
-			font-size: 0;
-			
-			video {
-				max-width: Min(100%, 1280px);
-			}
-
-			// Uses a white border over the video to cover up the edges of the video which, due to a Chrome rendering bug, displays black edges sometimes when scrolling
-			&::after {
-				content: "";
-				position: absolute;
-				inset: 0;
-				border: 2px solid white;
-				pointer-events: none;
-			}
-		}
-		
-		.download-artwork {
-			display: flex;
-			align-items: center;
-
-			img {
-				width: 128px;
-				height: 128px;
-				border: 12px solid var(--color-walnut);
-				vertical-align: top;
-			}
-
-			p {
-				display: flex;
-				flex-direction: column;
-				max-width: 300px;
-				margin-left: 40px;
-				text-align: left;
-			}
-		}
-	}
-}
-
-#imaginate {
-	#imaginate-intro {
-		.alternating-text {
-			position: relative;
-
-			span {
-				// Move left by half (since it's centered) the average (half the 74px difference) of the variance in word lengths
-				margin-left: calc(-1.54em / 2 / 2);
-				opacity: 0;
-				$alternate-duration: 15s;
-				$alternate-words: 5;
-				animation: $alternate-duration infinite linear 0s fade-word;
-
-				// The 1st child is the widest
-				&:not(:nth-child(1)) {
-					position: absolute;
-					right: 0;
-				}
-
-				@for $i from 1 through $alternate-words {
-					&:nth-child(#{$i}) {
-						animation-delay: ($alternate-duration / $alternate-words * ($i - 1));
-					}
-				}
-
-				@keyframes fade-word {
-					// Fade in at the start (which begins staggered on each item by `animation-delay`)
-					#{0.0%} { opacity: 0; }
-					#{2.5%} { opacity: 1; }
-					// Remain visible for this item's slice of time, then fade out
-					#{0.0% + 100% / ($alternate-words + 1)} { opacity: 1; }
-					#{2.5% + 100% / ($alternate-words + 1)} { opacity: 0; }
-				}
-			}
-		}
-
-		.section {
-			align-items: center;
-		}
-
-		~ section {
-			margin-top: calc(80 * var(--variable-px));
-		}
-	}
-
-	// #imaginate-creative-concepts-carousel {
-	// 	margin-top: 20px;
-
-	// 	.screenshot-details {
-	// 		justify-content: center;
-	// 	}
-
-	// 	+ blockquote {
-	// 		margin-top: 0;
-	// 	}
-	// }
-}
-
-.feature-explainer {
-	margin-top: 40px;
-
-	.diptych {
-		width: 100%;
-
-		.section {
-			justify-content: center;
-			align-items: center;
-
-			h2 {
-				text-align: center;
-			}
-		}
-	}
-
-	.section {
-		flex: 1 1 calc(50% - (80 * var(--variable-px)) / 2);
-	}
-}
-
+// ▛ TODAY AND TOMORROW ▜
+// ▙ TODAY AND TOMORROW ▟
+//
+// ▛ COMMUNITY ▜
 #community {
 	background-color: var(--color-lime);
 
@@ -273,19 +136,11 @@
 				display: flex;
 				gap: 20px;
 				flex: 100000 1 0;
+				flex-wrap: wrap;
+				min-width: Min(100%, calc(240px + 20px + 240px));
 
 				div {
 					min-height: auto;
-				}
-
-				@media screen and (max-width: 1200px) {
-					flex-direction: column;
-					flex: 1 1 100%;
-
-					&.name,
-					&.email {
-						flex: 1 1 100%;
-					}
 				}
 			}
 
@@ -339,6 +194,7 @@
 					font-size: calc(var(--font-size-link) * 0.9);
 					color: inherit;
 					border: var(--border-thickness) solid currentColor;
+					border-radius: 0; // Required for iOS Safari
 					outline: none;
 					margin: 0;
 					padding: 0 var(--font-size-link);
@@ -355,6 +211,7 @@
 					background: none;
 					outline: none;
 					cursor: pointer;
+					border-radius: 0; // Required for iOS Safari
 
 					&:focus {
 						border-color: var(--input-focus-color);
@@ -394,11 +251,109 @@
 		}
 	}
 }
+// ▙ COMMUNITY ▟
 
-#demo-video {
-	max-width: 1000px;
+// ▛ VECTOR ART ▜
+#vector-art {
+	.section {
+		align-items: center;
+
+		.demo-artwork {
+			display: flex;
+			align-items: center;
+			margin-top: 20px;
+
+			img {
+				width: 128px;
+				height: 128px;
+				border: 12px solid var(--color-walnut);
+				vertical-align: top;
+				flex: 0 0 auto;
+			}
+
+			p {
+				display: flex;
+				flex-direction: column;
+				max-width: 300px;
+				margin-left: 40px;
+				text-align: left;
+			}
+		}
+	}
 }
+// ▙ VECTOR ART ▟
 
+// ▛ IMAGINATE ▜
+#imaginate {
+	> .section {
+		align-items: center;
+
+		h1 {
+			text-align: center;
+
+			.alternating-text {
+				position: relative;
+
+				span {
+					// Move left by half (since it's centered) the average (half the 74px difference) of the variance in word lengths
+					margin-left: calc(-1.54em / 2 / 2);
+					opacity: 0;
+					$alternate-duration: 15s;
+					$alternate-words: 5;
+					animation: $alternate-duration infinite linear 0s fade-word;
+
+					// The 1st child is the widest
+					&:not(:nth-child(1)) {
+						position: absolute;
+						right: 0;
+					}
+
+					@for $i from 1 through $alternate-words {
+						&:nth-child(#{$i}) {
+							animation-delay: ($alternate-duration / $alternate-words * ($i - 1));
+						}
+					}
+
+					@keyframes fade-word {
+						// Fade in at the start (which begins staggered on each item by `animation-delay`)
+						#{0.0%} { opacity: 0; }
+						#{2.5%} { opacity: 1; }
+						// Remain visible for this item's slice of time, then fade out
+						#{0.0% + 100% / ($alternate-words + 1)} { opacity: 1; }
+						#{2.5% + 100% / ($alternate-words + 1)} { opacity: 0; }
+					}
+				}
+			}
+		}
+	}
+
+	> .diptych {
+		margin-top: calc(80 * var(--variable-px));
+
+		.section {
+			align-items: center;
+
+			h2 {
+				text-align: center;
+			}
+		}
+	}
+
+	// #imaginate-creative-concepts-carousel {
+	// 	margin-top: 20px;
+
+	// 	.screenshot-details {
+	// 		justify-content: center;
+	// 	}
+
+	// 	+ blockquote {
+	// 		margin-top: 0;
+	// 	}
+	// }
+}
+// ▙ IMAGINATE ▟
+
+// ▛ FUNDRAISING ▜
 #fundraising {
 	background-color: var(--color-seaside);
 	color: rgba(0, 0, 0, 0.9);
@@ -407,8 +362,33 @@
 		max-width: 400px;
 	}
 }
+// ▙ FUNDRAISING ▟
 
+// ▛ PROCEDURALISM ▜
+#proceduralism .section {
+	align-items: center;
+}
+// ▙ PROCEDURALISM ▟
+
+// ▛ DISCIPLINES ▜
+#disciplines .section {
+	align-items: center;
+
+	.informational-group .informational {
+		margin-top: 40px;
+	}
+}
+// ▙ DISCIPLINES ▟
+
+// ▛ DEMO VIDEO ▜
+#demo-video {
+	max-width: 1000px;
+}
+// ▙ DEMO VIDEO ▟
+
+// ▛ GET INVOLVED ▜
 #get-involved-box {
 	background-color: var(--color-lemon);
 	background-blend-mode: color-burn;
 }
+// ▙ GET INVOLVED ▟

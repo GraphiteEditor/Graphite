@@ -1,21 +1,147 @@
 .three-column-layout {
+	position: relative;
 	display: flex;
+	gap: 40px;
+	// Creates a stacking context for the left popout sidebar's sticky positioning
+	transform: translate(0);
+
+	.close-chapter-selection,
+	.open-chapter-selection {
+		display: none;
+		fill: var(--color-navy);
+		background: none;
+		border: none;
+		box-sizing: content-box;
+		padding: 6px;
+		font-size: 0;
+		cursor: pointer;
+
+		svg {
+			width: 36px;
+			height: 36px;
+		}
+	}
 
 	.reading-material {
 		width: 800px;
+		flex: 1 2 100%;
 
 		.prev-next {
 			display: flex;
 			justify-content: space-between;
 			width: 100%;
-
+			gap: 20px;
+			
 			a {
 				display: flex;
 				align-items: center;
 				gap: 20px;
-
+				
 				svg {
 					fill: var(--color-navy);
+				}
+			}
+		}
+	}
+
+	// Page contents right sidebar is removed on smaller screens
+	@media screen and (max-width: 1200px) {
+		.contents {
+			display: none;
+		}
+	}
+
+	// Overlaid fold-out menu for chapter selection
+	@media screen and (max-width: 1000px) {
+		gap: 0;
+		
+		.chapters {
+			position: sticky;
+			width: 0;
+			margin-top: calc(-120 * var(--variable-px));
+			overflow: visible;
+			z-index: 10;
+			height: 0;
+			transition: height 0.25s ease-in-out 0.25s;
+
+			&.open {
+				height: 100vh;
+				transition: height 0s;
+
+				.wrapper-outer {
+					left: 0;
+				}
+			}
+			
+			.wrapper-outer {
+				position: absolute;
+				background: white;
+				top: 0;
+				bottom: 0;
+				padding-left: var(--page-edge-padding);
+				margin-left: calc(-1 * var(--page-edge-padding));
+				padding-bottom: calc(120 * var(--variable-px));
+				margin-bottom: calc(-120 * var(--variable-px));
+				padding-top: 16px;
+				margin-top: -16px;
+				border-right: var(--border-thickness) solid var(--color-walnut);
+				box-sizing: border-box;
+				transition: left 0.25s ease-in-out;
+				left: calc(-1 * (300px + 10px));
+				width: 300px;
+
+				&::after {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					right: -10px;
+					width: 10px;
+					background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
+				}
+
+				.wrapper-inner {
+					position: relative;
+					overflow-y: auto;
+					height: 100%;
+					padding-right: var(--page-edge-padding);
+					padding-bottom: calc(-120 * var(--variable-px));
+
+					ul:first-of-type {
+						margin-top: calc(120 * var(--variable-px));
+					}
+
+					.close-chapter-selection {
+						display: block;
+						position: absolute;
+						top: calc(20px - 6px);
+						right: calc(20px - 6px);
+					}
+				}
+			}
+		}
+
+		.reading-material {
+			margin-left: auto;
+			margin-right: auto;
+			width: 100%;
+
+			.article-title {
+				display: flex;
+				white-space: nowrap;
+
+				.open-chapter-selection {
+					display: inline-block;
+					vertical-align: top;
+					height: calc(var(--font-size-heading-h1) * 1.25);
+					padding-top: 0;
+					padding-bottom: 0;
+					margin-left: -6px;
+					margin-right: calc(20px - 6px);
+				}
+
+				h1 {
+					white-space: normal;
 				}
 			}
 		}
@@ -29,6 +155,7 @@
 		width: 300px;
 		max-height: 100vh;
 		margin-top: -40px;
+		flex: 0 1 auto;
 
 		li {
 			margin-top: 0.5em;
@@ -55,8 +182,11 @@
 		}
 
 
-		&.chapters li.active a {
-			color: var(--color-ale);
+		&.chapters {
+			li.active,
+			li.active a {
+				color: var(--color-ale);
+			}
 		}
 
 		&.contents {

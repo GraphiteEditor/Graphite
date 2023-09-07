@@ -124,6 +124,8 @@ impl LayoutHolder for SelectTool {
 
 		let selected_layers_count = self.tool_data.selected_layers_count;
 		let deactivate_alignment = selected_layers_count < 2;
+		let deactivate_boolean_ops = selected_layers_count < 2;
+		let deactivate_flip = selected_layers_count < 1;
 		let deactivate_pivot = selected_layers_count < 1;
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
@@ -207,41 +209,48 @@ impl LayoutHolder for SelectTool {
 					})
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				PopoverButton::new("Align", "Coming soon").widget_holder(),
+				PopoverButton::new("Align", "Coming soon").disabled(deactivate_alignment).widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("FlipHorizontal", 24)
 					.tooltip("Flip Horizontal")
+					.disabled(deactivate_flip)
 					.on_update(|_| SelectToolMessage::FlipHorizontal.into())
 					.widget_holder(),
 				IconButton::new("FlipVertical", 24)
 					.tooltip("Flip Vertical")
+					.disabled(deactivate_flip)
 					.on_update(|_| SelectToolMessage::FlipVertical.into())
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				PopoverButton::new("Flip", "Coming soon").widget_holder(),
+				PopoverButton::new("Flip", "Coming soon").disabled(deactivate_flip).widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 				IconButton::new("BooleanUnion", 24)
-					.tooltip("Boolean Union (coming soon)")
+					.tooltip("Coming Soon: Boolean Union")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractFront", 24)
-					.tooltip("Boolean Subtract Front (coming soon)")
+					.tooltip("Coming Soon: Boolean Subtract Front")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanSubtractBack", 24)
-					.tooltip("Boolean Subtract Back (coming soon)")
+					.tooltip("Coming Soon: Boolean Subtract Back")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanIntersect", 24)
-					.tooltip("Boolean Intersect (coming soon)")
+					.tooltip("Coming Soon: Boolean Intersect")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				IconButton::new("BooleanDifference", 24)
-					.tooltip("Boolean Difference (coming soon)")
+					.tooltip("Coming Soon: Boolean Difference")
+					.disabled(deactivate_boolean_ops)
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				PopoverButton::new("Boolean", "Coming soon").widget_holder(),
+				PopoverButton::new("Boolean Operations", "Coming soon").disabled(deactivate_boolean_ops).widget_holder(),
 			],
 		}]))
 	}
@@ -595,8 +604,6 @@ impl Fsm for SelectToolFsmState {
 
 						Dragging
 					} else {
-						responses.add(DocumentMessage::StartTransaction);
-
 						if !input.keyboard.get(add_to_selection as usize) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
@@ -778,7 +785,7 @@ impl Fsm for SelectToolFsmState {
 						let intersection = document.document_legacy.intersects_quad_root(quad, render_data);
 
 						if let Some(path) = intersection.last() {
-							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(&layer)).map(|path| path.to_vec()).collect();
+							let replacement_selected_layers: Vec<_> = document.selected_layers().filter(|&layer| !path.starts_with(layer)).map(|path| path.to_vec()).collect();
 
 							tool_data.layers_dragging.clear();
 							tool_data.layers_dragging.append(replacement_selected_layers.clone().as_mut());
@@ -1086,7 +1093,6 @@ fn drag_shallowest_manipulation(
 
 		tool_data.layers_dragging.append(selected.clone().as_mut());
 		responses.add(DocumentMessage::AddSelectedLayers { additional_layers: selected.clone() });
-		return;
 	}
 	// Accel click selects the deepest layer directly
 	else if input.keyboard.get(select_deepest as usize) {
@@ -1099,7 +1105,7 @@ fn drag_shallowest_manipulation(
 	// Check whether a layer is selected for next selection calculations
 	else if !selected_layers_collected.is_empty() {
 		// Check if the intersected layer path is already selected
-		let already_selected_parent = previous_parents.contains(&&[incoming_parent].as_slice());
+		let already_selected_parent = previous_parents.contains(&[incoming_parent].as_slice());
 		let mut search = vec![];
 		let mut recursive_found = false;
 
@@ -1108,10 +1114,10 @@ fn drag_shallowest_manipulation(
 			// Use the combined layers of currently selected and incoming and get shallowest common folder
 			let mut combined_layers = selected_layers_collected.to_vec();
 			if !combined_layers.contains(&incoming_layer_path_vector.as_slice()) && !incoming_layer_path_vector.is_empty() {
-				combined_layers.push(&incoming_layer_path_vector);
+				combined_layers.push(incoming_layer_path_vector);
 			}
 			// Shared shallowest common folder of the combined layers
-			let shallowest_common_folder = document.document_legacy.shallowest_common_folder(combined_layers.to_vec().into_iter()).unwrap_or_default().to_vec();
+			let shallowest_common_folder = document.document_legacy.shallowest_common_folder(combined_layers.iter().copied()).unwrap_or_default().to_vec();
 			let mut selected_layer_path_parent = shallowest_common_folder.to_vec();
 
 			// Determine if the incoming layer path is already selected
@@ -1120,15 +1126,15 @@ fn drag_shallowest_manipulation(
 				.any(|layer| &incoming_layer_path_vector[..layer.len()] == layer);
 
 			// Recursively search through each children of the selected layer path parent, if not found move up a layer
-			while selected_layer_path_parent.len() > 0 && !recursive_found {
+			while !selected_layer_path_parent.is_empty() && !recursive_found {
 				let selected_children_layer_paths = document.document_legacy.folder_children_paths(&selected_layer_path_parent);
 				for child in selected_children_layer_paths {
 					if child == *incoming_layer_path_vector {
 						search = child;
 						recursive_found = true;
 						break;
-					} else if document.document_legacy.is_folder(child.to_vec()) {
-						recursive_found = recursive_search(document, &child, &incoming_layer_path_vector);
+					} else if document.document_legacy.is_folder(&child) {
+						recursive_found = recursive_search(document, &child, incoming_layer_path_vector);
 						if recursive_found {
 							search = child;
 							break;
@@ -1169,8 +1175,8 @@ fn drag_shallowest_manipulation(
 				}
 			} else if selected_layers_count > 1 {
 				let direct_child = incoming_layer_path_vector
-					.to_vec()
-					.into_iter()
+					.iter()
+					.copied()
 					.filter(|path| !shallowest_common_folder.contains(path))
 					.take(1)
 					.collect::<Vec<_>>();
@@ -1193,9 +1199,9 @@ fn drag_shallowest_manipulation(
 					.into_iter()
 					.filter(|layer| {
 						if !search.is_empty() {
-							layer.len() >= search.len() && &layer[..search.len()] != search
+							layer.len() >= search.len() && layer[..search.len()] != search
 						} else {
-							layer.len() >= direct_child.len() && &layer[..direct_child.len()] != direct_child
+							layer.len() >= direct_child.len() && layer[..direct_child.len()] != direct_child
 						}
 					})
 					.for_each(|layer| replacement_selected_layers.push(layer.to_vec()));
@@ -1235,21 +1241,19 @@ fn drag_shallowest_manipulation(
 					}
 				}
 				// Normal Click: Selecting new layers
-				else {
-					if !already_selected {
-						if !search.is_empty() {
-							tool_data.layers_dragging.clear();
-							tool_data.layers_dragging = vec![search.to_vec()];
-							responses.add(DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![search],
-							});
-						} else {
-							tool_data.layers_dragging.clear();
-							tool_data.layers_dragging = vec![direct_child.to_vec()];
-							responses.add(DocumentMessage::SetSelectedLayers {
-								replacement_selected_layers: vec![direct_child],
-							});
-						}
+				else if !already_selected {
+					if !search.is_empty() {
+						tool_data.layers_dragging.clear();
+						tool_data.layers_dragging = vec![search.to_vec()];
+						responses.add(DocumentMessage::SetSelectedLayers {
+							replacement_selected_layers: vec![search],
+						});
+					} else {
+						tool_data.layers_dragging.clear();
+						tool_data.layers_dragging = vec![direct_child.to_vec()];
+						responses.add(DocumentMessage::SetSelectedLayers {
+							replacement_selected_layers: vec![direct_child],
+						});
 					}
 				}
 			}
@@ -1302,7 +1306,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, interse
 	let previous_parents: Vec<_> = (0..selected_layers_collected.len())
 		.map(|i| &selected_layers_collected.get(i).unwrap_or(&empty_vector.as_slice())[..1])
 		.collect();
-	let incoming_parent_selected = previous_parents.contains(&&[incoming_parent].as_slice());
+	let incoming_parent_selected = previous_parents.contains(&[incoming_parent].as_slice());
 
 	if incoming_parent_selected {
 		// Permutations of intersected layer
@@ -1351,15 +1355,12 @@ fn edit_layer_deepest_manipulation(intersect: &Layer, responses: &mut VecDeque<M
 	}
 }
 
+#[allow(clippy::if_same_then_else)]
 fn recursive_search(document: &DocumentMessageHandler, layer_path: &[u64], incoming_layer_path_vector: &Vec<u64>) -> bool {
 	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
 	for path in layer_paths {
-		if path == *incoming_layer_path_vector {
+		if path == *incoming_layer_path_vector || (document.document_legacy.is_folder(&path) && recursive_search(document, &path, incoming_layer_path_vector)) {
 			return true;
-		} else if document.document_legacy.is_folder(path.to_vec()) {
-			if recursive_search(document, &path, incoming_layer_path_vector) {
-				return true;
-			}
 		}
 	}
 	false

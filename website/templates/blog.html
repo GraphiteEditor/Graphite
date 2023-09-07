@@ -13,7 +13,7 @@
 	{% for page in section.pages %}
 	<section>
 		<div class="banner">
-			<a href="{{ page.path }}"><img src="{{ page.extra.banner | safe }}" /></a>
+			<a href="{{ page.path }}"><img src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" /></a>
 		</div>
 		<div class="details">
 			<div class="headline">

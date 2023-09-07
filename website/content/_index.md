@@ -1,21 +1,26 @@
 +++
 title = "Web-based vector graphics editor and design tool"
-template = "section.html" # Avoids needing a separate `index.html` template that's identical to `section.html`
+template = "section.html"
 
 [extra]
 css = ["/index.css"]
-js = ["/image-interaction.js", "/fundraising.js"]
+js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 +++
 
+<!-- ▛ LOGO ▜ -->
 <section id="logo">
 	<img src="https://static.graphite.rs/logos/graphite-logotype-color.svg" alt="Graphite Logo" />
 </section>
+<!-- ▙ LOGO ▟ -->
 
-<img class="pencil-texture" src="https://static.graphite.rs/textures/pencil-texture.png" alt="" />
+<img class="pencil-texture" src="https://static.graphite.rs/textures/pencil-texture.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" />
 
+<!-- ▛ QUICK LINKS ▜ -->
 <section id="quick-links">
-	<a href="#community" class="button arrow">Subscribe to the newsletter</a>
-	<a href="/donate" class="button arrow">&hearts; Support the mission</a>
+	<div>
+		<a href="#community" class="button arrow">Subscribe to the newsletter</a>
+		<a href="/donate" class="button arrow">&hearts; Support the mission</a>
+	</div>
 	<div>
 		<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
 			<img src="https://static.graphite.rs/icons/github.svg" alt="GitHub" />
@@ -26,19 +31,25 @@ js = ["/image-interaction.js", "/fundraising.js"]
 		<a href="https://twitter.com/graphiteeditor" target="_blank">
 			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
 		</a>
+		<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
+			<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />
+		</a>
 		<a href="https://discord.graphite.rs" target="_blank">
 			<img src="https://static.graphite.rs/icons/discord.svg" alt="Discord" />
 		</a>
 	</div>
 </section>
+<!-- ▙ QUICK LINKS ▟ -->
+<!--                -->
+<!-- ▛ TAGLINE ▜ -->
+<section id="tagline">
 
-<section id="hero-message">
-
-# Redefining state-of-the-art graphics editing
+<h1 class="balance-text">Redefining state&#8209;of&#8209;the&#8209;art graphics editing</h1>
 
 <p class="balance-text"><strong>Graphite</strong> is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully nondestructive editing experience.</p>
 
 </section>
+<!-- ▙ TAGLINE ▟ -->
 
 <div class="hexagons">
 	<div>
@@ -52,21 +63,22 @@ js = ["/image-interaction.js", "/fundraising.js"]
 	</div>
 </div>
 
-<section id="screenshots" class="carousel window-size-1" data-carousel>
+<!-- ▛ SCREENSHOTS ▜ -->
+<section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 	<div class="carousel-slide">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.png" alt="Graphite UI image #3" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.png" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.png" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__2.png" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__2.png" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="screenshot-details">
 		<div class="carousel-controls">
@@ -88,10 +100,10 @@ js = ["/image-interaction.js", "/fundraising.js"]
 		</div>
 		<div class="screenshot-description">
 			<p class="active" data-carousel-description>
-				<em>Valley of Spires</em> — <a href="https://static.graphite.rs/graphite-files/valley-of-spires.graphite">Download</a> the artwork and open it in <a href="https://79dda0fc.graphite.pages.dev/">this previous version</a> of the Graphite editor.
+				<em>Valley of Spires</em> — <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
 			</p>
 			<p data-carousel-description>
-				Design mockup for the work-in-progress node graph raster editing pipeline. Some raster nodes shown here are not implemented yet.
+				Design mockup for the work-in-progress node graph raster editing pipeline. Some UI concepts and raster nodes shown here are not implemented yet.
 			</p>
 			<p data-carousel-description>
 				Design mockup for the work-in-progress viewport raster editing workflow. Some features shown here are not implemented yet.
@@ -100,10 +112,13 @@ js = ["/image-interaction.js", "/fundraising.js"]
 	</div>
 </section>
 
-<section class="section-row">
+<!-- ▙ SCREENSHOTS ▟ -->
+<!--                      -->
+<!-- ▛ TODAY AND TOMORROW ▜ -->
+<section id="today-and-tomorrow">
 <div class="diptych">
 
-<div id="graphite-today" class="section">
+<div class="section">
 
 # Graphite today
 
@@ -129,7 +144,7 @@ js = ["/image-interaction.js", "/fundraising.js"]
 Graphite is a lightweight vector graphics editor that runs in your browser. Its node-based compositor lets you apply image effects and co-create art with generative AI.
 
 </div>
-<div id="graphite-tomorrow" class="section">
+<div class="section">
 
 # Graphite tomorrow
 
@@ -158,10 +173,11 @@ Graphite is a lightweight vector graphics editor that runs in your browser. Its 
 
 </div>
 </section>
-
+<!-- ▙ TODAY AND TOMORROW ▟ -->
+<!--                     -->
+<!-- ▛ COMMUNITY ▜ -->
 <section id="community" class="feature-box">
 <div class="box">
-<section class="section-row">
 <div class="diptych">
 
 <div id="newsletter" class="section">
@@ -199,12 +215,9 @@ You'll receive your first newsletter email with the next major Graphite news.
 </form>
 
 </div>
-
 <div id="social" class="section">
 
 # Follow along
-
-<!-- High-quality open source software is a community endeavor. Hang out with hundreds of friendly Graphite users and developers. -->
 
 <div class="social-links">
 	<div class="column">
@@ -232,11 +245,12 @@ You'll receive your first newsletter email with the next major Graphite news.
 </div>
 
 </div>
-</section>
 </div>
 </section>
-
-<section id="vector-art" class="section-row">
+<!-- ▙ COMMUNITY ▟ -->
+<!--                 -->
+<!-- ▛ VECTOR ART ▜ -->
+<section id="vector-art">
 <div class="section">
 
 # Art takes shape
@@ -245,67 +259,33 @@ Make vector art out of shapes ranging from simple geometric primitives to comple
 
 Style your shapes with strokes, fills, and gradients. Mix your layers with blend modes. Then export as SVG.
 
-<div class="background-video">
+<div class="video-background">
 	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
 		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
 	</video>
 </div>
-
-<div class="download-artwork">
-	<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.png" alt="Vector art of Just of Potted Cactus" />
+<div class="demo-artwork">
+	<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">
+		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Just of Potted Cactus" />
+	</a>
 	<p>
 		<span class="balance-text">
 			<em>Just a Potted Cactus</em>
 		</span>
 		<br />
 		<span class="balance-text">
-			<a href="https://static.graphite.rs/graphite-files/just-a-potted-cactus.graphite">Download</a>
-			the artwork and open it in the
-			<a href="https://editor.graphite.rs">Graphite editor</a>
+			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to explore it yourself.
 		</span>
 	</p>
 </div>
 
 </div>
 </section>
-
-<!-- <section id="node-graph">
-
-<section id="node-graph-intro" class="section-row">
-<div class="section">
-
-# The power of nodes
-
-At Graphite's core is its **node graph**, a compositing engine and artist-friendly visual scripting environment that simplifies laborious steps in your design process.
-
-</div>
-</section>
-
-<section id="node-graph-adjustment-layers" class="section-row feature-explainer">
-<div class="diptych">
-
-<div class="section">
-
-## Adjust layers with<br />nondestructive effects
-
-Apply effects directly in the layer stack to modify the artwork underneath. Combine them in unique ways by connecting the effect nodes to one another.
-
-- Per-pixel color adjustments: levels, curves, exposure, contrast, saturation
-- Image-wide creative filters: blur/sharpen, high pass, flood fill, warp, fresco
-- Alpha-aware image styles: color overlay, drop shadow, inner/outer glow
-- Effort-saving modifiers: transform, mirror, tile, scatter, linear/radial repeat
-- Procedural generators: solid color, gradient, pattern, coherent/white noise
-
-</div>
-
-</div>
-</section>
-
-</section> -->
-
+<!-- ▙ VECTOR ART ▟ -->
+<!--                 -->
+<!-- ▛ IMAGINATE ▜ -->
 <section id="imaginate">
 
-<section id="imaginate-intro" class="section-row">
 <div class="section">
 
 <h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
@@ -314,9 +294,6 @@ Apply effects directly in the layer stack to modify the artwork underneath. Comb
 <!-- [Learn how](/learn/node-graph/imaginate) it works. -->
 
 </div>
-</section>
-
-<section id="imaginate-vector-art" class="section-row feature-explainer">
 <div class="diptych">
 
 <div class="section">
@@ -327,10 +304,10 @@ Apply effects directly in the layer stack to modify the artwork underneath. Comb
 
 <div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/light-bulb-before.png" alt="Vector illustration of a light bulb" />
+		<img src="https://static.graphite.rs/content/index/light-bulb-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector illustration of a light bulb" />
 	</div>
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/light-bulb-after.png" alt="Watercolor painting of a light bulb" />
+		<img src="https://static.graphite.rs/content/index/light-bulb-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Watercolor painting of a light bulb" />
 	</div>
 	<div class="slide-bar">
 		<div class="arrows">
@@ -348,7 +325,6 @@ Apply effects directly in the layer stack to modify the artwork underneath. Comb
 <blockquote class="balance-text require-polyfill"><strong>Watercolor painting</strong> of a light bulb gleaming with an exclamation mark inside</blockquote>
 
 </div>
-
 <div class="section">
 
 ## Work fast, be sloppy
@@ -357,10 +333,10 @@ Apply effects directly in the layer stack to modify the artwork underneath. Comb
 
 <div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/california-poppies-before.png" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
+		<img src="https://static.graphite.rs/content/index/california-poppies-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
 	</div>
 	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/california-poppies-after.png" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
+		<img src="https://static.graphite.rs/content/index/california-poppies-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
 	</div>
 	<div class="slide-bar">
 		<div class="arrows">
@@ -380,13 +356,14 @@ Apply effects directly in the layer stack to modify the artwork underneath. Comb
 </div>
 
 </div>
-</section>
 
 </section>
-
+<!-- ▙ IMAGINATE ▟ -->
+<!--                 -->
+<!-- ▛ FUNDRAISING ▜ -->
 <section id="fundraising" class="feature-box">
 <div class="box">
-<div class="section-row">
+<div>
 
 <div class="section">
 
@@ -422,9 +399,42 @@ Graphite is built by a small, dedicated crew of volunteers in need of resources 
 </div>
 </div>
 </section>
+<!-- ▙ FUNDRAISING ▟ -->
+<!--                   -->
+<!-- ▛ PROCEDURALISM ▜ -->
+<section id="proceduralism">
+<div class="section">
 
-<section class="section-row">
-<div id="disciplines" class="section">
+# Powerful proceduralism
+
+The data-driven approach to design affords unique capabilities that are presently in-development.
+
+<div class="informational-group features four-wide">
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span class="balance-text">Fully nondestructive editing with node-driven layers</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span class="balance-text">Infinitely scalable raster content with no pixelation</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span class="balance-text">Integrates generative AI models and graphics algorithms</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span class="balance-text">Procedural pipelines for studio production environments</span>
+	</div>
+</div>
+
+</div>
+</section>
+<!-- ▙ PROCEDURALISM ▟ -->
+<!--                   -->
+<!-- ▛ DISCIPLINES ▜ -->
+<section id="disciplines">
+<div class="section">
 
 # One app to rule them all
 
@@ -459,45 +469,19 @@ Stop jumping between programs. Planned features will make Graphite a first-class
 
 </div>
 </section>
-
-<section id="vector-art" class="section-row">
-<div class="section">
-
-# Powerful proceduralism
-
-The data-driven approach to design affords unique capabilities that are presently in-development.
-
-<div class="informational-group features four-wide">
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span class="balance-text">Fully nondestructive editing with node-driven layers</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span class="balance-text">Infinitely scalable raster content with no pixelation</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span class="balance-text">Integrates generative AI models and graphics algorithms</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span class="balance-text">Procedural pipelines for studio production environments</span>
-	</div>
-</div>
-
-</div>
-</section>
-
-<section id="demo-video" class="section-row">
+<!-- ▙ DISCIPLINES ▟ -->
+<!--                  -->
+<!-- ▛ DEMO VIDEO ▜ -->
+<section id="demo-video">
 	<div class="section">
 		<div class="video-embed aspect-16x9">
-			<iframe width="1280" height="720" src="https://www.youtube.com/embed/JgJvAHQLnXA" title="Graphite Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+			<img data-video-embed="JgJvAHQLnXA" src="https://static.graphite.rs/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
 		</div>
-		<!-- <a href="/blog/mission-statement" class="link arrow">Mission Statement</a> -->
 	</div>
 </section>
-
+<!-- ▙ DEMO VIDEO ▟ -->
+<!--                   -->
+<!-- ▛ GET INVOLVED ▜ -->
 <section id="get-involved-box" class="feature-box">
 <div class="box">
 <div class="diptych">
@@ -518,3 +502,4 @@ The data-driven approach to design affords unique capabilities that are presentl
 </div>
 </div>
 </section>
+<!-- ▙ GET INVOLVED ▟ -->

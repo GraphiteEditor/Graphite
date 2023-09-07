@@ -1,9 +1,8 @@
-const NAV_BUTTON_INITIAL_FONT_SIZE = 32;
+const NAV_BUTTON_INITIAL_FONT_SIZE = 28; // Keep up to date with the initial `--nav-font-size` in base.scss
 const RIPPLE_ANIMATION_MILLISECONDS = 100;
-const RIPPLE_WIDTH = 120;
+const RIPPLE_WIDTH = 100;
 const HANDLE_STRETCH = 0.4;
 
-let ripplesInitialized;
 let navButtons;
 let rippleSvg;
 let ripplePath;
@@ -12,21 +11,20 @@ let ripples;
 let activeRippleIndex;
 
 window.addEventListener("DOMContentLoaded", initializeRipples);
-window.addEventListener("resize", () => animate(true));
 
 function initializeRipples() {
-	ripplesInitialized = true;
+	window.addEventListener("resize", () => animate(true));
 
 	navButtons = document.querySelectorAll("header nav a");
 	rippleSvg = document.querySelector("header .ripple");
 	ripplePath = rippleSvg.querySelector("path");
-	fullRippleHeight = Number.parseInt(window.getComputedStyle(rippleSvg).height, 10) - 4;
+	fullRippleHeight = Number.parseInt(window.getComputedStyle(rippleSvg).height, 10);
 
 	ripples = Array.from(navButtons).map((button) => ({
 		element: button,
+		goingUp: false,
 		animationStartTime: 0,
 		animationEndTime: 0,
-		goingUp: false,
 	}));
 
 	activeRippleIndex = ripples.findIndex((ripple) => {
@@ -51,11 +49,12 @@ function initializeRipples() {
 			const elapsed = now - start;
 			const remaining = stop - now;
 
+			ripple.goingUp = goingUp;
+			// Encode the potential reversing of direction via the animation start and end times
 			ripple.animationStartTime = now < stop ? now - remaining : now;
 			ripple.animationEndTime = now < stop ? now + elapsed : now + RIPPLE_ANIMATION_MILLISECONDS;
 
-			ripple.goingUp = goingUp;
-			animate(false);
+			animate();
 		};
 
 		ripple.element.addEventListener("pointerenter", () => updateTimings(true));
@@ -64,63 +63,66 @@ function initializeRipples() {
 
 	if (activeRippleIndex >= 0) ripples[activeRippleIndex] = {
 		...ripples[activeRippleIndex],
+		goingUp: true,
+		// Set to non-zero, but very old times (1ms after epoch), so the math works out as if the animation has already completed
 		animationStartTime: 1,
 		animationEndTime: 1 + RIPPLE_ANIMATION_MILLISECONDS,
-		goingUp: true,
 	};
 
 	setRipples();
 }
 
-function animate(forceRefresh) {
-	if (!ripplesInitialized) return;
-
-	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime && ripple.animationEndTime && Date.now() <= ripple.animationEndTime);
+function animate(forceRefresh = false) {
+	const FUZZ_MILLISECONDS = 100;
+	const animateThisFrame = ripples.some((ripple) => ripple.animationStartTime > 0 && ripple.animationEndTime > 0 && Date.now() <= ripple.animationEndTime + FUZZ_MILLISECONDS);
 
 	if (animateThisFrame || forceRefresh) {
 		setRipples();
-		window.requestAnimationFrame(() => animate(false));
+		window.requestAnimationFrame(() => animate());
 	}
 }
 
 function setRipples() {
+	const lerp = (a, b, t) => a + (b - a) * t;
+	const ease = (x) => 1 - (1 - x) * (1 - x);
+	const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
+	
+	const rippleSvgRect = rippleSvg.getBoundingClientRect();
+
+	const rippleStrokeWidth = Number.parseInt(window.getComputedStyle(ripplePath).getPropertyValue("--border-thickness"), 10);
 	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize, 10) || NAV_BUTTON_INITIAL_FONT_SIZE;
 	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
 
-	const rippleHeight = fullRippleHeight * (mediaQueryScaleFactor * 0.5 + 0.5);
-	const rippleSvgRect = rippleSvg.getBoundingClientRect();
-	const rippleSvgLeft = rippleSvgRect.left;
-	const rippleSvgWidth = rippleSvgRect.width;
+	// Position of bottom centerline to top centerline
+	const rippleBaselineCenterline = fullRippleHeight - rippleStrokeWidth / 2;
+	const rippleToplineCenterline = rippleStrokeWidth / 2;
 
-	let path = `M 0,${rippleHeight + 3} `;
+	let path = `M -16,${rippleBaselineCenterline - 16} L 0,${rippleBaselineCenterline} `;
 
 	ripples.forEach((ripple) => {
-		if (!ripple.animationStartTime || !ripple.animationEndTime) return;
+		if (ripple.animationStartTime === 0 || ripple.animationEndTime === 0) return;
 
-		const t = Math.min((Date.now() - ripple.animationStartTime) / (ripple.animationEndTime - ripple.animationStartTime), 1);
-		const height = rippleHeight * (ripple.goingUp ? ease(t) : 1 - ease(t));
+		const elapsed = Date.now() - ripple.animationStartTime;
+		const duration = ripple.animationEndTime - ripple.animationStartTime;
+		const t = ease(clamp01(elapsed / duration));
+
+		const bumpCrestRaiseFactor = (ripple.goingUp ? t : 1 - t) * mediaQueryScaleFactor;
+		const bumpCrest = lerp(rippleToplineCenterline, rippleBaselineCenterline, bumpCrestRaiseFactor);
+		const bumpCrestDelta = bumpCrest - rippleStrokeWidth / 2;
 
 		const buttonRect = ripple.element.getBoundingClientRect();
-
 		const buttonCenter = buttonRect.width / 2;
-		const rippleCenter = (RIPPLE_WIDTH / 2) * mediaQueryScaleFactor;
+		const rippleCenter = RIPPLE_WIDTH / 2 * mediaQueryScaleFactor;
 		const rippleOffset = rippleCenter - buttonCenter;
+		const rippleStartX = buttonRect.left - rippleSvgRect.left - rippleOffset;
+		const handleRadius = rippleCenter * HANDLE_STRETCH;
 
-		const rippleStartX = buttonRect.left - rippleSvgLeft - rippleOffset;
-
-		const rippleRadius = (RIPPLE_WIDTH / 2) * mediaQueryScaleFactor;
-		const handleRadius = rippleRadius * HANDLE_STRETCH;
-
-		path += `L ${rippleStartX},${rippleHeight + 3} `;
-		path += `c ${handleRadius},0 ${rippleRadius - handleRadius},${-height} ${rippleRadius},${-height} `;
-		path += `s ${rippleRadius - handleRadius},${height} ${rippleRadius},${height} `;
+		path += `L ${rippleStartX},${rippleBaselineCenterline} `;
+		path += `c ${handleRadius},0 ${rippleCenter - handleRadius},${-bumpCrestDelta} ${rippleCenter},${-bumpCrestDelta} `;
+		path += `s ${rippleCenter - handleRadius},${bumpCrestDelta} ${rippleCenter},${bumpCrestDelta} `;
 	});
 
-	path += `l ${rippleSvgWidth},0`;
+	path += `L ${rippleSvgRect.width + 16},${rippleBaselineCenterline} L${rippleSvgRect.width + 16},${rippleBaselineCenterline - 16}`;
 
 	ripplePath.setAttribute("d", path);
-}
-
-function ease(x) {
-	return 1 - (1 - x) * (1 - x);
 }

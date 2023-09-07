@@ -5,7 +5,7 @@ title = "About Graphite"
 css = ["/about.css"]
 +++
 
-<section class="section-row">
+<section>
 <div class="section">
 
 # About Graphite
@@ -15,7 +15,7 @@ Graphite is a community-built, open source software project that is free to use 
 </div>
 </section>
 
-<section class="section-row">
+<section>
 <div class="section">
 
 ## Project
@@ -25,7 +25,7 @@ The idea for Graphite began with a desire to create artwork and edit photos usin
 </div>
 </section>
 
-<section class="section-row">
+<section>
 
 <div class="diptych">
 
@@ -90,7 +90,7 @@ As an independent community-driven software project, Graphite will always remain
 })();
 </script> -->
 
-<!-- <section id="opener-message" class="section-row">
+<!-- <section id="opener-message">
 <div class="section">
 
 ## A 2D creative tool made for everyone
@@ -118,7 +118,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 <div class="section">
 
-![Photo of Keavon Chambers](https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.png)
+<img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
 ## Keavon Chambers <span class="flag" title="American">🇺🇸</span>
 
@@ -133,7 +133,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 </div>
 <div class="section">
 
-![Photo of Dennis Kobert](https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.png)
+<img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
 ## Dennis Kobert <span class="flag" title="German">🇩🇪</span>
 
@@ -148,7 +148,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 </div>
 <div class="section">
 
-![Photo of Hypercube](https://static.graphite.rs/content/about/core-team-photo-hypercube.png)
+<img src="https://static.graphite.rs/content/about/core-team-photo-hypercube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
 ## "Hypercube" <span class="flag" title="British">🇬🇧</span>
 
@@ -168,7 +168,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 </section>
 
 
-<section class="section-row">
+<section>
 
 <div class="triptych">
 

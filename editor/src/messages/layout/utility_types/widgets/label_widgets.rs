@@ -12,6 +12,18 @@ pub struct IconLabel {
 	pub tooltip: String,
 }
 
+#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
+pub struct ImageLabel {
+	#[widget_builder(constructor)]
+	pub image: String,
+
+	pub width: Option<String>,
+
+	pub height: Option<String>,
+
+	pub tooltip: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, WidgetBuilder, specta::Type)]
 pub struct Separator {
 	pub direction: SeparatorDirection,

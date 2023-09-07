@@ -54,6 +54,13 @@ pub enum PortfolioMessage {
 		data: Vec<u8>,
 		is_default: bool,
 	},
+	GraphViewOverlay {
+		open: bool,
+	},
+	GraphViewOverlayToggle,
+	GraphViewOverlayToggleDisabled {
+		disabled: bool,
+	},
 	ImaginateCheckServerStatus,
 	ImaginatePollServerStatus,
 	ImaginatePreferences,

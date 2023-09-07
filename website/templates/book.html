@@ -35,36 +35,54 @@
 {% set flat_index_of_this = 0 %}
 
 <section class="three-column-layout">
-	<aside class="chapters">
-		<ul>
-			<li class="title {% if current_path == book.path %}active{% endif %}"><a href="{{ book.path }}">{{ book.title }}</a></li>
-		</ul>
-		{% for chapter in chapters %}
-		<ul>
-			<li class="chapter {% if current_path == chapter.path %}active{% endif %}"><a href="{{ chapter.path }}">&raquo; {{ chapter.title }}</a></li>
+	<aside class="chapters" data-chapters>
+		<div class="wrapper-outer">
+			<div class="wrapper-inner">
+				<button class="close-chapter-selection" data-close-chapter-selection>
+					<svg viewBox="0 0 24 24">
+						<polygon points="20.7,4.7 19.3,3.3 12,10.6 4.7,3.3 3.3,4.7 10.6,12 3.3,19.3 4.7,20.7 12,13.4 19.3,20.7 20.7,19.3 13.4,12" />
+					</svg>
+				</button>
+				<ul>
+					<li class="title{% if current_path == book.path %} active{% endif %}"><a href="{{ book.path }}" title="{{ book.title }}">{{ book.title }}</a></li>
+				</ul>
+				{% for chapter in chapters %}
+				<ul>
+					<li class="chapter{% if current_path == chapter.path %} active{% endif %}"><a href="{{ chapter.path }}" title="{{ chapter.title }}">&raquo; {{ chapter.title }}</a></li>
 
-			{% set_global flat_pages = flat_pages | concat(with = chapter) %}
-			{% if chapter == this %}{% set_global flat_index_of_this = flat_pages | length - 1 %}{% endif %}
+					{% set_global flat_pages = flat_pages | concat(with = chapter) %}
+					{% if chapter == this %}{% set_global flat_index_of_this = flat_pages | length - 1 %}{% endif %}
 
-			{% if chapter.pages %}
+					{% if chapter.pages %}
 
-			{% for page in chapter.pages | sort(attribute = "extra.order") %}
+					{% for page in chapter.pages | sort(attribute = "extra.order") %}
 
-			{% set_global flat_pages = flat_pages | concat(with = page) %}
-			{% if page == this %}{% set_global flat_index_of_this = flat_pages | length - 1 %}{% endif %}
+					{% set_global flat_pages = flat_pages | concat(with = page) %}
+					{% if page == this %}{% set_global flat_index_of_this = flat_pages | length - 1 %}{% endif %}
 
-			<li {% if current_path == page.path %}class="active"{% endif %}><a href="{{ page.path }}">&raquo; {{ page.title }}</a></li>
+					<li {% if current_path == page.path %}class="active"{% endif %}><a href="{{ page.path }}" title="{{ page.title }}">&raquo; {{ page.title }}</a></li>
 
-			{% endfor %}
+					{% endfor %}
 
-			{% endif %}
-		</ul>
-		{% endfor %}
+					{% endif %}
+				</ul>
+				{% endfor %}
+			</div>
+		</div>
 	</aside>
 
-	<section class="section-row reading-material">
+	<section class="reading-material">
 		<div class="section">
-			<h1>{{ this.title }}</h1>
+			<div class="article-title">
+				<button title="Open chapter selection" class="open-chapter-selection" data-open-chapter-selection>
+					<svg viewBox="0 0 24 24">
+						<rect x="2" y="4" width="20" height="2"/>
+						<rect x="2" y="18" width="20" height="2"/>
+						<rect x="2" y="11" width="20" height="2"/>
+					</svg>
+				</button>
+				<h1>{{ this.title }}</h1>
+			</div>
 			<article>
 			{{ this.content | safe }}
 			</article>
@@ -76,7 +94,7 @@
 				{% set prev = flat_pages | nth(n = flat_index_of_this - 1) %}
 				{% endif %}
 				{% if prev %}
-				<a href="{{ prev.path }}">
+				<a href="{{ prev.path }}" title="{{ prev.title }}">
 					<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
 						<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
 						<polygon points="24.71,10.71 23.29,9.29 12.59,20 23.29,30.71 24.71,29.29 15.41,20" />
@@ -91,7 +109,7 @@
 				{% set next = flat_pages | nth(n = flat_index_of_this + 1) %}
 				{% endif %}
 				{% if next %}
-				<a href="{{ next.path }}">
+				<a href="{{ next.path }}" title="{{ next.title }}">
 					{{ next.title }}
 					<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
 						<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
@@ -106,33 +124,29 @@
 	<aside class="contents">
 		<ul>
 			<li class="title">
-				<a href="#">
-					{% if this.toc | length > 0 %}
-					Contents<span> (top 🡑)</span>
-					{% else %}
-					Back to top 🡑
-					{% endif %}
+				<a href="#" title="{% if this.toc | length > 0 %}Contents (top ↑){% else %}Back to top ↑{% endif %}">
+					{% if this.toc | length > 0 %}Contents<span> (top ↑)</span>{% else %}Back to top ↑{% endif %}
 				</a>
 			</li>
 		</ul>
 		<ul>
 			{% for depth_1 in this.toc %}
-			<li><a href="#{{ depth_1.id }}">{{ depth_1.title }}</a></li>
+			<li><a href="#{{ depth_1.id }}" title="{{ depth_1.title }}">{{ depth_1.title }}</a></li>
 			{% for depth_2 in depth_1.children %}
 			<ul>
-				<li><a href="#{{ depth_2.id }}">{{ depth_2.title }}</a></li>
+				<li><a href="#{{ depth_2.id }}" title="{{ depth_2.title }}">{{ depth_2.title }}</a></li>
 				{% for depth_3 in depth_2.children %}
 				<ul>
-					<li><a href="#{{ depth_3.id }}">{{ depth_3.title }}</a></li>
+					<li><a href="#{{ depth_3.id }}" title="{{ depth_3.title }}">{{ depth_3.title }}</a></li>
 					{% for depth_4 in depth_3.children %}
 					<ul>
-						<li><a href="#{{ depth_4.id }}">{{ depth_4.title }}</a></li>
+						<li><a href="#{{ depth_4.id }}" title="{{ depth_4.title }}">{{ depth_4.title }}</a></li>
 						{% for depth_5 in depth_4.children %}
 						<ul>
-							<li><a href="#{{ depth_5.id }}">{{ depth_5.title }}</a></li>
+							<li><a href="#{{ depth_5.id }}" title="{{ depth_5.title }}">{{ depth_5.title }}</a></li>
 							{% for depth_6 in depth_5.children %}
 							<ul>
-								<li><a href="#{{ depth_6.id }}">{{ depth_6.title }}</a></li>
+								<li><a href="#{{ depth_6.id }}" title="{{ depth_6.title }}">{{ depth_6.title }}</a></li>
 							</ul>
 							{% endfor %}
 						</ul>

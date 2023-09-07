@@ -1,9 +1,9 @@
-name: Deploy release
+name: "Editor: Production (Latest Stable)"
 
 on:
   push:
     tags:
-      - 'latest-stable'
+      - "latest-stable"
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,48 +18,49 @@ jobs:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
-      INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="editor.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.outbound-links.file-downloads.js"></script>
+      INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="editor.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.js"></script>
 
     steps:
-    - uses: actions/checkout@v3
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
 
-    - name: 🔧 Clear wasm-bindgen cache
-      run: rm -r ~/.cache/.wasm-pack
+      - name: 🗑 Clear wasm-bindgen cache
+        run: rm -r ~/.cache/.wasm-pack
 
-    - name: 🔧 Set up Node
-      uses: actions/setup-node@v3
-      with:
-        node-version: '16'
+      - name: 🟢 Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
 
-    - name: 🚧 Install Node dependencies
-      run: |
-        cd frontend
-        npm ci
+      - name: 🚧 Install Node dependencies
+        run: |
+          cd frontend
+          npm ci
 
-    - name: 🔼 Update Rust to latest stable
-      run: |
-        rustc --version
-        rustup update stable
-        rustc --version
+      - name: 🦀 Update Rust to latest stable
+        run: |
+          rustc --version
+          rustup update stable
+          rustc --version
 
-    - name: Replace template in <head> of index.html
-      run: |
-        sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+      - name: ✂ Replace template in <head> of index.html
+        run: |
+          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
-    - name: 🌐 Build Graphite web code
-      env:
-        NODE_ENV: production
-      run: |
-        cd frontend
-        mold -run npm run build
+      - name: 🌐 Build Graphite web code
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          mold -run npm run build
 
-    - name: Publish
-      id: cloudflare
-      uses: cloudflare/pages-action@1
-      with:
-        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        projectName: graphite-editor
-        directory: frontend/dist
-        branch: master
-        gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+      - name: 📤 Publish to Cloudflare Pages
+        id: cloudflare
+        uses: cloudflare/pages-action@1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: graphite-editor
+          directory: frontend/dist
+          branch: master

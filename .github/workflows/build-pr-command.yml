@@ -1,0 +1,97 @@
+name: "!build PR Command"
+
+on:
+  issue_comment:
+    types:
+      - created
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # Command should be limited to core team members (those in the organization) for security.
+    # From the GitHub Actions docs:
+    # author_association = 'MEMBER': Author is a member of the organization that owns the repository.
+    if: github.event.issue.pull_request && github.event.comment.body == '!build' && github.event.comment.author_association == 'MEMBER'
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+      - name: 🔎 Find branch for this PR
+        id: commit_info
+        run: |
+          RESPONSE=$(curl -L -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
+          REPO=$(echo $RESPONSE | jq -r '.head.repo.full_name')
+          REF=$(echo $RESPONSE | jq -r '.head.ref')
+          SHA=$(echo $RESPONSE | jq -r '.head.sha')
+          echo "repo=$REPO" >> $GITHUB_OUTPUT
+          echo "ref=$REF" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ steps.commit_info.outputs.repo }}
+          ref: ${{ steps.commit_info.outputs.ref }}
+
+      - name: 🗑 Clear wasm-bindgen cache
+        continue-on-error: true
+        run: rm -r ~/.cache/.wasm-pack
+
+      - name: 🟢 Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+
+      - name: 🚧 Install Node dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: 🦀 Update Rust to latest stable
+        run: |
+          rustc --version
+          rustup update stable
+          rustc --version
+
+      - name: ✂ Replace template in <head> of index.html
+        run: |
+          # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
+          export INDEX_HTML_HEAD_REPLACEMENT=""
+          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+
+      - name: 🌐 Build Graphite web code
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          mold -run npm run build
+
+      - name: 📤 Publish to Cloudflare Pages
+        id: cloudflare
+        uses: cloudflare/pages-action@1
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: graphite-dev
+          directory: frontend/dist
+
+      - name: 💬 Comment build link
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '| 📦 **Build Complete for** ${{ steps.commit_info.outputs.sha }} |\n|-|\n| ${{ steps.cloudflare.outputs.url }} |'
+            })

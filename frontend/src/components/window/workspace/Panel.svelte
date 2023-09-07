@@ -2,7 +2,6 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import LayerTree from "@graphite/components/panels/LayerTree.svelte";
-	import NodeGraph from "@graphite/components/panels/NodeGraph.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -10,7 +9,6 @@
 	const PANEL_COMPONENTS = {
 		Document,
 		LayerTree,
-		NodeGraph,
 		Properties,
 	};
 	type PanelTypes = keyof typeof PANEL_COMPONENTS;
@@ -41,14 +39,6 @@
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
 	let tabElements: (LayoutRow | undefined)[] = [];
-
-	function newDocument() {
-		editor.instance.newDocumentDialog();
-	}
-
-	function openDocument() {
-		editor.instance.documentOpen();
-	}
 
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
@@ -130,7 +120,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton label="New Document" icon="File" action={() => newDocument()} />
+									<TextButton label="New Document" icon="File" noBackground={true} action={() => editor.instance.newDocumentDialog()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
@@ -138,10 +128,15 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton label="Open Document" icon="Folder" action={() => openDocument()} />
+									<TextButton label="Open Document" icon="Folder" noBackground={true} action={() => editor.instance.openDocument()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+								</td>
+							</tr>
+							<tr>
+								<td colspan="2">
+									<TextButton label="Open Demo Artwork" icon="Image" noBackground={true} action={() => editor.instance.demoArtworkDialog()} />
 								</td>
 							</tr>
 						</table>
@@ -293,10 +288,6 @@
 
 							td {
 								padding: 0;
-							}
-
-							.text-button:not(:hover) {
-								background: none;
 							}
 						}
 					}
