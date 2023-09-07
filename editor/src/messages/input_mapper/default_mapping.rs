@@ -323,6 +323,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TranslateCanvasBegin),
 		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
+		entry!(KeyUp(Space); action_dispatch=NavigationMessage::TransformFromSpaceKeyEnd),
 		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyUp(Rmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),

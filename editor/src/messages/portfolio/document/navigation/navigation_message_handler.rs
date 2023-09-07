@@ -32,6 +32,7 @@ pub struct NavigationMessageHandler {
 
 	mouse_position: ViewportPosition,
 	dispatched_from_menu: bool,
+	space_key_modifier_locked: bool,
 }
 
 impl Default for NavigationMessageHandler {
@@ -52,6 +53,7 @@ impl Default for NavigationMessageHandler {
 
 			mouse_position: ViewportPosition::default(),
 			dispatched_from_menu: false,
+			space_key_modifier_locked: false,
 		}
 	}
 }
@@ -240,6 +242,9 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.dispatched_from_menu = false;
 				responses.add(TransformCanvasEnd { abort_transform });
 			}
+			TransformFromSpaceKeyEnd => {
+				self.space_key_modifier_locked = false;
+			}
 			TranslateCanvas { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
 
@@ -260,6 +265,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
+				self.space_key_modifier_locked = ipp.keyboard.get(Key::Space as usize);
 			}
 			TranslateCanvasByViewportFraction { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
@@ -303,6 +309,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 
 				self.zooming = true;
 				self.mouse_position = ipp.mouse.position;
+				self.space_key_modifier_locked = ipp.keyboard.get(Key::Space as usize);
 			}
 		}
 	}
@@ -333,6 +340,14 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 		if self.dispatched_from_menu {
 			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
 				TransformFromMenuEnd,
+			);
+
+			common.extend(transforming_from_menu);
+		}
+
+		if self.space_key_modifier_locked {
+			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
+				TransformFromSpaceKeyEnd,
 			);
 
 			common.extend(transforming_from_menu);
