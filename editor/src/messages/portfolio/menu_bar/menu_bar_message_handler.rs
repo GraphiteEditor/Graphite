@@ -258,18 +258,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 				"View".into(),
 				no_active_document,
 				MenuBarEntryChildren(vec![
-					vec![MenuBarEntry {
-						label: "Pan".into(),
-						shortcut: action_keys!(NavigationMessageDiscriminant::TranslateCanvasBegin),
-						action: MenuBarEntry::create_action(|_| NavigationMessage::TranslateCanvasBegin.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					}],
 					vec![
 						MenuBarEntry {
 							label: "Tilt".into(),
 							shortcut: action_keys!(NavigationMessageDiscriminant::RotateCanvasBegin),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::RotateCanvasBegin.into()),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: true }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
@@ -283,9 +276,16 @@ impl LayoutHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuBarEntry {
-							label: "Zoom".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::ZoomCanvasBegin),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::ZoomCanvasBegin.into()),
+							label: "Zoom In".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Zoom Out".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},

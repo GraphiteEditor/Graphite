@@ -117,7 +117,7 @@ impl Fsm for NavigateToolFsmState {
 
 			match navigate {
 				ClickZoom { zoom_in } => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd);
+					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 
 					// Mouse has not moved from pointerdown to pointerup
 					if tool_data.drag_start == input.mouse.position {
@@ -146,7 +146,7 @@ impl Fsm for NavigateToolFsmState {
 				}
 				RotateCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					responses.add_front(NavigationMessage::RotateCanvasBegin);
+					responses.add_front(NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false });
 					NavigateToolFsmState::Tilting
 				}
 				ZoomCanvasBegin => {
@@ -155,11 +155,11 @@ impl Fsm for NavigateToolFsmState {
 					NavigateToolFsmState::Zooming
 				}
 				TransformCanvasEnd => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd);
+					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 					NavigateToolFsmState::Ready
 				}
 				Abort => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd);
+					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 					NavigateToolFsmState::Ready
 				}
 			}

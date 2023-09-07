@@ -23,6 +23,7 @@ pub struct NavigationMessageHandler {
 	snap_tilt_released: bool,
 
 	pub tilt: f64,
+	pre_commit_tilt: f64,
 	tilting: bool,
 
 	pub zoom: f64,
@@ -30,6 +31,7 @@ pub struct NavigationMessageHandler {
 	snap_zoom: bool,
 
 	mouse_position: ViewportPosition,
+	dispatched_from_menu: bool,
 }
 
 impl Default for NavigationMessageHandler {
@@ -41,6 +43,7 @@ impl Default for NavigationMessageHandler {
 			snap_tilt_released: false,
 
 			tilt: 0.,
+			pre_commit_tilt: 0.,
 			tilting: false,
 
 			zoom: 1.,
@@ -48,6 +51,7 @@ impl Default for NavigationMessageHandler {
 			snap_zoom: false,
 
 			mouse_position: ViewportPosition::default(),
+			dispatched_from_menu: false,
 		}
 	}
 }
@@ -179,7 +183,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 
 				self.mouse_position = ipp.mouse.position;
 			}
-			RotateCanvasBegin => {
+			RotateCanvasBegin { was_dispatched_from_menu } => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![
@@ -190,12 +194,15 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 							label: String::from("Snap 15°"),
 							plus: false,
 						}]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Confirm")]),
 						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
 					]),
 				});
 
+				self.pre_commit_tilt = self.tilt;
 				self.tilting = true;
 				self.mouse_position = ipp.mouse.position;
+				self.dispatched_from_menu = was_dispatched_from_menu;
 			}
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
@@ -211,7 +218,10 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
-			TransformCanvasEnd => {
+			TransformCanvasEnd { abort_transform } => {
+				if self.tilting && abort_transform {
+					responses.add(SetCanvasRotation { angle_radians: self.pre_commit_tilt });
+				}
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
 				responses.add(BroadcastEvent::CanvasTransformed);
@@ -224,6 +234,11 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.panning = false;
 				self.tilting = false;
 				self.zooming = false;
+			}
+			TransformFromMenuEnd { commit_key } => {
+				let abort_transform = commit_key == Key::Rmb;
+				self.dispatched_from_menu = false;
+				responses.add(TransformCanvasEnd { abort_transform });
 			}
 			TranslateCanvas { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
@@ -314,6 +329,15 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			);
 			common.extend(transforming);
 		}
+
+		if self.dispatched_from_menu {
+			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
+				TransformFromMenuEnd,
+			);
+
+			common.extend(transforming_from_menu);
+		}
+
 		common
 	}
 }
