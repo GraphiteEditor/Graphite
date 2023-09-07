@@ -151,6 +151,20 @@ impl ShapeState {
 		None
 	}
 
+	pub fn select_all_points(&mut self, document: &Document) {
+		for (layer_path, selected_layer_state) in self.selected_shape_state.iter_mut() {
+			let Ok(layer) = document.layer(layer_path) else { continue };
+			let Some(vector_data) = layer.as_vector_data() else { continue };
+
+			for group in vector_data.manipulator_groups() {
+				selected_layer_state.select_point(ManipulatorPointId::new(group.id, SelectedType::Anchor));
+				for selected_type in &[SelectedType::InHandle, SelectedType::OutHandle] {
+					selected_layer_state.deselect_point(ManipulatorPointId::new(group.id, *selected_type));
+				}
+			}
+		}
+	}
+
 	pub fn deselect_all(&mut self) {
 		self.selected_shape_state.values_mut().for_each(|state| state.selected_points.clear());
 	}
