@@ -174,7 +174,7 @@ impl Fsm for NavigateToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Zoom In"), HintInfo::keys([Key::Shift], "Zoom Out").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Zoom"), HintInfo::keys([Key::Control], "Snap Increments").prepend_plus()]),
 				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, ""),
+					HintInfo::mouse(MouseMotion::LmbDrag, " "),
 					HintInfo::keys([Key::Space], "Or").prepend_plus(),
 					HintInfo::mouse(MouseMotion::MmbDrag, "Pan"),
 				]),
