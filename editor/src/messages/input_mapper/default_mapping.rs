@@ -317,8 +317,9 @@ pub fn default_mapping() -> Mapping {
 		//
 		// NavigationMessage
 		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
-		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
+		entry!(KeyDown(Mmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
 		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=NavigationMessage::ZoomCanvasBegin),
+		entry!(KeyDown(Lmb); modifiers=[Shift, Space], action_dispatch=NavigationMessage::ZoomCanvasBegin),
 		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TranslateCanvasBegin),
 		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
