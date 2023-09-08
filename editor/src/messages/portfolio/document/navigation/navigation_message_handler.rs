@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 pub struct NavigationMessageHandler {
 	pub pan: DVec2,
 	panning: bool,
+	pre_commit_pan: DVec2,
 	snap_tilt: bool,
 	snap_tilt_released: bool,
 
@@ -27,12 +28,12 @@ pub struct NavigationMessageHandler {
 	tilting: bool,
 
 	pub zoom: f64,
+	pre_commit_zoom: f64,
 	zooming: bool,
 	snap_zoom: bool,
 
 	mouse_position: ViewportPosition,
 	dispatched_from_menu: bool,
-	space_key_modifier_locked: bool,
 }
 
 impl Default for NavigationMessageHandler {
@@ -40,6 +41,7 @@ impl Default for NavigationMessageHandler {
 		Self {
 			pan: DVec2::ZERO,
 			panning: false,
+			pre_commit_pan: DVec2::ZERO,
 			snap_tilt: false,
 			snap_tilt_released: false,
 
@@ -48,12 +50,12 @@ impl Default for NavigationMessageHandler {
 			tilting: false,
 
 			zoom: 1.,
+			pre_commit_zoom: 0.,
 			zooming: false,
 			snap_zoom: false,
 
 			mouse_position: ViewportPosition::default(),
 			dispatched_from_menu: false,
-			space_key_modifier_locked: false,
 		}
 	}
 }
@@ -224,6 +226,18 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				if self.tilting && abort_transform {
 					responses.add(SetCanvasRotation { angle_radians: self.pre_commit_tilt });
 				}
+
+				if self.panning && abort_transform {
+					self.pan = self.pre_commit_pan;
+					self.create_document_transform(&ipp.viewport_bounds, responses);
+				}
+
+				if self.zooming && abort_transform {
+					self.zoom = self.pre_commit_zoom;
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					self.create_document_transform(&ipp.viewport_bounds, responses);
+				}
+
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
 				responses.add(BroadcastEvent::CanvasTransformed);
@@ -236,14 +250,12 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.panning = false;
 				self.tilting = false;
 				self.zooming = false;
+				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false });
 			}
 			TransformFromMenuEnd { commit_key } => {
 				let abort_transform = commit_key == Key::Rmb;
 				self.dispatched_from_menu = false;
 				responses.add(TransformCanvasEnd { abort_transform });
-			}
-			TransformFromSpaceKeyEnd => {
-				self.space_key_modifier_locked = false;
 			}
 			TranslateCanvas { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
@@ -260,12 +272,12 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])]),
 				});
 				// Because the pan key shares the Spacebar with toggling the graph view overlay, now that we've begun panning,
-				// we need to prevent the graph view overlay from toggling when the Spacebar is released.
+				// we need to prevent the graph view overlay from toggling when the control key is pressed.
 				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 
 				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
-				self.space_key_modifier_locked = ipp.keyboard.get(Key::Space as usize);
+				self.pre_commit_pan = self.pan;
 			}
 			TranslateCanvasByViewportFraction { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
@@ -308,8 +320,12 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				});
 
 				self.zooming = true;
+				self.pre_commit_zoom = self.zoom;
 				self.mouse_position = ipp.mouse.position;
-				self.space_key_modifier_locked = ipp.keyboard.get(Key::Space as usize);
+
+				// Because the zoom key shares the Spacebar with toggling the graph view overlay, now that we've begun zooming,
+				// we need to prevent the graph view overlay from toggling when the control key is pressed.
+				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 			}
 		}
 	}
@@ -340,14 +356,6 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 		if self.dispatched_from_menu {
 			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
 				TransformFromMenuEnd,
-			);
-
-			common.extend(transforming_from_menu);
-		}
-
-		if self.space_key_modifier_locked {
-			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
-				TransformFromSpaceKeyEnd,
 			);
 
 			common.extend(transforming_from_menu);

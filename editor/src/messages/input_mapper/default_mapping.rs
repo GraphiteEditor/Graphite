@@ -324,7 +324,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TranslateCanvasBegin),
 		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Space); action_dispatch=NavigationMessage::TransformFromSpaceKeyEnd),
 		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyUp(Rmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
@@ -340,8 +339,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
-		entry!(KeyUp(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
-		entry!(KeyDownNoRepeat(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false }),
+		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
+		entry!(KeyUp(Escape); action_dispatch=PortfolioMessage::GraphViewOverlay { open: false }),
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),

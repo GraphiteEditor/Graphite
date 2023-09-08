@@ -42,7 +42,6 @@ pub enum NavigationMessage {
 	TransformFromMenuEnd {
 		commit_key: Key,
 	},
-	TransformFromSpaceKeyEnd,
 	TranslateCanvas {
 		delta: DVec2,
 	},
