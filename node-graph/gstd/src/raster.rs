@@ -70,19 +70,26 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 	log::debug!("viewport_bounds: {viewport_bounds:?}");
-	let bbox = Bbox::from_transform(image_frame.transform * DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64)));
+	let bbox = Bbox::from_transform(image_frame.transform);
 	log::debug!("local_bounds: {bbox:?}");
 	let bounds = viewport_bounds.intersect(&bbox.to_axis_aligned_bbox());
 	log::debug!("intersection: {bounds:?}");
 	let union = viewport_bounds.union(&bbox.to_axis_aligned_bbox());
 	log::debug!("union: {union:?}");
+	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
 	let size = bounds.size();
+
+	if size.x <= 0. || size.y <= 0. {
+		return ImageFrame::empty();
+	}
 
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
 
 	let dynamic_image: image::DynamicImage = image_buffer.into();
-	let offset = (bounds.start - viewport_bounds.start).as_uvec2();
-	let cropped = dynamic_image.crop_imm(offset.x, offset.y, size.x as u32, size.y as u32);
+	let offset = image_size.transform_vector2(bounds.start - viewport_bounds.start).as_uvec2();
+	log::debug!("offset: {offset:?}");
+	log::debug!("size: {:?}", image_size.transform_vector2(size));
+	let cropped = dynamic_image.crop_imm(offset.x, offset.y, size.x as u32 * image.width, size.y as u32 * image.height);
 
 	log::debug!("transform: {:?}", footprint.transform);
 	log::debug!("size: {size:?}");
