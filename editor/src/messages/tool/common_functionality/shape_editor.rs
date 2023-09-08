@@ -67,14 +67,14 @@ pub struct ManipulatorGroupData {
 
 impl ManipulatorGroupData {
 	pub fn new(id: &ManipulatorPointId, layer: &[LayerId]) -> Self {
-		let flag = match id.manipulator_type {
+		let selection_type = match id.manipulator_type {
 			SelectedType::Anchor => ANCHOR,
 			SelectedType::InHandle => IN_HANDLE,
 			SelectedType::OutHandle => OUT_HANDLE,
 		};
 		Self {
+			selection_type,
 			group_id: id.group,
-			selection_type: flag,
 			layer_id: layer.to_vec(),
 		}
 	}
@@ -246,8 +246,7 @@ impl ShapeState {
 		Some(())
 	}
 
-	// Reinsert a control point at the same point to make its handles
-	// recalculate their positions based on a new constraint.
+	/// Reinsert a control point at the same point to make its handles recalculate their positions based on a new constraint.
 	pub fn blink_manipulator_group(&self, group_data: &ManipulatorGroupData, responses: &mut VecDeque<Message>, document: &Document) -> Option<()> {
 		let layer = document.layer(&group_data.layer_id).ok()?;
 		let vector_data = layer.as_vector_data()?;
@@ -295,7 +294,7 @@ impl ShapeState {
 				let anchor_in = anchor_position - in_position;
 				let anchor_in_norm = anchor_in.normalize_or_zero();
 
-				// Force the bisectors into an isoceles triangle so they are easier
+				// Force the bisectors into an isosceles triangle so they are easier
 				// to get a perpendicular vector out of.
 				let perpendicular_prenorm = anchor_out_norm - anchor_in_norm;
 				// We need to align the perpendicular vector with the flow of the

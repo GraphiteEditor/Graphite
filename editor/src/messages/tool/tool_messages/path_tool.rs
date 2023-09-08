@@ -49,8 +49,8 @@ pub enum PathToolMessage {
 		add_to_selection: Key,
 	},
 	InsertPoint,
-	ManipulatorAngleMadeSharp,
-	ManipulatorAngleMadeSmooth,
+	ManipulatorAngleMakeSharp,
+	ManipulatorAngleMakeSmooth,
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
@@ -113,25 +113,23 @@ impl LayoutHolder for PathTool {
 			})
 			.widget_holder();
 
-		let seperator = Separator::new(SeparatorType::Related).widget_holder();
+		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
+		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
-		let seperator_2 = Separator::new(SeparatorType::Unrelated).widget_holder();
-
-		let mut index = manipulator_angle.map(|angle| angle as u32).unwrap_or(0);
-
-		if let Some(many) = self.tool_data.selection_status.as_many() {
-			index = many.manipulator_angle as u32;
-		}
+		let mut index = match self.tool_data.selection_status.as_multiple() {
+			Some(multiple) => multiple.manipulator_angle as u32,
+			None => manipulator_angle.map(|angle| angle as u32).unwrap_or(0),
+		};
 
 		let options = vec![
-			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMadeSmooth.into()),
-			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMadeSharp.into()),
+			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMakeSmooth.into()),
+			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMakeSharp.into()),
 		];
 
 		let manipulator_angle_radio = RadioInput::new(options).disabled(self.tool_data.selection_status.is_none()).selected_index(index).widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![x_location, seperator, y_location, seperator_2, manipulator_angle_radio],
+			widgets: vec![x_location, related_seperator, y_location, unrelated_seperator, manipulator_angle_radio],
 		}]))
 	}
 }
@@ -519,7 +517,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.selection_status = get_selection_status(&document.document_legacy, shape_editor);
 					self
 				}
-				(_, PathToolMessage::ManipulatorAngleMadeSmooth) => {
+				(_, PathToolMessage::ManipulatorAngleMakeSmooth) => {
 					responses.add(DocumentMessage::StartTransaction);
 					shape_editor.set_handle_mirroring_on_selected(true, responses);
 					for group in shape_editor.selected_manipulator_groups().iter() {
@@ -528,7 +526,7 @@ impl Fsm for PathToolFsmState {
 					responses.add(DocumentMessage::CommitTransaction);
 					PathToolFsmState::Ready
 				}
-				(_, PathToolMessage::ManipulatorAngleMadeSharp) => {
+				(_, PathToolMessage::ManipulatorAngleMakeSharp) => {
 					responses.add(DocumentMessage::StartTransaction);
 					shape_editor.set_handle_mirroring_on_selected(false, responses);
 					responses.add(DocumentMessage::CommitTransaction);
@@ -574,23 +572,21 @@ enum SelectionStatus {
 	#[default]
 	None,
 	One(SingleSelectedPoint),
-	Many(ManySelectedPoints),
+	Multiple(MultipleSelectedPoints),
 }
 
 impl SelectionStatus {
 	fn as_one(&self) -> Option<&SingleSelectedPoint> {
-		if let SelectionStatus::One(one) = self {
-			Some(one)
-		} else {
-			None
+		match self {
+			SelectionStatus::One(one) => Some(one),
+			_ => None,
 		}
 	}
 
-	fn as_many(&self) -> Option<&ManySelectedPoints> {
-		if let SelectionStatus::Many(many) = self {
-			Some(many)
-		} else {
-			None
+	fn as_multiple(&self) -> Option<&MultipleSelectedPoints> {
+		match self {
+			SelectionStatus::Multiple(multiple) => Some(multiple),
+			_ => None,
 		}
 	}
 
@@ -607,7 +603,7 @@ enum ManipulatorAngle {
 }
 
 #[derive(Debug, PartialEq)]
-struct ManySelectedPoints {
+struct MultipleSelectedPoints {
 	manipulator_angle: ManipulatorAngle,
 }
 
@@ -661,7 +657,7 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 			(false, false) => ManipulatorAngle::Sharp,
 			_ => ManipulatorAngle::Smooth,
 		};
-		return SelectionStatus::Many(ManySelectedPoints { manipulator_angle });
+		return SelectionStatus::Multiple(MultipleSelectedPoints { manipulator_angle });
 	}
 
 	SelectionStatus::None
