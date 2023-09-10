@@ -543,7 +543,7 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
-				log::debug!("svg: {svg}");
+				//log::debug!("svg: {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });

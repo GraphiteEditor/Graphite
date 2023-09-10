@@ -345,7 +345,7 @@ impl NavigationMessageHandler {
 		let half_viewport = viewport_bounds.size() / 2.;
 		let scaled_half_viewport = half_viewport / self.snapped_scale();
 
-		let transform = self.calculate_offset_transform(scaled_half_viewport);
+		let transform = self.calculate_offset_transform(DVec2::ZERO);
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 

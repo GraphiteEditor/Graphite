@@ -910,6 +910,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add(FrontendMessage::UpdateDocumentTransform { transform });
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			UpdateLayerMetadata { layer_path, layer_metadata } => {
 				self.layer_metadata.insert(layer_path, layer_metadata);

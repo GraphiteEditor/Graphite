@@ -470,9 +470,7 @@
 							{@html artboardSvg}
 						</svg>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							<g id="transform-group" transform={$document.artworkTransform}>
-								{@html nodeRenderSvg}
-							</g>
+							{@html nodeRenderSvg}
 						</svg>
 						<svg class="artwork" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}

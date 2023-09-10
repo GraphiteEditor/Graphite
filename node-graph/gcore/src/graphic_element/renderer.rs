@@ -294,6 +294,9 @@ impl GraphicElementRendered for ImageFrame<Color> {
 			}
 			ImageRenderMode::Base64 => {
 				let image = &self.image;
+				if image.data.is_empty() {
+					return;
+				}
 				let (flat_data, _, _) = image.clone().into_flat_u8();
 				let mut output = Vec::new();
 				let encoder = image::codecs::png::PngEncoder::new(&mut output);

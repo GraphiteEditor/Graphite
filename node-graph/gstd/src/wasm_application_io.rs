@@ -297,6 +297,7 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> RenderOutput {
 	let footprint = editor.render_config.viewport;
+	log::debug!("Rendering: {:?}", footprint);
 	let data = self.data.eval(footprint).await;
 	let mut render = SvgRender::new();
 	let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
@@ -306,7 +307,9 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 		ExportFormat::Svg => {
 			data.render_svg(&mut render, &render_params);
 			// TODO: reenable once we switch to full node graph
-			//render.format_svg((0., 0.).into(), (1., 1.).into());
+			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+			let max = min + footprint.resolution.as_dvec2();
+			render.format_svg(min, max);
 			RenderOutput::Svg(render.svg.to_string())
 		}
 		_ => todo!("Non svg render output"),

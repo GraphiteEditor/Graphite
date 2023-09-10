@@ -74,10 +74,9 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	log::debug!("local_bounds: {bbox:?}");
 	let bounds = viewport_bounds.intersect(&bbox.to_axis_aligned_bbox());
 	log::debug!("intersection: {bounds:?}");
-	let union = viewport_bounds.union(&bbox.to_axis_aligned_bbox());
-	log::debug!("union: {union:?}");
 	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
 	let size = bounds.size();
+	let size_px = image_size.transform_vector2(size).as_uvec2();
 
 	if size.x <= 0. || size.y <= 0. {
 		return ImageFrame::empty();
@@ -86,10 +85,14 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
 
 	let dynamic_image: image::DynamicImage = image_buffer.into();
-	let offset = image_size.transform_vector2(bounds.start - viewport_bounds.start).as_uvec2();
+	let offset = (viewport_bounds.start - bounds.start).max(DVec2::ZERO);
+	let pad_left = (bounds.start - viewport_bounds.start).max(DVec2::ZERO);
+	let offset_px = image_size.transform_vector2(offset).as_uvec2();
 	log::debug!("offset: {offset:?}");
-	log::debug!("size: {:?}", image_size.transform_vector2(size));
-	let cropped = dynamic_image.crop_imm(offset.x, offset.y, size.x as u32 * image.width, size.y as u32 * image.height);
+	log::debug!("pad_left: {pad_left:?}");
+	log::debug!("offset_px: {offset_px:?}");
+	log::debug!("size: {:?}", size_px);
+	let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
 
 	log::debug!("transform: {:?}", footprint.transform);
 	log::debug!("size: {size:?}");
@@ -108,10 +111,12 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 		height: nheight,
 		data: vec,
 	};
+	// we need to adjust the offset if we truncate the offset calculation
 
+	let new_transform = image_frame.transform * DAffine2::from_translation(- offset - pad_left) * DAffine2::from_scale(DVec2::new(size.x, size.y));
 	ImageFrame {
 		image,
-		transform: image_frame.transform,
+		transform: new_transform,
 	}
 }
 
