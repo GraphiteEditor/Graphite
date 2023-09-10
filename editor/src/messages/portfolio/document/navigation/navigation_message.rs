@@ -27,14 +27,21 @@ pub enum NavigationMessage {
 		snap_zoom: Key,
 		zoom_from_viewport: Option<DVec2>,
 	},
-	RotateCanvasBegin,
+	RotateCanvasBegin {
+		was_dispatched_from_menu: bool,
+	},
 	SetCanvasRotation {
 		angle_radians: f64,
 	},
 	SetCanvasZoom {
 		zoom_factor: f64,
 	},
-	TransformCanvasEnd,
+	TransformCanvasEnd {
+		abort_transform: bool,
+	},
+	TransformFromMenuEnd {
+		commit_key: Key,
+	},
 	TranslateCanvas {
 		delta: DVec2,
 	},

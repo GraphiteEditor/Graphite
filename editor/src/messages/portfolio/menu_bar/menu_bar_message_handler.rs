@@ -257,36 +257,68 @@ impl LayoutHolder for MenuBarMessageHandler {
 			MenuBarEntry::new_root(
 				"View".into(),
 				no_active_document,
-				MenuBarEntryChildren(vec![vec![
-					MenuBarEntry {
-						label: "Zoom to Selected".into(),
+				MenuBarEntryChildren(vec![
+					vec![
+						MenuBarEntry {
+							label: "Tilt".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::RotateCanvasBegin),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: true }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Reset Tilt".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::SetCanvasRotation),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::SetCanvasRotation { angle_radians: 0.into() }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![
+						MenuBarEntry {
+							label: "Zoom In".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Zoom Out".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Zoom to Fit".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Zoom to 100%".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Zoom to 200%".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![MenuBarEntry {
+						label: "Frame Selected".into(),
 						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
 						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
-					},
-					MenuBarEntry {
-						label: "Zoom to Fit".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					},
-					MenuBarEntry {
-						label: "Zoom to 100%".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					},
-					MenuBarEntry {
-						label: "Zoom to 200%".into(),
-						shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					},
-				]]),
+					}],
+				]),
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),
