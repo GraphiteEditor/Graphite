@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
-use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box};
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -116,7 +116,7 @@ impl LayoutHolder for PathTool {
 		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
 		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
-		let mut index = match self.tool_data.selection_status.as_multiple() {
+		let index = match self.tool_data.selection_status.as_multiple() {
 			Some(multiple) => multiple.manipulator_angle as u32,
 			None => manipulator_angle.map(|angle| angle as u32).unwrap_or(0),
 		};
@@ -520,9 +520,7 @@ impl Fsm for PathToolFsmState {
 				(_, PathToolMessage::ManipulatorAngleMakeSmooth) => {
 					responses.add(DocumentMessage::StartTransaction);
 					shape_editor.set_handle_mirroring_on_selected(true, responses);
-					for group in shape_editor.selected_manipulator_groups().iter() {
-						shape_editor.blink_manipulator_group(&group, responses, &document.document_legacy);
-					}
+					shape_editor.smooth_selected_groups(responses, &document.document_legacy);
 					responses.add(DocumentMessage::CommitTransaction);
 					PathToolFsmState::Ready
 				}
@@ -595,13 +593,6 @@ impl SelectionStatus {
 	}
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum ManipulatorAngle {
-	Smooth = 0,
-	Sharp = 1,
-	Mixed = 2,
-}
-
 #[derive(Debug, PartialEq)]
 struct MultipleSelectedPoints {
 	manipulator_angle: ManipulatorAngle,
@@ -648,16 +639,10 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 		});
 	};
 
-	let groups = shape_state.selected_manipulator_groups();
-	if let Some(first) = groups.get(0) {
-		let first_is_smooth = first.is_smooth(&document);
-		let mixed = groups.iter().any(|point| first_is_smooth != point.is_smooth(&document));
-		let manipulator_angle = match (first_is_smooth, mixed) {
-			(_, true) => ManipulatorAngle::Mixed,
-			(false, false) => ManipulatorAngle::Sharp,
-			_ => ManipulatorAngle::Smooth,
-		};
-		return SelectionStatus::Multiple(MultipleSelectedPoints { manipulator_angle });
+	if selection_layers.len() > 0 {
+		return SelectionStatus::Multiple(MultipleSelectedPoints {
+			manipulator_angle: shape_state.selected_manipulator_angles(&document),
+		});
 	}
 
 	SelectionStatus::None
