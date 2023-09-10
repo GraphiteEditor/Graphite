@@ -31,7 +31,7 @@ pub struct NavigationMessageHandler {
 
 	transform_operation: TransformOperation,
 	mouse_position: ViewportPosition,
-	dispatched_from_menu: bool,
+	finish_operation_with_click: bool,
 }
 
 impl Default for NavigationMessageHandler {
@@ -42,7 +42,7 @@ impl Default for NavigationMessageHandler {
 			zoom: 1.,
 
 			mouse_position: ViewportPosition::default(),
-			dispatched_from_menu: false,
+			finish_operation_with_click: false,
 			transform_operation: TransformOperation::None,
 		}
 	}
@@ -212,7 +212,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				};
 
 				self.mouse_position = ipp.mouse.position;
-				self.dispatched_from_menu = was_dispatched_from_menu;
+				self.finish_operation_with_click = was_dispatched_from_menu;
 			}
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
@@ -258,7 +258,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			TransformFromMenuEnd { commit_key } => {
 				let abort_transform = commit_key == Key::Rmb;
-				self.dispatched_from_menu = false;
+				self.finish_operation_with_click = false;
 				responses.add(TransformCanvasEnd { abort_transform });
 			}
 			TranslateCanvas { delta } => {
@@ -358,7 +358,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			common.extend(transforming);
 		}
 
-		if self.dispatched_from_menu {
+		if self.finish_operation_with_click {
 			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
 				TransformFromMenuEnd,
 			);
