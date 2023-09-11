@@ -70,7 +70,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		let export_type = vec![
 			TextLabel::new("File Type").table_align(true).min_width(100).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(self.file_type as u32).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_holder(),
 		];
 
 		let resolution = vec![

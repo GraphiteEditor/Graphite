@@ -472,7 +472,7 @@ fn node_gradient_type(gradient: &Gradient) -> LayoutGroup {
 						.into()
 					}),
 			])
-			.selected_index(selected_index)
+			.selected_index(Some(selected_index))
 			.widget_holder(),
 		],
 	}
@@ -777,7 +777,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 							.into()
 						}),
 					])
-					.selected_index(stroke.line_cap_index())
+					.selected_index(Some(stroke.line_cap_index()))
 					.widget_holder(),
 				],
 			},
@@ -809,7 +809,7 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 							.into()
 						}),
 					])
-					.selected_index(stroke.line_join_index())
+					.selected_index(Some(stroke.line_join_index()))
 					.widget_holder(),
 				],
 			},

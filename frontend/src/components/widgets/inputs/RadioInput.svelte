@@ -11,7 +11,7 @@
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	export let entries: RadioEntries;
-	export let selectedIndex: number;
+	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
 	export let sharpRightCorners = false;
 
