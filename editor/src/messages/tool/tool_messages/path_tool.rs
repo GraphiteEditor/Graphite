@@ -84,8 +84,13 @@ impl ToolMetadata for PathTool {
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
 		let coordinates = self.tool_data.selection_status.as_one().as_ref().map(|point| point.coordinates);
-		let manipulator_angle = self.tool_data.selection_status.as_one().as_ref().map(|point| point.manipulator_angle);
 		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
+
+		let selection_status = &self.tool_data.selection_status;
+		let manipulator_angle = selection_status
+			.as_multiple()
+			.map(|multiple| multiple.manipulator_angle)
+			.or_else(|| selection_status.as_one().map(|point| point.manipulator_angle));
 
 		let x_location = NumberInput::new(x)
 			.unit(" px")
@@ -116,17 +121,20 @@ impl LayoutHolder for PathTool {
 		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
 		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
-		let index = match self.tool_data.selection_status.as_multiple() {
-			Some(multiple) => multiple.manipulator_angle as u32,
-			None => manipulator_angle.map(|angle| angle as u32).unwrap_or(0),
-		};
-
-		let options = vec![
+		let manipulator_angle_options = vec![
 			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMakeSmooth.into()),
 			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMakeSharp.into()),
 		];
+		let manipulator_angle_index = manipulator_angle.and_then(|angle| match angle {
+			ManipulatorAngle::Smooth => Some(0),
+			ManipulatorAngle::Sharp => Some(1),
+			ManipulatorAngle::Mixed => None,
+		});
 
-		let manipulator_angle_radio = RadioInput::new(options).disabled(self.tool_data.selection_status.is_none()).selected_index(index).widget_holder();
+		let manipulator_angle_radio = RadioInput::new(manipulator_angle_options)
+			.disabled(self.tool_data.selection_status.is_none())
+			.selected_index(manipulator_angle_index)
+			.widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![x_location, related_seperator, y_location, unrelated_seperator, manipulator_angle_radio],

@@ -12,15 +12,16 @@ use glam::DVec2;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ManipulatorAngle {
-	Smooth = 0,
-	Sharp = 1,
-	Mixed = 2,
+	Smooth,
+	Sharp,
+	Mixed,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
 }
+
 impl SelectedLayerState {
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
@@ -38,6 +39,7 @@ impl SelectedLayerState {
 		self.selected_points.len()
 	}
 }
+
 pub type SelectedShapeState = HashMap<Vec<LayerId>, SelectedLayerState>;
 #[derive(Debug, Default)]
 pub struct ShapeState {
@@ -49,6 +51,7 @@ pub struct SelectedPointsInfo<'a> {
 	pub points: Vec<ManipulatorPointInfo<'a>>,
 	pub offset: DVec2,
 }
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ManipulatorPointInfo<'a> {
 	pub shape_layer_path: &'a [LayerId],
