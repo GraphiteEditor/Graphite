@@ -88,6 +88,7 @@ macro_rules! async_node {
 		(
 			NodeIdentifier::new(stringify!($path)),
 			|mut args| {
+				log::debug!("Constructing node {:?}", stringify!($path));
 				Box::pin(async move {
 				args.reverse();
 				let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);

@@ -1,5 +1,6 @@
 use crate::Node;
 use core::future::Future;
+use core::sync::atomic::AtomicU8;
 
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
@@ -12,6 +13,7 @@ use core::pin::Pin;
 pub struct MemoNode<T, CachedNode> {
 	cache: Cell<Option<T>>,
 	node: CachedNode,
+	counter: AtomicU8,
 }
 impl<'i, 'o: 'i, T: 'i + Clone + 'o, CachedNode: 'i> Node<'i, ()> for MemoNode<T, CachedNode>
 where
@@ -22,12 +24,19 @@ where
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty acurate xD
 	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
 	fn eval(&'i self, input: ()) -> Pin<Box<dyn Future<Output = T> + 'i>> {
+		self.counter.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+		log::debug!("MemoNode was evaluated {} times", self.counter.load(core::sync::atomic::Ordering::SeqCst));
+		let value = self.cache.take();
 		Box::pin(async move {
-			if let Some(cached_value) = self.cache.take() {
+			log::debug!("Evaluating MemoNode");
+			if let Some(cached_value) = value {
 				self.cache.set(Some(cached_value.clone()));
+				log::debug!("Using cached value");
 				cached_value
 			} else {
+				log::debug!("Evaluating node");
 				let value = self.node.eval(input).await;
+				log::debug!("Caching value");
 				self.cache.set(Some(value.clone()));
 				value
 			}
@@ -35,13 +44,18 @@ where
 	}
 
 	fn reset(&self) {
+		log::debug!("Resetting MemoNode");
 		self.cache.set(None);
 	}
 }
 
 impl<T, CachedNode> MemoNode<T, CachedNode> {
 	pub const fn new(node: CachedNode) -> MemoNode<T, CachedNode> {
-		MemoNode { cache: Cell::new(None), node }
+		MemoNode {
+			cache: Cell::new(None),
+			node,
+			counter: AtomicU8::new(0),
+		}
 	}
 }
 

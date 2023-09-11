@@ -182,7 +182,7 @@ impl NodeRuntime {
 			imaginate_preferences: &self.imaginate_preferences,
 			render_config: RenderConfig {
 				viewport: Footprint { transform, ..Default::default() },
-				..Default::default()
+				export_format: graphene_core::application_io::ExportFormat::Canvas,
 			},
 		};
 
@@ -547,6 +547,27 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+
+				//return Err("Graphic group (see console)".to_string());
+			}
+			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
+				// Send to frontend
+				//log::debug!("svg: {svg}");
+				responses.add(DocumentMessage::RenderScrollbars);
+				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				let matrix = frame
+					.transform
+					.to_cols_array()
+					.iter()
+					.enumerate()
+					.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+				let svg = format!(
+					r#"
+					<svg><foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>
+					"#,
+					1920, 1080, matrix, frame.surface_id.0
+				);
+				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				//return Err("Graphic group (see console)".to_string());
 			}

@@ -46,12 +46,14 @@ impl DynamicExecutor {
 	}
 
 	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
+		log::debug!("network : {:#?}", proto_network.nodes.iter().map(|(id, node)| (id, node.identifier.clone())).collect::<HashMap<_, _>>());
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
 		let mut orphans = self.tree.update(proto_network, &self.typing_context).await?;
 		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
 		for node_id in orphans {
 			if self.orphaned_nodes.contains(&node_id) {
+				log::debug!("Freeing {:?}", node_id);
 				self.tree.free_node(node_id)
 			}
 		}
@@ -100,7 +102,6 @@ impl BorrowTree {
 				self.push_node(id, node, typing_context).await?;
 			} else {
 				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
-				node_container.reset();
 			}
 			old_nodes.remove(&id);
 		}
