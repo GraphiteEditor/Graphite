@@ -1675,8 +1675,8 @@ impl DocumentMessageHandler {
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
 			])
 			.selected_index(match self.view_mode {
-				ViewMode::Normal => 0,
-				_ => 1,
+				ViewMode::Normal => Some(0),
+				_ => Some(1),
 			})
 			.widget_holder(),
 			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
@@ -1751,7 +1751,7 @@ impl DocumentMessageHandler {
 							.icon(DocumentMode::GuideMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
-					.selected_index( Some(self.document_mode as u32))
+					.selected_index(Some(self.document_mode as u32))
 					.draw_icon( true)
 					.interactive( false) // TODO: set to true when dialogs are not spawned
 					.widget_holder(),

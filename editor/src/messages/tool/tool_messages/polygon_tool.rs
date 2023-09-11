@@ -110,7 +110,7 @@ fn create_star_option_widget(primitive_shape_type: PrimitiveShapeType) -> Widget
 		RadioEntryData::new("Polygon").on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
 		RadioEntryData::new("Star").on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
 	];
-	RadioInput::new(entries).selected_index(primitive_shape_type as u32).widget_holder()
+	RadioInput::new(entries).selected_index(Some(primitive_shape_type as u32)).widget_holder()
 }
 
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {

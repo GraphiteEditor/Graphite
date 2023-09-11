@@ -94,7 +94,7 @@ impl ToolColorOptions {
 			entry
 		})
 		.collect();
-		let radio = RadioInput::new(entries).selected_index(self.color_type.clone() as u32).widget_holder();
+		let radio = RadioInput::new(entries).selected_index(Some(self.color_type.clone() as u32)).widget_holder();
 		widgets.push(radio);
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
