@@ -335,10 +335,9 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
 
 			let image_data = web_sys::HtmlImageElement::new().unwrap();
-			log::debug!("Setting src: {}", base64_string);
 			image_data.set_src(base64_string.as_str());
-
 			let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+			wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
 			context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
 			let frame = SurfaceHandleFrame {
 				surface_handle,
