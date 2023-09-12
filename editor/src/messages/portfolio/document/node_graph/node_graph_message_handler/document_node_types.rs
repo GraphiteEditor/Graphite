@@ -2517,44 +2517,6 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 	network
 }
 
-fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let path_generator = resolve_document_node_type("Shape").expect("Shape node does not exist");
-	let cull_node = resolve_document_node_type("Cull").expect("Cull node does not exist");
-	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
-	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-
-	let mut network = NodeNetwork::default();
-
-	network.push_node(path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))));
-	network.push_node(cull_node.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
-	network
-}
-
-fn new_raster_network(image_frame: ImageFrame<Color>) -> NodeNetwork {
-	let sample_node = resolve_document_node_type("Sample").expect("Sample node does not exist");
-	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-
-	let mut network = NodeNetwork::default();
-
-	let image_node_type = resolve_document_node_type("Image").expect("Image node should be in registry");
-
-	network.push_node(image_node_type.to_document_node(
-		[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::ImageFrame(image_frame), false)],
-		Default::default(),
-	));
-	network.push_node(sample_node.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
-	network
-}
-
 pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");

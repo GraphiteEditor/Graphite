@@ -319,7 +319,7 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			data.render_svg(&mut render, &render_params);
 			// TODO: reenable once we switch to full node graph
 			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
-			let max = min + resolution.as_dvec2();
+			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
 			render.format_svg(min, max);
 			let string = render.svg.to_string();
 			let array = string.as_bytes();
