@@ -235,7 +235,6 @@ pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
 async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
-	log::debug!("Creating surface");
 	editor.application_io.create_surface().into()
 }
 
@@ -301,7 +300,6 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> RenderOutput {
 	let footprint = editor.render_config.viewport;
-	log::debug!("Rendering: {:?}", footprint);
 	let data = self.data.eval(footprint).await;
 	let mut render = SvgRender::new();
 	let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
@@ -313,7 +311,7 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			data.render_svg(&mut render, &render_params);
 			// TODO: reenable once we switch to full node graph
 			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
-			let max = min + footprint.resolution.as_dvec2();
+			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
 			render.format_svg(min, max);
 			RenderOutput::Svg(render.svg.to_string())
 		}

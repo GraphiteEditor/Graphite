@@ -69,15 +69,13 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	let data = bytemuck::cast_vec(image.data);
 
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-	log::debug!("viewport_bounds: {viewport_bounds:?}");
-	let bbox = Bbox::from_transform(image_frame.transform);
-	log::debug!("local_bounds: {bbox:?}");
-	let bounds = viewport_bounds.intersect(&bbox.to_axis_aligned_bbox());
-	log::debug!("intersection: {bounds:?}");
+	let image_bounds = Bbox::from_transform(image_frame.transform).to_axis_aligned_bbox();
+	let intersection = viewport_bounds.intersect(&image_bounds);
 	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
-	let size = bounds.size();
+	let size = intersection.size();
 	let size_px = image_size.transform_vector2(size).as_uvec2();
 
+	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
 		return ImageFrame::empty();
 	}
@@ -85,24 +83,24 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
 
 	let dynamic_image: image::DynamicImage = image_buffer.into();
-	let offset = (viewport_bounds.start - bounds.start).max(DVec2::ZERO);
-	let pad_left = (bounds.start - viewport_bounds.start).max(DVec2::ZERO);
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
 	let offset_px = image_size.transform_vector2(offset).as_uvec2();
-	log::debug!("offset: {offset:?}");
-	log::debug!("pad_left: {pad_left:?}");
-	log::debug!("offset_px: {offset_px:?}");
-	log::debug!("size: {:?}", size_px);
 	let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
 
-	log::debug!("transform: {:?}", footprint.transform);
-	log::debug!("size: {size:?}");
 	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
 	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
-	let nwidth = viewport_resolution_x as u32;
-	let nheight = viewport_resolution_y as u32;
-	log::debug!("x: {viewport_resolution_x}, y: {viewport_resolution_y}");
+	let mut nwidth = size_px.x;
+	let mut nheight = size_px.y;
 
-	let resized = cropped.resize_exact(nwidth, nheight, image::imageops::Lanczos3);
+	// Only downscale the image for now
+	let resized = if nwidth < image.width || nheight < image.height {
+		nwidth = viewport_resolution_x as u32;
+		nheight = viewport_resolution_y as u32;
+		// TODO: choose filter based on quality reqirements
+		cropped.resize_exact(nwidth, nheight, image::imageops::Triangle)
+	} else {
+		cropped
+	};
 	let buffer = resized.to_rgba32f();
 	let buffer = buffer.into_raw();
 	let vec = bytemuck::cast_vec(buffer);
@@ -113,11 +111,8 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	};
 	// we need to adjust the offset if we truncate the offset calculation
 
-	let new_transform = image_frame.transform * DAffine2::from_translation(- offset - pad_left) * DAffine2::from_scale(DVec2::new(size.x, size.y));
-	ImageFrame {
-		image,
-		transform: new_transform,
-	}
+	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(DVec2::new(size.x, size.y));
+	ImageFrame { image, transform: new_transform }
 }
 
 #[derive(Debug, Clone, Copy)]

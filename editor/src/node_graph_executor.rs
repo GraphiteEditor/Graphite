@@ -182,7 +182,7 @@ impl NodeRuntime {
 			imaginate_preferences: &self.imaginate_preferences,
 			render_config: RenderConfig {
 				viewport: Footprint { transform, ..Default::default() },
-				export_format: graphene_core::application_io::ExportFormat::Canvas,
+				export_format: graphene_core::application_io::ExportFormat::Svg,
 			},
 		};
 
