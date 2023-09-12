@@ -615,7 +615,7 @@ struct SingleSelectedPoint {
 }
 
 // If there is one selected and only one manipulator group this yields the selected control point,
-// if only one handle is selected it will yield that handle, otherwise it will yield the groups anchor.
+// if only one handle is selected it will yield that handle, otherwise it will yield the group's anchor.
 fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> SelectionStatus {
 	// Check to see if only one manipulator group is selected
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
@@ -647,9 +647,9 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 		});
 	};
 
-	if selection_layers.len() > 0 {
+	if !selection_layers.is_empty() {
 		return SelectionStatus::Multiple(MultipleSelectedPoints {
-			manipulator_angle: shape_state.selected_manipulator_angles(&document),
+			manipulator_angle: shape_state.selected_manipulator_angles(document),
 		});
 	}
 

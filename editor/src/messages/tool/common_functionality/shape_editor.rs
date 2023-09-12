@@ -226,17 +226,20 @@ impl ShapeState {
 			.flat_map(|(vector_data, selection_state)| selection_state.selected_points.iter().map(|selected_point| vector_data.mirror_angle.contains(&selected_point.group)));
 
 		let Some(first_is_smooth) = point_smoothness_status.next() else { return ManipulatorAngle::Mixed };
-		let mixed = point_smoothness_status.any(|point| first_is_smooth != point);
-		match (first_is_smooth, mixed) {
-			(_, true) => ManipulatorAngle::Mixed,
-			(false, false) => ManipulatorAngle::Sharp,
-			_ => ManipulatorAngle::Smooth,
+
+		if point_smoothness_status.any(|point| first_is_smooth != point) {
+			return ManipulatorAngle::Mixed;
+		}
+		match first_is_smooth {
+			false => ManipulatorAngle::Sharp,
+			true => ManipulatorAngle::Smooth,
 		}
 	}
 
 	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer_path: &[u64]) {
 		let manipulator_groups = subpath.manipulator_groups();
 		let manipulator = manipulator_groups[index];
+
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
 		let mut previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.get(index));
 		let mut next_position = manipulator_groups.get(index + 1);
@@ -301,12 +304,12 @@ impl ShapeState {
 		}
 	}
 
-	/// Smoothes the set of selected control points, assuming that the selected set is homogenuosly sharp.
+	/// Smooths the set of selected control points, assuming that the selected set is homogeneously sharp.
 	pub fn smooth_selected_groups(&self, responses: &mut VecDeque<Message>, document: &Document) -> Option<()> {
 		let mut skip_set = HashSet::new();
 
 		for (layer_id, layer_state) in self.selected_shape_state.iter() {
-			let layer = document.layer(&layer_id).ok()?;
+			let layer = document.layer(layer_id).ok()?;
 			let vector_data = layer.as_vector_data()?;
 
 			for point in layer_state.selected_points.iter() {
@@ -358,7 +361,7 @@ impl ShapeState {
 						});
 
 						if let Some((subpath, index)) = found {
-							self.smooth_manipulator_group(&subpath, index, responses, layer_id);
+							self.smooth_manipulator_group(subpath, index, responses, layer_id);
 						}
 					}
 				}
@@ -618,7 +621,7 @@ impl ShapeState {
 				responses.add(GraphOperationMessage::Vector {
 					layer: layer.to_vec(),
 					modification: VectorDataModification::SetManipulatorHandleMirroring { id: point.group, mirror_angle },
-				})
+				});
 			}
 		}
 	}
