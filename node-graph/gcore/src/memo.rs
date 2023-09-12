@@ -1,6 +1,5 @@
 use crate::Node;
 use core::future::Future;
-use core::sync::atomic::AtomicU8;
 
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;

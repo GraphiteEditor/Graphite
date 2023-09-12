@@ -472,11 +472,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				});
 			}
 			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
-			ImaginateGenerate { layer_path } => {
-				if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data) {
-					responses.add(message);
-				}
-			}
+			ImaginateGenerate { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			ImaginateRandom {
 				layer_path,
 				imaginate_node,
@@ -499,13 +495,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.add(DocumentMessage::ImaginateGenerate { layer_path });
 				}
 			}
-			InputFrameRasterizeRegionBelowLayer { layer_path } => {
-				if layer_path.is_empty() {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				} else if let Some(message) = self.rasterize_region_below_layer(document_id, layer_path, preferences, persistent_data) {
-					responses.add(message);
-				}
-			}
+			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			LayerChanged { affected_layer_path } => {
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
 					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
@@ -973,45 +963,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 impl DocumentMessageHandler {
 	pub fn network(&self) -> &NodeNetwork {
 		&self.document_legacy.document_network
-	}
-	pub fn rasterize_region_below_layer(&mut self, document_id: u64, layer_path: Vec<LayerId>, _preferences: &PreferencesMessageHandler, persistent_data: &PersistentData) -> Option<Message> {
-		// Prepare the node graph input image
-
-		let Some(node_network) = self.document_legacy.layer(&layer_path).ok().and_then(|layer| layer.as_layer_network().ok()) else {
-			return None;
-		};
-
-		// Check if we use the "Input Frame" node.
-		// TODO: Remove once rasterization is moved into a node.
-		let input_frame_node_id = node_network.nodes.iter().find(|(_, node)| node.name == "Input Frame").map(|(&id, _)| id);
-		let input_frame_connected_to_graph_output = input_frame_node_id.map_or(false, |target_node_id| node_network.connected_to_output(target_node_id));
-
-		// If the Input Frame node is connected upstream, rasterize the artwork below this layer by calling into JS
-		let response = if input_frame_connected_to_graph_output {
-			let old_artwork_transform = self.remove_document_transform();
-
-			// Calculate the size of the region to be exported and generate an SVG of the artwork below this layer within that region
-			let transform = self.document_legacy.multiply_transforms(&layer_path).unwrap();
-			let size = DVec2::new(transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-			// TODO: Test if this would be better to have a transparent background
-			let svg = self.render_document(size, transform.inverse(), false, persistent_data, DocumentRenderMode::OnlyBelowLayerInFolder(&layer_path));
-
-			self.restore_document_transform(old_artwork_transform);
-
-			// Once JS asynchronously rasterizes the SVG, it will call the `PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer` message with the rasterized image data
-			FrontendMessage::TriggerRasterizeRegionBelowLayer { document_id, layer_path, svg, size }.into()
-		}
-		// Skip taking a round trip through JS since there's nothing to rasterize, and instead directly call the message which would otherwise be called asynchronously from JS
-		else {
-			PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
-				document_id,
-				layer_path,
-				input_image_data: vec![],
-				size: (0, 0),
-			}
-			.into()
-		};
-		Some(response)
 	}
 
 	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
