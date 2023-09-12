@@ -2,7 +2,7 @@ use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 
-use bezier_rs::{Bezier, TValue};
+use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use document_legacy::document::Document;
 use document_legacy::LayerId;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -10,10 +10,18 @@ use graphene_core::vector::{ManipulatorPointId, SelectedType, VectorData};
 
 use glam::DVec2;
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ManipulatorAngle {
+	Smooth,
+	Sharp,
+	Mixed,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
 }
+
 impl SelectedLayerState {
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
@@ -31,6 +39,7 @@ impl SelectedLayerState {
 		self.selected_points.len()
 	}
 }
+
 pub type SelectedShapeState = HashMap<Vec<LayerId>, SelectedLayerState>;
 #[derive(Debug, Default)]
 pub struct ShapeState {
@@ -42,6 +51,7 @@ pub struct SelectedPointsInfo<'a> {
 	pub points: Vec<ManipulatorPointInfo<'a>>,
 	pub offset: DVec2,
 }
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ManipulatorPointInfo<'a> {
 	pub shape_layer_path: &'a [LayerId],
@@ -146,7 +156,7 @@ impl ShapeState {
 	}
 
 	/// A mutable iterator of all the manipulators, regardless of selection.
-	pub fn manipulator_groups<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a bezier_rs::ManipulatorGroup<ManipulatorGroupId>> {
+	pub fn manipulator_groups<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorGroup<ManipulatorGroupId>> {
 		self.iter(document).flat_map(|shape| shape.manipulator_groups())
 	}
 
@@ -196,6 +206,166 @@ impl ShapeState {
 		if !point.manipulator_type.is_handle() {
 			move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
 			move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+		}
+
+		Some(())
+	}
+
+	// Iterates over the selected manipulator groups, returning whether they have mixed, sharp, or smooth angles.
+	// If there are no points selected this function returns mixed.
+	pub fn selected_manipulator_angles(&self, document: &Document) -> ManipulatorAngle {
+		// This iterator contains a bool indicating whether or not every selected point has a smooth manipulator angle.
+		let mut point_smoothness_status = self
+			.selected_shape_state
+			.iter()
+			.filter_map(|(layer_id, selection_state)| {
+				let layer = document.layer(layer_id).ok()?;
+				let vector_data = layer.as_vector_data()?;
+				Some((vector_data, selection_state))
+			})
+			.flat_map(|(vector_data, selection_state)| selection_state.selected_points.iter().map(|selected_point| vector_data.mirror_angle.contains(&selected_point.group)));
+
+		let Some(first_is_smooth) = point_smoothness_status.next() else { return ManipulatorAngle::Mixed };
+
+		if point_smoothness_status.any(|point| first_is_smooth != point) {
+			return ManipulatorAngle::Mixed;
+		}
+		match first_is_smooth {
+			false => ManipulatorAngle::Sharp,
+			true => ManipulatorAngle::Smooth,
+		}
+	}
+
+	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer_path: &[u64]) {
+		let manipulator_groups = subpath.manipulator_groups();
+		let manipulator = manipulator_groups[index];
+
+		// Grab the next and previous manipulator groups by simply looking at the next / previous index
+		let mut previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.get(index));
+		let mut next_position = manipulator_groups.get(index + 1);
+
+		// Wrapping around closed path
+		if subpath.closed() {
+			previous_position = previous_position.or_else(|| manipulator_groups.last());
+			next_position = next_position.or_else(|| manipulator_groups.first());
+		}
+
+		let anchor_position = manipulator.anchor;
+		// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
+		let length_previous = previous_position.map(|group| (group.anchor - anchor_position).length() / 3.);
+		let length_next = next_position.map(|group| (group.anchor - anchor_position).length() / 3.);
+
+		// Use the position relative to the anchor
+		let previous_angle = previous_position.map(|group| (group.anchor - anchor_position)).map(|pos| pos.y.atan2(pos.x));
+		let next_angle = next_position.map(|group| (group.anchor - anchor_position)).map(|pos| pos.y.atan2(pos.x));
+
+		// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
+		let handle_direction = match (previous_angle, next_angle) {
+			(Some(previous), Some(next)) => (previous + next) / 2. + core::f64::consts::FRAC_PI_2,
+			(None, Some(val)) => core::f64::consts::PI + val,
+			(Some(val), None) => val,
+			(None, None) => return,
+		};
+
+		// Mirror the angle but not the distance
+		responses.add(GraphOperationMessage::Vector {
+			layer: layer_path.to_vec(),
+			modification: VectorDataModification::SetManipulatorHandleMirroring {
+				id: manipulator.id,
+				mirror_angle: true,
+			},
+		});
+
+		let (sin, cos) = handle_direction.sin_cos();
+		let mut handle_vector = DVec2::new(cos, sin);
+
+		// Flip the vector if it is not facing towards the same direction as the anchor
+		if previous_position.filter(|&group| (group.anchor - anchor_position).normalize().dot(handle_vector) < 0.).is_some()
+			|| next_position.filter(|&group| (group.anchor - anchor_position).normalize().dot(handle_vector) > 0.).is_some()
+		{
+			handle_vector = -handle_vector;
+		}
+
+		// Push both in and out handles into the correct position
+		if let Some(in_handle) = length_previous.map(|length| anchor_position + handle_vector * length) {
+			let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
+			responses.add(GraphOperationMessage::Vector {
+				layer: layer_path.to_vec(),
+				modification: VectorDataModification::SetManipulatorPosition { point, position: in_handle },
+			});
+		}
+
+		if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
+			let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
+			responses.add(GraphOperationMessage::Vector {
+				layer: layer_path.to_vec(),
+				modification: VectorDataModification::SetManipulatorPosition { point, position: out_handle },
+			});
+		}
+	}
+
+	/// Smooths the set of selected control points, assuming that the selected set is homogeneously sharp.
+	pub fn smooth_selected_groups(&self, responses: &mut VecDeque<Message>, document: &Document) -> Option<()> {
+		let mut skip_set = HashSet::new();
+
+		for (layer_id, layer_state) in self.selected_shape_state.iter() {
+			let layer = document.layer(layer_id).ok()?;
+			let vector_data = layer.as_vector_data()?;
+
+			for point in layer_state.selected_points.iter() {
+				if skip_set.contains(&point.group) {
+					continue;
+				};
+
+				skip_set.insert(point.group);
+
+				let anchor_selected = layer_state.selected_points.contains(&ManipulatorPointId {
+					group: point.group,
+					manipulator_type: SelectedType::Anchor,
+				});
+				let out_selected = layer_state.selected_points.contains(&ManipulatorPointId {
+					group: point.group,
+					manipulator_type: SelectedType::OutHandle,
+				});
+				let in_selected = layer_state.selected_points.contains(&ManipulatorPointId {
+					group: point.group,
+					manipulator_type: SelectedType::InHandle,
+				});
+				let group = vector_data.manipulator_from_id(point.group)?;
+
+				match (anchor_selected, out_selected, in_selected) {
+					(_, true, false) => {
+						let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
+						if let Some(position) = group.out_handle {
+							responses.add(GraphOperationMessage::Vector {
+								layer: layer_id.to_vec(),
+								modification: VectorDataModification::SetManipulatorPosition { point: out_handle, position },
+							});
+						}
+					}
+					(_, false, true) => {
+						let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
+						if let Some(position) = group.in_handle {
+							responses.add(GraphOperationMessage::Vector {
+								layer: layer_id.to_vec(),
+								modification: VectorDataModification::SetManipulatorPosition { point: in_handle, position },
+							});
+						}
+					}
+					(_, _, _) => {
+						let found = vector_data.subpaths.iter().find_map(|subpath| {
+							let group_slice = subpath.manipulator_groups();
+							let index = group_slice.iter().position(|manipulator| manipulator.id == group.id)?;
+							// TODO: try subpath closed? wrapping
+							Some((subpath, index))
+						});
+
+						if let Some((subpath, index)) = found {
+							self.smooth_manipulator_group(subpath, index, responses, layer_id);
+						}
+					}
+				}
+			}
 		}
 
 		Some(())
@@ -444,6 +614,18 @@ impl ShapeState {
 		}
 	}
 
+	/// Toggle if the handles should mirror angle across the anchor position.
+	pub fn set_handle_mirroring_on_selected(&self, mirror_angle: bool, responses: &mut VecDeque<Message>) {
+		for (layer, state) in &self.selected_shape_state {
+			for point in &state.selected_points {
+				responses.add(GraphOperationMessage::Vector {
+					layer: layer.to_vec(),
+					modification: VectorDataModification::SetManipulatorHandleMirroring { id: point.group, mirror_angle },
+				});
+			}
+		}
+	}
+
 	/// Iterate over the shapes.
 	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorData> + 'a {
 		self.selected_shape_state
@@ -544,7 +726,7 @@ impl ShapeState {
 				responses.add(out_handle);
 
 				// Insert a new manipulator group between the existing ones
-				let manipulator_group = bezier_rs::ManipulatorGroup::new(first.end(), first.handle_end(), second.handle_start());
+				let manipulator_group = ManipulatorGroup::new(first.end(), first.handle_end(), second.handle_start());
 				let insert = GraphOperationMessage::Vector {
 					layer: layer_path.clone(),
 					modification: VectorDataModification::AddManipulatorGroup { manipulator_group, after_id: start },
@@ -598,78 +780,28 @@ impl ShapeState {
 				(None, None) => true,
 			};
 
-			let manipulator_groups = subpath.manipulator_groups();
-			let (in_handle, out_handle) = if already_sharp {
-				let is_closed = subpath.closed();
-
-				// Grab the next and previous manipulator groups by simply looking at the next / previous index
-				let mut previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.get(index)).map(|group| group.anchor);
-				let mut next_position = manipulator_groups.get(index + 1).map(|group| group.anchor);
-
-				// Wrapping around closed path
-				if is_closed {
-					previous_position = previous_position.or_else(|| manipulator_groups.last().map(|group| group.anchor));
-					next_position = next_position.or_else(|| manipulator_groups.first().map(|group| group.anchor));
-				}
-
-				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
-				let length_previous = previous_position.map(|point| (point - anchor_position).length() / 3.);
-				let length_next = next_position.map(|point| (point - anchor_position).length() / 3.);
-
-				// Use the position relative to the anchor
-				let previous_angle = previous_position.map(|point| (point - anchor_position)).map(|pos| pos.y.atan2(pos.x));
-				let next_angle = next_position.map(|point| (point - anchor_position)).map(|pos| pos.y.atan2(pos.x));
-
-				// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-				let handle_direction = match (previous_angle, next_angle) {
-					(Some(previous), Some(next)) => (previous + next) / 2. + core::f64::consts::FRAC_PI_2,
-					(None, Some(val)) => core::f64::consts::PI + val,
-					(Some(val), None) => val,
-					(None, None) => return None,
-				};
-
-				// Mirror the angle but not the distance
+			if already_sharp {
+				self.smooth_manipulator_group(subpath, index, responses, layer_path);
+			} else {
+				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
+				responses.add(GraphOperationMessage::Vector {
+					layer: layer_path.to_vec(),
+					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
+				});
+				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
+				responses.add(GraphOperationMessage::Vector {
+					layer: layer_path.to_vec(),
+					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
+				});
 				responses.add(GraphOperationMessage::Vector {
 					layer: layer_path.to_vec(),
 					modification: VectorDataModification::SetManipulatorHandleMirroring {
 						id: manipulator.id,
-						mirror_angle: true,
+						mirror_angle: false,
 					},
 				});
-
-				let (sin, cos) = handle_direction.sin_cos();
-				let mut handle_vector = DVec2::new(cos, sin);
-
-				// Flip the vector if it is not facing towards the same direction as the anchor
-				if previous_position.filter(|&pos| (pos - anchor_position).normalize().dot(handle_vector) < 0.).is_some()
-					|| next_position.filter(|&pos| (pos - anchor_position).normalize().dot(handle_vector) > 0.).is_some()
-				{
-					handle_vector = -handle_vector;
-				}
-
-				(
-					length_previous.map(|length| anchor_position + handle_vector * length),
-					length_next.map(|length| anchor_position - handle_vector * length),
-				)
-			} else {
-				(Some(anchor_position), Some(anchor_position))
 			};
 
-			// Push both in and out handles into the correct position
-			if let Some(in_handle) = in_handle {
-				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
-					modification: VectorDataModification::SetManipulatorPosition { point, position: in_handle },
-				});
-			}
-			if let Some(out_handle) = out_handle {
-				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
-					modification: VectorDataModification::SetManipulatorPosition { point, position: out_handle },
-				});
-			}
 			Some(true)
 		};
 		for layer_path in self.selected_shape_state.keys() {
