@@ -7,7 +7,7 @@ use node_macro::node_fn;
 
 use core::future::Future;
 use core::ops::{Deref, DerefMut};
-use glam::IVec2;
+use glam::{DVec2, IVec2, UVec2};
 
 pub mod renderer;
 
@@ -198,6 +198,70 @@ where
 
 impl GraphicGroup {
 	pub const EMPTY: Self = Self(Vec::new());
+
+	pub fn to_usvg_tree(&self, resolution: UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
+		let root_node = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+		let tree = usvg::Tree {
+			size: usvg::Size::from_wh(resolution.x as f32, resolution.y as f32).unwrap(),
+			view_box: usvg::ViewBox {
+				rect: usvg::NonZeroRect::from_ltrb(viewbox[0].x as f32, viewbox[0].y as f32, viewbox[1].x as f32, viewbox[1].y as f32).unwrap(),
+				aspect: usvg::AspectRatio::default(),
+			},
+			root: root_node.clone(),
+		};
+
+		for element in self.0.iter() {
+			root_node.append(element.to_usvg_node());
+		}
+		tree
+	}
+}
+
+impl GraphicElement {
+	fn to_usvg_node(&self) -> usvg::Node {
+		match &self.graphic_element_data {
+			GraphicElementData::VectorShape(_) => usvg::Node::new(usvg::NodeKind::Path(usvg::Path::new(todo!()))),
+			GraphicElementData::ImageFrame(image_frame) => {
+				let png = vec![];
+				usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
+					id: String::new(),
+					transform: usvg::Transform::identity(),
+					visibility: usvg::Visibility::Visible,
+					view_box: usvg::ViewBox {
+						rect: usvg::NonZeroRect::from_xywh(0., 0., image_frame.image.width as f32, image_frame.image.height as f32).unwrap(),
+						aspect: usvg::AspectRatio::default(),
+					},
+					rendering_mode: usvg::ImageRendering::OptimizeSpeed,
+					kind: usvg::ImageKind::PNG(png.into()),
+				}))
+			}
+			GraphicElementData::Text(text) => usvg::Node::new(usvg::NodeKind::Text(usvg::Text {
+				id: String::new(),
+				transform: usvg::Transform::identity(),
+				rendering_mode: usvg::TextRendering::OptimizeSpeed,
+				positions: Vec::new(),
+				rotate: Vec::new(),
+				writing_mode: usvg::WritingMode::LeftToRight,
+				chunks: vec![usvg::TextChunk {
+					text: text.clone(),
+					x: None,
+					y: None,
+					anchor: usvg::TextAnchor::Start,
+					spans: vec![],
+					text_flow: usvg::TextFlow::Linear,
+				}],
+			})),
+			GraphicElementData::GraphicGroup(group) => {
+				let group_element = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+
+				for element in group.0.iter() {
+					group_element.append(element.to_usvg_node());
+				}
+				group_element
+			}
+			GraphicElementData::Artboard(_) => todo!(),
+		}
+	}
 }
 
 impl core::hash::Hash for GraphicElement {
