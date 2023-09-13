@@ -7,10 +7,11 @@ use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graphene_core::raster::ImageFrame;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
-use graphene_core::Artboard;
+use graphene_core::{Artboard, Color};
 use transform_utils::LayerBounds;
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -174,6 +175,23 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
 		let shape_id = generate_uuid();
 		self.insert_node_before(shape_id, cull_id, 0, shape, IVec2::new(-8, 0));
+		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+	}
+
+	fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: NodeId) {
+		let image = {
+			let node_type = resolve_document_node_type("Image").expect("Image node does not exist");
+			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))], Default::default())
+		};
+		let sample = resolve_document_node_type("Sample").expect("Sample node does not exist").default_document_node();
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
+
+		let transform_id = generate_uuid();
+		self.insert_node_before(transform_id, layer, 0, transform, IVec2::new(-8, 0));
+		let sample_id = generate_uuid();
+		self.insert_node_before(sample_id, transform_id, 0, sample, IVec2::new(-8, 0));
+		let image_id = generate_uuid();
+		self.insert_node_before(image_id, sample_id, 0, image, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
@@ -523,6 +541,12 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
+				}
+			}
+			GraphOperationMessage::NewBitmapLayer { id, image_frame } => {
+				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+					modify_inputs.insert_image_data(image_frame, layer);
 				}
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths } => {

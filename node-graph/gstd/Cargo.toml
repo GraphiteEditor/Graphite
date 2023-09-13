@@ -90,5 +90,6 @@ features = [
 	"Navigator",
 	"Gpu",
 	"HtmlCanvasElement",
+	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ]
