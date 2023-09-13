@@ -627,7 +627,7 @@ fn mandelbrot(c: Vec2, max_iter: usize) -> usize {
 
 fn map_color(iter: usize, max_iter: usize) -> Color {
 	let v = iter as f32 / max_iter as f32;
-	Color::from_rgbaf32_unchecked(v, 1. - v, 0., 1.)
+	Color::from_rgbaf32_unchecked(v, v, v., 1.)
 }
 
 #[cfg(test)]
