@@ -595,9 +595,7 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 	let max_iter = 255;
 
 	let scale = 3. * size.as_vec2() / Vec2::new(width as f32, height as f32);
-	log::debug!("size: {:?}", size);
 	let coordinate_offset = offset.as_vec2() * 3. - Vec2::new(2., 1.5);
-	log::debug!("offset: {:?}", offset);
 	for y in 0..height {
 		for x in 0..width {
 			let pos = Vec2::new(x as f32, y as f32);
@@ -627,7 +625,7 @@ fn mandelbrot(c: Vec2, max_iter: usize) -> usize {
 
 fn map_color(iter: usize, max_iter: usize) -> Color {
 	let v = iter as f32 / max_iter as f32;
-	Color::from_rgbaf32_unchecked(v, v, v., 1.)
+	Color::from_rgbaf32_unchecked(v, v, v, 1.)
 }
 
 #[cfg(test)]
