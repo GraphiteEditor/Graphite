@@ -1,5 +1,5 @@
 use dyn_any::{DynAny, StaticType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
@@ -111,7 +111,7 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	};
 	// we need to adjust the offset if we truncate the offset calculation
 
-	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(DVec2::new(size.x, size.y));
+	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 	ImageFrame { image, transform: new_transform }
 }
 
@@ -565,6 +565,69 @@ fn pixel_noise(width: u32, height: u32, seed: u32, noise_type: NoiseType) -> gra
 		image,
 		transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MandelbrotNode;
+
+#[node_macro::node_fn(MandelbrotNode)]
+fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+
+	let width = footprint.resolution.x;
+	let height = footprint.resolution.y;
+
+	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
+	let intersection = viewport_bounds.intersect(&image_bounds);
+	let size = intersection.size();
+
+	// If the image would not be visible, return an empty image
+	if size.x <= 0. || size.y <= 0. {
+		return ImageFrame::empty();
+	}
+
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+
+	let width = footprint.transform.transform_vector2(DVec2::X * size.x).length() as u32;
+	let height = footprint.transform.transform_vector2(DVec2::Y * size.y).length() as u32;
+
+	let mut data = Vec::with_capacity(width as usize * height as usize);
+	let max_iter = 255;
+
+	let scale = 3. * size.as_vec2() / Vec2::new(width as f32, height as f32);
+	log::debug!("size: {:?}", size);
+	let coordinate_offset = offset.as_vec2() * 3. - Vec2::new(2., 1.5);
+	log::debug!("offset: {:?}", offset);
+	for y in 0..height {
+		for x in 0..width {
+			let pos = Vec2::new(x as f32, y as f32);
+			let c = pos * scale + coordinate_offset;
+
+			let iter = mandelbrot(c, max_iter);
+			data.push(map_color(iter, max_iter));
+		}
+	}
+	ImageFrame {
+		image: Image { width, height, data },
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+	}
+}
+
+#[inline(always)]
+fn mandelbrot(c: Vec2, max_iter: usize) -> usize {
+	let mut z = Vec2::new(0.0, 0.0);
+	for i in 0..max_iter {
+		z = Vec2::new(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+		if z.length_squared() > 4.0 {
+			return i;
+		}
+	}
+	max_iter
+}
+
+fn map_color(iter: usize, max_iter: usize) -> Color {
+	let v = iter as f32 / max_iter as f32;
+	Color::from_rgbaf32_unchecked(v, 1. - v, 0., 1.)
 }
 
 #[cfg(test)]
