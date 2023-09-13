@@ -451,27 +451,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
-			PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
-				document_id,
-				layer_path,
-				input_image_data,
-				size,
-			} => {
-				let result = self.executor.submit_node_graph_evaluation(
-					(document_id, &mut self.documents),
-					layer_path,
-					(input_image_data, size),
-					(preferences, &self.persistent_data),
-					responses,
-				);
-
-				if let Err(description) = result {
-					responses.add(DialogMessage::DisplayDialogError {
-						title: "Unable to update node graph".to_string(),
-						description,
-					});
-				}
-			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				if let Some(document) = self.active_document() {
 					if !document.is_auto_saved() {
@@ -524,6 +503,20 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					document_id,
 				};
 				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
+			}
+			PortfolioMessage::SubmitGraphRender { document_id, layer_path } => {
+				let result = self.executor.submit_node_graph_evaluation(
+					(document_id, self.documents.get_mut(&document_id).expect("Tried to render no existent Document")),
+					layer_path,
+					ipp.viewport_bounds.size().as_uvec2(),
+				);
+
+				if let Err(description) = result {
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Unable to update node graph".to_string(),
+						description,
+					});
+				}
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {

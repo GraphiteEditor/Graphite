@@ -2,11 +2,12 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
+use graphene_core::raster::ImageFrame;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::ManipulatorPointId;
-use graphene_core::Artboard;
+use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -58,6 +59,10 @@ pub enum GraphOperationMessage {
 	NewArtboard {
 		id: NodeId,
 		artboard: Artboard,
+	},
+	NewBitmapLayer {
+		id: NodeId,
+		image_frame: ImageFrame<Color>,
 	},
 	NewVectorLayer {
 		id: NodeId,

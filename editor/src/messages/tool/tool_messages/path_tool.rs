@@ -393,8 +393,7 @@ impl Fsm for PathToolFsmState {
 				};
 				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
 
-					PathToolFsmState::Ready
-
+				PathToolFsmState::Ready
 			}
 
 			// Mouse up
@@ -410,7 +409,8 @@ impl Fsm for PathToolFsmState {
 				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				}
+				PathToolFsmState::Ready
+			}
 
 			(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);

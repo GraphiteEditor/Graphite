@@ -98,9 +98,6 @@ impl BorrowTree {
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context).await?;
-			} else {
-				let Some(node_container) = self.nodes.get_mut(&id) else { continue };
-				node_container.reset();
 			}
 			old_nodes.remove(&id);
 		}

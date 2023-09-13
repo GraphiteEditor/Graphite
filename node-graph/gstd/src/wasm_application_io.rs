@@ -28,6 +28,9 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
+use base64::Engine;
+use glam::DAffine2;
+
 pub struct Canvas(CanvasRenderingContext2d);
 
 #[derive(Debug, Default)]
@@ -301,13 +304,44 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 	let mut render = SvgRender::new();
 	let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
 	let output_format = editor.render_config.export_format;
+	let resolution = footprint.resolution;
 
 	match output_format {
 		ExportFormat::Svg => {
 			data.render_svg(&mut render, &render_params);
 			// TODO: reenable once we switch to full node graph
-			//render.format_svg((0., 0.).into(), (1., 1.).into());
+			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+			render.format_svg(min, max);
 			RenderOutput::Svg(render.svg.to_string())
+		}
+		ExportFormat::Canvas => {
+			data.render_svg(&mut render, &render_params);
+			// TODO: reenable once we switch to full node graph
+			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+			render.format_svg(min, max);
+			let string = render.svg.to_string();
+			let array = string.as_bytes();
+			let canvas = &surface_handle.surface;
+			canvas.set_width(resolution.x);
+			canvas.set_height(resolution.y);
+
+			let preamble = "data:image/svg+xml;base64,";
+			let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+			base64_string.push_str(preamble);
+			base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+
+			let image_data = web_sys::HtmlImageElement::new().unwrap();
+			image_data.set_src(base64_string.as_str());
+			let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+			wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+			context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
+			let frame = SurfaceHandleFrame {
+				surface_handle,
+				transform: DAffine2::IDENTITY,
+			};
+			RenderOutput::CanvasFrame(frame.into())
 		}
 		_ => todo!("Non svg render output"),
 	}

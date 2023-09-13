@@ -294,6 +294,9 @@ impl GraphicElementRendered for ImageFrame<Color> {
 			}
 			ImageRenderMode::Base64 => {
 				let image = &self.image;
+				if image.data.is_empty() {
+					return;
+				}
 				let (flat_data, _, _) = image.clone().into_flat_u8();
 				let mut output = Vec::new();
 				let encoder = image::codecs::png::PngEncoder::new(&mut output);
@@ -303,13 +306,12 @@ impl GraphicElementRendered for ImageFrame<Color> {
 				let preamble = "data:image/png;base64,";
 				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
 				base64_string.push_str(preamble);
-				log::debug!("len: {}", image.data.len());
 				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
 
 				render.leaf_tag("image", |attributes| {
-					attributes.push("width", image.width.to_string());
+					attributes.push("width", 1.to_string());
 
-					attributes.push("height", image.height.to_string());
+					attributes.push("height", 1.to_string());
 					attributes.push("preserveAspectRatio", "none");
 					attributes.push("transform", transform);
 					attributes.push("href", base64_string)

@@ -750,11 +750,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
-			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
+			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender {
 				document_id: data.document_id,
 				layer_path: Vec::new(),
-				input_image_data: vec![],
-				size: (0, 0),
 			}),
 			NodeGraphMessage::SelectNodes { nodes } => {
 				self.selected_nodes = nodes;
