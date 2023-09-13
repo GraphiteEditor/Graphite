@@ -2084,9 +2084,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Downres",
+			name: "Sample",
 			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_std::raster::DownresNode<_>"),
+			identifier: NodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
@@ -2514,44 +2514,6 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 			.expect("Output node does not exist")
 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
 	);
-	network
-}
-
-pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let path_generator = resolve_document_node_type("Shape").expect("Shape node does not exist");
-	let cull_node = resolve_document_node_type("Cull").expect("Cull node does not exist");
-	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
-	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-
-	let mut network = NodeNetwork::default();
-
-	network.push_node(path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))));
-	network.push_node(cull_node.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
-	network
-}
-
-pub fn new_raster_network(image_frame: ImageFrame<Color>) -> NodeNetwork {
-	let sample_node = resolve_document_node_type("Downres").expect("Downres node does not exist");
-	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-
-	let mut network = NodeNetwork::default();
-
-	let image_node_type = resolve_document_node_type("Image").expect("Image node should be in registry");
-
-	network.push_node(image_node_type.to_document_node(
-		[graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::ImageFrame(image_frame), false)],
-		Default::default(),
-	));
-	network.push_node(sample_node.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
 	network
 }
 

@@ -1,7 +1,6 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
 use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
-use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
@@ -25,7 +24,7 @@ use graphene_core::{Color, SurfaceFrame, SurfaceId};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -70,8 +69,8 @@ pub(crate) struct GenerationRequest {
 	generation_id: u64,
 	graph: NodeNetwork,
 	path: Vec<LayerId>,
-	image_frame: Option<ImageFrame<Color>>,
 	transform: DAffine2,
+	viewport_resolution: UVec2,
 }
 
 pub(crate) struct GenerationResponse {
@@ -139,9 +138,9 @@ impl NodeRuntime {
 				NodeRuntimeMessage::GenerationRequest(GenerationRequest {
 					generation_id,
 					graph,
-					image_frame,
 					transform,
 					path,
+					viewport_resolution,
 					..
 				}) => {
 					let network = wrap_network_in_scope(graph);
@@ -152,7 +151,7 @@ impl NodeRuntime {
 						.map(|node| node.path.clone().unwrap_or_default())
 						.collect();
 
-					let result = self.execute_network(&path, network, image_frame, transform).await;
+					let result = self.execute_network(&path, network, transform, viewport_resolution).await;
 					let mut responses = VecDeque::new();
 					self.update_thumbnails(&path, monitor_nodes, &mut responses);
 					let response = GenerationResponse {
@@ -169,21 +168,25 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, image_frame: Option<ImageFrame<Color>>, transform: DAffine2) -> Result<TaggedValue, String> {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> Result<TaggedValue, String> {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
 
 		let editor_api = WasmEditorApi {
 			font_cache: &self.font_cache,
-			image_frame,
 			application_io: self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			imaginate_preferences: &self.imaginate_preferences,
 			render_config: RenderConfig {
-				viewport: Footprint { transform, ..Default::default() },
-				..Default::default()
+				viewport: Footprint {
+					transform,
+					resolution: viewport_resolution,
+					..Default::default()
+				},
+				export_format: graphene_core::application_io::ExportFormat::Svg,
 			},
+			image_frame: None,
 		};
 
 		// We assume only one output
@@ -345,14 +348,14 @@ impl Default for NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, network: NodeNetwork, image_frame: Option<ImageFrame<Color>>, layer_path: Vec<LayerId>, transform: DAffine2) -> u64 {
+	fn queue_execution(&self, network: NodeNetwork, layer_path: Vec<LayerId>, transform: DAffine2, viewport_resolution: UVec2) -> u64 {
 		let generation_id = generate_uuid();
 		let request = GenerationRequest {
 			path: layer_path,
 			graph: network,
-			image_frame,
 			generation_id,
 			transform,
+			viewport_resolution,
 		};
 		self.sender.send(NodeRuntimeMessage::GenerationRequest(request)).expect("Failed to send generation request");
 
@@ -431,19 +434,8 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(
-		&mut self,
-		(document_id, documents): (u64, &mut HashMap<u64, DocumentMessageHandler>),
-		layer_path: Vec<LayerId>,
-		(input_image_data, (width, height)): (Vec<u8>, (u32, u32)),
-		_persistent_data: (&PreferencesMessageHandler, &PersistentData),
-		_responses: &mut VecDeque<Message>,
-	) -> Result<(), String> {
-		// Reformat the input image data into an RGBA f32 image
-		let image = graphene_core::raster::Image::from_image_data(&input_image_data, width, height);
-
+	pub fn submit_node_graph_evaluation(&mut self, (document_id, document): (u64, &mut DocumentMessageHandler), layer_path: Vec<LayerId>, viewport_resolution: UVec2) -> Result<(), String> {
 		// Get the node graph layer
-		let document = documents.get_mut(&document_id).ok_or_else(|| "Invalid document".to_string())?;
 		let network = if layer_path.is_empty() {
 			document.network().clone()
 		} else {
@@ -457,12 +449,10 @@ impl NodeGraphExecutor {
 		};
 
 		// Construct the input image frame
-		let transform = DAffine2::IDENTITY;
-		let image_frame = ImageFrame { image, transform };
 		let document_transform = document.document_legacy.metadata.document_to_viewport;
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, Some(image_frame), layer_path.clone(), document_transform);
+		let generation_id = self.queue_execution(network, layer_path.clone(), document_transform, viewport_resolution);
 
 		self.futures.insert(generation_id, ExecutionContext { layer_path, document_id });
 
@@ -543,10 +533,31 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
-				log::debug!("svg: {svg}");
+				//log::debug!("svg: {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+
+				//return Err("Graphic group (see console)".to_string());
+			}
+			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
+				// Send to frontend
+				//log::debug!("svg: {svg}");
+				responses.add(DocumentMessage::RenderScrollbars);
+				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				let matrix = frame
+					.transform
+					.to_cols_array()
+					.iter()
+					.enumerate()
+					.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+				let svg = format!(
+					r#"
+					<svg><foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>
+					"#,
+					1920, 1080, matrix, frame.surface_id.0
+				);
+				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				//return Err("Graphic group (see console)".to_string());
 			}

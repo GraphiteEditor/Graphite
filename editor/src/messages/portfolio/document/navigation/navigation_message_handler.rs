@@ -4,7 +4,7 @@ use crate::consts::{
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup};
-use crate::messages::input_mapper::utility_types::input_mouse::{ViewportBounds, ViewportPosition};
+use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
@@ -98,7 +98,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
@@ -194,7 +194,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -204,7 +204,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			TransformCanvasEnd => {
 				self.tilt = self.snapped_angle();
@@ -226,7 +226,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
@@ -243,7 +243,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -341,11 +341,8 @@ impl NavigationMessageHandler {
 		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 
-	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
-		let half_viewport = viewport_bounds.size() / 2.;
-		let scaled_half_viewport = half_viewport / self.snapped_scale();
-
-		let transform = self.calculate_offset_transform(scaled_half_viewport);
+	fn create_document_transform(&self, responses: &mut VecDeque<Message>) {
+		let transform = self.calculate_offset_transform(DVec2::ZERO);
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 
@@ -353,7 +350,7 @@ impl NavigationMessageHandler {
 		let new_viewport_bounds = viewport_bounds / zoom_factor;
 		let delta_size = viewport_bounds - new_viewport_bounds;
 		let mouse_fraction = mouse / viewport_bounds;
-		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
+		let delta = delta_size * (-mouse_fraction);
 
 		NavigationMessage::TranslateCanvas { delta }.into()
 	}

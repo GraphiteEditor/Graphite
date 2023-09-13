@@ -24,7 +24,10 @@ imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 wayland = []
 
 [dependencies]
-rand = { version = "0.8.5", features = ["alloc", "small_rng"], default-features = false}
+rand = { version = "0.8.5", features = [
+	"alloc",
+	"small_rng",
+], default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
 autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
 	"fitting",
@@ -44,7 +47,10 @@ gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", 
 compilation-client = { path = "../compilation-client", optional = true }
 bytemuck = { version = "1.13" }
 tempfile = "3"
-image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.24", default-features = false, features = [
+	"png",
+	"jpeg",
+] }
 base64 = { version = "0.21", optional = true }
 dyn-clone = "1.0"
 
@@ -82,5 +88,6 @@ features = [
 	"Navigator",
 	"Gpu",
 	"HtmlCanvasElement",
+	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ]
