@@ -134,6 +134,15 @@ impl Image<Color> {
 		let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8_srgb(v[0], v[1], v[2], v[3])).collect();
 		Image { width, height, data }
 	}
+
+	pub fn to_png(&self) -> Vec<u8> {
+		use ::image::ImageEncoder;
+		let (data, width, height) = self.to_flat_u8();
+		let mut png = Vec::new();
+		let encoder = ::image::codecs::png::PngEncoder::new(&mut png);
+		encoder.write_image(&data, width, height, ::image::ColorType::Rgba8).expect("failed to encode image as png");
+		png
+	}
 }
 
 use super::*;
@@ -143,9 +152,9 @@ where
 	<P as Alpha>::AlphaChannel: Linear,
 {
 	/// Flattens each channel cast to a u8
-	pub fn into_flat_u8(self) -> (Vec<u8>, u32, u32) {
+	pub fn to_flat_u8(&self) -> (Vec<u8>, u32, u32) {
 		let Image { width, height, data } = self;
-		assert_eq!(data.len(), width as usize * height as usize);
+		assert_eq!(data.len(), *width as usize * *height as usize);
 
 		// Cache the last sRGB value we computed, speeds up fills.
 		let mut last_r = 0.;
@@ -190,7 +199,7 @@ where
 			i += 4;
 		}
 
-		(result, width, height)
+		(result, *width, *height)
 	}
 }
 

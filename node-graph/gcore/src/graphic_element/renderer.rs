@@ -297,12 +297,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 				if image.data.is_empty() {
 					return;
 				}
-				let (flat_data, _, _) = image.clone().into_flat_u8();
-				let mut output = Vec::new();
-				let encoder = image::codecs::png::PngEncoder::new(&mut output);
-				encoder
-					.write_image(&flat_data, image.width, image.height, image::ColorType::Rgba8)
-					.expect("failed to encode image as png");
+				let output = image.to_png();
 				let preamble = "data:image/png;base64,";
 				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
 				base64_string.push_str(preamble);

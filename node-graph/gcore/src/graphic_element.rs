@@ -222,10 +222,11 @@ impl GraphicElement {
 		match &self.graphic_element_data {
 			GraphicElementData::VectorShape(_) => usvg::Node::new(usvg::NodeKind::Path(usvg::Path::new(todo!()))),
 			GraphicElementData::ImageFrame(image_frame) => {
-				let png = vec![];
+				let png = image_frame.image.to_png();
+				let cols = image_frame.transform.to_cols_array();
 				usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
 					id: String::new(),
-					transform: usvg::Transform::identity(),
+					transform: usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32),
 					visibility: usvg::Visibility::Visible,
 					view_box: usvg::ViewBox {
 						rect: usvg::NonZeroRect::from_xywh(0., 0., image_frame.image.width as f32, image_frame.image.height as f32).unwrap(),
