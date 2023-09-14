@@ -1,13 +1,14 @@
 use crate::raster::{BlendMode, ImageFrame};
-use crate::vector::VectorData;
+use crate::vector::{subpath, VectorData};
 use crate::{Color, Node};
 
+use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 
 use core::future::Future;
 use core::ops::{Deref, DerefMut};
-use glam::{DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2, IVec2, UVec2};
 
 pub mod renderer;
 
@@ -219,14 +220,49 @@ impl GraphicGroup {
 
 impl GraphicElement {
 	fn to_usvg_node(&self) -> usvg::Node {
+		fn to_transform(transform: DAffine2) -> usvg::Transform {
+			let cols = transform.to_cols_array();
+			usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
+		}
+
 		match &self.graphic_element_data {
-			GraphicElementData::VectorShape(_) => usvg::Node::new(usvg::NodeKind::Path(usvg::Path::new(todo!()))),
+			GraphicElementData::VectorShape(vector_data) => {
+				use usvg::tiny_skia_path::PathBuilder;
+				let mut builder = PathBuilder::new();
+
+				let transform = to_transform(vector_data.transform);
+				let style = &vector_data.style;
+				for subpath in vector_data.subpaths.iter() {
+					let start = vector_data.transform.transform_point2(subpath[0].anchor);
+					builder.move_to(start.x as f32, start.y as f32);
+					for bezier in subpath.iter() {
+						bezier.apply_transformation(|pos| vector_data.transform.transform_point2(pos));
+						let end = bezier.end;
+						match bezier.handles {
+							BezierHandles::Linear => builder.line_to(end.x as f32, end.y as f32),
+							BezierHandles::Quadratic { handle } => builder.quad_to(handle.x as f32, handle.y as f32, end.x as f32, end.y as f32),
+							BezierHandles::Cubic { handle_start, handle_end } => {
+								builder.cubic_to(handle_start.x as f32, handle_start.y as f32, handle_end.x as f32, handle_end.y as f32, end.x as f32, end.y as f32)
+							}
+						}
+					}
+					if subpath.closed {
+						builder.close()
+					}
+				}
+				let path = builder.finish().unwrap();
+				let mut path = usvg::Path::new(path.into());
+				path.transform = transform;
+				// TODO: use proper style
+				path.fill = None;
+				path.stroke = Some(usvg::Stroke::default());
+				usvg::Node::new(usvg::NodeKind::Path(path))
+			}
 			GraphicElementData::ImageFrame(image_frame) => {
 				let png = image_frame.image.to_png();
-				let cols = image_frame.transform.to_cols_array();
 				usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
 					id: String::new(),
-					transform: usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32),
+					transform: to_transform(image_frame.transform),
 					visibility: usvg::Visibility::Visible,
 					view_box: usvg::ViewBox {
 						rect: usvg::NonZeroRect::from_xywh(0., 0., image_frame.image.width as f32, image_frame.image.height as f32).unwrap(),
@@ -260,7 +296,8 @@ impl GraphicElement {
 				}
 				group_element
 			}
-			GraphicElementData::Artboard(_) => todo!(),
+			// TODO
+			GraphicElementData::Artboard(board) => usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default())),
 		}
 	}
 }
