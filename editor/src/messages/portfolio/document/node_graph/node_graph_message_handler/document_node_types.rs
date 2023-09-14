@@ -2089,7 +2089,16 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			identifier: NodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Raster)],
+			outputs: vec![DocumentOutputType::new("Raster", FrontendGraphDataType::Raster)],
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Mandelbrot",
+			category: "Generators",
+			identifier: NodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![],
+			outputs: vec![DocumentOutputType::new("Raster", FrontendGraphDataType::Raster)],
 			..Default::default()
 		},
 		DocumentNodeType {
