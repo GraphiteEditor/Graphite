@@ -259,13 +259,16 @@ impl GraphicElement {
 				usvg::Node::new(usvg::NodeKind::Path(path))
 			}
 			GraphicElementData::ImageFrame(image_frame) => {
+				if image_frame.image.width * image_frame.image.height == 0 {
+					return usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+				}
 				let png = image_frame.image.to_png();
 				usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
 					id: String::new(),
 					transform: to_transform(image_frame.transform),
 					visibility: usvg::Visibility::Visible,
 					view_box: usvg::ViewBox {
-						rect: usvg::NonZeroRect::from_xywh(0., 0., image_frame.image.width as f32, image_frame.image.height as f32).unwrap(),
+						rect: usvg::NonZeroRect::from_xywh(0., 0., 1., 1.).unwrap(),
 						aspect: usvg::AspectRatio::default(),
 					},
 					rendering_mode: usvg::ImageRendering::OptimizeSpeed,
