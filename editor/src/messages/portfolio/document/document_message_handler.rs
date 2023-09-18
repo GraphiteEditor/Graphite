@@ -321,11 +321,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			DeleteSelectedLayers => {
 				self.backup(responses);
 
+				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.selected_layers_without_children() {
 					responses.add_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() });
 				}
 
-				responses.add_front(BroadcastEvent::SelectionChanged);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			DeselectAllLayers => {
