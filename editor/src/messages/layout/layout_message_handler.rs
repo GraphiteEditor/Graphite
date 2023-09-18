@@ -211,7 +211,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					Widget::PopoverButton(_) => {}
 					Widget::RadioInput(radio_input) => {
 						let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
-						radio_input.selected_index = update_value as u32;
+						radio_input.selected_index = Some(update_value as u32);
 						let callback_message = (radio_input.entries[update_value as usize].on_update.callback)(&());
 						responses.add(callback_message);
 					}

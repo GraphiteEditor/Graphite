@@ -11,7 +11,7 @@
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	export let entries: RadioEntries;
-	export let selectedIndex: number;
+	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
 	export let sharpRightCorners = false;
 
@@ -27,6 +27,7 @@
 	{#each entries as entry, index (index)}
 		<button
 			class:active={index === selectedIndex}
+			class:mixed={selectedIndex === undefined}
 			class:disabled
 			class:sharp-right-corners={index === entries.length - 1 && sharpRightCorners}
 			on:click={() => handleEntryClick(entry)}
@@ -56,6 +57,10 @@
 			display: flex;
 			align-items: center;
 			justify-content: center;
+
+			&.mixed {
+				background: var(--color-4-dimgray);
+			}
 
 			&:hover {
 				background: var(--color-6-lowergray);

@@ -186,7 +186,7 @@ impl LayoutHolder for BrushTool {
 			.into_iter()
 			.map(|draw_mode| RadioEntryData::new(format!("{draw_mode:?}")).on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into()))
 			.collect();
-		widgets.push(RadioInput::new(draw_mode_entries).selected_index(self.options.draw_mode as u32).widget_holder());
+		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
 
 		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
 

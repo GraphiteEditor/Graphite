@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMot
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
-use crate::messages::tool::common_functionality::shape_editor::{ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, transform_from_box};
 use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, HintData, HintGroup, HintInfo, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
@@ -49,6 +49,8 @@ pub enum PathToolMessage {
 		add_to_selection: Key,
 	},
 	InsertPoint,
+	ManipulatorAngleMakeSharp,
+	ManipulatorAngleMakeSmooth,
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
@@ -81,8 +83,14 @@ impl ToolMetadata for PathTool {
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
-		let coordinates = self.tool_data.single_selected_point.as_ref().map(|point| point.coordinates);
+		let coordinates = self.tool_data.selection_status.as_one().as_ref().map(|point| point.coordinates);
 		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
+
+		let selection_status = &self.tool_data.selection_status;
+		let manipulator_angle = selection_status
+			.as_multiple()
+			.map(|multiple| multiple.manipulator_angle)
+			.or_else(|| selection_status.as_one().map(|point| point.manipulator_angle));
 
 		let x_location = NumberInput::new(x)
 			.unit(" px")
@@ -110,10 +118,26 @@ impl LayoutHolder for PathTool {
 			})
 			.widget_holder();
 
-		let seperator = Separator::new(SeparatorType::Related).widget_holder();
+		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
+		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
+
+		let manipulator_angle_options = vec![
+			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMakeSmooth.into()),
+			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMakeSharp.into()),
+		];
+		let manipulator_angle_index = manipulator_angle.and_then(|angle| match angle {
+			ManipulatorAngle::Smooth => Some(0),
+			ManipulatorAngle::Sharp => Some(1),
+			ManipulatorAngle::Mixed => None,
+		});
+
+		let manipulator_angle_radio = RadioInput::new(manipulator_angle_options)
+			.disabled(self.tool_data.selection_status.is_none())
+			.selected_index(manipulator_angle_index)
+			.widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![x_location, seperator, y_location],
+			widgets: vec![x_location, related_seperator, y_location, unrelated_seperator, manipulator_angle_radio],
 		}]))
 	}
 }
@@ -188,7 +212,7 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	single_selected_point: Option<SingleSelectedPoint>,
+	selection_status: SelectionStatus,
 }
 
 impl PathToolData {
@@ -392,6 +416,8 @@ impl Fsm for PathToolFsmState {
 						}
 						.into(),
 					));
+
+					responses.add(PathToolMessage::SelectedPointUpdated);
 					PathToolFsmState::Ready
 				}
 
@@ -412,6 +438,8 @@ impl Fsm for PathToolFsmState {
 						}
 						.into(),
 					));
+
+					responses.add(PathToolMessage::SelectedPointUpdated);
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
@@ -432,6 +460,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
+					responses.add(PathToolMessage::SelectedPointUpdated);
 					tool_data.snap_manager.cleanup(responses);
 					PathToolFsmState::Ready
 				}
@@ -454,6 +483,7 @@ impl Fsm for PathToolFsmState {
 						shape_editor.split(&document.document_legacy, input.mouse.position, SELECTION_TOLERANCE, responses);
 					}
 
+					responses.add(PathToolMessage::SelectedPointUpdated);
 					self
 				}
 				(_, PathToolMessage::Abort) => {
@@ -480,21 +510,33 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+					if let Some(&SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.selection_status.as_one() {
 						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
-					if let Some(SingleSelectedPoint { coordinates, id, ref layer_path }) = tool_data.single_selected_point {
+					if let Some(&SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.selection_status.as_one() {
 						shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
 					}
 					PathToolFsmState::Ready
 				}
 				(_, PathToolMessage::SelectedPointUpdated) => {
-					let new_point = get_single_selected_point(&document.document_legacy, shape_editor);
-					tool_data.single_selected_point = new_point;
+					tool_data.selection_status = get_selection_status(&document.document_legacy, shape_editor);
 					self
+				}
+				(_, PathToolMessage::ManipulatorAngleMakeSmooth) => {
+					responses.add(DocumentMessage::StartTransaction);
+					shape_editor.set_handle_mirroring_on_selected(true, responses);
+					shape_editor.smooth_selected_groups(responses, &document.document_legacy);
+					responses.add(DocumentMessage::CommitTransaction);
+					PathToolFsmState::Ready
+				}
+				(_, PathToolMessage::ManipulatorAngleMakeSharp) => {
+					responses.add(DocumentMessage::StartTransaction);
+					shape_editor.set_handle_mirroring_on_selected(false, responses);
+					responses.add(DocumentMessage::CommitTransaction);
+					PathToolFsmState::Ready
 				}
 				(_, _) => PathToolFsmState::Ready,
 			}
@@ -531,31 +573,85 @@ impl Fsm for PathToolFsmState {
 	}
 }
 
+#[derive(Debug, PartialEq, Default)]
+enum SelectionStatus {
+	#[default]
+	None,
+	One(SingleSelectedPoint),
+	Multiple(MultipleSelectedPoints),
+}
+
+impl SelectionStatus {
+	fn as_one(&self) -> Option<&SingleSelectedPoint> {
+		match self {
+			SelectionStatus::One(one) => Some(one),
+			_ => None,
+		}
+	}
+
+	fn as_multiple(&self) -> Option<&MultipleSelectedPoints> {
+		match self {
+			SelectionStatus::Multiple(multiple) => Some(multiple),
+			_ => None,
+		}
+	}
+
+	fn is_none(&self) -> bool {
+		self == &SelectionStatus::None
+	}
+}
+
+#[derive(Debug, PartialEq)]
+struct MultipleSelectedPoints {
+	manipulator_angle: ManipulatorAngle,
+}
+
 #[derive(Debug, PartialEq)]
 struct SingleSelectedPoint {
 	coordinates: DVec2,
 	id: ManipulatorPointId,
 	layer_path: Vec<u64>,
+	manipulator_angle: ManipulatorAngle,
 }
 
-// If there is one and only one selected control point this function yields all the information needed to manipulate it.
-fn get_single_selected_point(document: &Document, shape_state: &mut ShapeState) -> Option<SingleSelectedPoint> {
+// If there is one selected and only one manipulator group this yields the selected control point,
+// if only one handle is selected it will yield that handle, otherwise it will yield the group's anchor.
+fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> SelectionStatus {
+	// Check to see if only one manipulator group is selected
 	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
-	let [(layer, 1)] = selection_layers[..] else {
-		return None;
-	};
-	let layer_data = document.layer(layer).ok()?;
-	let vector_data = layer_data.as_vector_data()?;
-	let [point] = shape_state.selected_points().take(2).collect::<Vec<_>>()[..] else {
-		return None;
+	if let [(layer, 1)] = selection_layers[..] {
+		let Some(layer_data) = document.layer(layer).ok() else { return SelectionStatus::None };
+		let Some(vector_data) = layer_data.as_vector_data() else { return SelectionStatus::None };
+		let Some(point) = shape_state.selected_points().next() else {
+			return SelectionStatus::None;
+		};
+
+		let Some(group) = vector_data.manipulator_from_id(point.group) else {
+			return SelectionStatus::None;
+		};
+		let Some(local_position) = point.manipulator_type.get_position(group) else {
+			return SelectionStatus::None;
+		};
+
+		let manipulator_angle = if vector_data.mirror_angle.contains(&point.group) {
+			ManipulatorAngle::Smooth
+		} else {
+			ManipulatorAngle::Sharp
+		};
+
+		return SelectionStatus::One(SingleSelectedPoint {
+			coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
+			layer_path: layer.clone(),
+			id: *point,
+			manipulator_angle,
+		});
 	};
 
-	// Get the first selected point and transform it to document space.
-	let group = vector_data.manipulator_from_id(point.group)?;
-	let local_position = point.manipulator_type.get_position(group)?;
-	Some(SingleSelectedPoint {
-		coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
-		layer_path: layer.clone(),
-		id: *point,
-	})
+	if !selection_layers.is_empty() {
+		return SelectionStatus::Multiple(MultipleSelectedPoints {
+			manipulator_angle: shape_state.selected_manipulator_angles(document),
+		});
+	}
+
+	SelectionStatus::None
 }

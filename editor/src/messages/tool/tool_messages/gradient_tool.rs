@@ -115,7 +115,7 @@ impl LayoutHolder for GradientTool {
 				.tooltip("Radial Gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
 		])
-		.selected_index((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32)
+		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
 		.widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }]))

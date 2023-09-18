@@ -3,7 +3,7 @@ use crate::consts::{
 	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::{ViewportBounds, ViewportPosition};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -16,38 +16,34 @@ use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+enum TransformOperation {
+	None,
+	Pan { pre_commit_pan: DVec2 },
+	Rotate { pre_commit_tilt: f64, snap_tilt: bool, snap_tilt_released: bool },
+	Zoom { pre_commit_zoom: f64, snap_zoom_enabled: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NavigationMessageHandler {
 	pub pan: DVec2,
-	panning: bool,
-	snap_tilt: bool,
-	snap_tilt_released: bool,
-
 	pub tilt: f64,
-	tilting: bool,
-
 	pub zoom: f64,
-	zooming: bool,
-	snap_zoom: bool,
 
+	transform_operation: TransformOperation,
 	mouse_position: ViewportPosition,
+	finish_operation_with_click: bool,
 }
 
 impl Default for NavigationMessageHandler {
 	fn default() -> Self {
 		Self {
 			pan: DVec2::ZERO,
-			panning: false,
-			snap_tilt: false,
-			snap_tilt_released: false,
-
 			tilt: 0.,
-			tilting: false,
-
 			zoom: 1.,
-			zooming: false,
-			snap_zoom: false,
 
 			mouse_position: ViewportPosition::default(),
+			finish_operation_with_click: false,
+			transform_operation: TransformOperation::None,
 		}
 	}
 }
@@ -124,75 +120,99 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				snap_zoom,
 				zoom_from_viewport,
 			} => {
-				if self.panning {
-					let delta = ipp.mouse.position - self.mouse_position;
+				match self.transform_operation {
+					TransformOperation::None => {}
+					TransformOperation::Pan { .. } => {
+						let delta = ipp.mouse.position - self.mouse_position;
+						responses.add(TranslateCanvas { delta });
+					}
+					TransformOperation::Rotate {
+						snap_tilt,
+						snap_tilt_released,
+						pre_commit_tilt,
+					} => {
+						let new_snap = ipp.keyboard.get(snap_angle as usize);
 
-					responses.add(TranslateCanvas { delta });
-				}
-
-				if self.tilting {
-					let new_snap = ipp.keyboard.get(snap_angle as usize);
-					if !(wait_for_snap_angle_release && new_snap && !self.snap_tilt_released) {
-						// When disabling snap, keep the viewed rotation as it was previously.
-						if !new_snap && self.snap_tilt {
-							self.tilt = self.snapped_angle();
+						if !(wait_for_snap_angle_release && new_snap && !snap_tilt_released) {
+							// When disabling snap, keep the viewed rotation as it was previously.
+							if !new_snap && snap_tilt {
+								self.tilt = self.snapped_angle();
+							}
+							self.transform_operation = TransformOperation::Rotate {
+								pre_commit_tilt,
+								snap_tilt: new_snap,
+								snap_tilt_released: true,
+							};
 						}
-						self.snap_tilt = new_snap;
-						self.snap_tilt_released = true;
+
+						let half_viewport = ipp.viewport_bounds.size() / 2.;
+						let rotation = {
+							let start_offset = self.mouse_position - half_viewport;
+							let end_offset = ipp.mouse.position - half_viewport;
+							start_offset.angle_between(end_offset)
+						};
+
+						responses.add(SetCanvasRotation { angle_radians: self.tilt + rotation });
 					}
+					TransformOperation::Zoom { snap_zoom_enabled, pre_commit_zoom } => {
+						let zoom_start = self.snapped_scale();
 
-					let half_viewport = ipp.viewport_bounds.size() / 2.;
-					let rotation = {
-						let start_offset = self.mouse_position - half_viewport;
-						let end_offset = ipp.mouse.position - half_viewport;
-						start_offset.angle_between(end_offset)
-					};
+						let new_snap = ipp.keyboard.get(snap_zoom as usize);
+						// When disabling snap, keep the viewed zoom as it was previously
+						if !new_snap && snap_zoom_enabled {
+							self.zoom = self.snapped_scale();
+						}
 
-					responses.add(SetCanvasRotation { angle_radians: self.tilt + rotation });
-				}
+						if snap_zoom_enabled != new_snap {
+							self.transform_operation = TransformOperation::Zoom {
+								pre_commit_zoom,
+								snap_zoom_enabled: new_snap,
+							};
+						}
 
-				if self.zooming {
-					let zoom_start = self.snapped_scale();
+						let difference = self.mouse_position.y - ipp.mouse.position.y;
+						let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
-					let new_snap = ipp.keyboard.get(snap_zoom as usize);
-					// When disabling snap, keep the viewed zoom as it was previously
-					if !new_snap && self.snap_zoom {
-						self.zoom = self.snapped_scale();
-					}
-					self.snap_zoom = new_snap;
+						self.zoom *= amount;
+						self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
 
-					let difference = self.mouse_position.y - ipp.mouse.position.y;
-					let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
+						if let Some(mouse) = zoom_from_viewport {
+							let zoom_factor = self.snapped_scale() / zoom_start;
 
-					self.zoom *= amount;
-					self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
-
-					if let Some(mouse) = zoom_from_viewport {
-						let zoom_factor = self.snapped_scale() / zoom_start;
-
-						responses.add(SetCanvasZoom { zoom_factor: self.zoom });
-						responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
-					} else {
-						responses.add(SetCanvasZoom { zoom_factor: self.zoom });
+							responses.add(SetCanvasZoom { zoom_factor: self.zoom });
+							responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
+						} else {
+							responses.add(SetCanvasZoom { zoom_factor: self.zoom });
+						}
 					}
 				}
 
 				self.mouse_position = ipp.mouse.position;
 			}
-			RotateCanvasBegin => {
+			RotateCanvasBegin { was_dispatched_from_menu } => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Snap 15°"),
-						plus: false,
-					}])]),
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+							key_groups_mac: None,
+							mouse: None,
+							label: String::from("Snap 15°"),
+							plus: false,
+						}]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Confirm")]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
+					]),
 				});
 
-				self.tilting = true;
+				self.transform_operation = TransformOperation::Rotate {
+					pre_commit_tilt: self.tilt,
+					snap_tilt_released: false,
+					snap_tilt: false,
+				};
+
 				self.mouse_position = ipp.mouse.position;
+				self.finish_operation_with_click = was_dispatched_from_menu;
 			}
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
@@ -208,19 +228,38 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(&ipp.viewport_bounds, responses);
 			}
-			TransformCanvasEnd => {
+			TransformCanvasEnd { abort_transform } => {
+				if abort_transform {
+					match self.transform_operation {
+						TransformOperation::None => {}
+						TransformOperation::Rotate { pre_commit_tilt, .. } => {
+							responses.add(SetCanvasRotation { angle_radians: pre_commit_tilt });
+						}
+						TransformOperation::Pan { pre_commit_pan, .. } => {
+							self.pan = pre_commit_pan;
+							self.create_document_transform(&ipp.viewport_bounds, responses);
+						}
+						TransformOperation::Zoom { pre_commit_zoom, .. } => {
+							self.zoom = pre_commit_zoom;
+							responses.add(PortfolioMessage::UpdateDocumentWidgets);
+							self.create_document_transform(&ipp.viewport_bounds, responses);
+						}
+					}
+				}
+
 				self.tilt = self.snapped_angle();
 				self.zoom = self.snapped_scale();
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
-				self.snap_tilt = false;
-				self.snap_tilt_released = false;
-				self.snap_zoom = false;
-				self.panning = false;
-				self.tilting = false;
-				self.zooming = false;
+				self.transform_operation = TransformOperation::None;
+				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false });
+			}
+			TransformFromMenuEnd { commit_key } => {
+				let abort_transform = commit_key == Key::Rmb;
+				self.finish_operation_with_click = false;
+				responses.add(TransformCanvasEnd { abort_transform });
 			}
 			TranslateCanvas { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
@@ -232,13 +271,16 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
-				responses.add(FrontendMessage::UpdateInputHints { hint_data: HintData(Vec::new()) });
+
+				responses.add(FrontendMessage::UpdateInputHints {
+					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])]),
+				});
 				// Because the pan key shares the Spacebar with toggling the graph view overlay, now that we've begun panning,
-				// we need to prevent the graph view overlay from toggling when the Spacebar is released.
+				// we need to prevent the graph view overlay from toggling when the control key is pressed.
 				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 
-				self.panning = true;
 				self.mouse_position = ipp.mouse.position;
+				self.transform_operation = TransformOperation::Pan { pre_commit_pan: self.pan };
 			}
 			TranslateCanvasByViewportFraction { delta } => {
 				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
@@ -268,17 +310,27 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			ZoomCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo {
-						key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-						key_groups_mac: None,
-						mouse: None,
-						label: String::from("Snap Increments"),
-						plus: false,
-					}])]),
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+							key_groups_mac: None,
+							mouse: None,
+							label: String::from("Snap Increments"),
+							plus: false,
+						}]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
+					]),
 				});
 
-				self.zooming = true;
+				self.transform_operation = TransformOperation::Zoom {
+					pre_commit_zoom: self.zoom,
+					snap_zoom_enabled: false,
+				};
 				self.mouse_position = ipp.mouse.position;
+
+				// Because the zoom key shares the Spacebar with toggling the graph view overlay, now that we've begun zooming,
+				// we need to prevent the graph view overlay from toggling when the control key is pressed.
+				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 			}
 		}
 	}
@@ -298,13 +350,22 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			FitViewportToSelection,
 		);
 
-		if self.panning || self.tilting || self.zooming {
+		if self.transform_operation != TransformOperation::None {
 			let transforming = actions!(NavigationMessageDiscriminant;
 				PointerMove,
 				TransformCanvasEnd,
 			);
 			common.extend(transforming);
 		}
+
+		if self.finish_operation_with_click {
+			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
+				TransformFromMenuEnd,
+			);
+
+			common.extend(transforming_from_menu);
+		}
+
 		common
 	}
 }
@@ -312,7 +373,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 impl NavigationMessageHandler {
 	pub fn snapped_angle(&self) -> f64 {
 		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
-		if self.snap_tilt {
+		if let TransformOperation::Rotate { snap_tilt: true, .. } = self.transform_operation {
 			(self.tilt / increment_radians).round() * increment_radians
 		} else {
 			self.tilt
@@ -320,7 +381,7 @@ impl NavigationMessageHandler {
 	}
 
 	pub fn snapped_scale(&self) -> f64 {
-		if self.snap_zoom {
+		if let TransformOperation::Zoom { snap_zoom_enabled: true, .. } = self.transform_operation {
 			*VIEWPORT_ZOOM_LEVELS
 				.iter()
 				.min_by(|a, b| (**a - self.zoom).abs().partial_cmp(&(**b - self.zoom).abs()).unwrap())

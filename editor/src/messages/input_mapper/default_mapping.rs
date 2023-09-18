@@ -37,6 +37,9 @@ pub fn default_mapping() -> Mapping {
 			refresh_keys=[Control],
 			action_dispatch=NavigationMessage::PointerMove { snap_angle: Control, wait_for_snap_angle_release: true, snap_zoom: Control, zoom_from_viewport: None },
 		),
+		entry!(KeyDown(Lmb);  action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Lmb }),
+		entry!(KeyDown(Mmb);  action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Mmb }),
+		entry!(KeyDown(Rmb);  action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Rmb }),
 		// NORMAL PRIORITY:
 		//
 		// NodeGraphMessage
@@ -106,8 +109,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: false }),
 		entry!(KeyUp(Lmb); action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: true }),
 		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigateToolMessage::PointerMove { snap_angle: Control, snap_zoom: Control }),
-		entry!(KeyDown(Mmb); action_dispatch=NavigateToolMessage::TranslateCanvasBegin),
-		entry!(KeyDown(Rmb); action_dispatch=NavigateToolMessage::RotateCanvasBegin),
+		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigateToolMessage::RotateCanvasBegin),
 		entry!(KeyDown(Lmb); action_dispatch=NavigateToolMessage::ZoomCanvasBegin),
 		entry!(KeyUp(Rmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
 		entry!(KeyUp(Lmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
@@ -315,12 +317,15 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
 		//
 		// NavigationMessage
-		entry!(KeyDown(Mmb); modifiers=[Control], action_dispatch=NavigationMessage::RotateCanvasBegin),
+		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
+		entry!(KeyDown(Mmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
 		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=NavigationMessage::ZoomCanvasBegin),
+		entry!(KeyDown(Lmb); modifiers=[Shift, Space], action_dispatch=NavigationMessage::ZoomCanvasBegin),
 		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd),
+		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::TransformCanvasEnd),
+		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
+		entry!(KeyUp(Rmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }),
@@ -334,8 +339,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
-		entry!(KeyUp(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
-		entry!(KeyDownNoRepeat(Space); action_dispatch=PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false }),
+		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
+		entry!(KeyUp(Escape); action_dispatch=PortfolioMessage::GraphViewOverlay { open: false }),
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),

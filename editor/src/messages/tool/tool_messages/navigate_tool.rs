@@ -117,7 +117,7 @@ impl Fsm for NavigateToolFsmState {
 
 			match navigate {
 				ClickZoom { zoom_in } => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd);
+					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 
 					// Mouse has not moved from pointerdown to pointerup
 					if tool_data.drag_start == input.mouse.position {
@@ -146,7 +146,7 @@ impl Fsm for NavigateToolFsmState {
 				}
 				RotateCanvasBegin => {
 					tool_data.drag_start = input.mouse.position;
-					responses.add_front(NavigationMessage::RotateCanvasBegin);
+					responses.add_front(NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false });
 					NavigateToolFsmState::Tilting
 				}
 				ZoomCanvasBegin => {
@@ -155,11 +155,11 @@ impl Fsm for NavigateToolFsmState {
 					NavigateToolFsmState::Zooming
 				}
 				TransformCanvasEnd => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd);
+					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 					NavigateToolFsmState::Ready
 				}
 				Abort => {
-					responses.add_front(NavigationMessage::TransformCanvasEnd);
+					responses.add_front(NavigationMessage::TransformCanvasEnd { abort_transform: false });
 					NavigateToolFsmState::Ready
 				}
 			}
@@ -173,8 +173,12 @@ impl Fsm for NavigateToolFsmState {
 			NavigateToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Zoom In"), HintInfo::keys([Key::Shift], "Zoom Out").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Zoom"), HintInfo::keys([Key::Control], "Snap Increments").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::MmbDrag, "Pan")]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::RmbDrag, "Tilt"), HintInfo::keys([Key::Control], "Snap 15°").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, " "),
+					HintInfo::keys([Key::Space], "Or").prepend_plus(),
+					HintInfo::mouse(MouseMotion::MmbDrag, "Pan"),
+				]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, ""), HintInfo::keys([Key::Alt], "Tilt").prepend_plus()]),
 			]),
 			NavigateToolFsmState::Tilting => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap 15°")])]),
 			NavigateToolFsmState::Zooming => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Control], "Snap Increments")])]),

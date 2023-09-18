@@ -557,6 +557,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PrevDocument,
 		);
 
+		if self.graph_view_overlay_open {
+			let escape = actions!(PortfolioMessageDiscriminant; GraphViewOverlay);
+			common.extend(escape);
+		}
+
 		if let Some(document) = self.active_document() {
 			if document.layer_metadata.values().any(|data| data.selected) {
 				let select = actions!(PortfolioMessageDiscriminant;

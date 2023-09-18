@@ -999,7 +999,7 @@ export class RadioInput extends WidgetProps {
 
 	disabled!: boolean;
 
-	selectedIndex!: number;
+	selectedIndex!: number | undefined;
 }
 
 export type SeparatorDirection = "Horizontal" | "Vertical";

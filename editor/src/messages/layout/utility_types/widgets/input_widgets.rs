@@ -340,7 +340,7 @@ pub struct RadioInput {
 
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
-	pub selected_index: u32,
+	pub selected_index: Option<u32>,
 }
 
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]

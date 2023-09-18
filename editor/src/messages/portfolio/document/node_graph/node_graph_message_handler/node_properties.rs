@@ -432,7 +432,7 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: u64, index: usize, nam
 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(line_cap as u32).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(line_cap as u32)).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }
@@ -452,7 +452,7 @@ fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(line_join as u32).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(line_join as u32)).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }
@@ -474,8 +474,8 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) ->
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries)
 				.selected_index(match fill_type {
-					FillType::None | FillType::Solid => 0,
-					FillType::Gradient => 1,
+					FillType::None | FillType::Solid => Some(0),
+					FillType::Gradient => Some(1),
 				})
 				.widget_holder(),
 		]);
@@ -497,7 +497,7 @@ fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize
 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(gradient_type as u32).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(gradient_type as u32)).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }
@@ -899,7 +899,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 			RadioEntryData::new(RedGreenBlue::Green.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Green), node_id, output_channel_index)),
 			RadioEntryData::new(RedGreenBlue::Blue.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Blue), node_id, output_channel_index)),
 		];
-		output_channel.extend([RadioInput::new(entries).selected_index(choice as u32).widget_holder()]);
+		output_channel.extend([RadioInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
 	};
 	let is_output_channel = if let &NodeInput::Value {
 		tagged_value: TaggedValue::RedGreenBlue(choice),
@@ -1003,7 +1003,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			RadioEntryData::new("Relative").on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, mode_index)),
 			RadioEntryData::new("Absolute").on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, mode_index)),
 		];
-		mode.push(RadioInput::new(entries).selected_index(relative_or_absolute as u32).widget_holder());
+		mode.push(RadioInput::new(entries).selected_index(Some(relative_or_absolute as u32)).widget_holder());
 	};
 
 	vec![
@@ -1698,7 +1698,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 							.map(|(paint, name)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
 							.collect(),
 					)
-					.selected_index(1 - in_paint as u32)
+					.selected_index(Some(1 - in_paint as u32))
 					.widget_holder(),
 				]);
 			}
