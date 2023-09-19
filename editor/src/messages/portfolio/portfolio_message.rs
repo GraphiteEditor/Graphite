@@ -31,6 +31,7 @@ pub enum PortfolioMessage {
 	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
+	CloseAllDocumentsWithConfirmation,
 	CloseDocument {
 		document_id: u64,
 	},

@@ -105,6 +105,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::DestroyAllDocuments);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
+			PortfolioMessage::CloseAllDocumentsWithConfirmation => {
+				debug!("Hello world!")
+			}
 			PortfolioMessage::CloseDocument { document_id } => {
 				// Is this the last document?
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
