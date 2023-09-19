@@ -552,6 +552,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			GraphViewOverlayToggleDisabled,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
+			CloseAllDocumentsWithConfirmation,
 			Import,
 			NextDocument,
 			OpenDocument,
