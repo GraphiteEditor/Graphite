@@ -105,6 +105,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::DestroyAllDocuments);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
+			PortfolioMessage::CloseAllDocumentsWithConfirmation => {
+				if self.unsaved_document_names().is_empty() {
+					responses.add(PortfolioMessage::CloseAllDocuments)
+				} else {
+					responses.add(DialogMessage::CloseAllDocumentsWithConfirmation)
+				}
+			}
 			PortfolioMessage::CloseDocument { document_id } => {
 				// Is this the last document?
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
@@ -549,6 +556,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			GraphViewOverlayToggleDisabled,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
+			CloseAllDocumentsWithConfirmation,
 			Import,
 			NextDocument,
 			OpenDocument,

@@ -71,8 +71,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						},
 						MenuBarEntry {
 							label: "Close All".into(),
-							shortcut: action_keys!(DialogMessageDiscriminant::CloseAllDocumentsWithConfirmation),
-							action: MenuBarEntry::create_action(|_| DialogMessage::CloseAllDocumentsWithConfirmation.into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::CloseAllDocumentsWithConfirmation),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::CloseAllDocumentsWithConfirmation.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},

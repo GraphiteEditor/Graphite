@@ -739,7 +739,7 @@ impl Color {
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("5267FA61", color.rgba_hex())
+	/// assert_eq!("3240A261", color.rgba_hex())
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgba_hex(&self) -> String {
@@ -756,7 +756,7 @@ impl Color {
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("5267FA", color.rgb_hex())
+	/// assert_eq!("3240A2", color.rgb_hex())
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgb_hex(&self) -> String {
