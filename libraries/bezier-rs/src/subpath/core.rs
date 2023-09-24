@@ -141,6 +141,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Write the curve argument to the string (the d="..." part)
 	pub fn subpath_to_svg(&self, svg: &mut String, transform: glam::DAffine2) -> std::fmt::Result {
+		if self.is_empty() {
+			return Ok(());
+		}
 		let start = transform.transform_point2(self[0].anchor);
 		write!(svg, "{SVG_ARG_MOVE}{},{}", start.x, start.y)?;
 		for bezier in self.iter() {
