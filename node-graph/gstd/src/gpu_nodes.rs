@@ -23,10 +23,10 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 
 // TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
-async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> compilation_client::Shader {
+async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
-	let proto_networks: Vec<_> = compiler.compile(network.clone()).collect();
+	let proto_networks: Vec<_> = compiler.compile(network.clone())?.collect();
 
 	for network in proto_networks.iter() {
 		typing_context.update(network).expect("Failed to type check network");
@@ -40,7 +40,7 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 		.collect();
 	let output_types = proto_networks.iter().map(|network| typing_context.type_of(network.output).unwrap().output.clone()).collect();
 
-	compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap()
+	Ok(compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap())
 }
 
 pub struct MapGpuNode<Node, EditorApi> {
@@ -64,7 +64,7 @@ impl<T: GpuExecutor> Clone for ComputePass<T> {
 }
 
 #[node_macro::node_impl(MapGpuNode)]
-async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> ImageFrame<Color> {
+async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> Result<ImageFrame<Color>, String> {
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
 
@@ -88,7 +88,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		self.cache.borrow().get(&node.name).unwrap().clone()
 	} else {
 		let name = node.name.clone();
-		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor, quantization).await;
+		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor, quantization).await?;
 		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
 		compute_pass_descriptor
@@ -114,14 +114,14 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	#[cfg(not(feature = "quantization"))]
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 	log::debug!("first color: {:?}", colors[0]);
-	ImageFrame {
+	Ok(ImageFrame {
 		image: Image {
 			data: colors,
 			width: image.image.width,
 			height: image.image.height,
 		},
 		transform: image.transform,
-	}
+	})
 }
 
 impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
@@ -139,7 +139,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	image: &ImageFrame<T>,
 	executor: &&WgpuExecutor,
 	quantization: QuantizationChannels,
-) -> ComputePass<WgpuExecutor> {
+) -> Result<ComputePass<WgpuExecutor>, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -229,7 +229,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone()).collect();
+	let proto_networks = compiler.compile(network.clone())?.collect();
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
 		proto_networks,
@@ -322,10 +322,10 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	};
 	log::debug!("created pipeline");
 
-	ComputePass {
+	Ok(ComputePass {
 		pipeline_layout: pipeline,
 		readback_buffer: Some(readback_buffer.clone()),
-	}
+	})
 }
 /*
 #[node_macro::node_fn(MapGpuNode)]
@@ -392,7 +392,7 @@ pub struct BlendGpuImageNode<Background, B, O> {
 }
 
 #[node_macro::node_fn(BlendGpuImageNode)]
-async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> Result<ImageFrame<Color>, String> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
 	// Transforms a point from the background image to the forground image
@@ -442,7 +442,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone()).collect();
+	let proto_networks = compiler.compile(network.clone())?.collect();
 	log::debug!("compiling shader");
 
 	let shader = compilation_client::compile(
@@ -550,12 +550,12 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 
-	ImageFrame {
+	Ok(ImageFrame {
 		image: Image {
 			data: colors,
 			width: background.image.width,
 			height: background.image.height,
 		},
 		transform: background.transform,
-	}
+	})
 }
