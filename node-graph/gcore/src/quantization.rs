@@ -150,13 +150,27 @@ fn dequantize_fn<'a>(color: PackedPixel, quantization: [Quantization; 4]) -> Col
 
 pub fn dequantize_color(color: PackedPixel, quant: [Quantization; 4]) -> Color {
 	let mut offset = 0;
-	let r = decode(color.0, offset, quant[0]);
+	let mut r = decode(color.0, offset, quant[0]);
 	offset += quant[0].bits();
-	let g = decode(color.0, offset, quant[1]);
+	let mut  g = decode(color.0, offset, quant[1]);
 	offset += quant[1].bits();
-	let b = decode(color.0, offset, quant[2]);
+	let mut b = decode(color.0, offset, quant[2]);
 	offset += quant[2].bits();
-	let a = decode(color.0, offset, quant[3]);
+	let mut  a = decode(color.0, offset, quant[3]);
+	if a.is_nan() {
+		a = 0.;
+	}
+
+	if r.is_nan() {
+		r = 0.;
+	}
+
+	if g.is_nan() {
+		g = 0.;
+	}
+	if b.is_nan() {
+		b = 0.;
+	}
 
 	Color::from_rgbaf32_unchecked(r, g, b, a)
 }
