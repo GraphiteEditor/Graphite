@@ -392,10 +392,10 @@ pub struct BlendGpuImageNode<Background, B, O> {
 }
 
 #[node_macro::node_fn(BlendGpuImageNode)]
-async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> Result<ImageFrame<Color>, String> {
+async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
-	// Transforms a point from the background image to the forground image
+	// Transforms a point from the background image to the foreground image
 	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
 
 	let transform_matrix: Mat2 = bg_to_fg.matrix2.as_mat2();
@@ -442,7 +442,22 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone())?.collect();
+
+	let proto_networks_result = compiler.compile(network.clone());
+
+	if proto_networks_result.is_err() {
+		return ImageFrame {
+			image: Image {
+				data: Vec::<Color>::new(),
+				width: 0,
+				height: 0,
+			},
+			transform: DAffine2::ZERO,
+		};
+	}
+
+	let proto_networks = proto_networks_result.unwrap().collect();
+
 	log::debug!("compiling shader");
 
 	let shader = compilation_client::compile(
@@ -550,12 +565,12 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 
-	Ok(ImageFrame {
+	ImageFrame {
 		image: Image {
 			data: colors,
 			width: background.image.width,
 			height: background.image.height,
 		},
 		transform: background.transform,
-	})
+	}
 }

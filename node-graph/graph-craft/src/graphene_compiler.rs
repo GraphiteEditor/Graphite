@@ -18,18 +18,15 @@ impl Compiler {
 		network.remove_dead_nodes();
 		let proto_networks = network.into_proto_networks();
 
-		let proto_networks_result: Result<Vec<ProtoNetwork>, String> = proto_networks
+		let proto_networks_result: Vec<ProtoNetwork> = proto_networks
 			.map(move |mut proto_network| {
 				proto_network.resolve_inputs()?;
 				proto_network.generate_stable_node_ids();
 				Ok(proto_network)
 			})
-			.collect();
+			.collect::<Result<Vec<ProtoNetwork>, String>>()?;
 
-		match proto_networks_result {
-			Ok(vec) => Ok(vec.into_iter()),
-			Err(error) => Err(error),
-		}
+		Ok(proto_networks_result.into_iter())
 	}
 	pub fn compile_single(&self, network: NodeNetwork) -> Result<ProtoNetwork, String> {
 		assert_eq!(network.outputs.len(), 1, "Graph with multiple outputs not yet handled");

@@ -694,8 +694,7 @@ mod test {
 	#[test]
 	fn topological_sort() {
 		let construction_network = test_network();
-		let sorted = construction_network.topological_sort().unwrap();
-
+		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		println!("{:#?}", sorted);
 		assert_eq!(sorted, vec![14, 10, 11, 1]);
 	}
@@ -711,8 +710,8 @@ mod test {
 	#[test]
 	fn id_reordering() {
 		let mut construction_network = test_network();
-		construction_network.reorder_ids().unwrap();
-		let sorted = construction_network.topological_sort().unwrap();
+		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
+		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		println!("nodes: {:#?}", construction_network.nodes);
 		assert_eq!(sorted, vec![0, 1, 2, 3]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
@@ -725,9 +724,9 @@ mod test {
 	#[test]
 	fn id_reordering_idempotent() {
 		let mut construction_network = test_network();
-		construction_network.reorder_ids().unwrap();
-		construction_network.reorder_ids().unwrap();
-		let sorted = construction_network.topological_sort().unwrap();
+		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
+		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
+		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		assert_eq!(sorted, vec![0, 1, 2, 3]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{:#?}", ids);
@@ -738,7 +737,7 @@ mod test {
 	#[test]
 	fn input_resolution() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs().unwrap();
+		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
 		println!("{:#?}", construction_network);
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
@@ -748,7 +747,7 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs().unwrap();
+		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
