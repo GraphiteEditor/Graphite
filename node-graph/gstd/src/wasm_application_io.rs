@@ -56,7 +56,7 @@ impl WasmApplicationIo {
 			None
 		};
 		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
-		let executor = None;
+		let executor = WgpuExecutor::new().await;
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: RefCell::new(0),

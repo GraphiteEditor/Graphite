@@ -1,9 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
+#[cfg(feature = "alloc")]
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, ImageFrame, Node, RGBMut};
+use super::{Channel, Color, Node, RGBMut};
 
-use bezier_rs::{Bezier, TValue};
+#[cfg(feature = "alloc")]
+use super::ImageFrame;
+
 use dyn_any::{DynAny, StaticType};
 
 use core::fmt::Debug;
@@ -890,14 +893,17 @@ fn exposure(color: Color, exposure: f32, offset: f32, gamma_correction: f32) -> 
 
 const WINDOW_SIZE: usize = 1024;
 
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Copy)]
 pub struct GenerateCurvesNode<OutputChannel, Curve> {
 	curve: Curve,
 	_channel: core::marker::PhantomData<OutputChannel>,
 }
 
+#[cfg(feature = "alloc")]
 #[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
 fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
+	use bezier_rs::{Bezier, TValue};
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
 	let mut lut = vec![_Channel::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
@@ -934,11 +940,13 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 	ValueMapperNode::new(lut)
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub struct ColorFillNode<C> {
 	color: C,
 }
 
+#[cfg(feature = "alloc")]
 #[node_macro::node_fn(ColorFillNode)]
 pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
 	for pixel in &mut image_frame.image.data {
@@ -951,12 +959,14 @@ pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> Imag
 	image_frame
 }
 
+#[cfg(feature = "alloc")]
 pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
 	color: Color,
 	blend_mode: BlendMode,
 	opacity: Opacity,
 }
 
+#[cfg(feature = "alloc")]
 #[node_macro::node_fn(ColorOverlayNode)]
 pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
 	let opacity = (opacity / 100.).clamp(0., 1.);

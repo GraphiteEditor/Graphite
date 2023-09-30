@@ -10,6 +10,9 @@ use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::WgpuExecutor;
 
+#[cfg(feature = "quantization")]
+use graphene_core::quantization::PackedPixel;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -74,6 +77,11 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let quantization = QuantizationChannels::default();
 	log::debug!("quantization: {:?}", quantization);
 
+	#[cfg(feature = "image-compare")]
+	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone()))
+		.unwrap()
+		.into();
+
 	#[cfg(feature = "quantization")]
 	let image = ImageFrame {
 		image: Image {
@@ -83,6 +91,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		},
 		transform: image.transform,
 	};
+
 	// TODO: The cache should be based on the network topology not the node name
 	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
 		self.cache.borrow().get(&node.name).unwrap().clone()
@@ -117,6 +126,14 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	#[cfg(not(feature = "quantization"))]
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 	log::debug!("first color: {:?}", colors[0]);
+
+	#[cfg(feature = "image-compare")]
+	let img2: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(colors.clone())).unwrap().into();
+	#[cfg(feature = "image-compare")]
+	let score = image_compare::rgb_hybrid_compare(&img.into_rgb8(), &img2.into_rgb8()).unwrap();
+	#[cfg(feature = "image-compare")]
+	log::debug!("score: {:?}", score.score);
+
 	ImageFrame {
 		image: Image {
 			data: colors,
@@ -282,6 +299,10 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
+	#[cfg(not(feature = "quantization"))]
+	core::hint::black_box(quantization);
+
+	#[cfg(feature = "quantization")]
 	let quantization_uniform = executor.create_uniform_buffer(quantization).unwrap();
 	let storage_buffer = executor
 		.create_storage_buffer(
@@ -295,7 +316,8 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		)
 		.unwrap();
 	let width_uniform = Arc::new(width_uniform);
-	let _quantization_uniform = Arc::new(quantization_uniform);
+	#[cfg(feature = "quantization")]
+	let quantization_uniform = Arc::new(quantization_uniform);
 	let storage_buffer = Arc::new(storage_buffer);
 	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
 	let output_buffer = Arc::new(output_buffer);

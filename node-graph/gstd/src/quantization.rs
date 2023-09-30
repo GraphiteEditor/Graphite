@@ -48,7 +48,7 @@ fn generate_quantization(data: Vec<f64>, samples: usize) -> [Quantization; 4] {
 	let merged: ErrorFunction<30> = autoquant::packing::merge_error_functions(&merged, &blue_error);
 	let merged: ErrorFunction<40> = autoquant::packing::merge_error_functions(&merged, &alpha_error);
 
-	let bin_size = 32;
+	let bin_size = 8;
 	let mut distributions = [red, green, blue, alpha].into_iter();
 
 	let bits = &merged.bits[bin_size];
