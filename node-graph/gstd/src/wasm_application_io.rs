@@ -315,6 +315,7 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			render.format_svg(min, max);
 			RenderOutput::Svg(render.svg.to_string())
 		}
+		#[cfg(any(feature = "resvg", feature = "vello"))]
 		ExportFormat::Canvas => {
 			data.render_svg(&mut render, &render_params);
 			// TODO: reenable once we switch to full node graph
