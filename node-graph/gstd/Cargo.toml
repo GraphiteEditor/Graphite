@@ -10,16 +10,25 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["wasm", "imaginate"]
-gpu = ["graphene-core/gpu", "gpu-compiler-bin-wrapper", "compilation-client", "gpu-executor"]
+gpu = [
+	"graphene-core/gpu",
+	"gpu-compiler-bin-wrapper",
+	"compilation-client",
+	"gpu-executor",
+]
 vulkan = ["gpu", "vulkan-executor"]
 wgpu = ["gpu", "wgpu-executor"]
 quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
+image-compare = ["dep:image-compare"]
 wayland = []
 
 [dependencies]
-rand = { version = "0.8.5", features = ["alloc", "small_rng"], default-features = false}
+rand = { version = "0.8.5", features = [
+	"alloc",
+	"small_rng",
+], default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
 autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
 	"fitting",
@@ -39,7 +48,10 @@ gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", 
 compilation-client = { path = "../compilation-client", optional = true }
 bytemuck = { version = "1.13" }
 tempfile = "3"
-image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.24", default-features = false, features = [
+	"png",
+	"jpeg",
+] }
 base64 = { version = "0.21", optional = true }
 dyn-clone = "1.0"
 
@@ -59,7 +71,7 @@ wasm-bindgen-futures = { version = "0.4.36", optional = true }
 winit = "0.28.6"
 url = "2.4.0"
 tokio = { version = "1.29.0", optional = true, features = ["fs", "io-std"] }
-image-compare = "0.3.0"
+image-compare = { version = "0.3.0", optional = true }
 
 [dependencies.serde]
 version = "1.0"

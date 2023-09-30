@@ -152,11 +152,11 @@ pub fn dequantize_color(color: PackedPixel, quant: [Quantization; 4]) -> Color {
 	let mut offset = 0;
 	let mut r = decode(color.0, offset, quant[0]);
 	offset += quant[0].bits();
-	let mut  g = decode(color.0, offset, quant[1]);
+	let mut g = decode(color.0, offset, quant[1]);
 	offset += quant[1].bits();
 	let mut b = decode(color.0, offset, quant[2]);
 	offset += quant[2].bits();
-	let mut  a = decode(color.0, offset, quant[3]);
+	let mut a = decode(color.0, offset, quant[3]);
 	if a.is_nan() {
 		a = 0.;
 	}

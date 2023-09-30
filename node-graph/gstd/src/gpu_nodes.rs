@@ -77,7 +77,9 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let quantization = QuantizationChannels::default();
 	log::debug!("quantization: {:?}", quantization);
 
-	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone())).unwrap().into();
+	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone()))
+		.unwrap()
+		.into();
 
 	#[cfg(feature = "quantization")]
 	let image = ImageFrame {
@@ -122,7 +124,9 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	log::debug!("first color: {:?}", colors[0]);
 
 	let img2: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(colors.clone())).unwrap().into();
+	#[cfg(feature = "image-compare")]
 	let score = image_compare::rgb_hybrid_compare(&img.into_rgb8(), &img2.into_rgb8()).unwrap();
+	#[cfg(feature = "image-compare")]
 	log::debug!("score: {:?}", score.score);
 
 	ImageFrame {
