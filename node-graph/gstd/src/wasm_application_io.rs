@@ -315,6 +315,7 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			render.format_svg(min, max);
 			RenderOutput::Svg(render.svg.to_string())
 		}
+		#[cfg(any(feature = "resvg", feature = "vello"))]
 		ExportFormat::Canvas => {
 			data.render_svg(&mut render, &render_params);
 			// TODO: reenable once we switch to full node graph
@@ -326,7 +327,22 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			let canvas = &surface_handle.surface;
 			canvas.set_width(resolution.x);
 			canvas.set_height(resolution.y);
+			let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
 
+			if let Some(exec) = editor.application_io.gpu_executor() {
+				todo!()
+			} else {
+				let rtree = resvg::Tree::from_usvg(&usvg_tree);
+
+				let pixmap_size = rtree.size.to_int_size();
+				let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
+				rtree.render(resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+				let array: Clamped<&[u8]> = Clamped(pixmap.data());
+				let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+				let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");
+				context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+			}
+			/*
 			let preamble = "data:image/svg+xml;base64,";
 			let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
 			base64_string.push_str(preamble);
@@ -334,9 +350,9 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 
 			let image_data = web_sys::HtmlImageElement::new().unwrap();
 			image_data.set_src(base64_string.as_str());
-			let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 			wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
 			context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
+			*/
 			let frame = SurfaceHandleFrame {
 				surface_handle,
 				transform: DAffine2::IDENTITY,
