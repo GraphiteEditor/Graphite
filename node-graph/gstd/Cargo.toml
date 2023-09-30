@@ -22,6 +22,8 @@ quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 image-compare = ["dep:image-compare"]
+vello = ["dep:vello", "resvg", "gpu", "dep:vello_svg"]
+resvg = ["dep:resvg"]
 wayland = []
 
 [dependencies]
@@ -72,6 +74,9 @@ winit = "0.28.6"
 url = "2.4.0"
 tokio = { version = "1.29.0", optional = true, features = ["fs", "io-std"] }
 image-compare = { version = "0.3.0", optional = true }
+vello = { git = "https://github.com/linebender/vello", version = "0.0.1", optional = true }
+vello_svg = { git = "https://github.com/linebender/vello", version = "0.0.1", optional = true }
+resvg = { version = "0.35.0", optional = true }
 
 [dependencies.serde]
 version = "1.0"
