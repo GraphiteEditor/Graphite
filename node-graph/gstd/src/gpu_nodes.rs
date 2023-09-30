@@ -77,6 +77,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let quantization = QuantizationChannels::default();
 	log::debug!("quantization: {:?}", quantization);
 
+	#[cfg(feature = "image-compare")]
 	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone()))
 		.unwrap()
 		.into();
@@ -123,6 +124,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 	log::debug!("first color: {:?}", colors[0]);
 
+	#[cfg(feature = "image-compare")]
 	let img2: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(colors.clone())).unwrap().into();
 	#[cfg(feature = "image-compare")]
 	let score = image_compare::rgb_hybrid_compare(&img.into_rgb8(), &img2.into_rgb8()).unwrap();
@@ -294,6 +296,10 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
+	#[cfg(not(feature = "quantization"))]
+	core::hint::black_box(quantization);
+
+	#[cfg(feature = "quantization")]
 	let quantization_uniform = executor.create_uniform_buffer(quantization).unwrap();
 	let storage_buffer = executor
 		.create_storage_buffer(
@@ -307,6 +313,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		)
 		.unwrap();
 	let width_uniform = Arc::new(width_uniform);
+	#[cfg(feature = "quantization")]
 	let quantization_uniform = Arc::new(quantization_uniform);
 	let storage_buffer = Arc::new(storage_buffer);
 	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
