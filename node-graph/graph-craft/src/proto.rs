@@ -371,7 +371,7 @@ impl ProtoNetwork {
 			}
 		}
 		self.reorder_ids()?;
-		return Ok(());
+		Ok(())
 	}
 
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<u64, Vec<u64>>, node_id: u64, compose_node_id: u64, skip_lambdas: bool) {
@@ -494,11 +494,8 @@ impl ProtoNetwork {
 		self.inputs = self.inputs.iter().filter_map(|id| new_positions.get(id).copied()).collect();
 		self.output = *new_positions.get(&self.output).unwrap();
 
-		if order.len() != self.nodes.len() {
-			return Err("Assertion failed: order.len() == self.nodes.len()".to_string());
-		}
-
-		return Ok(());
+		assert_eq!(order.len(), self.nodes.len());
+		Ok(())
 	}
 }
 
