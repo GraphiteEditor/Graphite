@@ -7,6 +7,9 @@ use glam::DVec2;
 
 pub use self::color::{Color, Luma, SRGBA8};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::float::Float;
+
 pub mod adjustments;
 pub mod bbox;
 #[cfg(not(target_arch = "spirv"))]
@@ -14,6 +17,7 @@ pub mod brightness_contrast;
 #[cfg(not(target_arch = "spirv"))]
 pub mod brush_cache;
 pub mod color;
+#[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
 pub use adjustments::*;

@@ -4,6 +4,7 @@ pub struct LogToConsoleNode;
 
 #[node_macro::node_fn(LogToConsoleNode)]
 fn log_to_console<T: core::fmt::Debug>(value: T) -> T {
+	#[cfg(not(target_arch = "spirv"))]
 	debug!("{:#?}", value);
 	value
 }
