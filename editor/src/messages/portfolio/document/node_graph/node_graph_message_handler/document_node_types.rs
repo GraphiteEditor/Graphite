@@ -124,6 +124,17 @@ impl Default for DocumentNodeType {
 // TODO: make document nodes not require a `'static` lifetime to avoid having to split the construction into const and non-const parts.
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeType>> = once_cell::sync::Lazy::new(static_nodes);
 
+fn monitor_node() -> DocumentNode {
+	DocumentNode {
+		name: "Monitor".to_string(),
+		inputs: Vec::new(),
+		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+		manual_composition: Some(generic!(T)),
+		skip_deduplication: true,
+		..Default::default()
+	}
+}
+
 // TODO: Dynamic node library
 fn static_nodes() -> Vec<DocumentNodeType> {
 	vec![
@@ -200,11 +211,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					(
 						1,
 						DocumentNode {
-							name: "Monitor".to_string(),
 							inputs: vec![NodeInput::node(0, 0)],
-							implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-							skip_deduplication: true,
-							..Default::default()
+							..monitor_node()
 						},
 					),
 					(
@@ -2308,11 +2316,8 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeType> = Lazy::new(|| DocumentNodeTyp
 			(
 				0,
 				DocumentNode {
-					name: "Frame Monitor".into(),
 					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-					skip_deduplication: true,
-					..Default::default()
+					..monitor_node()
 				},
 			),
 			(
