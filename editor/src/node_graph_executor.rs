@@ -203,7 +203,7 @@ impl NodeRuntime {
 
 		let monitor_nodes = scoped_network
 			.recursive_nodes()
-			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"))
+			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
 			.map(|(_, node)| node.path.clone().unwrap_or_default())
 			.collect::<Vec<_>>();
 
@@ -259,10 +259,12 @@ impl NodeRuntime {
 				warn!("Failed to introspect monitor node for thumbnail");
 				continue;
 			};
-			let Some(graphic_element_data) = value.downcast_ref::<graphene_core::GraphicElementData>() else {
+
+			let Some(io_data) = value.downcast_ref::<graphene_core::memo::IORecord<Footprint, graphene_core::GraphicElementData>>() else {
 				warn!("Failed to downcast thumbnail to graphic element data");
 				continue;
 			};
+			let graphic_element_data = &io_data.output;
 			use graphene_core::renderer::*;
 			let bounds = graphic_element_data.bounding_box(DAffine2::IDENTITY);
 			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true);

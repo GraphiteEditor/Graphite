@@ -45,19 +45,24 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	}
 }
 
+#[derive(Clone)]
+pub struct IORecord<I, O> {
+	pub input: I,
+	pub output: O,
+}
+
 #[cfg(feature = "alloc")]
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
 pub struct MonitorNode<I, T, N> {
-	input: Cell<Option<Arc<I>>>,
-	output: Cell<Option<Arc<T>>>,
+	io: Cell<Option<Arc<IORecord<I, T>>>>,
 	node: N,
 }
 
 #[cfg(feature = "alloc")]
 impl<'i, 'a: 'i, T, I, N> Node<'i, I> for MonitorNode<I, T, N>
 where
-	I: Clone + 'i,
+	I: Clone + 'static,
 	<N as Node<'i, I>>::Output: Future<Output = T>,
 	//for<'a> <<N as Node<'a, I>>::Output as core::future::IntoFuture>::Output: Clone + 'static,
 	T: Clone + 'static,
@@ -65,29 +70,24 @@ where
 {
 	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
 	fn eval(&'i self, input: I) -> Self::Output {
-		self.input.set(Some(Arc::new(input.clone())));
 		Box::pin(async move {
-			let output = self.node.eval(input).await;
-			self.output.set(Some(Arc::new(output.clone())));
+			let output = self.node.eval(input.clone()).await;
+			self.io.set(Some(Arc::new(IORecord { input, output: output.clone() })));
 			output
 		})
 	}
 
 	fn serialize(&self) -> Option<Arc<dyn core::any::Any>> {
-		let out = self.output.take();
-		self.output.set(out.clone());
-		(out).as_ref().map(|output| output.clone() as Arc<dyn core::any::Any>)
+		let io = self.io.take();
+		self.io.set(io.clone());
+		(io).as_ref().map(|output| output.clone() as Arc<dyn core::any::Any>)
 	}
 }
 
 #[cfg(feature = "alloc")]
 impl<I, T, N> MonitorNode<I, T, N> {
 	pub const fn new(node: N) -> MonitorNode<I, T, N> {
-		MonitorNode {
-			input: Cell::new(None),
-			output: Cell::new(None),
-			node,
-		}
+		MonitorNode { io: Cell::new(None), node }
 	}
 }
 

@@ -129,8 +129,8 @@ fn monitor_node() -> DocumentNode {
 	DocumentNode {
 		name: "Monitor".to_string(),
 		inputs: Vec::new(),
-		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-		manual_composition: Some(generic!(T)),
+		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+		manual_composition: Some(concrete!(Footprint)),
 		skip_deduplication: true,
 		..Default::default()
 	}
@@ -2130,11 +2130,8 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Monitor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(VectorData))],
-						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-						skip_deduplication: true,
-						..Default::default()
+						..monitor_node()
 					},
 					DocumentNode {
 						name: "Transform".to_string(),

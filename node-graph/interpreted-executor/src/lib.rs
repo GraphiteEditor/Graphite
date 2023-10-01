@@ -5,7 +5,6 @@ pub mod node_registry;
 mod tests {
 	use graph_craft::document::value::TaggedValue;
 	use graphene_core::*;
-	use std::borrow::Cow;
 
 	use futures::executor::block_on;
 
