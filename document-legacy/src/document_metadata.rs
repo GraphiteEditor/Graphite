@@ -3,7 +3,7 @@ use graphene_core::renderer::ClickTarget;
 use std::collections::HashMap;
 use std::num::NonZeroU64;
 
-use graph_craft::document::{NodeId, NodeNetwork};
+use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 
 use graphene_core::renderer::Quad;
 
@@ -111,6 +111,43 @@ impl DocumentMetadata {
 	pub fn clear_selected_nodes(&mut self) -> SelectionChanged {
 		self.set_selected_nodes(Vec::new())
 	}
+
+	/// Loads the structure of layer nodes from a node graph.
+	pub fn load_structure(&mut self, graph: &NodeNetwork) {
+		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
+
+		let id = graph.outputs[0].node_id;
+		let Some(output_node) = graph.nodes.get(&id) else {
+			return;
+		};
+		let Some((layer_node, node_id)) = first_child_layer(graph, output_node, id) else {
+			return;
+		};
+		let parent = LayerNodeIdentifier::ROOT;
+		let mut stack = vec![(layer_node, node_id, parent)];
+		while let Some((node, id, parent)) = stack.pop() {
+			let mut current = Some((node, id));
+			while let Some(&(current_node, current_id)) = current.as_ref() {
+				let current_identifier = LayerNodeIdentifier::new_unchecked(current_id);
+				if !self.structure.contains_key(&current_identifier) {
+					parent.push_child(self, current_identifier);
+
+					if let Some((child_node, child_id)) = first_child_layer(graph, current_node, current_id) {
+						stack.push((child_node, child_id, current_identifier));
+					}
+				}
+
+				current = sibling_below(graph, current_node, current_id);
+			}
+		}
+	}
+}
+
+fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode, id: NodeId) -> Option<(&'a DocumentNode, NodeId)> {
+	graph.primary_flow_from_opt(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.name == "Layer")
+}
+fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode, id: NodeId) -> Option<(&'a DocumentNode, NodeId)> {
+	node.inputs[7].as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.name == "Layer").map(|node| (node, id)))
 }
 
 // transforms

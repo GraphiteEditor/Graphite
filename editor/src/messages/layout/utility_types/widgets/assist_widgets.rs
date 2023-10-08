@@ -20,19 +20,6 @@ pub struct PivotAssist {
 	pub on_update: WidgetCallback<PivotAssist>,
 }
 
-impl PivotAssist {
-	pub fn update(mut self, layer: Vec<u64>) -> Self {
-		self.on_update(move |pivot_assist: &PivotAssist| {
-			let pivot: Option<DVec2> = pivot_assist.position.into();
-			GraphOperationMessage::TransformSetPivot {
-				layer: layer.clone(),
-				pivot: pivot.unwrap(),
-			}
-			.into()
-		})
-	}
-}
-
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
 pub enum PivotPosition {
 	#[default]

@@ -411,7 +411,7 @@ impl NodeGraphMessageHandler {
 
 	/// Tries to remove a node from the network, returning true on success.
 	fn remove_node(&mut self, document: &mut Document, node_id: NodeId, responses: &mut VecDeque<Message>, reconnect: bool) -> bool {
-		let Some(network) =document.document_network.nested_network_mut(&self.network) else {
+		let Some(network) = document.document_network.nested_network_mut(&self.network) else {
 			return false;
 		};
 		if !Self::remove_references_from_network(network, node_id, reconnect) {
@@ -453,10 +453,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		let document_id = data.document_id;
 		match message {
 			// TODO: automatically remove broadcast messages.
-			NodeGraphMessage::Init => responses.add(BroadcastMessage::SubscribeEvent {
-				on: BroadcastEvent::SelectionChanged,
-				send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
-			}),
+			NodeGraphMessage::Init => {
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: BroadcastEvent::SelectionChanged,
+					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
+				});
+				document.metadata.load_structure(&document.document_network)
+			}
 			NodeGraphMessage::AddSelectNodes { nodes } => {
 				responses.add(document.metadata.add_selected_nodes(nodes));
 			}
