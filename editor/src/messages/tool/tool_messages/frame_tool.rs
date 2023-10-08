@@ -110,7 +110,7 @@ impl Fsm for NodeGraphToolFsmState {
 		match (self, event) {
 			(_, FrameToolMessage::DocumentIsDirty | FrameToolMessage::SelectionChanged) => {
 				tool_data.path_outlines.clear_selected(responses);
-				tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+				//tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
 
 				self
 			}

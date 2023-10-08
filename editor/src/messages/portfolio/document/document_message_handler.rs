@@ -27,7 +27,6 @@ use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as Doc
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
-use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
 
 use glam::{DAffine2, DVec2};
@@ -122,9 +121,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						for response in document_responses {
 							match &response {
 								DocumentResponse::FolderChanged { path } => responses.add(FolderChanged { affected_folder_path: path.clone() }),
-								DocumentResponse::AddSelectedLayer { additional_layers } => responses.add(AddSelectedLayers {
-									additional_layers: additional_layers.clone(),
-								}),
 								DocumentResponse::DeletedLayer { path } => {
 									self.layer_metadata.remove(path);
 								}
@@ -138,20 +134,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									insert_index: *insert_index,
 									reverse_index: *reverse_index,
 								}),
-								DocumentResponse::CreatedLayer { path, is_selected } => {
-									if self.layer_metadata.contains_key(path) {
-										warn!("CreatedLayer overrides existing layer metadata.");
-									}
-									self.layer_metadata.insert(path.clone(), LayerMetadata::new(false));
-
-									responses.add(LayerChanged { affected_layer_path: path.clone() });
-									self.layer_range_selection_reference = path.clone();
-
-									if *is_selected {
-										responses.add(AddSelectedLayers {
-											additional_layers: vec![path.clone()],
-										});
-									}
+								DocumentResponse::CreatedLayer { .. } => {
+									unimplemented!()
 								}
 								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
 								DocumentResponse::DeletedSelectedManipulatorPoints => {
@@ -175,11 +159,11 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				let document_bounds = self.document_bounds();
+				let document_bounds = self.metadata().document_bounds();
 				self.navigation_handler.process_message(
 					message,
 					responses,
-					(&self.document_legacy, document_bounds, ipp, self.selected_visible_layers_bounding_box(&render_data)),
+					(&self.document_legacy, document_bounds, ipp, self.metadata().selected_visible_layers_bounding_box_viewport()),
 				);
 			}
 			#[remain::unsorted]
@@ -226,39 +210,38 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
-				let (paths, boxes): (Vec<_>, Vec<_>) = self
-					.selected_layers()
-					.filter_map(|path| self.document_legacy.viewport_bounding_box(path, &render_data).ok()?.map(|b| (path, b)))
-					.unzip();
 
 				let axis = match axis {
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let lerp = |bbox: &[DVec2; 2]| bbox[0].lerp(bbox[1], 0.5);
-				if let Some(combined_box) = self.document_legacy.combined_viewport_bounding_box(self.selected_layers(), &render_data) {
-					let aggregated = match aggregate {
-						AlignAggregate::Min => combined_box[0],
-						AlignAggregate::Max => combined_box[1],
-						AlignAggregate::Center => lerp(&combined_box),
-						AlignAggregate::Average => boxes.iter().map(|b| lerp(b)).reduce(|a, b| a + b).map(|b| b / boxes.len() as f64).unwrap(),
+				let Some(combined_box) = self.metadata().selected_visible_layers_bounding_box_viewport() else {
+					return;
+				};
+
+				let aggregated = match aggregate {
+					AlignAggregate::Min => combined_box[0],
+					AlignAggregate::Max => combined_box[1],
+					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
+				};
+				for layer in self.metadata().selected_layers() {
+					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
+						continue;
 					};
-					for (path, bbox) in paths.into_iter().zip(boxes) {
-						let center = match aggregate {
-							AlignAggregate::Min => bbox[0],
-							AlignAggregate::Max => bbox[1],
-							_ => lerp(&bbox),
-						};
-						let translation = (aggregated - center) * axis;
-						responses.add(GraphOperationMessage::TransformChange {
-							layer: path.to_vec(),
-							transform: DAffine2::from_translation(translation),
-							transform_in: TransformIn::Viewport,
-							skip_rerender: false,
-						});
-					}
-					responses.add(BroadcastEvent::DocumentIsDirty);
+					let center = match aggregate {
+						AlignAggregate::Min => bbox[0],
+						AlignAggregate::Max => bbox[1],
+						_ => (bbox[0] + bbox[1]) / 2.,
+					};
+					let translation = (aggregated - center) * axis;
+					responses.add(GraphOperationMessage::TransformChange {
+						layer: layer.to_path(),
+						transform: DAffine2::from_translation(translation),
+						transform_in: TransformIn::Viewport,
+						skip_rerender: false,
+					});
 				}
+				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BackupDocument { document, layer_metadata } => self.backup_with_document(document, layer_metadata, responses),
 			ClearLayerTree => {
@@ -365,7 +348,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				// Calculate the bounding box of the region to be exported
 				let bounds = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(&render_data),
-					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&render_data),
+					ExportBounds::Selection => self.metadata().selected_visible_layers_bounding_box_viewport(),
 					ExportBounds::Artboard(id) => self.metadata().bounding_box_document(id),
 				}
 				.unwrap_or_default();
@@ -396,12 +379,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.document_legacy.combined_viewport_bounding_box(self.selected_layers(), &render_data) {
+				if let Some([min, max]) = self.metadata().selected_visible_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
-					for path in self.selected_layers() {
+					for layer in self.metadata().selected_layers() {
 						responses.add(GraphOperationMessage::TransformChange {
-							layer: path.to_vec(),
+							layer: layer.to_path(),
 							transform: DAffine2::from_scale(scale),
 							transform_in: TransformIn::Scope { scope: bbox_trans },
 							skip_rerender: false,
@@ -686,7 +669,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.document_bounds().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.metadata().document_bounds().unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -943,7 +926,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.document_bounds() {
+				if let Some(bounds) = self.metadata().document_bounds() {
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds,
 						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
@@ -1145,11 +1128,6 @@ impl DocumentMessageHandler {
 			warn!("Tried to select non existing layer {:?}", path);
 			None
 		}
-	}
-
-	pub fn selected_visible_layers_bounding_box(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
-		let paths = self.selected_visible_layers();
-		self.document_legacy.combined_viewport_bounding_box(paths, render_data)
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -1507,15 +1485,6 @@ impl DocumentMessageHandler {
 	/// Calculates the bounding box of all layers in the document
 	pub fn all_layer_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
 		self.document_legacy.viewport_bounding_box(&[], render_data).ok().flatten()
-	}
-
-	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
-	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
-		self.document_legacy
-			.metadata
-			.all_layers()
-			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(Quad::combine_bounds)
 	}
 
 	/// Calculate the path that new layers should be inserted to.

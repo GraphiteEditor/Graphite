@@ -1124,7 +1124,7 @@ pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![operand("Modulo", 1)]
 }
 
-pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
 		let pivot_index = 5;
 		if let NodeInput::Value {
@@ -1135,7 +1135,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.push(
 				PivotAssist::new(pivot.into())
-					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.on_update(update_value(|pivot: &PivotAssist| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
 					.widget_holder(),
 			);
 		} else {

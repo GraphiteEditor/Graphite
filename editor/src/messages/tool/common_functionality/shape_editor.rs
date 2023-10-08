@@ -82,7 +82,7 @@ impl ShapeState {
 				selected_shape_state.select_point(manipulator_point_id);
 
 				// Offset to snap the selected point to the cursor
-				let offset = mouse_position - document.metadata.transform_from_viewport(layer).transform_point2(point_position);
+				let offset = mouse_position - document.metadata.transform_to_viewport(layer).transform_point2(point_position);
 
 				let points = self
 					.selected_shape_state
@@ -146,7 +146,7 @@ impl ShapeState {
 			let Some(subpaths) = get_subpaths(layer, document) else { continue };
 			let Some(mirror_angle) = get_mirror_handles(layer, document) else { continue };
 
-			let transform = document.metadata.transform_from_viewport(layer);
+			let transform = document.metadata.transform_to_viewport(layer);
 			let delta = transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
@@ -214,7 +214,7 @@ impl ShapeState {
 
 			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(&layer));
 
-			let transform = document.metadata.transform_from_viewport(layer);
+			let transform = document.metadata.transform_to_viewport(layer);
 
 			for &point in state.selected_points.iter() {
 				let anchor = ManipulatorPointId::new(point.group, SelectedType::Anchor);
@@ -416,7 +416,7 @@ impl ShapeState {
 		let mut result = None;
 
 		let subpaths = get_subpaths(layer, document)?;
-		let viewspace = document.metadata.transform_from_viewport(layer);
+		let viewspace = document.metadata.transform_to_viewport(layer);
 		for manipulator in get_manipulator_groups(subpaths) {
 			let (selected, distance_squared) = SelectedType::closest_widget(manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
 
@@ -431,7 +431,7 @@ impl ShapeState {
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
 	fn closest_segment(&self, document: &Document, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<(ManipulatorGroupId, ManipulatorGroupId, Bezier, f64)> {
-		let transform = document.metadata.transform_from_viewport(layer);
+		let transform = document.metadata.transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
 		let projection_options = bezier_rs::ProjectionOptions { lut_size: 5, ..Default::default() };
 
@@ -502,7 +502,7 @@ impl ShapeState {
 		let mut process_layer = |layer| {
 			let subpaths = get_subpaths(layer, document)?;
 
-			let transform_to_screenspace = document.metadata.transform_from_viewport(layer);
+			let transform_to_screenspace = document.metadata.transform_to_viewport(layer);
 			let mut result = None;
 			let mut closest_distance_squared = tolerance * tolerance;
 
@@ -620,7 +620,7 @@ impl ShapeState {
 
 			let Some(subpaths) = get_subpaths(layer, document) else { continue };
 
-			let transform = document.metadata.transform_from_viewport(layer);
+			let transform = document.metadata.transform_to_viewport(layer);
 
 			for manipulator_group in get_manipulator_groups(subpaths) {
 				for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {

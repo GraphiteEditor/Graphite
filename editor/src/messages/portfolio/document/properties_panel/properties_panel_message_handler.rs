@@ -138,7 +138,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 						persistent_data,
 						document: artwork_document,
 						responses,
-						nested_path: &node_graph_message_handler.nested_path,
+						nested_path: &node_graph_message_handler.network,
 						layer_path: &[],
 						executor,
 						network: &artwork_document.document_network,

@@ -12,6 +12,7 @@ pub struct DocumentMetadata {
 	transforms: HashMap<LayerNodeIdentifier, DAffine2>,
 	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	selected_nodes: Vec<NodeId>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -22,11 +23,14 @@ impl Default for DocumentMetadata {
 			transforms: HashMap::new(),
 			click_targets: HashMap::new(),
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
+			selected_nodes: Vec::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
 	}
 }
+pub struct SelectionChanged;
 
+// layer iters
 impl DocumentMetadata {
 	/// Get the root layer from the document
 	pub const fn root(&self) -> LayerNodeIdentifier {
@@ -38,7 +42,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.all_layers()
+		self.all_layers().filter(|layer| self.selected_nodes.contains(&layer.to_node()))
 	}
 
 	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier) -> bool {
@@ -46,7 +50,19 @@ impl DocumentMetadata {
 	}
 
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.all_layers()
+		self.selected_layers()
+	}
+
+	pub fn selected_nodes(&self) -> core::slice::Iter<'_, NodeId> {
+		self.selected_nodes.iter()
+	}
+
+	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
+		&self.selected_nodes
+	}
+
+	pub fn has_selected_nodes(&self) -> bool {
+		!self.selected_nodes.is_empty()
 	}
 
 	/// Access the [`NodeRelations`] of a layer
@@ -59,35 +75,78 @@ impl DocumentMetadata {
 		self.structure.entry(node_identifier).or_default()
 	}
 
+	pub fn shallowest_unique_layers<'a>(&self, layers: impl Iterator<Item = &'a LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
+		let mut sorted_layers = layers
+			.map(|layer| {
+				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
+				layer_path.reverse();
+				layer_path
+			})
+			.collect::<Vec<_>>();
+		sorted_layers.sort();
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers
+	}
+}
+
+// selected layer modifications
+impl DocumentMetadata {
+	#[must_use]
+	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) -> SelectionChanged {
+		self.selected_nodes.retain(f);
+		SelectionChanged
+	}
+	#[must_use]
+	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) -> SelectionChanged {
+		self.selected_nodes = new;
+		SelectionChanged
+	}
+	#[must_use]
+	pub fn add_selected_nodes(&mut self, iter: impl IntoIterator<Item = NodeId>) -> SelectionChanged {
+		self.selected_nodes.extend(iter);
+		SelectionChanged
+	}
+	#[must_use]
+	pub fn clear_selected_nodes(&mut self) -> SelectionChanged {
+		self.set_selected_nodes(Vec::new())
+	}
+}
+
+// transforms
+impl DocumentMetadata {
 	/// Update the cached transforms of the layers
 	pub fn update_transforms(&mut self, new_transforms: HashMap<LayerNodeIdentifier, DAffine2>) {
 		self.transforms = new_transforms;
 	}
 
-	/// Update the cached click targets of the layers
-	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
-		self.click_targets = new_click_targets;
-	}
-
-	/// Access the cached transformation from document space to layer space
-	pub fn transform_from_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+	/// Access the cached transformation to document space from layer space
+	pub fn transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		self.transforms.get(&layer).copied().unwrap_or_else(|| {
 			warn!("Tried to access transform of bad layer");
 			DAffine2::IDENTITY
 		})
 	}
 
-	pub fn transform_from_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.document_to_viewport * self.transform_from_document(layer)
+	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		self.document_to_viewport * self.transform_to_document(layer)
+	}
+}
+
+// click targets
+impl DocumentMetadata {
+	/// Update the cached click targets of the layers
+	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+		self.click_targets = new_click_targets;
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad(&self, viewport_quad: Quad) -> Option<LayerNodeIdentifier> {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: Quad) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_quad = self.document_to_viewport.inverse() * viewport_quad;
 		self.root()
 			.decendants(self)
 			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
-			.find(|(layer, target)| target.iter().any(|target| target.intersect_rectangle(document_quad, self.transform_from_document(*layer))))
+			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}
 
@@ -97,7 +156,7 @@ impl DocumentMetadata {
 		self.root()
 			.decendants(self)
 			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.transform_from_document(*layer))))
+			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}
 
@@ -117,12 +176,28 @@ impl DocumentMetadata {
 
 	/// Get the bounding box of the click target of the specified layer in document space
 	pub fn bounding_box_document(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		self.bounding_box_with_transform(layer, self.transform_from_document(layer))
+		self.bounding_box_with_transform(layer, self.transform_to_document(layer))
 	}
 
 	/// Get the bounding box of the click target of the specified layer in viewport space
 	pub fn bounding_box_viewport(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		self.bounding_box_with_transform(layer, self.transform_from_viewport(layer))
+		self.bounding_box_with_transform(layer, self.transform_to_viewport(layer))
+	}
+
+	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		self.selected_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
+	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
+		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
+	}
+
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> graphene_core::vector::Subpath {
+		let Some(click_targets) = self.click_targets.get(&layer) else {
+			return graphene_core::vector::Subpath::new();
+		};
+		graphene_core::vector::Subpath::from_bezier_rs(click_targets.iter().map(|click_target| &click_target.subpath))
 	}
 }
 
@@ -338,6 +413,17 @@ impl LayerNodeIdentifier {
 
 	pub fn exists(&self, document_metadata: &DocumentMetadata) -> bool {
 		document_metadata.get_relations(*self).is_some()
+	}
+
+	pub fn starts_with(&self, other: Self, document_metadata: &DocumentMetadata) -> bool {
+		self.ancestors(document_metadata).any(|parent| parent == other)
+	}
+
+	pub fn child_of_root(&self, document_metadata: &DocumentMetadata) -> Self {
+		self.ancestors(document_metadata)
+			.filter(|&layer| layer != LayerNodeIdentifier::ROOT)
+			.last()
+			.expect("There should be a layer before the root")
 	}
 }
 

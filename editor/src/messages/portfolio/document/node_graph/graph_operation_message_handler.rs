@@ -212,7 +212,8 @@ impl<'a> ModifyInputsContext<'a> {
 		} else {
 			self.modify_new_node(name, update_input);
 		}
-		self.node_graph.nested_path.clear();
+
+		self.node_graph.network.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
 
@@ -408,9 +409,10 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		for node_id in delete_nodes {
-			self.network.nodes.remove(&node_id);
+		for node_id in &delete_nodes {
+			self.network.nodes.remove(node_id);
 		}
+		self.responses.add(self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id)));
 
 		self.responses.add(DocumentMessage::DocumentStructureChanged);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
@@ -474,14 +476,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 				let transform = transform.to_cols_array();
-				responses.add(match transform_in {
-					TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
-					TransformIn::Scope { scope } => {
-						let scope = scope.to_cols_array();
-						Operation::SetLayerTransformInScope { path: layer, transform, scope }
-					}
-					TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
-				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);
@@ -489,8 +483,8 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 
-				let pivot = pivot.into();
-				responses.add(Operation::SetPivot { layer_path: layer, pivot });
+				//let pivot = pivot.into();
+				//responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {

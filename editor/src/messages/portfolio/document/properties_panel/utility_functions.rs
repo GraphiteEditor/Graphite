@@ -108,7 +108,7 @@ pub fn register_artwork_layer_properties(
 				persistent_data,
 				document,
 				responses,
-				nested_path: &node_graph_message_handler.nested_path,
+				nested_path: &node_graph_message_handler.network,
 				layer_path: &layer_path,
 				executor,
 				network: &layer.network,

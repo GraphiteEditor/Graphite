@@ -47,7 +47,7 @@ impl OverlayRenderer {
 	}
 
 	pub fn render_subpath_overlays(&mut self, selected_shape_state: &SelectedShapeState, document: &Document, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		let transform = document.metadata.transform_from_viewport(layer);
+		let transform = document.metadata.transform_to_viewport(layer);
 
 		let Some(subpaths) = get_subpaths(layer, document) else {
 			return;

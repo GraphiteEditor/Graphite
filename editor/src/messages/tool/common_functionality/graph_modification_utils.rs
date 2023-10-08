@@ -7,15 +7,14 @@ use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput,
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
 
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
 pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-	responses.add(GraphOperationMessage::NewVectorLayer {
-		id: *layer_path.last().unwrap(),
-		subpaths,
-	});
+	let id = *layer_path.last().unwrap();
+	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths });
+	responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![id] })
 }
 
 /// Create a legacy node graph frame TODO: remove
@@ -50,6 +49,23 @@ pub fn get_subpaths(layer: LayerNodeIdentifier, document: &Document) -> Option<&
 	} else {
 		None
 	}
+}
+
+/// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
+pub fn get_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec2> {
+	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, document)?.find_input("Transform", 5)? {
+		Some(*pivot)
+	} else {
+		None
+	}
+}
+
+pub fn get_document_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec2> {
+	get_pivot(layer, document).map(|pivot| document.metadata.transform_to_document(layer).transform_point2(pivot))
+}
+
+pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec2> {
+	get_pivot(layer, document).map(|pivot| document.metadata.transform_to_viewport(layer).transform_point2(pivot))
 }
 
 /// Get the currently mirrored handles for a particular layer from the shape node
@@ -94,6 +110,16 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document: &Document) -> Option<G
 /// Is a specified layer an artboard?
 pub fn is_artboard(layer: LayerNodeIdentifier, document: &Document) -> bool {
 	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Artboard"))
+}
+
+/// Is a specified layer a shape?
+pub fn is_shape_layer(layer: LayerNodeIdentifier, document: &Document) -> bool {
+	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Shape"))
+}
+
+/// Is a specified layer text?
+pub fn is_text_layer(layer: LayerNodeIdentifier, document: &Document) -> bool {
+	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Text"))
 }
 
 /// Convert subpaths to an iterator of manipulator groups

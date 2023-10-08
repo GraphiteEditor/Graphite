@@ -118,7 +118,7 @@ impl Fsm for ImaginateToolFsmState {
 		match (self, event) {
 			(_, ImaginateToolMessage::DocumentIsDirty | ImaginateToolMessage::SelectionChanged) => {
 				tool_data.path_outlines.clear_selected(responses);
-				tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+				//tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
 
 				self
 			}
