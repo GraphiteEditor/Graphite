@@ -11,9 +11,6 @@ pub enum DocumentResponse {
 	FolderChanged {
 		path: Vec<LayerId>,
 	},
-	AddSelectedLayer {
-		additional_layers: Vec<Vec<LayerId>>,
-	},
 	CreatedLayer {
 		path: Vec<LayerId>,
 		is_selected: bool,
@@ -38,7 +35,6 @@ impl fmt::Display for DocumentResponse {
 		match self {
 			DocumentResponse::DocumentChanged { .. } => write!(f, "DocumentChanged"),
 			DocumentResponse::FolderChanged { .. } => write!(f, "FolderChanged"),
-			DocumentResponse::AddSelectedLayer { .. } => write!(f, "AddSelectedLayer"),
 			DocumentResponse::CreatedLayer { .. } => write!(f, "CreatedLayer"),
 			DocumentResponse::LayerChanged { .. } => write!(f, "LayerChanged"),
 			DocumentResponse::DeletedLayer { .. } => write!(f, "DeleteLayer"),

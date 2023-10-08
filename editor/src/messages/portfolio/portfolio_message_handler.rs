@@ -658,6 +658,7 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::GraphViewOverlay { open: self.graph_view_overlay_open });
 		responses.add(ToolMessage::InitTools);
 		responses.add(PropertiesPanelMessage::Init);
+		responses.add(NodeGraphMessage::Init);
 		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::ClearSelection);

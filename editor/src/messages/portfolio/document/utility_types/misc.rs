@@ -13,24 +13,23 @@ pub struct DocumentSave {
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum AlignAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash, specta::Type)]
 pub enum AlignAggregate {
 	Min,
 	Max,
 	Center,
-	Average,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]

@@ -47,13 +47,13 @@ impl Subpath {
 	}
 
 	/// Convert to the legacy Subpath from the `bezier_rs::Subpath`.
-	pub fn from_bezier_rs(value: &[bezier_rs::Subpath<ManipulatorGroupId>]) -> Self {
+	pub fn from_bezier_rs<'a, Subpath: core::borrow::Borrow<&'a bezier_rs::Subpath<ManipulatorGroupId>>>(value: impl IntoIterator<Item = Subpath>) -> Self {
 		let mut groups = IdBackedVec::new();
-		for subpath in value {
-			for group in subpath.manipulator_groups() {
+		for subpath in value.into_iter() {
+			for group in subpath.borrow().manipulator_groups() {
 				groups.push(ManipulatorGroup::new_with_handles(group.anchor, group.in_handle, group.out_handle));
 			}
-			if subpath.closed() {
+			if subpath.borrow().closed() {
 				groups.push(ManipulatorGroup::closed());
 			}
 		}

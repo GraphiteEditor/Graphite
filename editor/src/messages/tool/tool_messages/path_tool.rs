@@ -243,14 +243,10 @@ impl PathToolData {
 		}
 		// We didn't find a point nearby, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.metadata().click(input.mouse.position) {
-			// TODO: Actual selection
-			let layer_list = vec![layer.to_path()];
 			if shift {
-				responses.add(DocumentMessage::AddSelectedLayers { additional_layers: layer_list });
+				responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![layer.to_node()] });
 			} else {
-				responses.add(DocumentMessage::SetSelectedLayers {
-					replacement_selected_layers: layer_list,
-				});
+				responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![layer.to_node()] });
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
@@ -386,7 +382,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(DocumentMessage::DeselectAllLayers);
+					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -401,7 +397,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(DocumentMessage::DeselectAllLayers);
+					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);

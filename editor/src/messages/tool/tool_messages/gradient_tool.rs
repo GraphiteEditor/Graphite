@@ -119,7 +119,7 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 	let bounds = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let multiplied = document.metadata().transform_from_viewport(layer);
+	let multiplied = document.metadata().transform_to_viewport(layer);
 
 	multiplied * bound_transform
 }
