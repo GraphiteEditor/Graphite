@@ -375,7 +375,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				let bounds = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(&render_data),
 					ExportBounds::Selection => self.selected_visible_layers_bounding_box(&render_data),
-					ExportBounds::Artboard(id) => self.document_legacy.metadata.bounding_box_document(id),
+					ExportBounds::Artboard(id) => self.metadata().bounding_box_document(id),
 				}
 				.unwrap_or_default();
 				let size = bounds[1] - bounds[0];
@@ -636,7 +636,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_scale();
 
-				let ruler_origin = self.document_legacy.metadata.document_to_viewport.transform_point2(DVec2::ZERO);
+				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = document_transform_scale.log2();
 				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_interval * document_transform_scale;
@@ -964,10 +964,13 @@ impl DocumentMessageHandler {
 	pub fn network(&self) -> &NodeNetwork {
 		&self.document_legacy.document_network
 	}
+	pub fn metadata(&self) -> &document_legacy::document_metadata::DocumentMetadata {
+		&self.document_legacy.metadata
+	}
 
 	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
 	pub(crate) fn remove_document_transform(&mut self) -> DAffine2 {
-		let old_artwork_transform = self.document_legacy.metadata.document_to_viewport;
+		let old_artwork_transform = self.metadata().document_to_viewport;
 		self.document_legacy.metadata.document_to_viewport = DAffine2::IDENTITY;
 		DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
 
@@ -1130,11 +1133,11 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		for layer_node in folder.children(&self.document_legacy.metadata) {
+		for layer_node in folder.children(&self.metadata()) {
 			data.push(layer_node.to_node());
 			info!("Pushed child");
 			space += 1;
-			if layer_node.has_children(&self.document_legacy.metadata) {
+			if layer_node.has_children(&self.metadata()) {
 				path.push(layer_node.to_node());
 				if self.layer_metadata(path).expanded {
 					structure.push(space);
@@ -1181,7 +1184,7 @@ impl DocumentMessageHandler {
 	/// ```
 	pub fn serialize_root(&self) -> Vec<u64> {
 		let (mut structure, mut data) = (vec![0], Vec::new());
-		self.serialize_structure(self.document_legacy.metadata.root(), &mut structure, &mut data, &mut vec![]);
+		self.serialize_structure(self.metadata().root(), &mut structure, &mut data, &mut vec![]);
 		structure[0] = structure.len() as u64 - 1;
 		structure.extend(data);
 
@@ -1279,7 +1282,7 @@ impl DocumentMessageHandler {
 	/// Replace the document with a new document save, returning the document save.
 	pub fn replace_document(&mut self, DocumentSave { document, layer_metadata }: DocumentSave) -> DocumentSave {
 		// Keeping the root is required if the bounds of the viewport have changed during the operation
-		let old_root = self.document_legacy.metadata.document_to_viewport;
+		let old_root = self.metadata().document_to_viewport;
 		let document = std::mem::replace(&mut self.document_legacy, document);
 		self.document_legacy.metadata.document_to_viewport = old_root;
 		self.document_legacy.root.cache_dirty = true;
@@ -1414,10 +1417,7 @@ impl DocumentMessageHandler {
 
 	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
 		let layer_metadata = self.layer_metadata(path);
-		let transform = self
-			.document_legacy
-			.generate_transform_across_scope(path, Some(self.document_legacy.metadata.document_to_viewport.inverse()))
-			.ok()?;
+		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.metadata().document_to_viewport.inverse())).ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;
 
 		Some(LayerPanelEntry::new(layer_metadata, transform, layer, path.to_vec(), render_data))
@@ -1444,7 +1444,7 @@ impl DocumentMessageHandler {
 		self.document_legacy
 			.metadata
 			.all_layers()
-			.filter_map(|layer| self.document_legacy.metadata.bounding_box_viewport(layer))
+			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
 			.reduce(Quad::combine_bounds)
 	}
 

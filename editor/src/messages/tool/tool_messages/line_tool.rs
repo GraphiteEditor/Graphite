@@ -181,7 +181,7 @@ impl Fsm for LineToolFsmState {
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				let viewport_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-				tool_data.drag_start = document.document_legacy.metadata.document_to_viewport.inverse().transform_point2(viewport_start);
+				tool_data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(viewport_start);
 
 				let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
 
@@ -202,7 +202,7 @@ impl Fsm for LineToolFsmState {
 				tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let keyboard = &input.keyboard;
-				let transform = document.document_legacy.metadata.document_to_viewport;
+				let transform = document.metadata().document_to_viewport;
 				responses.add(generate_transform(tool_data, transform, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
 
 				LineToolFsmState::Drawing

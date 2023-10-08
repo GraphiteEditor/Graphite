@@ -210,7 +210,7 @@ struct PathToolData {
 impl PathToolData {
 	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) {
 		// Set the previously selected layers to invisible
-		for layer in document.document_legacy.metadata.all_layers() {
+		for layer in document.metadata().all_layers() {
 			shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
 		}
 
@@ -242,7 +242,7 @@ impl PathToolData {
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.document_legacy.metadata.click(input.mouse.position) {
+		else if let Some(layer) = document.metadata().click(input.mouse.position) {
 			// TODO: Actual selection
 			let layer_list = vec![layer.to_path()];
 			if shift {
@@ -342,7 +342,7 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.document_legacy.metadata.selected_layers().collect();
+				let target_layers = document.metadata().selected_layers().collect();
 				shape_editor.set_selected_layers(target_layers);
 
 				tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -354,7 +354,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DocumentIsDirty) => {
 				// When the document has moved / needs to be redraw, re-render the overlays
 				// TODO the overlay system should probably receive this message instead of the tool
-				for layer in document.document_legacy.metadata.selected_layers() {
+				for layer in document.metadata().selected_layers() {
 					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
 				}
 
