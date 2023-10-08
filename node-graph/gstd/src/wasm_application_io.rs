@@ -359,6 +359,6 @@ async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
 			};
 			RenderOutput::CanvasFrame(frame.into())
 		}
-		_ => todo!("Non svg render output"),
+		_ => todo!("Non svg render output for {output_format:?}"),
 	}
 }

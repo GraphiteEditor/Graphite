@@ -184,7 +184,7 @@ impl NodeRuntime {
 					resolution: viewport_resolution,
 					..Default::default()
 				},
-				export_format: graphene_core::application_io::ExportFormat::Canvas,
+				export_format: graphene_core::application_io::ExportFormat::Svg,
 			},
 			image_frame: None,
 		};
