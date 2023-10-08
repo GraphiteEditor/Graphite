@@ -663,6 +663,7 @@ impl PortfolioMessageHandler {
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::ClearSelection);
 		responses.add(PropertiesPanelMessage::UpdateSelectedDocumentProperties);
+		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 
 	/// Returns an iterator over the open documents in order.
