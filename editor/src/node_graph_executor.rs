@@ -184,6 +184,9 @@ impl NodeRuntime {
 					resolution: viewport_resolution,
 					..Default::default()
 				},
+				#[cfg(any(feature = "resvg", feature = "vello"))]
+				export_format: graphene_core::application_io::ExportFormat::Canvas,
+				#[cfg(not(any(feature = "resvg", feature = "vello")))]
 				export_format: graphene_core::application_io::ExportFormat::Svg,
 			},
 			image_frame: None,

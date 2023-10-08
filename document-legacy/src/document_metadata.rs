@@ -123,7 +123,7 @@ impl DocumentMetadata {
 	/// Access the cached transformation to document space from layer space
 	pub fn transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		self.transforms.get(&layer).copied().unwrap_or_else(|| {
-			warn!("Tried to access transform of bad layer");
+			warn!("Tried to access transform of bad layer {layer:?}");
 			DAffine2::IDENTITY
 		})
 	}

@@ -917,9 +917,9 @@ impl Fsm for SelectToolFsmState {
 }
 
 fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
-	for layer in &tool_data.layers_dragging {
-		responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
-	}
+	// for layer in &tool_data.layers_dragging {
+	// 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
+	// }
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {
