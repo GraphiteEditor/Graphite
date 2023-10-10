@@ -1,5 +1,5 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
-use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
+use crate::messages::portfolio::document::node_graph::{transform_utils, wrap_network_in_scope};
 use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
 use crate::messages::prelude::*;
 
@@ -56,6 +56,7 @@ pub struct NodeRuntime {
 	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) transforms: HashMap<NodeId, DAffine2>,
+	pub(crate) upstream_transforms: HashMap<NodeId, DAffine2>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
@@ -80,6 +81,7 @@ pub(crate) struct GenerationResponse {
 	new_thumbnails: HashMap<NodeId, SvgSegmentList>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_transforms: HashMap<LayerNodeIdentifier, DAffine2>,
+	new_upstream_transforms: HashMap<NodeId, DAffine2>,
 }
 
 enum NodeGraphUpdate {
@@ -119,6 +121,7 @@ impl NodeRuntime {
 			canvas_cache: HashMap::new(),
 			click_targets: HashMap::new(),
 			transforms: HashMap::new(),
+			upstream_transforms: HashMap::new(),
 		}
 	}
 	pub async fn run(&mut self) {
@@ -147,13 +150,14 @@ impl NodeRuntime {
 
 					let monitor_nodes = network
 						.recursive_nodes()
-						.filter(|node| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"))
-						.map(|node| node.path.clone().unwrap_or_default())
-						.collect();
+						.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"))
+						.map(|(_, node)| node.path.clone().unwrap_or_default())
+						.collect::<Vec<_>>();
 
 					let result = self.execute_network(&path, network, transform, viewport_resolution).await;
 					let mut responses = VecDeque::new();
-					self.update_thumbnails(&path, monitor_nodes, &mut responses);
+					self.update_thumbnails(&path, &monitor_nodes, &mut responses);
+					self.update_upstream_transforms(&path, &monitor_nodes, &mut responses);
 					let response = GenerationResponse {
 						generation_id,
 						result,
@@ -161,6 +165,7 @@ impl NodeRuntime {
 						new_thumbnails: self.thumbnails.clone(),
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_transforms: self.transforms.clone().into_iter().map(|(id, transform)| (LayerNodeIdentifier::new_unchecked(id), transform)).collect(),
+						new_upstream_transforms: self.upstream_transforms.clone(),
 					};
 					self.sender.send_generation_response(response);
 				}
@@ -226,14 +231,14 @@ impl NodeRuntime {
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
-	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: Vec<Vec<u64>>, responses: &mut VecDeque<Message>) {
+	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: &[Vec<u64>], responses: &mut VecDeque<Message>) {
 		let mut image_data: Vec<_> = Vec::new();
 		for node_path in monitor_nodes {
 			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
 				warn!("Monitor node has invalid node id");
 				continue;
 			};
-			let Some(value) = self.executor.introspect(&node_path).flatten() else {
+			let Some(value) = self.executor.introspect(node_path).flatten() else {
 				warn!("Failed to introspect monitor node for thumbnail");
 				continue;
 			};
@@ -281,6 +286,24 @@ impl NodeRuntime {
 		}
 		if !image_data.is_empty() {
 			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
+		}
+	}
+
+	pub fn update_upstream_transforms(&mut self, layer_path: &[LayerId], monitor_nodes: &[Vec<u64>], responses: &mut VecDeque<Message>) {
+		for node_path in monitor_nodes {
+			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
+				warn!("Monitor node has invalid node id");
+				continue;
+			};
+			let Some(value) = self.executor.introspect(node_path).flatten() else {
+				warn!("Failed to introspect monitor node for upstream transforms");
+				continue;
+			};
+			let Some(graphic_element_data) = value.downcast_ref::<graphene_core::vector::VectorData>() else {
+				warn!("Failed to downcast transform input to vector data");
+				continue;
+			};
+			self.upstream_transforms.insert(node_id, graphic_element_data.transform());
 		}
 	}
 }
@@ -473,9 +496,10 @@ impl NodeGraphExecutor {
 					new_thumbnails,
 					new_click_targets,
 					new_transforms,
+					new_upstream_transforms,
 				}) => {
 					self.thumbnails = new_thumbnails;
-					document.metadata.update_transforms(new_transforms);
+					document.metadata.update_transforms(new_transforms, new_upstream_transforms);
 					document.metadata.update_click_targets(new_click_targets);
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;

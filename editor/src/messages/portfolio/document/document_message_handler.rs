@@ -1117,11 +1117,11 @@ impl DocumentMessageHandler {
 			space += 1;
 			if layer_node.has_children(&self.metadata()) {
 				path.push(layer_node.to_node());
-				if self.layer_metadata(path).expanded {
-					structure.push(space);
-					self.serialize_structure(folder, structure, data, path);
-					space = 0;
-				}
+				//if self.layer_metadata(path).expanded {
+				structure.push(space);
+				self.serialize_structure(layer_node, structure, data, path);
+				space = 0;
+				//}
 				path.pop();
 			}
 		}

@@ -10,6 +10,7 @@ use graphene_core::renderer::Quad;
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
 	transforms: HashMap<LayerNodeIdentifier, DAffine2>,
+	upstream_transforms: HashMap<NodeId, DAffine2>,
 	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	selected_nodes: Vec<NodeId>,
@@ -21,6 +22,7 @@ impl Default for DocumentMetadata {
 	fn default() -> Self {
 		Self {
 			transforms: HashMap::new(),
+			upstream_transforms: HashMap::new(),
 			click_targets: HashMap::new(),
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
 			selected_nodes: Vec::new(),
@@ -153,8 +155,9 @@ fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode, id: NodeId) ->
 // transforms
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, new_transforms: HashMap<LayerNodeIdentifier, DAffine2>) {
+	pub fn update_transforms(&mut self, new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, DAffine2>) {
 		self.transforms = new_transforms;
+		self.upstream_transforms = new_upstream_transforms;
 	}
 
 	/// Access the cached transformation to document space from layer space
@@ -167,6 +170,10 @@ impl DocumentMetadata {
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		self.document_to_viewport * self.transform_to_document(layer)
+	}
+
+	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {
+		self.upstream_transforms.get(&node_id).copied().unwrap_or(DAffine2::IDENTITY)
 	}
 }
 

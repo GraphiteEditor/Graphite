@@ -328,6 +328,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		)],
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: ImageFrame<Color>, params: []),
+		register_node!(graphene_core::memo::MonitorNode<_>, input: VectorData, params: []),
 		register_node!(graphene_core::memo::MonitorNode<_>, input: graphene_core::GraphicElementData, params: []),
 		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: WasmEditorApi, output: Arc<[u8]>, params: [String]),
 		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
