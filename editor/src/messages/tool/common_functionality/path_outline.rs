@@ -95,7 +95,7 @@ impl PathOutline {
 	/// Performs an intersect test and generates a hovered overlay if necessary
 	pub fn intersect_test_hovered(&mut self, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 		// Get the layer the user is hovering over
-		let intersection = document.metadata().click(input.mouse.position);
+		let intersection = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
 
 		let Some(hovered_layer) = intersection else {
 			self.clear_hovered(responses);

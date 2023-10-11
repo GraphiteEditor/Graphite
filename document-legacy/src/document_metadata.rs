@@ -177,6 +177,10 @@ impl DocumentMetadata {
 	}
 }
 
+fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+	network.primary_flow_from_opt(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
+}
+
 // click targets
 impl DocumentMetadata {
 	/// Update the cached click targets of the layers
@@ -185,10 +189,11 @@ impl DocumentMetadata {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: Quad) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_quad = self.document_to_viewport.inverse() * viewport_quad;
 		self.root()
 			.decendants(self)
+			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
@@ -205,8 +210,8 @@ impl DocumentMetadata {
 	}
 
 	/// Find the layer that has been clicked on from a viewport space location
-	pub fn click(&self, viewport_location: DVec2) -> Option<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).next()
+	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
+		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).next()
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space

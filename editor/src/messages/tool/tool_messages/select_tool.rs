@@ -418,7 +418,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::EditLayer) => {
 				// Edit the clicked layer
-				if let Some(intersect) = document.metadata().click(input.mouse.position) {
+				if let Some(intersect) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, tool_data, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.document_legacy, responses),
@@ -453,7 +453,7 @@ impl Fsm for SelectToolFsmState {
 
 				let mut selected: Vec<_> = document.metadata().selected_visible_layers().collect();
 				let quad = tool_data.selection_quad();
-				let intersection = document.metadata().click(input.mouse.position);
+				let intersection = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -712,7 +712,7 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
-					let intersection = document.metadata().intersect_quad(quad);
+					let intersection = document.metadata().intersect_quad(quad, &document.document_legacy.document_network);
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document.metadata().selected_layers().filter(|&layer| !path.starts_with(layer, document.metadata())).collect();
@@ -786,7 +786,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
 				// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
-				tool_data.layers_dragging = document.metadata().intersect_quad(quad).collect();
+				tool_data.layers_dragging = document.metadata().intersect_quad(quad, &document.document_legacy.document_network).collect();
 				responses.add_front(NodeGraphMessage::SetSelectNodes {
 					nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 				});
