@@ -142,7 +142,7 @@ impl SelectTool {
 	}
 
 	fn flip_widgets(&self) -> impl Iterator<Item = WidgetHolder> {
-		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Horizontal")].into_iter().map(|(flip_axis, name)| {
+		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(|(flip_axis, name)| {
 			IconButton::new("Flip".to_string() + name, 24)
 				.tooltip("Flip ".to_string() + name)
 				.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
