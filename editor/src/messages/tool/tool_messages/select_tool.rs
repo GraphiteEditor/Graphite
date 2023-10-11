@@ -545,7 +545,7 @@ impl Fsm for SelectToolFsmState {
 						selected = vec![intersection];
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest => todo!(),
+							NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(responses, selected, tool_data, document),
 							NestedSelectionBehavior::Deepest => drag_deepest_manipulation(responses, selected, tool_data),
 						}
 						SelectToolFsmState::Dragging
@@ -920,6 +920,20 @@ fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecD
 	// for layer in &tool_data.layers_dragging {
 	// 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
 	// }
+}
+fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
+	let layer = selected[0];
+	let ancestor = layer.ancestors(document.metadata()).find(|&ancestor| document.metadata().selected_layers_contains(ancestor));
+
+	let new_selected = ancestor.unwrap_or_else(|| layer.child_of_root(document.metadata()));
+
+	tool_data.layers_dragging = vec![new_selected];
+	responses.add(NodeGraphMessage::SetSelectNodes {
+		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
+	});
+	// tool_data
+	// 	.snap_manager
+	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {

@@ -458,7 +458,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
-				document.metadata.load_structure(&document.document_network)
+				document.metadata.load_structure(&document.document_network);
+				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
 			NodeGraphMessage::AddSelectNodes { nodes } => {
 				responses.add(document.metadata.add_selected_nodes(nodes));
@@ -488,6 +489,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
 					return;
 				};
+				document.metadata.load_structure(&document.document_network);
+				responses.add(DocumentMessage::DocumentStructureChanged);
 
 				responses.add(DocumentMessage::StartTransaction);
 

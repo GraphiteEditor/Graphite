@@ -361,7 +361,7 @@ impl LayerNodeIdentifier {
 	pub fn decendants(self, document_metadata: &DocumentMetadata) -> DecendantsIter {
 		DecendantsIter {
 			front: self.first_child(document_metadata),
-			back: self.last_child(document_metadata),
+			back: self.last_child(document_metadata).and_then(|child| child.last_children(document_metadata).last()),
 			document_metadata,
 		}
 	}
@@ -587,7 +587,8 @@ fn test_tree() {
 	assert!(root.children(document_metadata).all(|child| child.parent(document_metadata) == Some(root)));
 	LayerNodeIdentifier::new_unchecked(6).delete(document_metadata);
 	LayerNodeIdentifier::new_unchecked(1).delete(document_metadata);
+	LayerNodeIdentifier::new_unchecked(9).push_child(document_metadata, LayerNodeIdentifier::new_unchecked(10));
 	assert_eq!(root.children(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![2, 3, 4, 5, 9]);
-	assert_eq!(root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![2, 3, 4, 5, 9]);
-	assert_eq!(root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(), vec![9, 5, 4, 3, 2]);
+	assert_eq!(root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![2, 3, 4, 5, 9, 10]);
+	assert_eq!(root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(), vec![10, 9, 5, 4, 3, 2]);
 }
