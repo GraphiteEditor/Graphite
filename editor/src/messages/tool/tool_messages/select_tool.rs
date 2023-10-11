@@ -121,11 +121,11 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn alignment_widgets(&self) -> impl Iterator<Item = WidgetHolder> {
+	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
-			.map(|(axis, aggregate)| {
+			.map(move |(axis, aggregate)| {
 				let (icon, tooltip) = match (axis, aggregate) {
 					(AlignAxis::X, AlignAggregate::Min) => ("AlignLeft", "Align Left"),
 					(AlignAxis::X, AlignAggregate::Center) => ("AlignHorizontalCenter", "Align Horizontal Center"),
@@ -137,15 +137,17 @@ impl SelectTool {
 				IconButton::new(icon, 24)
 					.tooltip(tooltip)
 					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into())
+					.disabled(disabled)
 					.widget_holder()
 			})
 	}
 
-	fn flip_widgets(&self) -> impl Iterator<Item = WidgetHolder> {
-		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(|(flip_axis, name)| {
+	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
+		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(move |(flip_axis, name)| {
 			IconButton::new("Flip".to_string() + name, 24)
 				.tooltip("Flip ".to_string() + name)
 				.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
+				.disabled(disabled)
 				.widget_holder()
 		})
 	}
@@ -172,20 +174,18 @@ impl LayoutHolder for SelectTool {
 		}
 
 		// Align
-		if self.tool_data.selected_layers_count >= 2 {
-			widgets.push(Separator::new(SeparatorType::Section).widget_holder());
-			widgets.extend(self.alignment_widgets());
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-			widgets.push(PopoverButton::new("Align", "Coming soon").widget_holder());
-		}
+		let disabled = self.tool_data.selected_layers_count < 2;
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.extend(self.alignment_widgets(disabled));
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.push(PopoverButton::new("Align", "Coming soon").disabled(disabled).widget_holder());
 
 		// Flip
-		if self.tool_data.selected_layers_count > 0 {
-			widgets.push(Separator::new(SeparatorType::Section).widget_holder());
-			widgets.extend(self.flip_widgets());
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-			widgets.push(PopoverButton::new("Flip", "Coming soon").widget_holder());
-		}
+		let disabled = self.tool_data.selected_layers_count == 0;
+		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.extend(self.flip_widgets(disabled));
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.push(PopoverButton::new("Flip", "Coming soon").disabled(disabled).widget_holder());
 
 		// Boolean
 		if self.tool_data.selected_layers_count >= 2 {
