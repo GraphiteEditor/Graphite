@@ -115,9 +115,10 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn pivot_widget(&self) -> WidgetHolder {
+	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
 		PivotAssist::new(self.tool_data.pivot.to_pivot_position())
 			.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
+			.disabled(disabled)
 			.widget_holder()
 	}
 
@@ -165,13 +166,11 @@ impl SelectTool {
 impl LayoutHolder for SelectTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
-		widgets.push(self.deep_selection_widget());
+		// widgets.push(self.deep_selection_widget()); // TODO: Reenable once Deep/Shallow Selection is implemented again
 
 		// Pivot
-		if self.tool_data.selected_layers_count > 0 {
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-			widgets.push(self.pivot_widget());
-		}
+		// widgets.push(Separator::new(SeparatorType::Related).widget_holder()); // TODO: Reenable once Deep/Shallow Selection is implemented again
+		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
