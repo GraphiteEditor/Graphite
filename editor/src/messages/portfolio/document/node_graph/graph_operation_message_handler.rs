@@ -531,9 +531,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
-
-				//let pivot = pivot.into();
-				//responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {

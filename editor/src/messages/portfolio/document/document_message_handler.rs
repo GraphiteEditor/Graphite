@@ -136,7 +136,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 									reverse_index: *reverse_index,
 								}),
 								DocumentResponse::CreatedLayer { .. } => {
-									unimplemented!()
+									unimplemented!("We should no longer be creating layers in the document and should instead be using the node graph.")
 								}
 								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
 								DocumentResponse::DeletedSelectedManipulatorPoints => {
@@ -1117,11 +1117,12 @@ impl DocumentMessageHandler {
 			space += 1;
 			if layer_node.has_children(&self.metadata()) {
 				path.push(layer_node.to_node());
-				//if self.layer_metadata(path).expanded {
+
+				// TODO: Skip if folder is not expanded.
 				structure.push(space);
 				self.serialize_structure(layer_node, structure, data, path);
 				space = 0;
-				//}
+
 				path.pop();
 			}
 		}
