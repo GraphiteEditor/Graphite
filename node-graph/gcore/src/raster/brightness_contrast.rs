@@ -1,5 +1,4 @@
-use crate::raster::curve::{CubicSplines, ValueMapperNode};
-use crate::raster::Channel;
+use crate::raster::curve::CubicSplines;
 use crate::{Color, Node};
 
 // LEGACY BRIGHTNESS/CONTRAST
@@ -61,15 +60,13 @@ impl<'i> Node<'i, Color> for BrightnessContrastMapperNode {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GenerateBrightnessContrastMapperNode<OutputChannel, Brightness, Contrast> {
+pub struct GenerateBrightnessContrastMapperNode<Brightness, Contrast> {
 	brightness: Brightness,
 	contrast: Contrast,
-	_channel: core::marker::PhantomData<OutputChannel>,
 }
 
-// TODO: Replace this node implementation with one that uses the more generalized Curves adjustment node
-#[node_macro::node_fn(GenerateBrightnessContrastMapperNode<_Channel>)]
-fn brightness_contrast_node<_Channel: Channel + crate::raster::Linear>(_primary: (), brightness: f32, contrast: f32) -> ValueMapperNode<_Channel> {
+#[node_macro::node_fn(GenerateBrightnessContrastMapperNode)]
+fn brightness_contrast_node(_primary: (), brightness: f32, contrast: f32) -> BrightnessContrastMapperNode {
 	// Brightness LUT
 	let brightness_is_negative = brightness < 0.;
 	let brightness = brightness.abs() / 100.;
@@ -102,15 +99,15 @@ fn brightness_contrast_node<_Channel: Channel + crate::raster::Linear>(_primary:
 	let contrast_curve_solutions = contrast_curve_points.solve();
 	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
+		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
 	});
 
 	// Composed brightness and contrast LUTs
 	let combined_lut = brightness_lut.map(|brightness| {
 		let index_in_contrast_lut = (brightness * (contrast_lut.len() - 1) as f32).round() as usize;
-		_Channel::from_f32(contrast_lut[index_in_contrast_lut])
+		contrast_lut[index_in_contrast_lut]
 	});
-	ValueMapperNode::new(combined_lut.to_vec())
+	BrightnessContrastMapperNode { combined_lut }
 }
 
 const WINDOW_SIZE: usize = 1024;
