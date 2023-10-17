@@ -2127,7 +2127,38 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Transform",
 			category: "Transform",
-			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 1, 1, 1, 1, 1],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Monitor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(VectorData))],
+						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Transform".to_string(),
+						inputs: vec![
+							NodeInput::node(0, 0),
+							NodeInput::Network(concrete!(DVec2)),
+							NodeInput::Network(concrete!(f32)),
+							NodeInput::Network(concrete!(DVec2)),
+							NodeInput::Network(concrete!(DVec2)),
+							NodeInput::Network(concrete!(DVec2)),
+						],
+						manual_composition: Some(concrete!(Footprint)),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),

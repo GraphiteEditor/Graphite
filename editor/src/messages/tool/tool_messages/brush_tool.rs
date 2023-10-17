@@ -341,7 +341,7 @@ impl Fsm for BrushToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let document_position = document.document_legacy.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
+		let document_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 		let layer_position = tool_data.transform.inverse().transform_point2(document_position);
 
 		let ToolMessage::Brush(event) = event else {

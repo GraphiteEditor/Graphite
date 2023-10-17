@@ -32,11 +32,12 @@ impl LayerData for ShapeLayer {
 		let layer_bounds = subpath.bounding_box().unwrap_or_default();
 
 		let transform = self.transform(transforms, render_data.view_mode);
-		let inverse = transform.inverse();
-		if !inverse.is_finite() {
+		if !transform.is_finite() || transform.matrix2.determinant() == 0. {
 			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
 			return false;
 		}
+		let inverse = transform.inverse();
+
 		subpath.apply_affine(transform);
 
 		let transformed_bounds = subpath.bounding_box().unwrap_or_default();

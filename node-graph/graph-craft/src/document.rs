@@ -59,8 +59,7 @@ impl DocumentNode {
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {:#?} with no inputs", self);
-		let DocumentNodeImplementation::Unresolved(fqn) = self.implementation
-		 else {
+		let DocumentNodeImplementation::Unresolved(fqn) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
 		};
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
@@ -241,6 +240,13 @@ impl NodeInput {
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self {
 			Some(tagged_value)
+		} else {
+			None
+		}
+	}
+	pub fn as_node(&self) -> Option<NodeId> {
+		if let NodeInput::Node { node_id, .. } = self {
+			Some(*node_id)
 		} else {
 			None
 		}
@@ -905,22 +911,22 @@ impl NodeNetwork {
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter {
-		let nodes = self.nodes.values().collect();
+		let nodes = self.nodes.iter().collect();
 		RecursiveNodeIter { nodes }
 	}
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
-	nodes: Vec<&'a DocumentNode>,
+	nodes: Vec<(&'a NodeId, &'a DocumentNode)>,
 }
 
 impl<'a> Iterator for RecursiveNodeIter<'a> {
-	type Item = &'a DocumentNode;
+	type Item = (&'a NodeId, &'a DocumentNode);
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = self.nodes.pop()?;
-		if let DocumentNodeImplementation::Network(network) = &node.implementation {
-			self.nodes.extend(network.nodes.values());
+		if let DocumentNodeImplementation::Network(network) = &node.1.implementation {
+			self.nodes.extend(network.nodes.iter());
 		}
 		Some(node)
 	}

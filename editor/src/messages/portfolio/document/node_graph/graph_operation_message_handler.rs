@@ -59,9 +59,9 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Updates the input of an existing node
-	fn modify_existing_node_inputs(&mut self, node_id: NodeId, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
+	fn modify_existing_node_inputs(&mut self, node_id: NodeId, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let document_node = self.network.nodes.get_mut(&node_id).unwrap();
-		update_input(&mut document_node.inputs);
+		update_input(&mut document_node.inputs, node_id, &self.document_metadata);
 	}
 
 	pub fn insert_between(&mut self, id: NodeId, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize, shift_upstream: IVec2) -> Option<NodeId> {
@@ -216,7 +216,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Inserts a new node and modifies the inputs
-	fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
+	fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let output_node_id = self.layer_node.unwrap_or(self.network.outputs[0].node_id);
 		let Some(output_node) = self.network.nodes.get_mut(&output_node_id) else {
 			warn!("Output node doesn't exist");
@@ -235,19 +235,20 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		let mut new_document_node = node_type.to_document_node_default_inputs([Some(new_input)], metadata);
-		update_input(&mut new_document_node.inputs);
+		update_input(&mut new_document_node.inputs, node_id, &self.document_metadata);
 		self.network.nodes.insert(node_id, new_document_node);
 	}
 
 	/// Changes the inputs of a specific node
-	fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>)) {
+	fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let existing_node_id = self.network.primary_flow_from_opt(self.layer_node).find(|(node, _)| node.name == name).map(|(_, id)| id);
 		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
 			self.modify_new_node(name, update_input);
 		}
-		self.node_graph.nested_path.clear();
+
+		self.node_graph.network.clear();
 		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
 		let layer_path = self.layer.to_vec();
 
@@ -261,8 +262,25 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
+	/// Changes the inputs of a all of the existing instances of a node name
+	fn modify_all_node_inputs(&mut self, name: &'static str, skip_rerender: bool, mut update_input: impl FnMut(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
+		let existing_nodes: Vec<_> = self.network.primary_flow_from_opt(self.layer_node).filter(|(node, _)| node.name == name).map(|(_, id)| id).collect();
+		for existing_node_id in existing_nodes {
+			self.modify_existing_node_inputs(existing_node_id, &mut update_input);
+		}
+
+		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
+		let layer_path = self.layer.to_vec();
+
+		if !skip_rerender {
+			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+		} else {
+			self.responses.add(DocumentMessage::FrameClear);
+		}
+	}
+
 	fn fill_set(&mut self, fill: Fill) {
-		self.modify_inputs("Fill", false, |inputs| {
+		self.modify_inputs("Fill", false, |inputs, _node_id, _metadata| {
 			let fill_type = match fill {
 				Fill::None => FillType::None,
 				Fill::Solid(_) => FillType::Solid,
@@ -284,7 +302,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn stroke_set(&mut self, stroke: Stroke) {
-		self.modify_inputs("Stroke", false, |inputs| {
+		self.modify_inputs("Stroke", false, |inputs, _node_id, _metadata| {
 			inputs[1] = NodeInput::value(TaggedValue::OptionalColor(stroke.color), false);
 			inputs[2] = NodeInput::value(TaggedValue::F32(stroke.weight as f32), false);
 			inputs[3] = NodeInput::value(TaggedValue::VecF32(stroke.dash_lengths), false);
@@ -296,49 +314,45 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
-		self.modify_inputs("Transform", skip_rerender, |inputs| {
+		self.modify_inputs("Transform", skip_rerender, |inputs, node_id, metadata| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
+			let upstream_transform = metadata.upstream_transform(node_id);
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
 			let transform = pivot.inverse() * to.inverse() * transform * to * pivot * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
 
 	fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, bounds: LayerBounds, skip_rerender: bool) {
-		self.modify_inputs("Transform", skip_rerender, |inputs| {
-			let current_transform_node = transform_utils::get_current_transform(inputs);
+		self.modify_inputs("Transform", skip_rerender, |inputs, node_id, metadata| {
+			let upstream_transform = metadata.upstream_transform(node_id);
 
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs)));
+			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
 
-			if let Some(current_transform) = current_transform.filter(|transform| transform.inverse().is_finite() && current_transform_node.inverse().is_finite()) {
-				// this_transform * upstream_transforms = current_transform
-				// So this_transform.inverse() * current_transform = upstream_transforms
-				let upstream_transform = (pivot * current_transform_node * pivot.inverse()).inverse() * current_transform;
-				// desired_final_transform = this_transform * upstream_transform
-				// So this_transform = desired_final_transform * upstream_transform.inverse()
+			if let Some(current_transform) = current_transform.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.) {
 				transform = transform * upstream_transform.inverse();
 			}
-
-			let transform = pivot.inverse() * to.inverse() * transform * pivot;
-			transform_utils::update_transform(inputs, transform);
+			let final_transform = pivot.inverse() * to.inverse() * transform * pivot;
+			transform_utils::update_transform(inputs, final_transform);
 		});
 	}
 
 	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", false, |inputs| {
+		self.modify_inputs("Transform", false, |inputs, node_id, metadata| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
-			let old_pivot_transform = DAffine2::from_translation(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs)));
-			let new_pivot_transform = DAffine2::from_translation(bounds.local_pivot(new_pivot));
+			let upstream_transform = metadata.upstream_transform(node_id);
+			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs))));
+			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(new_pivot)));
 			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
@@ -346,14 +360,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn update_bounds(&mut self, [old_bounds_min, old_bounds_max]: [DVec2; 2], [new_bounds_min, new_bounds_max]: [DVec2; 2]) {
-		self.modify_inputs("Transform", false, |inputs| {
+		self.modify_all_node_inputs("Transform", false, |inputs, node_id, metadata| {
+			let upstream_transform = metadata.upstream_transform(node_id);
 			let layer_transform = transform_utils::get_current_transform(inputs);
 			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
 
 			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
 			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
-			let new_pivot_transform = DAffine2::from_translation(new_layerspace_pivot);
-			let old_pivot_transform = DAffine2::from_translation(old_layerspace_pivot);
+			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(new_layerspace_pivot));
+			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(old_layerspace_pivot));
 
 			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
 			transform_utils::update_transform(inputs, transform);
@@ -369,7 +384,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 
-		self.modify_inputs("Shape", false, |inputs| {
+		self.modify_inputs("Shape", false, |inputs, _node_id, _metadata| {
 			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
 				panic!("Shape does not have subpath and mirror angle inputs");
 			};
@@ -400,13 +415,13 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
-		self.modify_inputs("Brush", false, |inputs| {
+		self.modify_inputs("Brush", false, |inputs, _node_id, _metadata| {
 			inputs[2] = NodeInput::value(TaggedValue::BrushStrokes(strokes), false);
 		});
 	}
 
 	fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
-		self.modify_inputs("Artboard", false, |inputs| {
+		self.modify_inputs("Artboard", false, |inputs, _node_id, _metadata| {
 			inputs[1] = NodeInput::value(TaggedValue::IVec2(location), false);
 			inputs[2] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
@@ -443,9 +458,10 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		for node_id in delete_nodes {
-			self.network.nodes.remove(&node_id);
+		for node_id in &delete_nodes {
+			self.network.nodes.remove(node_id);
 		}
+		self.responses.add(self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id)));
 
 		self.responses.add(DocumentMessage::DocumentStructureChanged);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
@@ -503,29 +519,18 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let parent_transform = document.metadata.document_to_viewport * document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
-				let current_transform = document.layer(&layer).ok().map(|layer| layer.transform);
+				let current_transform = Some(document.metadata.transform_to_viewport(LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network)));
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 				let transform = transform.to_cols_array();
-				responses.add(match transform_in {
-					TransformIn::Local => Operation::SetLayerTransform { path: layer, transform },
-					TransformIn::Scope { scope } => {
-						let scope = scope.to_cols_array();
-						Operation::SetLayerTransformInScope { path: layer, transform, scope }
-					}
-					TransformIn::Viewport => Operation::SetLayerTransformInViewport { path: layer, transform },
-				});
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
-
-				let pivot = pivot.into();
-				responses.add(Operation::SetPivot { layer_path: layer, pivot });
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {

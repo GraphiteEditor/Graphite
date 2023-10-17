@@ -210,7 +210,7 @@ struct PathToolData {
 impl PathToolData {
 	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) {
 		// Set the previously selected layers to invisible
-		for layer in document.document_legacy.metadata.all_layers() {
+		for layer in document.metadata().all_layers() {
 			shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
 		}
 
@@ -242,15 +242,11 @@ impl PathToolData {
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.document_legacy.metadata.click(input.mouse.position) {
-			// TODO: Actual selection
-			let layer_list = vec![layer.to_path()];
+		else if let Some(layer) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) {
 			if shift {
-				responses.add(DocumentMessage::AddSelectedLayers { additional_layers: layer_list });
+				responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![layer.to_node()] });
 			} else {
-				responses.add(DocumentMessage::SetSelectedLayers {
-					replacement_selected_layers: layer_list,
-				});
+				responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![layer.to_node()] });
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
@@ -342,7 +338,7 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.document_legacy.metadata.selected_layers().collect();
+				let target_layers = document.metadata().selected_layers().collect();
 				shape_editor.set_selected_layers(target_layers);
 
 				tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -354,7 +350,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DocumentIsDirty) => {
 				// When the document has moved / needs to be redraw, re-render the overlays
 				// TODO the overlay system should probably receive this message instead of the tool
-				for layer in document.document_legacy.metadata.selected_layers() {
+				for layer in document.metadata().selected_layers() {
 					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
 				}
 
@@ -386,7 +382,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(DocumentMessage::DeselectAllLayers);
+					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -401,7 +397,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(DocumentMessage::DeselectAllLayers);
+					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);

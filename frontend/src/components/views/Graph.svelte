@@ -648,6 +648,7 @@
 						style:--data-color={`var(--color-data-${node.primaryInput})`}
 						style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
 					>
+						<title>{node.primaryInput} data</title>
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 					</svg>
 				</div>
@@ -665,6 +666,7 @@
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 						>
+							<title>{node.primaryOutput.dataType} data</title>
 							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
 						</svg>
 					{/if}
@@ -677,11 +679,12 @@
 						style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
 						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
 					>
+						<title>{stackDatainput.dataType} data</title>
 						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
 					</svg>
 				</div>
 				<div class="details">
-					<TextLabel tooltip={node.displayName}>{node.displayName}</TextLabel>
+					<TextLabel tooltip={`${node.displayName} node with id: ${node.id}`}>{node.displayName}</TextLabel>
 				</div>
 
 				<svg class="border-mask" width="0" height="0">
@@ -738,6 +741,7 @@
 							style:--data-color={`var(--color-data-${node.primaryInput})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
 						>
+							<title>{node.primaryInput} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -752,6 +756,7 @@
 								style:--data-color={`var(--color-data-${parameter.dataType})`}
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							>
+								<title>{parameter.dataType} data</title>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 							</svg>
 						{/if}
@@ -769,6 +774,7 @@
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 						>
+							<title>{node.primaryOutput.dataType} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -782,6 +788,7 @@
 							style:--data-color={`var(--color-data-${parameter.dataType})`}
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 						>
+							<title>{parameter.dataType} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/each}

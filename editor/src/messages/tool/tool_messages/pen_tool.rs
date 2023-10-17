@@ -247,7 +247,7 @@ impl PenToolData {
 		let layer_path = document.get_path_for_new_layer();
 
 		// Get the position and set properties
-		let transform = document.document_legacy.metadata.document_to_viewport * document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).unwrap_or_default();
+		let transform = document.metadata().document_to_viewport * document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).unwrap_or_default();
 		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
 		let start_position = transform.inverse().transform_point2(snapped_position);
 		self.weight = line_weight;
@@ -566,7 +566,7 @@ impl Fsm for PenToolFsmState {
 			transform = DAffine2::IDENTITY;
 		}
 
-		transform = document.document_legacy.metadata.document_to_viewport * transform;
+		transform = document.metadata().document_to_viewport * transform;
 
 		let ToolMessage::Pen(event) = event else {
 			return self;
@@ -579,19 +579,19 @@ impl Fsm for PenToolFsmState {
 			(_, PenToolMessage::DocumentIsDirty) => {
 				// When the document has moved / needs to be redraw, re-render the overlays
 				// TODO the overlay system should probably receive this message instead of the tool
-				for layer in document.document_legacy.metadata.selected_layers() {
+				for layer in document.metadata().selected_layers() {
 					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
 				}
 				self
 			}
 			(_, PenToolMessage::SelectionChanged) => {
 				// Set the previously selected layers to invisible
-				for layer in document.document_legacy.metadata.all_layers() {
+				for layer in document.metadata().all_layers() {
 					shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
 				}
 
 				// Redraw the overlays of the newly selected layers
-				for layer in document.document_legacy.metadata.selected_layers() {
+				for layer in document.metadata().selected_layers() {
 					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
 				}
 				self

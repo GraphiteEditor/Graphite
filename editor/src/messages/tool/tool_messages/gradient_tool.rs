@@ -116,10 +116,10 @@ enum GradientToolFsmState {
 
 /// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = document.document_legacy.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap();
+	let bounds = document.metadata().nonzero_bounding_box(layer);
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let multiplied = document.document_legacy.metadata.transform_from_viewport(layer);
+	let multiplied = document.metadata().transform_to_viewport(layer);
 
 	multiplied * bound_transform
 }
@@ -252,7 +252,7 @@ impl SelectedGradient {
 		};
 
 		// Clear the gradient if layer deleted
-		if !inner_gradient.layer.exists(&document.document_legacy.metadata) {
+		if !inner_gradient.layer.exists(&document.metadata()) {
 			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;
@@ -391,7 +391,7 @@ impl Fsm for GradientToolFsmState {
 					SelectedGradient::update(&mut tool_data.selected_gradient, document, responses);
 				}
 
-				for layer in document.document_legacy.metadata.selected_visible_layers() {
+				for layer in document.metadata().selected_visible_layers() {
 					if let Some(gradient) = get_gradient(layer, &document.document_legacy) {
 						let dragging = tool_data
 							.selected_gradient
@@ -526,7 +526,7 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.document_legacy.metadata.click(input.mouse.position);
+					let selected_layer = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
@@ -540,7 +540,7 @@ impl Fsm for GradientToolFsmState {
 						// 	return self;
 						// }
 
-						if !document.document_legacy.metadata.selected_layers_contains(layer) {
+						if !document.metadata().selected_layers_contains(layer) {
 							let replacement_selected_layers = vec![layer.to_path()];
 
 							responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });

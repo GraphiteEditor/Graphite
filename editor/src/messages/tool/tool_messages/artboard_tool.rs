@@ -103,14 +103,14 @@ struct ArtboardToolData {
 
 impl ArtboardToolData {
 	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let current_artboard = self.selected_artboard.and_then(|layer| document.document_legacy.metadata.bounding_box_document(layer));
+		let current_artboard = self.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer));
 		match (current_artboard, self.bounding_box_overlays.take()) {
 			(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 			(Some(bounds), paths) => {
 				let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
 
 				bounding_box_overlays.bounds = bounds;
-				bounding_box_overlays.transform = document.document_legacy.metadata.document_to_viewport;
+				bounding_box_overlays.transform = document.metadata().document_to_viewport;
 
 				bounding_box_overlays.transform(responses);
 
@@ -265,7 +265,7 @@ impl Fsm for ArtboardToolFsmState {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-				let root_transform = document.document_legacy.metadata.document_to_viewport.inverse();
+				let root_transform = document.metadata().document_to_viewport.inverse();
 
 				let mut start = tool_data.drag_start;
 				let mut size = snapped_mouse_position - start;
