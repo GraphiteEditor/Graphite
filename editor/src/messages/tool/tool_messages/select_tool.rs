@@ -736,6 +736,7 @@ impl Fsm for SelectToolFsmState {
 
 				responses.add(DocumentMessage::CommitTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.select_single_layer = None;
 
 				SelectToolFsmState::Ready
 			}
