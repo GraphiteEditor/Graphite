@@ -71,11 +71,13 @@ pub fn get_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec
 }
 
 pub fn get_document_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec2> {
-	get_pivot(layer, document).map(|pivot| document.metadata.transform_to_document(layer).transform_point2(pivot))
+	let [min, max] = document.metadata.nonzero_bounding_box(layer);
+	get_pivot(layer, document).map(|pivot| document.metadata.transform_to_document(layer).transform_point2(min + (max - min) * pivot))
 }
 
 pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec2> {
-	get_pivot(layer, document).map(|pivot| document.metadata.transform_to_viewport(layer).transform_point2(pivot))
+	let [min, max] = document.metadata.nonzero_bounding_box(layer);
+	get_pivot(layer, document).map(|pivot| document.metadata.transform_to_viewport(layer).transform_point2(min + (max - min) * pivot))
 }
 
 /// Get the currently mirrored handles for a particular layer from the shape node

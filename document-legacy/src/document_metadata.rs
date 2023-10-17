@@ -223,6 +223,23 @@ impl DocumentMetadata {
 			.reduce(Quad::combine_bounds)
 	}
 
+	/// Calculate the corners of the bounding box but with a nonzero size.
+	///
+	/// If the layer bounds are `0` in either axis then they are changed to be `1`.
+	pub fn nonzero_bounding_box(&self, layer: LayerNodeIdentifier) -> [DVec2; 2] {
+		let [bounds_min, mut bounds_max] = self.bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap_or_default();
+
+		let bounds_size = bounds_max - bounds_min;
+		if bounds_size.x < 1e-10 {
+			bounds_max.x = bounds_min.x + 1.;
+		}
+		if bounds_size.y < 1e-10 {
+			bounds_max.y = bounds_min.y + 1.;
+		}
+
+		[bounds_min, bounds_max]
+	}
+
 	/// Get the bounding box of the click target of the specified layer in document space
 	pub fn bounding_box_document(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform(layer, self.transform_to_document(layer))

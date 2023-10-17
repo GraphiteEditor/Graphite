@@ -56,7 +56,7 @@ impl LayerBounds {
 	pub fn new(document: &Document, layer: &[u64]) -> Self {
 		let layer = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
 		Self {
-			bounds: document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap_or([DVec2::ZERO, DVec2::ONE]),
+			bounds: document.metadata.nonzero_bounding_box(layer),
 			bounds_transform: DAffine2::IDENTITY,
 			layer_transform: document.metadata.transform_to_document(layer),
 		}
