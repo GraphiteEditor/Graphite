@@ -93,6 +93,10 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	ToggleHidden,
+	SetHidden {
+		node_id: NodeId,
+		hidden: bool,
+	},
 	ToggleHiddenImpl,
 	TogglePreview {
 		node_id: NodeId,

@@ -4,7 +4,9 @@ use crate::application::generate_uuid;
 use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::node_graph::new_text_network;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_text_layer};
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::intersection::Quad;
 use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
@@ -216,7 +218,7 @@ pub struct EditingText {
 
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
-	layer_path: Vec<LayerId>,
+	layer: LayerNodeIdentifier,
 	overlays: Vec<Vec<LayerId>>,
 	editing_text: Option<EditingText>,
 	new_text: String,
@@ -224,9 +226,10 @@ struct TextToolData {
 
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
-	fn set_editing(&self, editable: bool, render_data: &RenderData, responses: &mut VecDeque<Message>) {
-		let path = self.layer_path.clone();
-		responses.add(Operation::SetLayerVisibility { path, visible: !editable });
+	fn set_editing(&self, editable: bool, render_data: &RenderData, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.document_legacy) {
+			responses.add(NodeGraphMessage::SetHidden { node_id, hidden: editable });
+		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
@@ -243,18 +246,9 @@ impl TextToolData {
 	}
 
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
-		let transform = document.document_legacy.multiply_transforms(&self.layer_path).ok()?;
-		let layer = document.document_legacy.layer(&self.layer_path).ok()?;
-		let color = layer
-			.style()
-			.ok()
-			.map_or(Color::BLACK, |style| if let Fill::Solid(solid_color) = style.fill() { *solid_color } else { Color::BLACK });
-
-		let network = get_network(&self.layer_path, document)?;
-		let node_id = get_text_node_id(network)?;
-		let node = network.nodes.get(&node_id)?;
-
-		let (text, font, font_size) = Self::extract_text_node_inputs(node)?;
+		let transform = document.metadata().transform_to_viewport(self.layer);
+		let color = graph_modification_utils::get_fill_color(self.layer, &document.document_legacy).unwrap_or(Color::BLACK);
+		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.document_legacy)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -266,53 +260,24 @@ impl TextToolData {
 		Some(())
 	}
 
-	fn start_editing_layer(&mut self, layer_path: &[LayerId], tool_state: TextToolFsmState, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
+	fn start_editing_layer(&mut self, layer: LayerNodeIdentifier, tool_state: TextToolFsmState, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
 		if tool_state == TextToolFsmState::Editing {
-			self.set_editing(false, render_data, responses);
+			self.set_editing(false, render_data, document, responses);
 		}
 
-		self.layer_path = layer_path.into();
+		self.layer = layer;
 		self.load_layer_text_node(document);
 
 		responses.add(DocumentMessage::StartTransaction);
 
-		self.set_editing(true, render_data, responses);
+		self.set_editing(true, render_data, document, responses);
 
-		let replacement_selected_layers = vec![self.layer_path.clone()];
-		responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
-	}
-
-	fn extract_text_node_inputs(node: &DocumentNode) -> Option<(&String, &Font, f64)> {
-		let NodeInput::Value {
-			tagged_value: TaggedValue::String(text),
-			..
-		} = &node.inputs[1]
-		else {
-			return None;
-		};
-		let NodeInput::Value {
-			tagged_value: TaggedValue::Font(font),
-			..
-		} = &node.inputs[2]
-		else {
-			return None;
-		};
-		let NodeInput::Value {
-			tagged_value: TaggedValue::F64(font_size),
-			..
-		} = &node.inputs[3]
-		else {
-			return None;
-		};
-		Some((text, font, *font_size))
+		responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![self.layer.to_node()] });
 	}
 
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> TextToolFsmState {
-		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-		let quad = Quad::from_box([mouse - tolerance, mouse + tolerance]);
-
 		// Check if the user has selected an existing text layer
-		if let Some(clicked_text_layer_path) = document.document_legacy.intersects_quad_root(quad, render_data).last().filter(|l| is_text_layer(document, l)) {
+		if let Some(clicked_text_layer_path) = document.metadata().click(mouse, &document.network()).filter(|&layer| is_text_layer(layer, &document.document_legacy)) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, render_data, responses);
 
 			TextToolFsmState::Editing
@@ -321,35 +286,33 @@ impl TextToolData {
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			let network = new_text_network(String::new(), editing_text.font.clone(), editing_text.font_size);
+			self.layer = LayerNodeIdentifier::new_unchecked(generate_uuid());
 
-			responses.add(Operation::AddFrame {
-				path: self.layer_path.clone(),
-				insert_index: -1,
-				transform: DAffine2::ZERO.to_cols_array(),
-				network,
+			responses.add(GraphOperationMessage::NewTextLayer {
+				id: self.layer.to_node(),
+				text: String::new(),
+				font: editing_text.font.clone(),
+				size: editing_text.font_size,
 			});
 			responses.add(GraphOperationMessage::FillSet {
-				layer: self.layer_path.clone(),
+				layer: self.layer.to_path(),
 				fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
 			});
 			responses.add(GraphOperationMessage::TransformSet {
-				layer: self.layer_path.clone(),
+				layer: self.layer.to_path(),
 				transform: editing_text.transform,
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
 			});
 
-			self.set_editing(true, render_data, responses);
+			self.set_editing(true, render_data, document, responses);
 
-			let replacement_selected_layers = vec![self.layer_path.clone()];
-
-			responses.add(DocumentMessage::SetSelectedLayers { replacement_selected_layers });
+			responses.add(NodeGraphMessage::SetSelectNodes { nodes: self.layer.to_path() });
 
 			TextToolFsmState::Editing
 		} else {
 			// Removing old text as editable
-			self.set_editing(false, render_data, responses);
+			self.set_editing(false, render_data, document, responses);
 
 			resize_overlays(&mut self.overlays, responses, 0);
 
@@ -365,7 +328,7 @@ impl TextToolData {
 		let far = graphene_core::text::bounding_box(&self.new_text, buzz_face, editing_text.font_size, None);
 		let quad = Quad::from_box([DVec2::ZERO, far]);
 
-		let transformed_quad = document.document_legacy.multiply_transforms(&self.layer_path).ok()? * quad;
+		let transformed_quad = document.metadata().transform_to_viewport(self.layer) * quad;
 		let bounds = transformed_quad.bounding_box();
 
 		let operation = Operation::SetLayerTransformInViewport {
@@ -386,7 +349,7 @@ impl TextToolData {
 	}
 
 	fn fix_text_bounds(&self, new_text: &str, _document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
-		let layer = self.layer_path.clone();
+		let layer = self.layer.to_path();
 		let old_bounds = self.get_bounds(&self.editing_text.as_ref()?.text, render_data)?;
 		let new_bounds = self.get_bounds(new_text, render_data)?;
 		responses.add(GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds });
@@ -419,21 +382,15 @@ fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Me
 }
 
 fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
-	let get_bounds = |layer: &Layer, path: &[LayerId], document: &DocumentMessageHandler, render_data: &RenderData| {
-		let node_graph = layer.as_layer_network().ok()?;
-		let node_id = get_text_node_id(node_graph)?;
-		let document_node = node_graph.nodes.get(&node_id)?;
-		let (text, font, font_size) = TextToolData::extract_text_node_inputs(document_node)?;
+	let get_bounds = |layer: LayerNodeIdentifier, document: &DocumentMessageHandler, render_data: &RenderData| {
+		let (text, font, font_size) = graph_modification_utils::get_text(layer, &document.document_legacy)?;
 		let buzz_face = render_data.font_cache.get(font).map(|data| load_face(data));
 		let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
 		let quad = Quad::from_box([DVec2::ZERO, far]);
-		let multiplied = document.document_legacy.multiply_transforms(path).ok()? * quad;
+		let multiplied = document.metadata().transform_to_viewport(layer) * quad;
 		Some(multiplied.bounding_box())
 	};
-	let bounds = document.selected_layers().filter_map(|path| match document.document_legacy.layer(path) {
-		Ok(layer) => get_bounds(layer, path, document, render_data),
-		Err(_) => None,
-	});
+	let bounds = document.metadata().selected_layers().filter_map(|layer| get_bounds(layer, document, render_data));
 	let bounds = bounds.collect::<Vec<_>>();
 
 	let new_len = bounds.len();
@@ -448,36 +405,20 @@ fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolDa
 	resize_overlays(&mut tool_data.overlays, responses, new_len);
 }
 
-fn get_network<'a>(layer_path: &[LayerId], document: &'a DocumentMessageHandler) -> Option<&'a NodeNetwork> {
-	let layer = document.document_legacy.layer(layer_path).ok()?;
-	layer.as_layer_network().ok()
-}
+fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
+	let mut selected_layers = document.metadata().selected_layers();
 
-fn get_text_node_id(network: &NodeNetwork) -> Option<NodeId> {
-	network.nodes.iter().find(|(_, node)| node.name == "Text").map(|(&id, _)| id)
-}
-
-fn is_text_layer(document: &DocumentMessageHandler, layer_path: &[LayerId]) -> bool {
-	let Some(network) = get_network(layer_path, document) else {
-		return false;
-	};
-	get_text_node_id(network).is_some()
-}
-
-fn can_edit_selected(document: &DocumentMessageHandler) -> Option<Vec<LayerId>> {
-	let mut selected_layers = document.selected_layers();
-
-	let layer_path = selected_layers.next()?.to_vec();
+	let layer = selected_layers.next()?;
 	// Check that only one layer is selected
 	if selected_layers.next().is_some() {
 		return None;
 	}
 
-	if !is_text_layer(document, &layer_path) {
+	if !is_text_layer(layer, &document.document_legacy) {
 		return None;
 	}
 
-	Some(layer_path)
+	Some(layer)
 }
 
 impl Fsm for TextToolFsmState {
@@ -498,7 +439,7 @@ impl Fsm for TextToolFsmState {
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::DocumentIsDirty) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
-					transform: document.document_legacy.multiply_transforms(&tool_data.layer_path).ok().unwrap_or_default().to_cols_array(),
+					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
 				tool_data.update_bounds_overlay(document, render_data, responses);
 				TextToolFsmState::Editing
@@ -517,13 +458,12 @@ impl Fsm for TextToolFsmState {
 					color: tool_options.fill.active_color(),
 				});
 				tool_data.new_text = String::new();
-				tool_data.layer_path = document.get_path_for_new_layer();
 
 				tool_data.interact(state, input.mouse.position, document, render_data, responses)
 			}
 			(state, TextToolMessage::EditSelected) => {
-				if let Some(layer_path) = can_edit_selected(document) {
-					tool_data.start_editing_layer(&layer_path, state, document, render_data, responses);
+				if let Some(layer) = can_edit_selected(document) {
+					tool_data.start_editing_layer(layer, state, document, render_data, responses);
 					return TextToolFsmState::Editing;
 				}
 
@@ -531,7 +471,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(state, TextToolMessage::Abort) => {
 				if state == TextToolFsmState::Editing {
-					tool_data.set_editing(false, render_data, responses);
+					tool_data.set_editing(false, render_data, document, responses);
 				}
 
 				resize_overlays(&mut tool_data.overlays, responses, 0);
@@ -544,17 +484,15 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-				let layer_path = tool_data.layer_path.clone();
-				let network = get_network(&layer_path, document).unwrap();
 				tool_data.fix_text_bounds(&new_text, document, render_data, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					layer_path,
-					node_path: vec![get_text_node_id(network).unwrap()],
+					layer_path: Vec::new(),
+					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.document_legacy).unwrap()],
 					input_index: 1,
 					value: TaggedValue::String(new_text),
 				});
 
-				tool_data.set_editing(false, render_data, responses);
+				tool_data.set_editing(false, render_data, document, responses);
 
 				resize_overlays(&mut tool_data.overlays, responses, 0);
 

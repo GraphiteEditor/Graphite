@@ -8,6 +8,7 @@ use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::ImageFrame;
+use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
@@ -175,6 +176,37 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
 		let shape_id = generate_uuid();
 		self.insert_node_before(shape_id, cull_id, 0, shape, IVec2::new(-8, 0));
+		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+	}
+
+	fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
+		let text = {
+			let node_type = resolve_document_node_type("Text").expect("Text node does not exist");
+			node_type.to_document_node(
+				[
+					NodeInput::Network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi)),
+					NodeInput::value(TaggedValue::String(text), false),
+					NodeInput::value(TaggedValue::Font(font), false),
+					NodeInput::value(TaggedValue::F64(size), false),
+				],
+				Default::default(),
+			)
+		};
+		let cull = resolve_document_node_type("Cull").expect("Cull node does not exist").default_document_node();
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
+		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
+		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
+
+		let stroke_id = generate_uuid();
+		self.insert_node_before(stroke_id, layer, 0, stroke, IVec2::new(-8, 0));
+		let fill_id = generate_uuid();
+		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
+		let transform_id = generate_uuid();
+		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
+		let cull_id = generate_uuid();
+		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
+		let text_id = generate_uuid();
+		self.insert_node_before(text_id, cull_id, 0, text, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
@@ -558,6 +590,12 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
 					modify_inputs.insert_vector_data(subpaths, layer);
+				}
+			}
+			GraphOperationMessage::NewTextLayer { id, text, font, size } => {
+				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+					modify_inputs.insert_text(text, font, size, layer);
 				}
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {

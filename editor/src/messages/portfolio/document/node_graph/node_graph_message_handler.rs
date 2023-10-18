@@ -873,6 +873,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::ToggleHiddenImpl);
 			}
+			NodeGraphMessage::SetHidden { node_id, hidden } => {
+				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
+					if !hidden {
+						network.disabled.retain(|&id| node_id != id);
+					} else if !network.inputs.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
+						network.disabled.push(node_id);
+					}
+					Self::send_graph(network, &self.layer_path, responses);
+
+					// Only generate node graph if one of the selected nodes is connected to the output
+					if network.connected_to_output(node_id) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
+				self.update_selection_action_buttons(document, responses);
+			}
 			NodeGraphMessage::ToggleHiddenImpl => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
 					// Check if any of the selected nodes are hidden
