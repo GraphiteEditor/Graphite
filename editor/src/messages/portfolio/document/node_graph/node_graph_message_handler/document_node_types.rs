@@ -13,6 +13,7 @@ use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
+use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 
@@ -101,6 +102,7 @@ pub struct DocumentNodeType {
 	pub outputs: Vec<DocumentOutputType>,
 	pub primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
+	pub manual_composition: Option<graphene_core::Type>,
 }
 
 impl Default for DocumentNodeType {
@@ -113,6 +115,7 @@ impl Default for DocumentNodeType {
 			outputs: Default::default(),
 			primary_output: Default::default(),
 			properties: node_properties::no_properties,
+			manual_composition: Default::default(),
 		}
 	}
 }
@@ -181,23 +184,15 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Layer",
 			category: "General",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0; 8],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![0, 2, 2, 2, 2, 2, 2, 2],
+				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					(
 						0,
 						DocumentNode {
-							inputs: vec![
-								NodeInput::Network(concrete!(graphene_core::vector::VectorData)),
-								NodeInput::Network(concrete!(String)),
-								NodeInput::Network(concrete!(BlendMode)),
-								NodeInput::Network(concrete!(f32)),
-								NodeInput::Network(concrete!(bool)),
-								NodeInput::Network(concrete!(bool)),
-								NodeInput::Network(concrete!(bool)),
-								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
-							],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _>"),
+							name: "To Graphic Element".to_string(),
+							inputs: vec![NodeInput::Network(generic!(T))],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementData"),
 							..Default::default()
 						},
 					),
@@ -205,9 +200,29 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					(
 						1,
 						DocumentNode {
+							name: "Monitor".to_string(),
 							inputs: vec![NodeInput::node(0, 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
 							skip_deduplication: true,
+							..Default::default()
+						},
+					),
+					(
+						2,
+						DocumentNode {
+							name: "ConstructLayer".to_string(),
+							manual_composition: Some(concrete!(Footprint)),
+							inputs: vec![
+								NodeInput::node(1, 0),
+								NodeInput::Network(concrete!(String)),
+								NodeInput::Network(concrete!(BlendMode)),
+								NodeInput::Network(concrete!(f32)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(concrete!(bool)),
+								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(graphene_core::GraphicGroup)))),
+							],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _, _>"),
 							..Default::default()
 						},
 					),
@@ -245,55 +260,14 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Downres",
-			category: "Raster",
-			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0)],
-				nodes: [
-					DocumentNode {
-						name: "Downres".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::raster::DownresNode<_>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
-						..Default::default()
-					},
-					// We currently just clone by default
-					/*DocumentNode {
-						name: "Clone".to_string(),
-						inputs: vec![NodeInput::node(1, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
-						..Default::default()
-					},*/
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
-			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Downres the image to a lower resolution"),
+			name: "Empty Stack",
+			category: "Hidden",
+			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			..Default::default()
 		},
-		// DocumentNodeType {
-		// 	name: "Input Frame",
-		// 	category: "Ignore",
-		// 	identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-		// 	inputs: vec![DocumentInputType {
-		// 		name: "In",
-		// 		data_type: FrontendGraphDataType::Raster,
-		// 		default: NodeInput::Network,
-		// 	}],
-		// 	outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Raster)],
-		// 	properties: node_properties::input_properties,
-		// },
 		DocumentNodeType {
 			name: "Input Frame",
 			category: "Ignore",
@@ -366,11 +340,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -409,11 +385,13 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						name: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -457,7 +435,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(WasmEditorApi))],
+						manual_composition: Some(concrete!(WasmEditorApi)),
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						..Default::default()
 					},
@@ -469,7 +447,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "RefNode".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::lambda(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::lambda(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 						..Default::default()
 					},
@@ -525,12 +504,61 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Output",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType {
-				name: "Output",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			}],
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![3, 0],
+				outputs: vec![NodeOutput::new(4, 0)],
+				nodes: [
+					DocumentNode {
+						name: "EditorApi".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::node(0, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Conversion".to_string(),
+						inputs: vec![NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))))],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "RenderNode".to_string(),
+						inputs: vec![NodeInput::node(0, 0), NodeInput::node(3, 0), NodeInput::node(2, 0)],
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "Output",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::default()), true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
 			outputs: vec![],
 			properties: node_properties::output_properties,
 			..Default::default()
@@ -858,11 +886,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			name: "Memoize",
 			category: "Structural",
 			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
-			inputs: vec![
-				DocumentInputType::value("ShortCircut", TaggedValue::None, false),
-				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-			],
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			manual_composition: Some(concrete!(())),
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -872,14 +898,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
-			..Default::default()
-		},
-		DocumentNodeType {
-			name: "Ref",
-			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -904,7 +922,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -955,7 +974,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1006,7 +1026,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1068,7 +1089,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1164,7 +1186,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1215,7 +1238,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1260,7 +1284,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(0, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -1358,7 +1383,8 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::node(1, 0)],
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -2058,6 +2084,33 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
+			name: "Sample",
+			category: "Structural",
+			identifier: NodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![DocumentInputType::value("Raseter Data", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Raster", FrontendGraphDataType::Raster)],
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Mandelbrot",
+			category: "Generators",
+			identifier: NodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![],
+			outputs: vec![DocumentOutputType::new("Raster", FrontendGraphDataType::Raster)],
+			..Default::default()
+		},
+		DocumentNodeType {
+			name: "Cull",
+			category: "Vector",
+			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+			manual_composition: Some(concrete!(Footprint)),
+			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			..Default::default()
+		},
+		DocumentNodeType {
 			name: "Text",
 			category: "Vector",
 			identifier: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _, _>"),
@@ -2074,9 +2127,41 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "Transform",
 			category: "Transform",
-			identifier: NodeImplementation::proto("graphene_core::transform::TransformNode<_, _, _, _, _>"),
+			identifier: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![0, 1, 1, 1, 1, 1],
+				outputs: vec![NodeOutput::new(1, 0)],
+				nodes: [
+					DocumentNode {
+						name: "Monitor".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(VectorData))],
+						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Transform".to_string(),
+						inputs: vec![
+							NodeInput::node(0, 0),
+							NodeInput::Network(concrete!(DVec2)),
+							NodeInput::Network(concrete!(f32)),
+							NodeInput::Network(concrete!(DVec2)),
+							NodeInput::Network(concrete!(DVec2)),
+							NodeInput::Network(concrete!(DVec2)),
+						],
+						manual_composition: Some(concrete!(Footprint)),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (id as NodeId, node))
+				.collect(),
+				..Default::default()
+			}),
+			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
-				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Rotation", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
@@ -2379,6 +2464,7 @@ impl DocumentNodeType {
 			inputs,
 			implementation: self.generate_implementation(),
 			metadata,
+			manual_composition: self.manual_composition.clone(),
 			..Default::default()
 		}
 	}
@@ -2389,6 +2475,11 @@ impl DocumentNodeType {
 		let mut input_override = input_override.into_iter();
 		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
 		self.to_document_node(inputs, metadata)
+	}
+
+	/// Converts the [DocumentNodeType] type to a [DocumentNode], completly default
+	pub fn default_document_node(&self) -> DocumentNode {
+		self.to_document_node(self.inputs.iter().map(|input| input.default.clone()), DocumentNodeMetadata::default())
 	}
 }
 
@@ -2408,7 +2499,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 				if input_type.is_none() {
 					input_type = Some(input.clone());
 				}
-				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type");
+				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type {network:#?}");
 				network_inputs.push(*id);
 			}
 		}
@@ -2418,6 +2509,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 
 	// if the network has no inputs, it doesn't need to be wrapped in a scope
 	if len == 0 {
+		log::warn!("Network has no inputs, not wrapping in scope");
 		return network;
 	}
 
@@ -2456,34 +2548,12 @@ pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetw
 		resolve_document_node_type("Input Frame")
 			.expect("Input Frame node does not exist")
 			.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
-		false,
 	);
 	network.push_node(
 		resolve_document_node_type("Output")
 			.expect("Output node does not exist")
 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
-		false,
 	);
-	network
-}
-
-pub fn new_vector_network(subpaths: Vec<bezier_rs::Subpath<uuid::ManipulatorGroupId>>) -> NodeNetwork {
-	let path_generator = resolve_document_node_type("Shape").expect("Shape node does not exist");
-	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
-	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-
-	let mut network = NodeNetwork::default();
-
-	network.push_node(
-		path_generator.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], DocumentNodeMetadata::position((0, 4))),
-		false,
-	);
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
 	network
 }
 
@@ -2498,21 +2568,18 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 		inputs: vec![0],
 		..Default::default()
 	};
-	network.push_node(
-		text_generator.to_document_node(
-			[
-				NodeInput::Network(concrete!(WasmEditorApi)),
-				NodeInput::value(TaggedValue::String(text), false),
-				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F64(size), false),
-			],
-			DocumentNodeMetadata::position((0, 4)),
-		),
-		false,
-	);
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()), true);
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()), true);
+	network.push_node(text_generator.to_document_node(
+		[
+			NodeInput::Network(concrete!(WasmEditorApi)),
+			NodeInput::value(TaggedValue::String(text), false),
+			NodeInput::value(TaggedValue::Font(font), false),
+			NodeInput::value(TaggedValue::F64(size), false),
+		],
+		DocumentNodeMetadata::position((0, 4)),
+	));
+	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(fill.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()));
+	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
 	network
 }

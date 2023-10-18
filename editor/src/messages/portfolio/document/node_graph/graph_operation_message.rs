@@ -1,11 +1,13 @@
 use crate::messages::prelude::*;
 
+use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
+use graphene_core::raster::ImageFrame;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::ManipulatorPointId;
-use graphene_core::Artboard;
+use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -58,12 +60,20 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		artboard: Artboard,
 	},
+	NewBitmapLayer {
+		id: NodeId,
+		image_frame: ImageFrame<Color>,
+	},
+	NewVectorLayer {
+		id: NodeId,
+		subpaths: Vec<Subpath<ManipulatorGroupId>>,
+	},
 	ResizeArtboard {
 		id: NodeId,
 		location: IVec2,
 		dimensions: IVec2,
 	},
-	DeleteArtboard {
+	DeleteLayer {
 		id: NodeId,
 	},
 	ClearArtboards,
@@ -89,4 +99,5 @@ pub enum VectorDataModification {
 	SetManipulatorHandleMirroring { id: ManipulatorGroupId, mirror_angle: bool },
 	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
 	ToggleManipulatorHandleMirroring { id: ManipulatorGroupId },
+	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }

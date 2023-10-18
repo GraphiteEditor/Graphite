@@ -1,12 +1,7 @@
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::layout::utility_types::widget_prelude::*;
+use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
-use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::path_outline::PathOutline;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::Operation;
 
@@ -115,102 +110,98 @@ impl Fsm for ImaginateToolFsmState {
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use ImaginateToolFsmState::*;
-		use ImaginateToolMessage::*;
-
 		let shape_data = &mut tool_data.data;
 
-		if let ToolMessage::Imaginate(event) = event {
-			match (self, event) {
-				(_, DocumentIsDirty | SelectionChanged) => {
-					tool_data.path_outlines.clear_selected(responses);
-					tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
+		let ToolMessage::Imaginate(event) = event else {
+			return self;
+		};
+		match (self, event) {
+			(_, ImaginateToolMessage::DocumentIsDirty | ImaginateToolMessage::SelectionChanged) => {
+				tool_data.path_outlines.clear_selected(responses);
+				//tool_data.path_outlines.update_selected(document.selected_visible_layers(), document, responses, render_data);
 
-					self
-				}
-				(Ready, DragStart) => {
-					tool_data.path_outlines.clear_selected(responses);
-
-					shape_data.start(responses, document, input, render_data);
-					responses.add(DocumentMessage::StartTransaction);
-					shape_data.path = Some(document.get_path_for_new_layer());
-					responses.add(DocumentMessage::DeselectAllLayers);
-
-					use graph_craft::document::*;
-
-					// Utility function to offset the position of each consecutive node
-					let mut pos = 8;
-					let mut next_pos = || {
-						pos += 8;
-						graph_craft::document::DocumentNodeMetadata::position((pos, 4))
-					};
-
-					// Get the node type for the Transform and Imaginate nodes
-					let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
-						warn!("Transform node should be in registry");
-						return Drawing;
-					};
-					let imaginate_node_type = &*IMAGINATE_NODE;
-
-					// Give them a unique ID
-					let [transform_node_id, imaginate_node_id] = [100, 101];
-
-					// Create the network based on the Input -> Output passthrough default network
-					let mut network = node_graph::new_image_network(16, imaginate_node_id);
-
-					// Insert the nodes into the default network
-					network
-						.nodes
-						.insert(transform_node_id, transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()));
-					network.nodes.insert(
-						imaginate_node_id,
-						imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
-					);
-
-					// Add a layer with a frame to the document
-					responses.add(Operation::AddFrame {
-						path: shape_data.path.clone().unwrap(),
-						insert_index: -1,
-						transform: DAffine2::ZERO.to_cols_array(),
-						network,
-					});
-					responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
-
-					Drawing
-				}
-				(state, Resize { center, lock_ratio }) => {
-					let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
-					responses.try_add(message);
-
-					state
-				}
-				(Drawing, DragStop) => {
-					if let Some(layer_path) = &shape_data.path {
-						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
-					}
-
-					input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
-					shape_data.cleanup(responses);
-
-					Ready
-				}
-				(Drawing, Abort) => {
-					responses.add(DocumentMessage::AbortTransaction);
-
-					shape_data.cleanup(responses);
-					tool_data.path_outlines.clear_selected(responses);
-
-					Ready
-				}
-				(_, Abort) => {
-					tool_data.path_outlines.clear_selected(responses);
-
-					Ready
-				}
-				_ => self,
+				self
 			}
-		} else {
-			self
+			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
+				tool_data.path_outlines.clear_selected(responses);
+
+				shape_data.start(responses, document, input, render_data);
+				responses.add(DocumentMessage::StartTransaction);
+				shape_data.path = Some(document.get_path_for_new_layer());
+				responses.add(DocumentMessage::DeselectAllLayers);
+
+				use graph_craft::document::*;
+
+				// Utility function to offset the position of each consecutive node
+				let mut pos = 8;
+				let mut next_pos = || {
+					pos += 8;
+					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+				};
+
+				// Get the node type for the Transform and Imaginate nodes
+				let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+					warn!("Transform node should be in registry");
+					return ImaginateToolFsmState::Drawing;
+				};
+				let imaginate_node_type = &*IMAGINATE_NODE;
+
+				// Give them a unique ID
+				let [transform_node_id, imaginate_node_id] = [100, 101];
+
+				// Create the network based on the Input -> Output passthrough default network
+				let mut network = node_graph::new_image_network(16, imaginate_node_id);
+
+				// Insert the nodes into the default network
+				network
+					.nodes
+					.insert(transform_node_id, transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()));
+				network.nodes.insert(
+					imaginate_node_id,
+					imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
+				);
+
+				// Add a layer with a frame to the document
+				responses.add(Operation::AddFrame {
+					path: shape_data.path.clone().unwrap(),
+					insert_index: -1,
+					transform: DAffine2::ZERO.to_cols_array(),
+					network,
+				});
+				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
+
+				ImaginateToolFsmState::Drawing
+			}
+			(state, ImaginateToolMessage::Resize { center, lock_ratio }) => {
+				let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
+				responses.try_add(message);
+
+				state
+			}
+			(ImaginateToolFsmState::Drawing, ImaginateToolMessage::DragStop) => {
+				if let Some(layer_path) = &shape_data.path {
+					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
+				}
+
+				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
+				shape_data.cleanup(responses);
+
+				ImaginateToolFsmState::Ready
+			}
+			(ImaginateToolFsmState::Drawing, ImaginateToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				shape_data.cleanup(responses);
+				tool_data.path_outlines.clear_selected(responses);
+
+				ImaginateToolFsmState::Ready
+			}
+			(_, ImaginateToolMessage::Abort) => {
+				tool_data.path_outlines.clear_selected(responses);
+
+				ImaginateToolFsmState::Ready
+			}
+			_ => self,
 		}
 	}
 

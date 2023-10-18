@@ -10,6 +10,9 @@ use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::WgpuExecutor;
 
+#[cfg(feature = "quantization")]
+use graphene_core::quantization::PackedPixel;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,10 +26,10 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 
 // TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
-async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> compilation_client::Shader {
+async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
-	let proto_networks: Vec<_> = compiler.compile(network.clone()).collect();
+	let proto_networks: Vec<_> = compiler.compile(network.clone())?.collect();
 
 	for network in proto_networks.iter() {
 		typing_context.update(network).expect("Failed to type check network");
@@ -40,7 +43,7 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 		.collect();
 	let output_types = proto_networks.iter().map(|network| typing_context.type_of(network.output).unwrap().output.clone()).collect();
 
-	compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap()
+	Ok(compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap())
 }
 
 pub struct MapGpuNode<Node, EditorApi> {
@@ -74,6 +77,11 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let quantization = QuantizationChannels::default();
 	log::debug!("quantization: {:?}", quantization);
 
+	#[cfg(feature = "image-compare")]
+	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone()))
+		.unwrap()
+		.into();
+
 	#[cfg(feature = "quantization")]
 	let image = ImageFrame {
 		image: Image {
@@ -83,12 +91,16 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		},
 		transform: image.transform,
 	};
+
 	// TODO: The cache should be based on the network topology not the node name
 	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
 		self.cache.borrow().get(&node.name).unwrap().clone()
 	} else {
 		let name = node.name.clone();
-		let compute_pass_descriptor = create_compute_pass_descriptor(node, &image, executor, quantization).await;
+		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor, quantization).await else {
+			log::error!("Error creating compute pass descriptor in 'map_gpu()");
+			return ImageFrame::empty();
+		};
 		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
 		compute_pass_descriptor
@@ -114,6 +126,14 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	#[cfg(not(feature = "quantization"))]
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 	log::debug!("first color: {:?}", colors[0]);
+
+	#[cfg(feature = "image-compare")]
+	let img2: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(colors.clone())).unwrap().into();
+	#[cfg(feature = "image-compare")]
+	let score = image_compare::rgb_hybrid_compare(&img.into_rgb8(), &img2.into_rgb8()).unwrap();
+	#[cfg(feature = "image-compare")]
+	log::debug!("score: {:?}", score.score);
+
 	ImageFrame {
 		image: Image {
 			data: colors,
@@ -139,7 +159,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	image: &ImageFrame<T>,
 	executor: &&WgpuExecutor,
 	quantization: QuantizationChannels,
-) -> ComputePass<WgpuExecutor> {
+) -> Result<ComputePass<WgpuExecutor>, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -229,7 +249,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone()).collect();
+	let proto_networks = compiler.compile(network.clone())?.collect();
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
 		proto_networks,
@@ -279,6 +299,10 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	return frame;*/
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
+	#[cfg(not(feature = "quantization"))]
+	core::hint::black_box(quantization);
+
+	#[cfg(feature = "quantization")]
 	let quantization_uniform = executor.create_uniform_buffer(quantization).unwrap();
 	let storage_buffer = executor
 		.create_storage_buffer(
@@ -292,7 +316,8 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		)
 		.unwrap();
 	let width_uniform = Arc::new(width_uniform);
-	let _quantization_uniform = Arc::new(quantization_uniform);
+	#[cfg(feature = "quantization")]
+	let quantization_uniform = Arc::new(quantization_uniform);
 	let storage_buffer = Arc::new(storage_buffer);
 	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
 	let output_buffer = Arc::new(output_buffer);
@@ -303,7 +328,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		#[cfg(feature = "quantization")]
 		buffers: vec![width_uniform.clone(), storage_buffer.clone(), quantization_uniform.clone()],
 		#[cfg(not(feature = "quantization"))]
-		buffers: vec![width_uniform.clone(), storage_buffer.clone()],
+		buffers: vec![width_uniform, storage_buffer],
 	};
 
 	let shader = gpu_executor::Shader {
@@ -318,14 +343,14 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		shader: shader.into(),
 		entry_point: "eval".to_string(),
 		bind_group: bind_group.into(),
-		output_buffer: output_buffer.clone(),
+		output_buffer,
 	};
 	log::debug!("created pipeline");
 
-	ComputePass {
+	Ok(ComputePass {
 		pipeline_layout: pipeline,
-		readback_buffer: Some(readback_buffer.clone()),
-	}
+		readback_buffer: Some(readback_buffer),
+	})
 }
 /*
 #[node_macro::node_fn(MapGpuNode)]
@@ -395,7 +420,7 @@ pub struct BlendGpuImageNode<Background, B, O> {
 async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
-	// Transforms a point from the background image to the forground image
+	// Transforms a point from the background image to the foreground image
 	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
 
 	let transform_matrix: Mat2 = bg_to_fg.matrix2.as_mat2();
@@ -442,7 +467,11 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone()).collect();
+	let Ok(proto_networks_result) = compiler.compile(network.clone()) else {
+		log::error!("Error compiling network in 'blend_gpu_image()");
+		return ImageFrame::empty();
+	};
+	let proto_networks = proto_networks_result.collect();
 	log::debug!("compiling shader");
 
 	let shader = compilation_client::compile(

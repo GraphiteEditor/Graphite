@@ -282,8 +282,10 @@
 				const layerId = BigInt(item.layerId.toString());
 				path.push(layerId);
 
-				const mapping = layerCache.get(path.toString());
+				const mapping = layerCache.get([path[path.length-1]].toString());
 				if (mapping) {
+					mapping.layerType = item.children.length >= 1 ? "Folder" : "Layer";
+					mapping.path = new BigUint64Array(path);
 					layers.push({
 						folderIndex: index,
 						bottomLayer: index === folder.children.length - 1,

@@ -59,6 +59,9 @@ opt-level = 3
 [profile.dev.package.image]
 opt-level = 3
 
+[profile.dev.package.rustc-hash]
+opt-level = 3
+
 [profile.dev]
 opt-level = 1
 

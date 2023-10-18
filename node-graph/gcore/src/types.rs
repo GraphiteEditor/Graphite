@@ -26,9 +26,9 @@ impl NodeIOTypes {
 #[macro_export]
 macro_rules! concrete {
 	($type:ty) => {
-		Type::Concrete(TypeDescriptor {
+		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
-			name: Cow::Borrowed(core::any::type_name::<$type>()),
+			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
 			size: core::mem::size_of::<$type>(),
 			align: core::mem::align_of::<$type>(),
 		})
@@ -38,9 +38,9 @@ macro_rules! concrete {
 #[macro_export]
 macro_rules! concrete_with_name {
 	($type:ty, $name:expr) => {
-		Type::Concrete(TypeDescriptor {
+		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
-			name: Cow::Borrowed($name),
+			name: $crate::Cow::Borrowed($name),
 			size: core::mem::size_of::<$type>(),
 			align: core::mem::align_of::<$type>(),
 		})
@@ -50,17 +50,17 @@ macro_rules! concrete_with_name {
 #[macro_export]
 macro_rules! generic {
 	($type:ty) => {{
-		Type::Generic(Cow::Borrowed(stringify!($type)))
+		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
 	}};
 }
 
 #[macro_export]
 macro_rules! fn_type {
 	($type:ty) => {
-		Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
 	};
 	($in_type:ty, $type:ty) => {
-		Type::Fn(Box::new(concrete!(($in_type))), Box::new(concrete!($type)))
+		$crate::Type::Fn(Box::new(concrete!(($in_type))), Box::new(concrete!($type)))
 	};
 }
 
@@ -94,7 +94,8 @@ impl PartialEq for TypeDescriptor {
 		match (self.id, other.id) {
 			(Some(id), Some(other_id)) => id == other_id,
 			_ => {
-				warn!("TypeDescriptor::eq: comparing types without ids based on name");
+				// TODO: Add a flag to disable this warning
+				//warn!("TypeDescriptor::eq: comparing types without ids based on name");
 				self.name == other.name
 			}
 		}

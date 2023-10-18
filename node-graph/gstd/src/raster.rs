@@ -1,9 +1,9 @@
 use dyn_any::{DynAny, StaticType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
-use graphene_core::transform::Transform;
+use graphene_core::transform::{Footprint, Transform};
 
 use crate::wasm_application_io::WasmEditorApi;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
@@ -58,33 +58,61 @@ fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
 	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
 }
 
-pub struct DownresNode<P> {
-	_p: PhantomData<P>,
+pub struct SampleNode<ImageFrame> {
+	image_frame: ImageFrame,
 }
 
-#[node_macro::node_fn(DownresNode<_P>)]
-fn downres<_P: Pixel>(image_frame: ImageFrame<_P>) -> ImageFrame<_P> {
-	let target_width = (image_frame.transform.transform_vector2((1., 0.).into()).length() as usize).min(image_frame.image.width as usize);
-	let target_height = (image_frame.transform.transform_vector2((0., 1.).into()).length() as usize).min(image_frame.image.height as usize);
+#[node_macro::node_fn(SampleNode)]
+fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+	// resize the image using the image crate
+	let image = image_frame.image;
+	let data = bytemuck::cast_vec(image.data);
 
-	let mut image = Image {
-		width: target_width as u32,
-		height: target_height as u32,
-		data: Vec::with_capacity(target_width * target_height),
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let image_bounds = Bbox::from_transform(image_frame.transform).to_axis_aligned_bbox();
+	let intersection = viewport_bounds.intersect(&image_bounds);
+	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
+	let size = intersection.size();
+	let size_px = image_size.transform_vector2(size).as_uvec2();
+
+	// If the image would not be visible, return an empty image
+	if size.x <= 0. || size.y <= 0. {
+		return ImageFrame::empty();
+	}
+
+	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
+
+	let dynamic_image: image::DynamicImage = image_buffer.into();
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+	let offset_px = image_size.transform_vector2(offset).as_uvec2();
+	let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
+
+	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
+	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
+	let mut nwidth = size_px.x;
+	let mut nheight = size_px.y;
+
+	// Only downscale the image for now
+	let resized = if nwidth < image.width || nheight < image.height {
+		nwidth = viewport_resolution_x as u32;
+		nheight = viewport_resolution_y as u32;
+		// TODO: choose filter based on quality reqirements
+		cropped.resize_exact(nwidth, nheight, image::imageops::Triangle)
+	} else {
+		cropped
 	};
+	let buffer = resized.to_rgba32f();
+	let buffer = buffer.into_raw();
+	let vec = bytemuck::cast_vec(buffer);
+	let image = Image {
+		width: nwidth,
+		height: nheight,
+		data: vec,
+	};
+	// we need to adjust the offset if we truncate the offset calculation
 
-	let scale_factor = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64) / DVec2::new(target_width as f64, target_height as f64);
-	for y in 0..target_height {
-		for x in 0..target_width {
-			let pixel = image_frame.sample(DVec2::new(x as f64, y as f64) * scale_factor);
-			image.data.push(pixel);
-		}
-	}
-
-	ImageFrame {
-		image,
-		transform: image_frame.transform,
-	}
+	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+	ImageFrame { image, transform: new_transform }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -537,6 +565,67 @@ fn pixel_noise(width: u32, height: u32, seed: u32, noise_type: NoiseType) -> gra
 		image,
 		transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MandelbrotNode;
+
+#[node_macro::node_fn(MandelbrotNode)]
+fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+
+	let width = footprint.resolution.x;
+	let height = footprint.resolution.y;
+
+	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
+	let intersection = viewport_bounds.intersect(&image_bounds);
+	let size = intersection.size();
+
+	// If the image would not be visible, return an empty image
+	if size.x <= 0. || size.y <= 0. {
+		return ImageFrame::empty();
+	}
+
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+
+	let width = footprint.transform.transform_vector2(DVec2::X * size.x).length() as u32;
+	let height = footprint.transform.transform_vector2(DVec2::Y * size.y).length() as u32;
+
+	let mut data = Vec::with_capacity(width as usize * height as usize);
+	let max_iter = 255;
+
+	let scale = 3. * size.as_vec2() / Vec2::new(width as f32, height as f32);
+	let coordinate_offset = offset.as_vec2() * 3. - Vec2::new(2., 1.5);
+	for y in 0..height {
+		for x in 0..width {
+			let pos = Vec2::new(x as f32, y as f32);
+			let c = pos * scale + coordinate_offset;
+
+			let iter = mandelbrot(c, max_iter);
+			data.push(map_color(iter, max_iter));
+		}
+	}
+	ImageFrame {
+		image: Image { width, height, data },
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+	}
+}
+
+#[inline(always)]
+fn mandelbrot(c: Vec2, max_iter: usize) -> usize {
+	let mut z = Vec2::new(0.0, 0.0);
+	for i in 0..max_iter {
+		z = Vec2::new(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+		if z.length_squared() > 4.0 {
+			return i;
+		}
+	}
+	max_iter
+}
+
+fn map_color(iter: usize, max_iter: usize) -> Color {
+	let v = iter as f32 / max_iter as f32;
+	Color::from_rgbaf32_unchecked(v, v, v, 1.)
 }
 
 #[cfg(test)]

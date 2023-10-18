@@ -3,12 +3,10 @@
 extern crate log;
 
 pub mod boolean_ops;
-/// Contains constant values used by this crate.
 pub mod consts;
 pub mod document;
-/// Defines errors that can occur when using this crate.
+pub mod document_metadata;
 pub mod error;
-/// Utilities for computing intersections.
 pub mod intersection;
 pub mod layers;
 pub mod operation;

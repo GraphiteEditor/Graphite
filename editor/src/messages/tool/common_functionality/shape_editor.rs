@@ -1,12 +1,13 @@
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_manipulator_groups, get_mirror_handles, get_subpaths};
 
 use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use document_legacy::document::Document;
-use document_legacy::LayerId;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::uuid::ManipulatorGroupId;
-use graphene_core::vector::{ManipulatorPointId, SelectedType, VectorData};
+use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
 
@@ -40,25 +41,25 @@ impl SelectedLayerState {
 	}
 }
 
-pub type SelectedShapeState = HashMap<Vec<LayerId>, SelectedLayerState>;
+pub type SelectedShapeState = HashMap<LayerNodeIdentifier, SelectedLayerState>;
 #[derive(Debug, Default)]
 pub struct ShapeState {
 	// The layers we can select and edit manipulators (anchors and handles) from
 	pub selected_shape_state: SelectedShapeState,
 }
 
-pub struct SelectedPointsInfo<'a> {
-	pub points: Vec<ManipulatorPointInfo<'a>>,
+pub struct SelectedPointsInfo {
+	pub points: Vec<ManipulatorPointInfo>,
 	pub offset: DVec2,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct ManipulatorPointInfo<'a> {
-	pub shape_layer_path: &'a [LayerId],
+pub struct ManipulatorPointInfo {
+	pub layer: LayerNodeIdentifier,
 	pub point_id: ManipulatorPointId,
 }
 
-pub type OpposingHandleLengths = HashMap<Vec<LayerId>, HashMap<ManipulatorGroupId, Option<f64>>>;
+pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<ManipulatorGroupId, Option<f64>>>;
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
@@ -69,14 +70,14 @@ impl ShapeState {
 			return None;
 		}
 
-		if let Some((shape_layer_path, manipulator_point_id)) = self.find_nearest_point_indices(document, mouse_position, select_threshold) {
+		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document, mouse_position, select_threshold) {
 			trace!("Selecting... manipulator point: {:?}", manipulator_point_id);
 
-			let vector_data = document.layer(&shape_layer_path).ok()?.as_vector_data()?;
-			let manipulator_group = vector_data.manipulator_groups().find(|group| group.id == manipulator_point_id.group)?;
+			let subpaths = get_subpaths(layer, document)?;
+			let manipulator_group = get_manipulator_groups(subpaths).find(|group| group.id == manipulator_point_id.group)?;
 			let point_position = manipulator_point_id.manipulator_type.get_position(manipulator_group)?;
 
-			let selected_shape_state = self.selected_shape_state.get(&shape_layer_path)?;
+			let selected_shape_state = self.selected_shape_state.get(&layer)?;
 			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
 
 			// Should we select or deselect the point?
@@ -90,24 +91,21 @@ impl ShapeState {
 				}
 
 				// Add to the selected points
-				let selected_shape_state = self.selected_shape_state.get_mut(&shape_layer_path)?;
+				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
 				selected_shape_state.select_point(manipulator_point_id);
 
 				// Offset to snap the selected point to the cursor
-				let offset = document
-					.generate_transform_relative_to_viewport(&shape_layer_path)
-					.map(|viewspace| mouse_position - viewspace.transform_point2(point_position))
-					.unwrap_or_default();
+				let offset = mouse_position - document.metadata.transform_to_viewport(layer).transform_point2(point_position);
 
 				let points = self
 					.selected_shape_state
 					.iter()
-					.flat_map(|(shape_layer_path, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { shape_layer_path, point_id }))
+					.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
 					.collect();
 
 				return Some(SelectedPointsInfo { points, offset });
 			} else {
-				let selected_shape_state = self.selected_shape_state.get_mut(&shape_layer_path)?;
+				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
 				selected_shape_state.deselect_point(manipulator_point_id);
 
 				return None;
@@ -117,14 +115,12 @@ impl ShapeState {
 	}
 
 	pub fn select_all_points(&mut self, document: &Document) {
-		for (layer_path, selected_layer_state) in self.selected_shape_state.iter_mut() {
-			let Ok(layer) = document.layer(layer_path) else { continue };
-			let Some(vector_data) = layer.as_vector_data() else { continue };
-
-			for group in vector_data.manipulator_groups() {
-				selected_layer_state.select_point(ManipulatorPointId::new(group.id, SelectedType::Anchor));
+		for (layer, state) in self.selected_shape_state.iter_mut() {
+			let Some(subpaths) = get_subpaths(*layer, document) else { return };
+			for manipulator in get_manipulator_groups(subpaths) {
+				state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor));
 				for selected_type in &[SelectedType::InHandle, SelectedType::OutHandle] {
-					selected_layer_state.deselect_point(ManipulatorPointId::new(group.id, *selected_type));
+					state.deselect_point(ManipulatorPointId::new(manipulator.id, *selected_type));
 				}
 			}
 		}
@@ -135,20 +131,15 @@ impl ShapeState {
 	}
 
 	/// Set the shapes we consider for selection, we will choose draggable manipulators from these shapes.
-	pub fn set_selected_layers(&mut self, target_layers: Vec<Vec<LayerId>>) {
+	pub fn set_selected_layers(&mut self, target_layers: Vec<LayerNodeIdentifier>) {
 		self.selected_shape_state.retain(|layer_path, _| target_layers.contains(layer_path));
 		for layer in target_layers {
-			self.selected_shape_state.entry(layer).or_insert_with(SelectedLayerState::default);
+			self.selected_shape_state.entry(layer).or_default();
 		}
 	}
 
-	pub fn selected_layers(&self) -> impl Iterator<Item = &Vec<LayerId>> {
+	pub fn selected_layers(&self) -> impl Iterator<Item = &LayerNodeIdentifier> {
 		self.selected_shape_state.keys()
-	}
-
-	/// Clear all of the shapes we can modify.
-	pub fn clear_selected_layers(&mut self) {
-		self.selected_shape_state.clear();
 	}
 
 	pub fn has_selected_layers(&self) -> bool {
@@ -157,15 +148,14 @@ impl ShapeState {
 
 	/// A mutable iterator of all the manipulators, regardless of selection.
 	pub fn manipulator_groups<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a ManipulatorGroup<ManipulatorGroupId>> {
-		self.iter(document).flat_map(|shape| shape.manipulator_groups())
+		self.iter(document).flat_map(|subpaths| get_manipulator_groups(subpaths))
 	}
 
 	// Sets the selected points to all points for the corresponding intersection
-	pub fn select_all_anchors(&mut self, document: &Document, layer_path: &[LayerId]) {
-		let Ok(layer) = document.layer(layer_path) else { return };
-		let Some(vector_data) = layer.as_vector_data() else { return };
-		let Some(state) = self.selected_shape_state.get_mut(layer_path) else { return };
-		for manipulator in vector_data.manipulator_groups() {
+	pub fn select_all_anchors(&mut self, document: &Document, layer: LayerNodeIdentifier) {
+		let Some(subpaths) = get_subpaths(layer, document) else { return };
+		let Some(state) = self.selected_shape_state.get_mut(&layer) else { return };
+		for manipulator in get_manipulator_groups(subpaths) {
 			state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor))
 		}
 	}
@@ -219,7 +209,7 @@ impl ShapeState {
 			.selected_shape_state
 			.iter()
 			.filter_map(|(layer_id, selection_state)| {
-				let layer = document.layer(layer_id).ok()?;
+				let layer = document.layer(&layer_id.to_path()).ok()?;
 				let vector_data = layer.as_vector_data()?;
 				Some((vector_data, selection_state))
 			})
@@ -236,7 +226,7 @@ impl ShapeState {
 		}
 	}
 
-	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer_path: &[u64]) {
+	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer: &LayerNodeIdentifier) {
 		let manipulator_groups = subpath.manipulator_groups();
 		let manipulator = manipulator_groups[index];
 
@@ -269,7 +259,7 @@ impl ShapeState {
 
 		// Mirror the angle but not the distance
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: layer.to_path(),
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: manipulator.id,
 				mirror_angle: true,
@@ -290,7 +280,7 @@ impl ShapeState {
 		if let Some(in_handle) = length_previous.map(|length| anchor_position + handle_vector * length) {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: in_handle },
 			});
 		}
@@ -298,7 +288,7 @@ impl ShapeState {
 		if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: out_handle },
 			});
 		}
@@ -309,7 +299,7 @@ impl ShapeState {
 		let mut skip_set = HashSet::new();
 
 		for (layer_id, layer_state) in self.selected_shape_state.iter() {
-			let layer = document.layer(layer_id).ok()?;
+			let layer = document.layer(&layer_id.to_path()).ok()?;
 			let vector_data = layer.as_vector_data()?;
 
 			for point in layer_state.selected_points.iter() {
@@ -338,7 +328,7 @@ impl ShapeState {
 						let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
 						if let Some(position) = group.out_handle {
 							responses.add(GraphOperationMessage::Vector {
-								layer: layer_id.to_vec(),
+								layer: layer_id.to_path(),
 								modification: VectorDataModification::SetManipulatorPosition { point: out_handle, position },
 							});
 						}
@@ -347,7 +337,7 @@ impl ShapeState {
 						let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
 						if let Some(position) = group.in_handle {
 							responses.add(GraphOperationMessage::Vector {
-								layer: layer_id.to_vec(),
+								layer: layer_id.to_path(),
 								modification: VectorDataModification::SetManipulatorPosition { point: in_handle, position },
 							});
 						}
@@ -373,11 +363,11 @@ impl ShapeState {
 
 	/// Move the selected points by dragging the mouse.
 	pub fn move_selected_points(&self, document: &Document, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
-		for (layer_path, state) in &self.selected_shape_state {
-			let Ok(layer) = document.layer(layer_path) else { continue };
-			let Some(vector_data) = layer.as_vector_data() else { continue };
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(subpaths) = get_subpaths(layer, document) else { continue };
+			let Some(mirror_angle) = get_mirror_handles(layer, document) else { continue };
 
-			let transform = document.multiply_transforms(layer_path).unwrap_or_default();
+			let transform = document.metadata.transform_to_viewport(layer);
 			let delta = transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
@@ -385,13 +375,13 @@ impl ShapeState {
 					continue;
 				}
 
-				let Some(group) = vector_data.manipulator_from_id(point.group) else { continue };
+				let Some(group) = get_manipulator_from_id(subpaths, point.group) else { continue };
 
 				let mut move_point = |point: ManipulatorPointId| {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
 					let position = previous_position + delta;
 					responses.add(GraphOperationMessage::Vector {
-						layer: layer_path.clone(),
+						layer: layer.to_path(),
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
 					});
 				};
@@ -404,13 +394,13 @@ impl ShapeState {
 				}
 
 				if mirror_distance && point.manipulator_type != SelectedType::Anchor {
-					let mut mirror = vector_data.mirror_angle.contains(&point.group);
+					let mut mirror = mirror_angle.contains(&point.group);
 
 					// If there is no opposing handle, we mirror even if mirror_angle doesn't contain the group
 					// and set angle mirroring to true.
 					if !mirror && point.manipulator_type.opposite().get_position(group).is_none() {
 						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.clone(),
+							layer: layer.to_path(),
 							modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: true },
 						});
 						mirror = true;
@@ -428,7 +418,7 @@ impl ShapeState {
 						}
 						let position = group.anchor - (original_handle_position - group.anchor);
 						responses.add(GraphOperationMessage::Vector {
-							layer: layer_path.clone(),
+							layer: layer.to_path(),
 							modification: VectorDataModification::SetManipulatorPosition { point, position },
 						});
 					}
@@ -439,13 +429,13 @@ impl ShapeState {
 
 	/// Delete selected and mirrored handles with zero length when the drag stops.
 	pub fn delete_selected_handles_with_zero_length(&self, document: &Document, opposing_handle_lengths: &Option<OpposingHandleLengths>, responses: &mut VecDeque<Message>) {
-		for (layer_path, state) in &self.selected_shape_state {
-			let Ok(layer) = document.layer(layer_path) else { continue };
-			let Some(vector_data) = layer.as_vector_data() else { continue };
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(subpaths) = get_subpaths(layer, document) else { continue };
+			let Some(mirror_angle) = get_mirror_handles(layer, document) else { continue };
 
-			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(layer_path));
+			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(&layer));
 
-			let transform = document.multiply_transforms(layer_path).unwrap_or(glam::DAffine2::IDENTITY);
+			let transform = document.metadata.transform_to_viewport(layer);
 
 			for &point in state.selected_points.iter() {
 				let anchor = ManipulatorPointId::new(point.group, SelectedType::Anchor);
@@ -453,7 +443,7 @@ impl ShapeState {
 					continue;
 				}
 
-				let Some(group) = vector_data.manipulator_from_id(point.group) else { continue };
+				let Some(group) = get_manipulator_from_id(subpaths, point.group) else { continue };
 
 				let anchor_position = transform.transform_point2(group.anchor);
 
@@ -465,17 +455,17 @@ impl ShapeState {
 
 				if (anchor_position - point_position).length() < DRAG_THRESHOLD {
 					responses.add(GraphOperationMessage::Vector {
-						layer: layer_path.clone(),
+						layer: layer.to_path(),
 						modification: VectorDataModification::RemoveManipulatorPoint { point },
 					});
 
 					// Remove opposing handle if it is not selected and is mirrored.
 					let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-					if !state.is_selected(opposite_point) && vector_data.mirror_angle.contains(&point.group) {
+					if !state.is_selected(opposite_point) && mirror_angle.contains(&point.group) {
 						if let Some(lengths) = opposing_handle_lengths {
 							if lengths.contains_key(&point.group) {
 								responses.add(GraphOperationMessage::Vector {
-									layer: layer_path.clone(),
+									layer: layer.to_path(),
 									modification: VectorDataModification::RemoveManipulatorPoint { point: opposite_point },
 								});
 							}
@@ -490,11 +480,9 @@ impl ShapeState {
 	pub fn opposing_handle_lengths(&self, document: &Document) -> OpposingHandleLengths {
 		self.selected_shape_state
 			.iter()
-			.filter_map(|(path, state)| {
-				let layer = document.layer(path).ok()?;
-				let vector_data = layer.as_vector_data()?;
-				let opposing_handle_lengths = vector_data
-					.subpaths
+			.filter_map(|(&layer, state)| {
+				let subpaths = get_subpaths(layer, document)?;
+				let opposing_handle_lengths = subpaths
 					.iter()
 					.flat_map(|subpath| {
 						subpath.manipulator_groups().iter().filter_map(|manipulator_group| {
@@ -525,21 +513,21 @@ impl ShapeState {
 						})
 					})
 					.collect::<HashMap<_, _>>();
-				Some((path.clone(), opposing_handle_lengths))
+				Some((layer, opposing_handle_lengths))
 			})
 			.collect::<HashMap<_, _>>()
 	}
 
 	/// Reset the opposing handle lengths.
 	pub fn reset_opposing_handle_lengths(&self, document: &Document, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
-		for (path, state) in &self.selected_shape_state {
-			let Ok(layer) = document.layer(path) else { continue };
-			let Some(vector_data) = layer.as_vector_data() else { continue };
-			let Some(opposing_handle_lengths) = opposing_handle_lengths.get(path) else { continue };
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(subpaths) = get_subpaths(layer, document) else { continue };
+			let Some(mirror_angle) = get_mirror_handles(layer, document) else { continue };
+			let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };
 
-			for subpath in &vector_data.subpaths {
+			for subpath in subpaths {
 				for manipulator_group in subpath.manipulator_groups() {
-					if !vector_data.mirror_angle.contains(&manipulator_group.id) {
+					if !mirror_angle.contains(&manipulator_group.id) {
 						continue;
 					}
 
@@ -563,7 +551,7 @@ impl ShapeState {
 
 					let Some(opposing_handle_length) = opposing_handle_length else {
 						responses.add(GraphOperationMessage::Vector {
-							layer: path.to_vec(),
+							layer: layer.to_path(),
 							modification: VectorDataModification::RemoveManipulatorPoint {
 								point: ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite()),
 							},
@@ -582,7 +570,7 @@ impl ShapeState {
 					assert!(position.is_finite(), "Opposing handle not finite!");
 
 					responses.add(GraphOperationMessage::Vector {
-						layer: path.to_vec(),
+						layer: layer.to_path(),
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
 					});
 				}
@@ -595,7 +583,7 @@ impl ShapeState {
 		for (layer, state) in &self.selected_shape_state {
 			for &point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_vec(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::RemoveManipulatorPoint { point },
 				})
 			}
@@ -607,7 +595,7 @@ impl ShapeState {
 		for (layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_vec(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::ToggleManipulatorHandleMirroring { id: point.group },
 				})
 			}
@@ -619,7 +607,7 @@ impl ShapeState {
 		for (layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_vec(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::SetManipulatorHandleMirroring { id: point.group, mirror_angle },
 				});
 			}
@@ -627,27 +615,24 @@ impl ShapeState {
 	}
 
 	/// Iterate over the shapes.
-	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a VectorData> + 'a {
-		self.selected_shape_state
-			.keys()
-			.flat_map(|layer_id| document.layer(layer_id))
-			.filter_map(|shape| shape.as_vector_data())
+	pub fn iter<'a>(&'a self, document: &'a Document) -> impl Iterator<Item = &'a Vec<bezier_rs::Subpath<ManipulatorGroupId>>> + 'a {
+		self.selected_shape_state.keys().filter_map(|&layer| get_subpaths(layer, document))
 	}
 
 	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
-	pub fn find_nearest_point_indices(&mut self, document: &Document, mouse_position: DVec2, select_threshold: f64) -> Option<(Vec<LayerId>, ManipulatorPointId)> {
+	pub fn find_nearest_point_indices(&mut self, document: &Document, mouse_position: DVec2, select_threshold: f64) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
 
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
-		for layer in self.selected_shape_state.keys() {
+		for &layer in self.selected_shape_state.keys() {
 			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document, layer, mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {
 					trace!("Selecting... manipulator point: {:?}", manipulator_point_id);
-					return Some((layer.clone(), manipulator_point_id));
+					return Some((layer, manipulator_point_id));
 				}
 			}
 		}
@@ -659,20 +644,18 @@ impl ShapeState {
 	/// Find the closest manipulator, manipulator point, and distance so we can select path elements.
 	/// Brute force comparison to determine which manipulator (handle or anchor) we want to select taking O(n) time.
 	/// Return value is an `Option` of the tuple representing `(ManipulatorPointId, distance squared)`.
-	fn closest_point_in_layer(document: &Document, layer_path: &[LayerId], pos: glam::DVec2) -> Option<(ManipulatorPointId, f64)> {
+	fn closest_point_in_layer(document: &Document, layer: LayerNodeIdentifier, pos: glam::DVec2) -> Option<(ManipulatorPointId, f64)> {
 		let mut closest_distance_squared: f64 = f64::MAX;
 		let mut result = None;
 
-		let vector_data = document.layer(layer_path).ok()?.as_vector_data()?;
-		let viewspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
-		for subpath in &vector_data.subpaths {
-			for manipulator in subpath.manipulator_groups() {
-				let (selected, distance_squared) = SelectedType::closest_widget(manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
+		let subpaths = get_subpaths(layer, document)?;
+		let viewspace = document.metadata.transform_to_viewport(layer);
+		for manipulator in get_manipulator_groups(subpaths) {
+			let (selected, distance_squared) = SelectedType::closest_widget(manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
 
-				if distance_squared < closest_distance_squared {
-					closest_distance_squared = distance_squared;
-					result = Some((ManipulatorPointId::new(manipulator.id, selected), distance_squared));
-				}
+			if distance_squared < closest_distance_squared {
+				closest_distance_squared = distance_squared;
+				result = Some((ManipulatorPointId::new(manipulator.id, selected), distance_squared));
 			}
 		}
 
@@ -680,17 +663,17 @@ impl ShapeState {
 	}
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
-	fn closest_segment(&self, document: &Document, layer_path: &[LayerId], position: glam::DVec2, tolerance: f64) -> Option<(ManipulatorGroupId, ManipulatorGroupId, Bezier, f64)> {
-		let transform = document.generate_transform_relative_to_viewport(layer_path).ok()?;
+	fn closest_segment(&self, document: &Document, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<(ManipulatorGroupId, ManipulatorGroupId, Bezier, f64)> {
+		let transform = document.metadata.transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
 		let projection_options = bezier_rs::ProjectionOptions { lut_size: 5, ..Default::default() };
 
 		let mut result = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
 
-		let vector_data = document.layer(layer_path).ok()?.as_vector_data()?;
+		let subpaths = get_subpaths(layer, document)?;
 
-		for subpath in &vector_data.subpaths {
+		for subpath in subpaths {
 			for (manipulator_index, bezier) in subpath.iter().enumerate() {
 				let t = bezier.project(layer_pos, Some(projection_options));
 				let layerspace = bezier.evaluate(TValue::Parametric(t));
@@ -712,15 +695,15 @@ impl ShapeState {
 
 	/// Handles the splitting of a curve to insert new points (which can be activated by double clicking on a curve with the Path tool).
 	pub fn split(&self, document: &Document, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
-		for layer_path in self.selected_layers() {
-			if let Some((start, end, bezier, t)) = self.closest_segment(document, layer_path, position, tolerance) {
+		for &layer in self.selected_layers() {
+			if let Some((start, end, bezier, t)) = self.closest_segment(document, layer, position, tolerance) {
 				let [first, second] = bezier.split(TValue::Parametric(t));
 
 				// Adjust the first manipulator group's out handle
 				let point = ManipulatorPointId::new(start, SelectedType::OutHandle);
 				let position = first.handle_start().unwrap_or(first.start());
 				let out_handle = GraphOperationMessage::Vector {
-					layer: layer_path.clone(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::SetManipulatorPosition { point, position },
 				};
 				responses.add(out_handle);
@@ -728,7 +711,7 @@ impl ShapeState {
 				// Insert a new manipulator group between the existing ones
 				let manipulator_group = ManipulatorGroup::new(first.end(), first.handle_end(), second.handle_start());
 				let insert = GraphOperationMessage::Vector {
-					layer: layer_path.clone(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::AddManipulatorGroup { manipulator_group, after_id: start },
 				};
 				responses.add(insert);
@@ -737,7 +720,7 @@ impl ShapeState {
 				let point = ManipulatorPointId::new(end, SelectedType::InHandle);
 				let position = second.handle_end().unwrap_or(second.end());
 				let in_handle = GraphOperationMessage::Vector {
-					layer: layer_path.clone(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::SetManipulatorPosition { point, position },
 				};
 				responses.add(in_handle);
@@ -749,15 +732,15 @@ impl ShapeState {
 
 	/// Handles the flipping between sharp corner and smooth (which can be activated by double clicking on an anchor with the Path tool).
 	pub fn flip_sharp(&self, document: &Document, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
-		let mut process_layer = |layer_path| {
-			let vector_data = document.layer(layer_path).ok()?.as_vector_data()?;
+		let mut process_layer = |layer| {
+			let subpaths = get_subpaths(layer, document)?;
 
-			let transform_to_screenspace = document.generate_transform_relative_to_viewport(layer_path).ok()?;
+			let transform_to_screenspace = document.metadata.transform_to_viewport(layer);
 			let mut result = None;
 			let mut closest_distance_squared = tolerance * tolerance;
 
 			// Find the closest anchor point on the current layer
-			for (subpath_index, subpath) in vector_data.subpaths.iter().enumerate() {
+			for (subpath_index, subpath) in subpaths.iter().enumerate() {
 				for (manipulator_index, manipulator) in subpath.manipulator_groups().iter().enumerate() {
 					let screenspace = transform_to_screenspace.transform_point2(manipulator.anchor);
 					let distance_squared = screenspace.distance_squared(position);
@@ -771,7 +754,7 @@ impl ShapeState {
 			let (subpath_index, index, manipulator) = result?;
 			let anchor_position = manipulator.anchor;
 
-			let subpath = &vector_data.subpaths[subpath_index];
+			let subpath = &subpaths[subpath_index];
 
 			// Check by comparing the handle positions to the anchor if this maniuplator group is a point
 			let already_sharp = match (manipulator.in_handle, manipulator.out_handle) {
@@ -781,20 +764,20 @@ impl ShapeState {
 			};
 
 			if already_sharp {
-				self.smooth_manipulator_group(subpath, index, responses, layer_path);
+				self.smooth_manipulator_group(subpath, index, responses, &layer);
 			} else {
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
 				});
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
 				});
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer_path.to_vec(),
+					layer: layer.to_path(),
 					modification: VectorDataModification::SetManipulatorHandleMirroring {
 						id: manipulator.id,
 						mirror_angle: false,
@@ -804,8 +787,8 @@ impl ShapeState {
 
 			Some(true)
 		};
-		for layer_path in self.selected_shape_state.keys() {
-			if let Some(result) = process_layer(layer_path) {
+		for &layer in self.selected_shape_state.keys() {
+			if let Some(result) = process_layer(layer) {
 				return result;
 			}
 		}
@@ -813,17 +796,16 @@ impl ShapeState {
 	}
 
 	pub fn select_all_in_quad(&mut self, document: &Document, quad: [DVec2; 2], clear_selection: bool) {
-		for (layer_path, state) in &mut self.selected_shape_state {
+		for (&layer, state) in &mut self.selected_shape_state {
 			if clear_selection {
 				state.clear_points()
 			}
 
-			let Ok(layer) = document.layer(layer_path) else { continue };
-			let Some(vector_data) = layer.as_vector_data() else { continue };
+			let Some(subpaths) = get_subpaths(layer, document) else { continue };
 
-			let transform = document.multiply_transforms(layer_path).unwrap_or_default();
+			let transform = document.metadata.transform_to_viewport(layer);
 
-			for manipulator_group in vector_data.manipulator_groups() {
+			for manipulator_group in get_manipulator_groups(subpaths) {
 				for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
 					let Some(position) = selected_type.get_position(manipulator_group) else { continue };
 					let transformed_position = transform.transform_point2(position);

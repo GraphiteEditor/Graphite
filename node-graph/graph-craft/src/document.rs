@@ -5,8 +5,6 @@ use graphene_core::{NodeIdentifier, Type};
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::TypeDescriptor;
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 pub mod value;
@@ -38,6 +36,7 @@ impl DocumentNodeMetadata {
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
+	pub manual_composition: Option<Type>,
 	pub implementation: DocumentNodeImplementation,
 	pub metadata: DocumentNodeMetadata,
 	#[serde(default)]
@@ -51,7 +50,7 @@ impl DocumentNode {
 			.inputs
 			.iter()
 			.enumerate()
-			.filter(|(_, input)| matches!(input, NodeInput::Network(_) | NodeInput::ShortCircut(_)))
+			.filter(|(_, input)| matches!(input, NodeInput::Network(_)))
 			.nth(offset)
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
@@ -59,10 +58,15 @@ impl DocumentNode {
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
-		assert_ne!(self.inputs.len(), 0, "Resolving document node {:#?} with no inputs", self);
-		let first = self.inputs.remove(0);
-		if let DocumentNodeImplementation::Unresolved(fqn) = self.implementation {
-			let (input, mut args) = match first {
+		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {:#?} with no inputs", self);
+		let DocumentNodeImplementation::Unresolved(fqn) = self.implementation else {
+			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
+		};
+		let (input, mut args) = if let Some(ty) = self.manual_composition {
+			(ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![]))
+		} else {
+			let first = self.inputs.remove(0);
+			match first {
 				NodeInput::Value { tagged_value, .. } => {
 					assert_eq!(self.inputs.len(), 0, "{}, {:?}", &self.name, &self.inputs);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
@@ -72,37 +76,33 @@ impl DocumentNode {
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
-				NodeInput::ShortCircut(ty) => (ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
-			};
-			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
-			assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::ShortCircut(_))), "recieved non resolved parameter");
-			assert!(
-				!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
-				"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
-				&self.inputs,
-				&args
-			);
+			}
+		};
+		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
+		assert!(
+			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
+			"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
+			&self.inputs,
+			&args
+		);
 
-			// If we have one parameter of the type inline, set it as the construction args
-			if let &[NodeInput::Inline(ref inline)] = &self.inputs[..] {
-				args = ConstructionArgs::Inline(inline.clone());
-			}
-			if let ConstructionArgs::Nodes(nodes) = &mut args {
-				nodes.extend(self.inputs.iter().map(|input| match input {
-					NodeInput::Node { node_id, lambda, .. } => (*node_id, *lambda),
-					_ => unreachable!(),
-				}));
-			}
-			ProtoNode {
-				identifier: fqn,
-				input,
-				construction_args: args,
-				document_node_path: self.path.unwrap_or(Vec::new()),
-				skip_deduplication: self.skip_deduplication,
-			}
-		} else {
-			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
+		// If we have one parameter of the type inline, set it as the construction args
+		if let &[NodeInput::Inline(ref inline)] = &self.inputs[..] {
+			args = ConstructionArgs::Inline(inline.clone());
+		}
+		if let ConstructionArgs::Nodes(nodes) = &mut args {
+			nodes.extend(self.inputs.iter().map(|input| match input {
+				NodeInput::Node { node_id, lambda, .. } => (*node_id, *lambda),
+				_ => unreachable!(),
+			}));
+		}
+		ProtoNode {
+			identifier: fqn,
+			input,
+			construction_args: args,
+			document_node_path: self.path.unwrap_or(Vec::new()),
+			skip_deduplication: self.skip_deduplication,
 		}
 	}
 
@@ -185,7 +185,7 @@ pub enum NodeInput {
 	/// A short circuting input represents an input that is not resolved through function composition
 	/// but actually consuming the provided input instead of passing it to its predecessor.
 	/// See [NodeInput] docs for more explanation.
-	ShortCircut(Type),
+	// TODO: Update
 	Inline(InlineRust),
 }
 
@@ -226,7 +226,6 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network(_) => false,
-			NodeInput::ShortCircut(_) => false,
 			NodeInput::Inline(_) => false,
 		}
 	}
@@ -235,8 +234,21 @@ impl NodeInput {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			NodeInput::Network(ty) => ty.clone(),
-			NodeInput::ShortCircut(ty) => ty.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
+		}
+	}
+	pub fn as_value(&self) -> Option<&TaggedValue> {
+		if let NodeInput::Value { tagged_value, .. } = self {
+			Some(tagged_value)
+		} else {
+			None
+		}
+	}
+	pub fn as_node(&self) -> Option<NodeId> {
+		if let NodeInput::Node { node_id, .. } = self {
+			Some(*node_id)
+		} else {
+			None
 		}
 	}
 }
@@ -343,7 +355,7 @@ impl NodeNetwork {
 				0,
 				DocumentNode {
 					name: "Input Frame".into(),
-					inputs: vec![NodeInput::ShortCircut(concrete!(u32))],
+					manual_composition: Some(concrete!(u32)),
 					implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 					metadata: DocumentNodeMetadata { position: (8, 4).into() },
 					..Default::default()
@@ -356,7 +368,7 @@ impl NodeNetwork {
 	}
 
 	/// Appends a new node to the network after the output node and sets it as the new output
-	pub fn push_node(&mut self, mut node: DocumentNode, connect_to_previous: bool) -> NodeId {
+	pub fn push_node(&mut self, mut node: DocumentNode) -> NodeId {
 		let id = self.nodes.len().try_into().expect("Too many nodes in network");
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {
@@ -364,7 +376,7 @@ impl NodeNetwork {
 				node.metadata.position = pos + IVec2::new(8, 0);
 			}
 		}
-		if connect_to_previous && !self.outputs.is_empty() {
+		if !self.outputs.is_empty() {
 			let input = NodeInput::node(self.outputs[0].node_id, self.outputs[0].node_output_index);
 			if node.inputs.is_empty() {
 				node.inputs.push(input);
@@ -385,7 +397,7 @@ impl NodeNetwork {
 			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 			..Default::default()
 		};
-		self.push_node(node, true)
+		self.push_node(node)
 	}
 
 	/// Adds a Cache and a Clone node to the network
@@ -401,7 +413,8 @@ impl NodeNetwork {
 						0,
 						DocumentNode {
 							name: "MemoNode".to_string(),
-							inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::Network(ty)],
+							manual_composition: Some(concrete!(())),
+							inputs: vec![NodeInput::Network(ty)],
 							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode")),
 							..Default::default()
 						},
@@ -423,7 +436,7 @@ impl NodeNetwork {
 			metadata: DocumentNodeMetadata { position: (0, 0).into() },
 			..Default::default()
 		};
-		self.push_node(node, true)
+		self.push_node(node)
 	}
 
 	/// Get the nested network given by the path of node ids
@@ -453,9 +466,7 @@ impl NodeNetwork {
 			return true;
 		}
 		// Get the outputs
-		let Some(mut stack) = self.outputs.iter().map(|&output| self.nodes.get(&output.node_id)).collect::<Option<Vec<_>>>() else {
-			return false;
-		};
+		let mut stack = self.outputs.iter().filter_map(|&output| self.nodes.get(&output.node_id)).collect::<Vec<_>>();
 		let mut already_visited = HashSet::new();
 		already_visited.extend(self.outputs.iter().map(|output| output.node_id));
 
@@ -537,6 +548,14 @@ impl NodeNetwork {
 			}
 		}
 		true
+	}
+
+	pub fn output_as_input(&self, arg: usize) -> NodeInput {
+		NodeInput::Node {
+			node_id: self.outputs[arg].node_id,
+			output_index: self.outputs[arg].node_output_index,
+			lambda: false,
+		}
 	}
 }
 
@@ -688,9 +707,8 @@ impl NodeNetwork {
 				break;
 			}
 
-			let mut dummy_input = NodeInput::ShortCircut(concrete!(()));
-			std::mem::swap(&mut dummy_input, input);
-			if let NodeInput::Value { tagged_value, exposed } = dummy_input {
+			let previous_input = std::mem::replace(input, NodeInput::Network(concrete!(())));
+			if let NodeInput::Value { tagged_value, exposed } = previous_input {
 				let value_node_id = gen_id();
 				let merged_node_id = map_ids(id, value_node_id);
 				let path = if let Some(mut new_path) = node.path.clone() {
@@ -716,7 +734,7 @@ impl NodeNetwork {
 					lambda: false,
 				};
 			} else {
-				*input = dummy_input;
+				*input = previous_input;
 			}
 		}
 
@@ -739,6 +757,11 @@ impl NodeNetwork {
 				node.inputs,
 				inner_network.inputs
 			);
+			assert_eq!(
+				node.inputs.len(),
+				inner_network.inputs.len(),
+				"Document Nodes with a Network implementation should have the same number of inner network inputs as inputs declared on the Document Node"
+			);
 			// Match the document node input and the inputs of the inner network
 			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
 				// Keep track of how many network inputs we have already connected for each node
@@ -755,7 +778,6 @@ impl NodeNetwork {
 							self.inputs[index] = *network_input;
 						}
 					}
-					NodeInput::ShortCircut(_) => (),
 					NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 					NodeInput::Inline(_) => (),
 				}
@@ -889,22 +911,22 @@ impl NodeNetwork {
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter {
-		let nodes = self.nodes.values().collect();
+		let nodes = self.nodes.iter().collect();
 		RecursiveNodeIter { nodes }
 	}
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
-	nodes: Vec<&'a DocumentNode>,
+	nodes: Vec<(&'a NodeId, &'a DocumentNode)>,
 }
 
 impl<'a> Iterator for RecursiveNodeIter<'a> {
-	type Item = &'a DocumentNode;
+	type Item = (&'a NodeId, &'a DocumentNode);
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = self.nodes.pop()?;
-		if let DocumentNodeImplementation::Network(network) = &node.implementation {
-			self.nodes.extend(network.nodes.values());
+		if let DocumentNodeImplementation::Network(network) = &node.1.implementation {
+			self.nodes.extend(network.nodes.iter());
 		}
 		Some(node)
 	}

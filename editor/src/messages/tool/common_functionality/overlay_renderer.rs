@@ -3,9 +3,11 @@ use crate::application::generate_uuid;
 use crate::consts::VIEWPORT_GRID_ROUNDING_BIAS;
 use crate::consts::{COLOR_ACCENT, HIDE_HANDLE_DISTANCE, MANIPULATOR_GROUP_MARKER_SIZE, PATH_OUTLINE_WEIGHT};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_groups, get_subpaths};
 
 use bezier_rs::ManipulatorGroup;
 use document_legacy::document::Document;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::{self, Fill, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_core::raster::color::Color;
@@ -35,8 +37,8 @@ const POINT_STROKE_WEIGHT: f64 = 2.;
 
 #[derive(Clone, Debug, Default)]
 pub struct OverlayRenderer {
-	shape_overlay_cache: HashMap<LayerId, Vec<LayerId>>,
-	manipulator_group_overlay_cache: HashMap<LayerId, HashMap<ManipulatorGroupId, ManipulatorGroupOverlays>>,
+	shape_overlay_cache: HashMap<LayerNodeIdentifier, Vec<LayerId>>,
+	manipulator_group_overlay_cache: HashMap<LayerNodeIdentifier, HashMap<ManipulatorGroupId, ManipulatorGroupOverlays>>,
 }
 
 impl OverlayRenderer {
@@ -44,116 +46,113 @@ impl OverlayRenderer {
 		Self::default()
 	}
 
-	pub fn render_subpath_overlays(&mut self, selected_shape_state: &SelectedShapeState, document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-		let transform = document.generate_transform_relative_to_viewport(&layer_path).ok().unwrap();
-		if let Ok(layer) = document.layer(&layer_path) {
-			let layer_id = layer_path.last().unwrap();
-			self.layer_overlay_visibility(document, layer_path.clone(), true, responses);
+	pub fn query_cache(&self, layer: &LayerNodeIdentifier) -> Option<&Vec<LayerId>> {
+		self.shape_overlay_cache.get(layer)
+	}
 
-			if let Some(vector_data) = layer.as_vector_data() {
-				let outline_cache = self.shape_overlay_cache.get(layer_id);
-				trace!("Overlay: Outline cache {:?}", &outline_cache);
+	pub fn render_subpath_overlays(&mut self, selected_shape_state: &SelectedShapeState, document: &Document, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		let transform = document.metadata.transform_to_viewport(layer);
 
-				// Create an outline if we do not have a cached one
-				if outline_cache.is_none() {
-					let outline_path = self.create_shape_outline_overlay(graphene_core::vector::Subpath::from_bezier_rs(&vector_data.subpaths), responses);
-					self.shape_overlay_cache.insert(*layer_id, outline_path.clone());
-					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
-					trace!("Overlay: Creating new outline {:?}", &outline_path);
-				} else if let Some(outline_path) = outline_cache {
-					trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer_id);
-					Self::modify_outline_overlays(outline_path.clone(), graphene_core::vector::Subpath::from_bezier_rs(&vector_data.subpaths), responses);
-					Self::place_outline_overlays(outline_path.clone(), &transform, responses);
-				}
+		let Some(subpaths) = get_subpaths(layer, document) else {
+			return;
+		};
 
-				// Create, place, and style the manipulator overlays
-				for manipulator_group in vector_data.manipulator_groups() {
-					let manipulator_group_cache = self.manipulator_group_overlay_cache.entry(*layer_id).or_default().entry(manipulator_group.id).or_default();
+		self.layer_overlay_visibility(document, layer, true, responses);
 
-					// Only view in and out handles if they are not on top of the anchor
-					let [in_handle, out_handle] = {
-						let anchor = manipulator_group.anchor;
+		let outline_cache = self.shape_overlay_cache.get(&layer);
+		trace!("Overlay: Outline cache {:?}", &outline_cache);
 
-						let anchor_position = transform.transform_point2(anchor);
-						let not_under_anchor = |&position: &DVec2| transform.transform_point2(position).distance_squared(anchor_position) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
-						let filter_handle = |manipulator: Option<DVec2>| manipulator.filter(not_under_anchor);
-						[filter_handle(manipulator_group.in_handle), filter_handle(manipulator_group.out_handle)]
-					};
+		// Create an outline if we do not have a cached one
+		if outline_cache.is_none() {
+			let outline_path = self.create_shape_outline_overlay(graphene_core::vector::Subpath::from_bezier_rs(subpaths), responses);
+			self.shape_overlay_cache.insert(layer, outline_path.clone());
+			Self::place_outline_overlays(outline_path.clone(), &transform, responses);
+			trace!("Overlay: Creating new outline {:?}", &outline_path);
+		} else if let Some(outline_path) = outline_cache {
+			trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer);
+			Self::modify_outline_overlays(outline_path.clone(), graphene_core::vector::Subpath::from_bezier_rs(subpaths), responses);
+			Self::place_outline_overlays(outline_path.clone(), &transform, responses);
+		}
 
-					// Create anchor
-					manipulator_group_cache.anchor = manipulator_group_cache.anchor.take().or_else(|| Some(Self::create_anchor_overlay(responses)));
-					// Create or delete in handle
-					if in_handle.is_none() {
-						Self::remove_overlay(manipulator_group_cache.in_handle.take(), responses);
-						Self::remove_overlay(manipulator_group_cache.in_line.take(), responses);
+		// Create, place, and style the manipulator overlays
+		for manipulator_group in get_manipulator_groups(subpaths) {
+			let manipulator_group_cache = self.manipulator_group_overlay_cache.entry(layer).or_default().entry(manipulator_group.id).or_default();
+
+			// Only view in and out handles if they are not on top of the anchor
+			let [in_handle, out_handle] = {
+				let anchor = manipulator_group.anchor;
+
+				let anchor_position = transform.transform_point2(anchor);
+				let not_under_anchor = |&position: &DVec2| transform.transform_point2(position).distance_squared(anchor_position) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
+				let filter_handle = |manipulator: Option<DVec2>| manipulator.filter(not_under_anchor);
+				[filter_handle(manipulator_group.in_handle), filter_handle(manipulator_group.out_handle)]
+			};
+
+			// Create anchor
+			manipulator_group_cache.anchor = manipulator_group_cache.anchor.take().or_else(|| Some(Self::create_anchor_overlay(responses)));
+			// Create or delete in handle
+			if in_handle.is_none() {
+				Self::remove_overlay(manipulator_group_cache.in_handle.take(), responses);
+				Self::remove_overlay(manipulator_group_cache.in_line.take(), responses);
+			} else {
+				manipulator_group_cache.in_handle = manipulator_group_cache.in_handle.take().or_else(|| Self::create_handle_overlay_if_exists(in_handle, responses));
+				manipulator_group_cache.in_line = manipulator_group_cache.in_line.take().or_else(|| Self::create_handle_line_overlay_if_exists(in_handle, responses));
+			}
+			// Create or delete out handle
+			if out_handle.is_none() {
+				Self::remove_overlay(manipulator_group_cache.out_handle.take(), responses);
+				Self::remove_overlay(manipulator_group_cache.out_line.take(), responses);
+			} else {
+				manipulator_group_cache.out_handle = manipulator_group_cache.out_handle.take().or_else(|| Self::create_handle_overlay_if_exists(out_handle, responses));
+				manipulator_group_cache.out_line = manipulator_group_cache.out_line.take().or_else(|| Self::create_handle_line_overlay_if_exists(out_handle, responses));
+			}
+
+			// Update placement and style
+			Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_cache, &transform, responses);
+			Self::style_overlays(selected_shape_state, layer, manipulator_group, manipulator_group_cache, responses);
+		}
+
+		if let Some(layer_overlays) = self.manipulator_group_overlay_cache.get_mut(&layer) {
+			if layer_overlays.len() > subpaths.iter().map(|subpath| subpath.len()).sum() {
+				layer_overlays.retain(|manipulator, manipulator_group_overlays| {
+					if get_manipulator_groups(subpaths).any(|current_manipulator| current_manipulator.id == *manipulator) {
+						true
 					} else {
-						manipulator_group_cache.in_handle = manipulator_group_cache.in_handle.take().or_else(|| Self::create_handle_overlay_if_exists(in_handle, responses));
-						manipulator_group_cache.in_line = manipulator_group_cache.in_line.take().or_else(|| Self::create_handle_line_overlay_if_exists(in_handle, responses));
+						Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
+						false
 					}
-					// Create or delete out handle
-					if out_handle.is_none() {
-						Self::remove_overlay(manipulator_group_cache.out_handle.take(), responses);
-						Self::remove_overlay(manipulator_group_cache.out_line.take(), responses);
-					} else {
-						manipulator_group_cache.out_handle = manipulator_group_cache.out_handle.take().or_else(|| Self::create_handle_overlay_if_exists(out_handle, responses));
-						manipulator_group_cache.out_line = manipulator_group_cache.out_line.take().or_else(|| Self::create_handle_line_overlay_if_exists(out_handle, responses));
-					}
-
-					// Update placement and style
-					Self::place_manipulator_group_overlays(manipulator_group, manipulator_group_cache, &transform, responses);
-					Self::style_overlays(selected_shape_state, &layer_path, manipulator_group, manipulator_group_cache, responses);
-				}
-
-				if let Some(layer_overlays) = self.manipulator_group_overlay_cache.get_mut(layer_id) {
-					if layer_overlays.len() > vector_data.manipulator_groups().count() {
-						layer_overlays.retain(|manipulator, manipulator_group_overlays| {
-							if vector_data.manipulator_groups().any(|current_manipulator| current_manipulator.id == *manipulator) {
-								true
-							} else {
-								Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
-								false
-							}
-						});
-					}
-				}
-				// TODO Handle removing shapes from cache so we don't memory leak
-				// Eventually will get replaced with am immediate mode renderer for overlays
+				});
 			}
 		}
+		// TODO Handle removing shapes from cache so we don't memory leak
+		// Eventually will get replaced with am immediate mode renderer for overlays
+
 		responses.add(OverlaysMessage::Rerender);
 	}
 
-	pub fn clear_subpath_overlays(&mut self, _document: &Document, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-		let layer_id = layer_path.last().unwrap();
-
-		// Remove the shape outline overlays
-		if let Some(overlay_path) = self.shape_overlay_cache.get(layer_id) {
-			Self::remove_outline_overlays(overlay_path.clone(), responses)
+	/// Delete all cached overlays
+	pub fn clear_all_overlays(&mut self, responses: &mut VecDeque<Message>) {
+		for (_, overlay_path) in self.shape_overlay_cache.drain() {
+			Self::remove_outline_overlays(overlay_path, responses)
 		}
-		self.shape_overlay_cache.remove(layer_id);
-
-		// Remove the ManipulatorGroup overlays
-		let Some(layer_cache) = self.manipulator_group_overlay_cache.remove(layer_id) else { return };
-
-		for manipulator_group_overlays in layer_cache.values() {
-			Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
+		for (_, layer_cache) in self.manipulator_group_overlay_cache.drain() {
+			for manipulator_group_overlays in layer_cache.values() {
+				Self::remove_manipulator_group_overlays(manipulator_group_overlays, responses);
+			}
 		}
 	}
 
-	pub fn layer_overlay_visibility(&mut self, document: &Document, layer_path: Vec<LayerId>, visibility: bool, responses: &mut VecDeque<Message>) {
-		let layer_id = layer_path.last().unwrap();
-
+	pub fn layer_overlay_visibility(&mut self, document: &Document, layer: LayerNodeIdentifier, visibility: bool, responses: &mut VecDeque<Message>) {
 		// Hide the shape outline overlays
-		if let Some(overlay_path) = self.shape_overlay_cache.get(layer_id) {
+		if let Some(overlay_path) = self.shape_overlay_cache.get(&layer) {
 			Self::set_outline_overlay_visibility(overlay_path.clone(), visibility, responses);
 		}
 
 		// Hide the manipulator group overlays
-		let Some(manipulator_groups) = self.manipulator_group_overlay_cache.get(layer_id) else { return };
+		let Some(manipulator_groups) = self.manipulator_group_overlay_cache.get(&layer) else { return };
 		if visibility {
-			let Ok(layer) = document.layer(&layer_path) else { return };
-			let Some(vector_data) = layer.as_vector_data() else { return };
-			for manipulator_group in vector_data.manipulator_groups() {
+			let Some(subpaths) = get_subpaths(layer, document) else { return };
+			for manipulator_group in get_manipulator_groups(subpaths) {
 				let id = manipulator_group.id;
 				if let Some(manipulator_group_overlays) = manipulator_groups.get(&id) {
 					Self::set_manipulator_group_overlay_visibility(manipulator_group_overlays, visibility, responses);
@@ -338,11 +337,11 @@ impl OverlayRenderer {
 	}
 
 	/// Sets the overlay style for this point.
-	fn style_overlays(state: &SelectedShapeState, layer_path: &[LayerId], manipulator_group: &GraphiteManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
+	fn style_overlays(state: &SelectedShapeState, layer: LayerNodeIdentifier, manipulator_group: &GraphiteManipulatorGroup, overlays: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		// TODO Move the style definitions out of the Subpath, should be looked up from a stylesheet or similar
 		let selected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT + 1.0)), Fill::solid(COLOR_ACCENT));
 		let deselected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
-		let selected_shape_state = state.get(layer_path);
+		let selected_shape_state = state.get(&layer);
 		// Update if the manipulator points are shown as selected
 		// Here the index is important, even though overlays[..] has five elements we only care about the first three
 		for (index, overlay) in [&overlays.in_handle, &overlays.out_handle, &overlays.anchor].into_iter().enumerate() {

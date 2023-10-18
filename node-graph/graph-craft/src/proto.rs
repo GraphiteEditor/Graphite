@@ -336,9 +336,9 @@ impl ProtoNetwork {
 		edges
 	}
 
-	pub fn resolve_inputs(&mut self) {
+	pub fn resolve_inputs(&mut self) -> Result<(), String> {
 		// Perform topological sort once
-		self.reorder_ids();
+		self.reorder_ids()?;
 
 		let max_id = self.nodes.len() as NodeId - 1;
 
@@ -370,7 +370,8 @@ impl ProtoNetwork {
 				self.replace_node_id(&outwards_edges, node_id, compose_node_id, true);
 			}
 		}
-		self.reorder_ids();
+		self.reorder_ids()?;
+		Ok(())
 	}
 
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<u64, Vec<u64>>, node_id: u64, compose_node_id: u64, skip_lambdas: bool) {
@@ -392,40 +393,42 @@ impl ProtoNetwork {
 			}
 		});
 	}
-
 	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
 	// This approach excludes nodes that are not connected
-	pub fn topological_sort(&self) -> Vec<NodeId> {
+	pub fn topological_sort(&self) -> Result<Vec<NodeId>, String> {
 		let mut sorted = Vec::new();
 		let inwards_edges = self.collect_inwards_edges();
-		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) {
+		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) -> Result<(), String> {
 			if sorted.contains(&node_id) {
-				return;
+				return Ok(());
 			};
 			if temp_marks.contains(&node_id) {
-				panic!("Cycle detected {:#?}, {:#?}", &inwards_edges, &network);
+				return Err(format!("Cycle detected {:#?}, {:#?}", &inwards_edges, &network));
 			}
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
 				temp_marks.insert(node_id);
 				for &dependant in dependencies {
-					visit(dependant, temp_marks, sorted, inwards_edges, network);
+					visit(dependant, temp_marks, sorted, inwards_edges, network)?;
 				}
 				temp_marks.remove(&node_id);
 			}
 			sorted.push(node_id);
+			Ok(())
 		}
-		assert!(self.nodes.iter().any(|(id, _)| *id == self.output), "Output id {} does not exist", self.output);
-		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self);
 
-		sorted
+		if !self.nodes.iter().any(|(id, _)| *id == self.output) {
+			return Err(format!("Output id {} does not exist", self.output));
+		}
+		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self)?;
+		Ok(sorted)
 	}
 
 	fn is_topologically_sorted(&self) -> bool {
 		let mut visited = HashSet::new();
 
 		let inwards_edges = self.collect_inwards_edges();
-		for (id, _node) in &self.nodes {
+		for (id, _) in &self.nodes {
 			for &dependency in inwards_edges.get(id).unwrap_or(&Vec::new()) {
 				if !visited.contains(&dependency) {
 					dbg!(id, dependency);
@@ -465,8 +468,8 @@ impl ProtoNetwork {
 		sorted
 	}*/
 
-	fn reorder_ids(&mut self) {
-		let order = self.topological_sort();
+	fn reorder_ids(&mut self) -> Result<(), String> {
+		let order = self.topological_sort()?;
 
 		// Map of node ids to their current index in the nodes vector
 		let current_positions: HashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
@@ -492,6 +495,7 @@ impl ProtoNetwork {
 		self.output = *new_positions.get(&self.output).unwrap();
 
 		assert_eq!(order.len(), self.nodes.len());
+		Ok(())
 	}
 }
 
@@ -576,7 +580,10 @@ impl TypingContext {
 				input.output.clone()
 			}
 		};
-		let impls = self.lookup.get(&node.identifier).ok_or(format!("No implementations found for {:?}", node.identifier))?;
+		let impls = self
+			.lookup
+			.get(&node.identifier)
+			.ok_or(format!("No implementations found for {:?}. Other implementations found {:?}", node.identifier, self.lookup))?;
 
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", &input, node.identifier));
@@ -687,17 +694,24 @@ mod test {
 	#[test]
 	fn topological_sort() {
 		let construction_network = test_network();
-		let sorted = construction_network.topological_sort();
-
+		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		println!("{:#?}", sorted);
 		assert_eq!(sorted, vec![14, 10, 11, 1]);
 	}
 
 	#[test]
+	fn topological_sort_with_cycles() {
+		let construction_network = test_network_with_cycles();
+		let sorted = construction_network.topological_sort();
+
+		assert!(sorted.is_err())
+	}
+
+	#[test]
 	fn id_reordering() {
 		let mut construction_network = test_network();
-		construction_network.reorder_ids();
-		let sorted = construction_network.topological_sort();
+		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
+		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		println!("nodes: {:#?}", construction_network.nodes);
 		assert_eq!(sorted, vec![0, 1, 2, 3]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
@@ -710,9 +724,9 @@ mod test {
 	#[test]
 	fn id_reordering_idempotent() {
 		let mut construction_network = test_network();
-		construction_network.reorder_ids();
-		construction_network.reorder_ids();
-		let sorted = construction_network.topological_sort();
+		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
+		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
+		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		assert_eq!(sorted, vec![0, 1, 2, 3]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{:#?}", ids);
@@ -723,7 +737,7 @@ mod test {
 	#[test]
 	fn input_resolution() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs();
+		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
 		println!("{:#?}", construction_network);
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
@@ -733,7 +747,7 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs();
+		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
@@ -801,6 +815,37 @@ mod test {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
+						document_node_path: vec![],
+						skip_deduplication: false,
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+		}
+	}
+
+	fn test_network_with_cycles() -> ProtoNetwork {
+		ProtoNetwork {
+			inputs: vec![1],
+			output: 1,
+			nodes: [
+				(
+					1,
+					ProtoNode {
+						identifier: "id".into(),
+						input: ProtoNodeInput::Node(2, false),
+						construction_args: ConstructionArgs::Nodes(vec![]),
+						document_node_path: vec![],
+						skip_deduplication: false,
+					},
+				),
+				(
+					2,
+					ProtoNode {
+						identifier: "id".into(),
+						input: ProtoNodeInput::Node(1, false),
+						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![],
 						skip_deduplication: false,
 					},

@@ -47,11 +47,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
 		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
+		let selected_layers_n = document.metadata().selected_layers().collect::<Vec<_>>();
 
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
 			&mut self.pivot,
-			&selected_layers,
+			&selected_layers_n,
 			responses,
 			&document.document_legacy,
 			Some(shape_editor),
@@ -228,8 +229,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.mouse_position = ipp.mouse.position;
 			}
 			SelectionChanged => {
-				let layer_paths = document.selected_visible_layers().map(|layer_path| layer_path.to_vec()).collect();
-				shape_editor.set_selected_layers(layer_paths);
+				let target_layers = document.metadata().selected_layers().collect();
+				shape_editor.set_selected_layers(target_layers);
 			}
 			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),

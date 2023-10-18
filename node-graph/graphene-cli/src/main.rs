@@ -8,12 +8,11 @@ use graph_craft::{
 	document::*,
 	graphene_compiler::{Compiler, Executor},
 	imaginate_input::ImaginatePreferences,
-	NodeIdentifier, Type, TypeDescriptor,
+	NodeIdentifier,
 };
 use graphene_core::{
 	application_io::{ApplicationIo, NodeGraphUpdateSender},
 	text::FontCache,
-	Cow,
 };
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -55,6 +54,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: &application_io,
 		node_graph_message_sender: &UpdateLogger {},
 		imaginate_preferences: &ImaginatePreferences::default(),
+		render_config: graphene_core::application_io::RenderConfig::default(),
 	};
 
 	loop {
@@ -163,7 +163,7 @@ fn begin_scope() -> DocumentNode {
 			nodes: [
 				DocumentNode {
 					name: "SetNode".to_string(),
-					inputs: vec![NodeInput::ShortCircut(concrete!(WasmEditorApi))],
+					manual_composition: Some(concrete!(WasmEditorApi)),
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 					..Default::default()
 				},
@@ -175,7 +175,8 @@ fn begin_scope() -> DocumentNode {
 				},
 				DocumentNode {
 					name: "RefNode".to_string(),
-					inputs: vec![NodeInput::ShortCircut(concrete!(())), NodeInput::lambda(1, 0)],
+					manual_composition: Some(concrete!(WasmEditorApi)),
+					inputs: vec![NodeInput::lambda(1, 0)],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 					..Default::default()
 				},
@@ -207,6 +208,7 @@ mod test {
 			application_io: &block_on(WasmApplicationIo::new()),
 			node_graph_message_sender: &UpdateLogger {},
 			imaginate_preferences: &ImaginatePreferences::default(),
+			render_config: graphene_core::application_io::RenderConfig::default(),
 		};
 		let result = (&executor).execute(editor_api.clone()).await.unwrap();
 		println!("result: {:?}", result);
@@ -223,6 +225,7 @@ mod test {
 			application_io: &block_on(WasmApplicationIo::new()),
 			node_graph_message_sender: &UpdateLogger {},
 			imaginate_preferences: &ImaginatePreferences::default(),
+			render_config: graphene_core::application_io::RenderConfig::default(),
 		};
 		let result = (&executor).execute(editor_api.clone()).await.unwrap();
 		println!("result: {:?}", result);

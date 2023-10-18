@@ -4,11 +4,15 @@ use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 
-#[remain::sorted]
 #[impl_message(Message, DocumentMessage, NodeGraph)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
 	// Messages
+	Init,
+	AddSelectNodes {
+		nodes: Vec<NodeId>,
+	},
+	SelectedNodesUpdated,
 	CloseNodeGraph,
 	ConnectNodesByLink {
 		output_node: u64,
@@ -63,9 +67,6 @@ pub enum NodeGraphMessage {
 		serialized_nodes: String,
 	},
 	RunDocumentGraph,
-	SelectNodes {
-		nodes: Vec<NodeId>,
-	},
 	SendGraph {
 		should_rerender: bool,
 	},
@@ -84,6 +85,9 @@ pub enum NodeGraphMessage {
 		node_path: Vec<NodeId>,
 		input_index: usize,
 		value: TaggedValue,
+	},
+	SetSelectNodes {
+		nodes: Vec<NodeId>,
 	},
 	ShiftNode {
 		node_id: NodeId,

@@ -103,12 +103,6 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
-	RenderGraphUsingRasterizedRegionBelowLayer {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		input_image_data: Vec<u8>,
-		size: (u32, u32),
-	},
 	SelectDocument {
 		document_id: u64,
 	},
@@ -121,6 +115,10 @@ pub enum PortfolioMessage {
 		node_id: Option<NodeId>,
 		blob_url: String,
 		resolution: (f64, f64),
+	},
+	SubmitGraphRender {
+		document_id: u64,
+		layer_path: Vec<LayerId>,
 	},
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

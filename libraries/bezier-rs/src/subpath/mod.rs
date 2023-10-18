@@ -16,7 +16,7 @@ use std::ops::{Index, IndexMut};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Subpath<ManipulatorGroupId: crate::Identifier> {
 	manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>,
-	closed: bool,
+	pub closed: bool,
 }
 
 #[cfg(feature = "dyn-any")]

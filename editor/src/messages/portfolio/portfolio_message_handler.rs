@@ -17,7 +17,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
 
-use glam::DAffine2;
 use std::sync::Arc;
 
 #[derive(Debug, Default)]
@@ -300,7 +299,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
-				let new_document = DocumentMessageHandler::with_name(name, ipp);
+				let new_document = DocumentMessageHandler::with_name(name, ipp, responses);
 				let document_id = generate_uuid();
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
@@ -452,27 +451,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
-			PortfolioMessage::RenderGraphUsingRasterizedRegionBelowLayer {
-				document_id,
-				layer_path,
-				input_image_data,
-				size,
-			} => {
-				let result = self.executor.submit_node_graph_evaluation(
-					(document_id, &mut self.documents),
-					layer_path,
-					(input_image_data, size),
-					(preferences, &self.persistent_data),
-					responses,
-				);
-
-				if let Err(description) = result {
-					responses.add(DialogMessage::DisplayDialogError {
-						title: "Unable to update node graph".to_string(),
-						description,
-					});
-				}
-			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				if let Some(document) = self.active_document() {
 					if !document.is_auto_saved() {
@@ -515,7 +493,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				resolution,
 			} => {
 				if let Some(node_id) = node_id {
-					self.executor.insert_thumbnail_blob_url(blob_url, layer_path.last().copied(), node_id, responses);
+					self.executor.insert_thumbnail_blob_url(blob_url, node_id, responses);
 					return;
 				}
 				let message = DocumentMessage::SetImageBlobUrl {
@@ -525,6 +503,20 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					document_id,
 				};
 				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
+			}
+			PortfolioMessage::SubmitGraphRender { document_id, layer_path } => {
+				let result = self.executor.submit_node_graph_evaluation(
+					(document_id, self.documents.get_mut(&document_id).expect("Tried to render no existent Document")),
+					layer_path,
+					ipp.viewport_bounds.size().as_uvec2(),
+				);
+
+				if let Err(description) = result {
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Unable to update node graph".to_string(),
+						description,
+					});
+				}
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
@@ -666,10 +658,12 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::GraphViewOverlay { open: self.graph_view_overlay_open });
 		responses.add(ToolMessage::InitTools);
 		responses.add(PropertiesPanelMessage::Init);
+		responses.add(NodeGraphMessage::Init);
 		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::ClearSelection);
 		responses.add(PropertiesPanelMessage::UpdateSelectedDocumentProperties);
+		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 
 	/// Returns an iterator over the open documents in order.
@@ -713,8 +707,12 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		let transform = self.active_document().map(|document| document.document_legacy.root.transform).unwrap_or(DAffine2::IDENTITY);
-		self.executor.poll_node_graph_evaluation(transform, responses).unwrap_or_else(|e| {
+		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
+			warn!("Polling node graph with no document");
+			return;
+		};
+
+		self.executor.poll_node_graph_evaluation(&mut active_document.document_legacy, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {}", e);
 		});
 	}

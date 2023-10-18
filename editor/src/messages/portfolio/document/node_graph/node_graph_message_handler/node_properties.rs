@@ -13,7 +13,6 @@ use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingM
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
-use graphene_core::{Cow, Type, TypeDescriptor};
 
 use glam::{DVec2, IVec2};
 
@@ -1172,7 +1171,7 @@ pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, 
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
 		let pivot_index = 5;
 		if let NodeInput::Value {
@@ -1183,7 +1182,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.push(
 				PivotAssist::new(pivot.into())
-					.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					.on_update(update_value(|pivot: &PivotAssist| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
 					.widget_holder(),
 			);
 		} else {
@@ -1222,7 +1221,10 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	};
 
 	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
-	vec![translation, rotation, scale]
+
+	let vector_data = start_widgets(document_node, node_id, 0, "Data", FrontendGraphDataType::Vector, false);
+	let vector_data = LayoutGroup::Row { widgets: vector_data };
+	vec![vector_data, translation, rotation, scale]
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

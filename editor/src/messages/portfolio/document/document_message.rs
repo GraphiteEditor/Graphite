@@ -23,9 +23,6 @@ pub enum DocumentMessage {
 	DispatchOperation(Box<DocumentOperation>),
 	#[remain::unsorted]
 	#[child]
-	Artboard(ArtboardMessage),
-	#[remain::unsorted]
-	#[child]
 	Navigation(NavigationMessage),
 	#[remain::unsorted]
 	#[child]
@@ -51,7 +48,6 @@ pub enum DocumentMessage {
 	},
 	BackupDocument {
 		document: DocumentLegacy,
-		artboard: Box<ArtboardMessageHandler>,
 		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	},
 	ClearLayerTree,
@@ -133,6 +129,8 @@ pub enum DocumentMessage {
 		new_name: String,
 	},
 	RenderDocument,
+	RenderRulers,
+	RenderScrollbars,
 	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
@@ -195,6 +193,9 @@ pub enum DocumentMessage {
 		folder_path: Vec<LayerId>,
 	},
 	UngroupSelectedLayers,
+	UpdateDocumentTransform {
+		transform: glam::DAffine2,
+	},
 	UpdateLayerMetadata {
 		layer_path: Vec<LayerId>,
 		layer_metadata: LayerMetadata,

@@ -2,13 +2,16 @@ use std::cell::RefCell;
 
 use core::future::Future;
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
-use graphene_core::Color;
+use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_core::transform::Footprint;
+use graphene_core::vector::style::ViewMode;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
 };
+use graphene_core::{Color, GraphicGroup};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
@@ -24,6 +27,9 @@ use web_sys::window;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
+
+use base64::Engine;
+use glam::DAffine2;
 
 pub struct Canvas(CanvasRenderingContext2d);
 
@@ -44,7 +50,7 @@ impl WasmApplicationIo {
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
-				let function = js_sys::Function::try_from(&request_adapter)?;
+				let function = request_adapter.dyn_ref::<js_sys::Function>()?;
 				Some(function.call0(&gpu).ok())
 			};
 			let result = request_adapter();
@@ -56,7 +62,7 @@ impl WasmApplicationIo {
 			None
 		};
 		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
-		let executor = None;
+		let executor = WgpuExecutor::new().await;
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: RefCell::new(0),
@@ -279,4 +285,80 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 		transform: glam::DAffine2::IDENTITY,
 	};
 	image
+}
+pub use graph_craft::document::value::RenderOutput;
+
+pub struct RenderNode<Data, Surface> {
+	data: Data,
+	surface_handle: Surface,
+}
+
+#[node_macro::node_fn(RenderNode)]
+async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
+	editor: WasmEditorApi<'a>,
+	data: impl Node<'input, Footprint, Output = F>,
+	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+) -> RenderOutput {
+	let footprint = editor.render_config.viewport;
+	let data = self.data.eval(footprint).await;
+	let mut render = SvgRender::new();
+	let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
+	let output_format = editor.render_config.export_format;
+	let resolution = footprint.resolution;
+
+	match output_format {
+		ExportFormat::Svg => {
+			data.render_svg(&mut render, &render_params);
+			// TODO: reenable once we switch to full node graph
+			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+			render.format_svg(min, max);
+			RenderOutput::Svg(render.svg.to_string())
+		}
+		#[cfg(any(feature = "resvg", feature = "vello"))]
+		ExportFormat::Canvas => {
+			data.render_svg(&mut render, &render_params);
+			// TODO: reenable once we switch to full node graph
+			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+			render.format_svg(min, max);
+			let string = render.svg.to_string();
+			let array = string.as_bytes();
+			let canvas = &surface_handle.surface;
+			canvas.set_width(resolution.x);
+			canvas.set_height(resolution.y);
+			let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
+
+			if let Some(exec) = editor.application_io.gpu_executor() {
+				todo!()
+			} else {
+				let rtree = resvg::Tree::from_usvg(&usvg_tree);
+
+				let pixmap_size = rtree.size.to_int_size();
+				let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
+				rtree.render(resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+				let array: Clamped<&[u8]> = Clamped(pixmap.data());
+				let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+				let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");
+				context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+			}
+			/*
+			let preamble = "data:image/svg+xml;base64,";
+			let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+			base64_string.push_str(preamble);
+			base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+
+			let image_data = web_sys::HtmlImageElement::new().unwrap();
+			image_data.set_src(base64_string.as_str());
+			wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+			context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
+			*/
+			let frame = SurfaceHandleFrame {
+				surface_handle,
+				transform: DAffine2::IDENTITY,
+			};
+			RenderOutput::CanvasFrame(frame.into())
+		}
+		_ => todo!("Non svg render output for {output_format:?}"),
+	}
 }
