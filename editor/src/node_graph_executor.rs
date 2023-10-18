@@ -196,6 +196,7 @@ impl NodeRuntime {
 			},
 			image_frame: None,
 		};
+		error!("execute_network with fonts {:?}", self.font_cache.font_file_data.keys().collect::<Vec<_>>());
 
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");

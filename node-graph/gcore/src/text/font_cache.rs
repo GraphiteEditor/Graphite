@@ -20,7 +20,7 @@ impl Font {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font with ttf_parser and rustybuzz
-	font_file_data: HashMap<Font, Vec<u8>>,
+	pub font_file_data: HashMap<Font, Vec<u8>>,
 	/// Web font preview URLs used for showing fonts when live editing
 	preview_urls: HashMap<Font, String>,
 	/// The default font (used as a fallback)
@@ -29,6 +29,7 @@ pub struct FontCache {
 impl FontCache {
 	/// Returns the font family name if the font is cached, otherwise returns the default font family name if that is cached
 	pub fn resolve_font<'a>(&'a self, font: &'a Font) -> Option<&'a Font> {
+		warn!("Loading font {font:?} fonts {:?}", self.font_file_data.keys().collect::<Vec<_>>());
 		if self.loaded_font(font) {
 			Some(font)
 		} else {
