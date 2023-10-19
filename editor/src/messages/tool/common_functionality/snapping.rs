@@ -6,6 +6,7 @@ use crate::consts::{
 };
 use crate::messages::prelude::*;
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Stroke};
 use document_legacy::{LayerId, Operation};
@@ -287,7 +288,12 @@ impl SnapManager {
 				}
 			})
 			.flatten()
-			.filter(|&(point_id, _)| !ignore_points.contains(&ManipulatorPointInfo { shape_layer_path: path, point_id }))
+			.filter(|&(point_id, _)| {
+				!ignore_points.contains(&ManipulatorPointInfo {
+					layer: LayerNodeIdentifier::from_path(path, document_message_handler.network()),
+					point_id,
+				})
+			})
 			.map(|(_, pos)| transform.transform_point2(pos));
 		self.add_snap_points(document_message_handler, input, snap_points);
 	}

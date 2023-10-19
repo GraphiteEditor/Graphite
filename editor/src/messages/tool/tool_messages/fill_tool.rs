@@ -1,32 +1,15 @@
-use crate::consts::SELECTION_TOLERANCE;
-use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::MouseMotion;
-use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
-use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_layer::CachedOutputData;
+use super::tool_prelude::*;
 use document_legacy::layers::style::Fill;
-
-use glam::DVec2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
-	data: FillToolData,
 }
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum FillToolMessage {
-	// Standard messages
-	#[remain::unsorted]
-	Abort,
-
 	// Tool-specific messages
 	LeftPointerDown,
 	RightPointerDown,
@@ -52,7 +35,7 @@ impl LayoutHolder for FillTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
+		self.fsm_state.process_event(message, &mut (), tool_data, &(), responses, true);
 	}
 
 	advertise_actions!(FillToolMessageDiscriminant;
@@ -63,10 +46,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 
 impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
-		EventToMessageMap {
-			tool_abort: Some(FillToolMessage::Abort.into()),
-			..Default::default()
-		}
+		EventToMessageMap::default()
 	}
 }
 
@@ -76,71 +56,37 @@ enum FillToolFsmState {
 	Ready,
 }
 
-#[derive(Clone, Debug, Default)]
-struct FillToolData {}
-
 impl Fsm for FillToolFsmState {
-	type ToolData = FillToolData;
+	type ToolData = ();
 	type ToolOptions = ();
 
-	fn transition(
-		self,
-		event: ToolMessage,
-		_tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			render_data,
-			..
-		}: &mut ToolActionHandlerData,
-		_tool_options: &Self::ToolOptions,
-		responses: &mut VecDeque<Message>,
-	) -> Self {
-		use FillToolFsmState::*;
-		use FillToolMessage::*;
+	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, handler_data: &mut ToolActionHandlerData, _tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionHandlerData {
+			document, global_tool_data, input, ..
+		} = handler_data;
 
-		if let ToolMessage::Fill(event) = event {
-			match (self, event) {
-				(Ready, lmb_or_rmb) if lmb_or_rmb == LeftPointerDown || lmb_or_rmb == RightPointerDown => {
-					let mouse_pos = input.mouse.position;
-					let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-					let quad = Quad::from_box([mouse_pos - tolerance, mouse_pos + tolerance]);
+		let ToolMessage::Fill(event) = event else {
+			return self;
+		};
+		let Some(layer_identifier) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) else {
+			return self;
+		};
+		let layer = layer_identifier.to_path();
 
-					if let Some(path) = document.document_legacy.intersects_quad_root(quad, render_data).last() {
-						let is_bitmap = document
-							.document_legacy
-							.layer(path)
-							.ok()
-							.and_then(|layer| layer.as_layer().ok())
-							.map_or(false, |layer| matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)));
+		let color = match event {
+			FillToolMessage::LeftPointerDown => global_tool_data.primary_color,
+			FillToolMessage::RightPointerDown => global_tool_data.secondary_color,
+		};
+		let fill = Fill::Solid(color);
 
-						if is_bitmap {
-							return self;
-						}
+		responses.add(DocumentMessage::StartTransaction);
+		responses.add(DocumentMessage::SetSelectedLayers {
+			replacement_selected_layers: vec![layer.clone()],
+		});
+		responses.add(GraphOperationMessage::FillSet { layer, fill });
+		responses.add(DocumentMessage::CommitTransaction);
 
-						let color = match lmb_or_rmb {
-							LeftPointerDown => global_tool_data.primary_color,
-							RightPointerDown => global_tool_data.secondary_color,
-							Abort => unreachable!(),
-						};
-						let fill = Fill::Solid(color);
-
-						responses.add(DocumentMessage::StartTransaction);
-						responses.add(DocumentMessage::SetSelectedLayers {
-							replacement_selected_layers: vec![path.to_vec()],
-						});
-						responses.add(GraphOperationMessage::FillSet { layer: path.to_vec(), fill });
-						responses.add(DocumentMessage::CommitTransaction);
-					}
-
-					Ready
-				}
-				_ => self,
-			}
-		} else {
-			self
-		}
+		FillToolFsmState::Ready
 	}
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {

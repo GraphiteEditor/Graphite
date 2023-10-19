@@ -4,13 +4,11 @@ use crate::consts::{
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::input_mapper::utility_types::input_mouse::{ViewportBounds, ViewportPosition};
+use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use document_legacy::document::Document;
-use document_legacy::Operation as DocumentOperation;
-use graphene_core::renderer::format_transform_matrix;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -74,10 +72,10 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				padding_scale_factor,
 				prevent_zoom_past_100,
 			} => {
-				let pos1 = document.root.transform.inverse().transform_point2(bounds_corner_a);
-				let pos2 = document.root.transform.inverse().transform_point2(bounds_corner_b);
-				let v1 = document.root.transform.inverse().transform_point2(DVec2::ZERO);
-				let v2 = document.root.transform.inverse().transform_point2(ipp.viewport_bounds.size());
+				let pos1 = document.metadata.document_to_viewport.inverse().transform_point2(bounds_corner_a);
+				let pos2 = document.metadata.document_to_viewport.inverse().transform_point2(bounds_corner_b);
+				let v1 = document.metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
+				let v2 = document.metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
 				let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
 				let size = (pos2 - pos1) / (v2 - v1);
@@ -96,7 +94,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
@@ -216,7 +214,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -226,7 +224,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			TransformCanvasEnd { abort_transform } => {
 				if abort_transform {
@@ -237,12 +235,12 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 						}
 						TransformOperation::Pan { pre_commit_pan, .. } => {
 							self.pan = pre_commit_pan;
-							self.create_document_transform(&ipp.viewport_bounds, responses);
+							self.create_document_transform(responses);
 						}
 						TransformOperation::Zoom { pre_commit_zoom, .. } => {
 							self.zoom = pre_commit_zoom;
 							responses.add(PortfolioMessage::UpdateDocumentWidgets);
-							self.create_document_transform(&ipp.viewport_bounds, responses);
+							self.create_document_transform(responses);
 						}
 					}
 				}
@@ -262,12 +260,12 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(TransformCanvasEnd { abort_transform });
 			}
 			TranslateCanvas { delta } => {
-				let transformed_delta = document.root.transform.inverse().transform_vector2(delta);
+				let transformed_delta = document.metadata.document_to_viewport.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
@@ -283,11 +281,11 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.transform_operation = TransformOperation::Pan { pre_commit_pan: self.pan };
 			}
 			TranslateCanvasByViewportFraction { delta } => {
-				let transformed_delta = document.root.transform.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+				let transformed_delta = document.metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(&ipp.viewport_bounds, responses);
+				self.create_document_transform(responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -404,31 +402,16 @@ impl NavigationMessageHandler {
 		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 
-	fn create_document_transform(&self, viewport_bounds: &ViewportBounds, responses: &mut VecDeque<Message>) {
-		let half_viewport = viewport_bounds.size() / 2.;
-		let scaled_half_viewport = half_viewport / self.snapped_scale();
-		responses.add(DocumentOperation::SetLayerTransform {
-			path: vec![],
-			transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
-		});
-
-		responses.add(ArtboardMessage::DispatchOperation(
-			DocumentOperation::SetLayerTransform {
-				path: vec![],
-				transform: self.calculate_offset_transform(scaled_half_viewport).to_cols_array(),
-			}
-			.into(),
-		));
-		let transform = format_transform_matrix(self.calculate_offset_transform(scaled_half_viewport));
-		responses.add(FrontendMessage::UpdateDocumentTransform { transform });
-		// TODO: Artboard pos
+	fn create_document_transform(&self, responses: &mut VecDeque<Message>) {
+		let transform = self.calculate_offset_transform(DVec2::ZERO);
+		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 
 	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {
 		let new_viewport_bounds = viewport_bounds / zoom_factor;
 		let delta_size = viewport_bounds - new_viewport_bounds;
 		let mouse_fraction = mouse / viewport_bounds;
-		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
+		let delta = delta_size * (-mouse_fraction);
 
 		NavigationMessage::TranslateCanvas { delta }.into()
 	}

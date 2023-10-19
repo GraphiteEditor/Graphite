@@ -2,6 +2,7 @@ use crate::messages::portfolio::document::node_graph::VectorDataModification;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use document_legacy::document::Document;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::{value::TaggedValue, NodeInput};
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -52,18 +53,12 @@ pub struct LayerBounds {
 
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
-	pub fn new(document: &Document, layer_path: &[u64]) -> Self {
-		let layer = document.layer(layer_path).ok();
-		let bounds = layer
-			.and_then(|layer| layer.as_layer().ok())
-			.and_then(|frame| frame.as_vector_data().as_ref().map(|vector| vector.nonzero_bounding_box()))
-			.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-		let bounds_transform = DAffine2::IDENTITY;
-		let layer_transform = document.multiply_transforms(layer_path).unwrap_or_default();
+	pub fn new(document: &Document, layer: &[u64]) -> Self {
+		let layer = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
 		Self {
-			bounds,
-			bounds_transform,
-			layer_transform,
+			bounds: document.metadata.nonzero_bounding_box(layer),
+			bounds_transform: DAffine2::IDENTITY,
+			layer_transform: document.metadata.transform_to_document(layer),
 		}
 	}
 
@@ -316,6 +311,7 @@ impl<'a> VectorModificationState<'a> {
 			VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle } => self.set_mirror(id, mirror_angle),
 			VectorDataModification::SetManipulatorPosition { point, position } => self.set_position(point, position),
 			VectorDataModification::ToggleManipulatorHandleMirroring { id } => self.toggle_mirror(id),
+			VectorDataModification::UpdateSubpaths { subpaths } => *self.subpaths = subpaths,
 		}
 	}
 }

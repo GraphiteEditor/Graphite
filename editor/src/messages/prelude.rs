@@ -14,7 +14,6 @@ pub use crate::messages::input_mapper::key_mapping::{KeyMappingMessage, KeyMappi
 pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageDiscriminant, InputMapperMessageHandler};
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
-pub use crate::messages::portfolio::document::artboard::{ArtboardMessage, ArtboardMessageDiscriminant, ArtboardMessageHandler};
 pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageDiscriminant, NavigationMessageHandler};
 pub use crate::messages::portfolio::document::node_graph::{GraphOperationMessage, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
 pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, NodeGraphMessageDiscriminant, NodeGraphMessageHandler};

@@ -17,6 +17,7 @@ pub enum CachedOutputData {
 	BlobURL(String),
 	VectorPath(Box<VectorData>),
 	SurfaceId(SurfaceId),
+	Svg(String),
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -91,6 +92,7 @@ impl LayerData for LayerLayer {
 					id
 				);
 			}
+			CachedOutputData::Svg(new_svg) => svg.push_str(new_svg),
 			_ => {
 				// Render a dotted blue outline if there is no image or vector data
 				let _ = write!(

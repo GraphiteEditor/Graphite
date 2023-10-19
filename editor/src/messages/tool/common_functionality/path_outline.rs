@@ -1,19 +1,17 @@
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_ACCENT, PATH_OUTLINE_WEIGHT};
 use crate::messages::prelude::*;
 
-use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::LayerDataType;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::{LayerId, Operation};
-use graphene_std::vector::subpath::Subpath;
 
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 
 /// Manages the overlay used by the select tool for outlining selected shapes and when hovering over a non selected shape.
 #[derive(Clone, Debug, Default)]
 pub struct PathOutline {
-	hovered_layer_path: Option<Vec<LayerId>>,
+	hovered_layer_path: Option<LayerNodeIdentifier>,
 	hovered_overlay_path: Option<Vec<LayerId>>,
 	selected_overlay_paths: Vec<Vec<LayerId>>,
 }
@@ -21,29 +19,14 @@ pub struct PathOutline {
 impl PathOutline {
 	/// Creates an outline of a layer either with a pre-existing overlay or by generating a new one
 	fn try_create_outline(
-		document_layer_path: Vec<LayerId>,
+		layer: LayerNodeIdentifier,
 		overlay_path: Option<Vec<LayerId>>,
 		document: &DocumentMessageHandler,
 		responses: &mut VecDeque<Message>,
 		render_data: &RenderData,
 	) -> Option<Vec<LayerId>> {
-		// Get layer data
-		let document_layer = document.document_legacy.layer(&document_layer_path).ok()?;
-
-		// Get the subpath from the shape
-		let subpath = match &document_layer.data {
-			LayerDataType::Shape(shape) => Some(shape.shape.clone()),
-			LayerDataType::Layer(layer) => {
-				if let Some(vector_data) = layer.as_vector_data() {
-					// Vector graph output
-					Some(Subpath::from_bezier_rs(&vector_data.subpaths))
-				} else {
-					// Frame graph output
-					Some(Subpath::new_rect(DVec2::new(0., 0.), DVec2::new(1., 1.)))
-				}
-			}
-			_ => document_layer.aabb_for_transform(DAffine2::IDENTITY, render_data).map(|[p1, p2]| Subpath::new_rect(p1, p2)),
-		}?;
+		let subpath = document.metadata().layer_outline(layer);
+		let transform = document.metadata().transform_to_viewport(layer);
 
 		// Generate a new overlay layer if necessary
 		let overlay = overlay_path.unwrap_or_else(|| {
@@ -70,7 +53,7 @@ impl PathOutline {
 		responses.add(DocumentMessage::Overlays(
 			(Operation::SetLayerTransform {
 				path: overlay.clone(),
-				transform: document.document_legacy.multiply_transforms(&document_layer_path).unwrap().to_cols_array(),
+				transform: transform.to_cols_array(),
 			})
 			.into(),
 		));
@@ -82,14 +65,14 @@ impl PathOutline {
 	///
 	/// Creates an outline, discarding the overlay on failure.
 	fn create_outline(
-		document_layer_path: Vec<LayerId>,
+		layer: LayerNodeIdentifier,
 		overlay_path: Option<Vec<LayerId>>,
 		document: &DocumentMessageHandler,
 		responses: &mut VecDeque<Message>,
 		render_data: &RenderData,
 	) -> Option<Vec<LayerId>> {
 		let copied_overlay_path = overlay_path.clone();
-		let result = Self::try_create_outline(document_layer_path, overlay_path, document, responses, render_data);
+		let result = Self::try_create_outline(layer, overlay_path, document, responses, render_data);
 		if result.is_none() {
 			// Discard the overlay layer if it exists
 			if let Some(overlay_path) = copied_overlay_path {
@@ -112,26 +95,25 @@ impl PathOutline {
 	/// Performs an intersect test and generates a hovered overlay if necessary
 	pub fn intersect_test_hovered(&mut self, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 		// Get the layer the user is hovering over
-		let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-		let quad = Quad::from_box([input.mouse.position - tolerance, input.mouse.position + tolerance]);
-		let mut intersection = document.document_legacy.intersects_quad_root(quad, render_data);
+		let intersection = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
 
-		// If the user is hovering over a layer they have not already selected, then update outline
-		if let Some(path) = intersection.pop() {
-			if !document.selected_visible_layers().any(|visible| visible == path.as_slice()) {
-				// Updates the overlay, generating a new one if necessary
-				self.hovered_overlay_path = Self::create_outline(path.clone(), self.hovered_overlay_path.take(), document, responses, render_data);
-				if self.hovered_overlay_path.is_none() {
-					self.clear_hovered(responses);
-				}
+		let Some(hovered_layer) = intersection else {
+			self.clear_hovered(responses);
+			return;
+		};
 
-				self.hovered_layer_path = Some(path);
-			} else {
-				self.clear_hovered(responses);
-			}
-		} else {
+		if document.metadata().selected_layers_contains(hovered_layer) {
+			self.clear_hovered(responses);
+			return;
+		}
+
+		// Updates the overlay, generating a new one if necessary
+		self.hovered_overlay_path = Self::create_outline(hovered_layer, self.hovered_overlay_path.take(), document, responses, render_data);
+		if self.hovered_overlay_path.is_none() {
 			self.clear_hovered(responses);
 		}
+
+		self.hovered_layer_path = Some(hovered_layer);
 	}
 
 	/// Clears overlays for the selected paths and removes references
@@ -143,11 +125,11 @@ impl PathOutline {
 	}
 
 	/// Updates the selected overlays, generating or removing overlays if necessary
-	pub fn update_selected<'a>(&mut self, selected: impl Iterator<Item = &'a [LayerId]>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, render_data: &RenderData) {
+	pub fn update_selected<'a>(&mut self, selected: impl Iterator<Item = LayerNodeIdentifier>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, render_data: &RenderData) {
 		let mut old_overlay_paths = std::mem::take(&mut self.selected_overlay_paths);
 
-		for document_layer_path in selected {
-			if let Some(overlay_path) = Self::create_outline(document_layer_path.to_vec(), old_overlay_paths.pop(), document, responses, render_data) {
+		for layer_identifier in selected {
+			if let Some(overlay_path) = Self::create_outline(layer_identifier, old_overlay_paths.pop(), document, responses, render_data) {
 				self.selected_overlay_paths.push(overlay_path);
 			}
 		}
