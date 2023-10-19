@@ -878,7 +878,7 @@ impl Document {
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution: _ } => {
-				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{:?}'", layer_path));
+				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{layer_path:?}'"));
 
 				let LayerDataType::Layer(layer) = &mut layer.data else {
 					panic!("Incorrectly trying to set the image blob URL for a layer that is not a 'Layer' layer type");

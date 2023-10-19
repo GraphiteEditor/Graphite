@@ -32,7 +32,7 @@ fn main() {
 		.json(&compile_request)
 		.send()
 		.unwrap();
-	println!("response: {:?}", response);
+	println!("response: {response:?}");
 }
 
 fn add_network() -> NodeNetwork {

@@ -60,16 +60,16 @@ impl OverlayRenderer {
 		self.layer_overlay_visibility(document, layer, true, responses);
 
 		let outline_cache = self.shape_overlay_cache.get(&layer);
-		trace!("Overlay: Outline cache {:?}", &outline_cache);
+		trace!("Overlay: Outline cache {outline_cache:?}");
 
 		// Create an outline if we do not have a cached one
 		if outline_cache.is_none() {
 			let outline_path = self.create_shape_outline_overlay(graphene_core::vector::Subpath::from_bezier_rs(subpaths), responses);
 			self.shape_overlay_cache.insert(layer, outline_path.clone());
 			Self::place_outline_overlays(outline_path.clone(), &transform, responses);
-			trace!("Overlay: Creating new outline {:?}", &outline_path);
+			trace!("Overlay: Creating new outline {outline_path:?}");
 		} else if let Some(outline_path) = outline_cache {
-			trace!("Overlay: Updating overlays for {:?} owning layer: {:?}", outline_path, layer);
+			trace!("Overlay: Updating overlays for {outline_path:?} owning layer: {layer:?}");
 			Self::modify_outline_overlays(outline_path.clone(), graphene_core::vector::Subpath::from_bezier_rs(subpaths), responses);
 			Self::place_outline_overlays(outline_path.clone(), &transform, responses);
 		}
@@ -294,7 +294,7 @@ impl OverlayRenderer {
 	/// Removes the manipulator overlays from the overlay document.
 	fn remove_manipulator_group_overlays(overlay_paths: &ManipulatorGroupOverlays, responses: &mut VecDeque<Message>) {
 		overlay_paths.iter().flatten().for_each(|layer_id| {
-			trace!("Overlay: Sending delete message for: {:?}", layer_id);
+			trace!("Overlay: Sending delete message for: {layer_id:?}");
 			responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: layer_id.clone() }.into()));
 		});
 	}

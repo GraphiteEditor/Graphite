@@ -104,8 +104,8 @@ impl core::fmt::Display for ProtoNetwork {
 			f.write_str("Primary input: ")?;
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
-				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {:?})", ty))?,
-				ProtoNodeInput::ShortCircut(ty) => f.write_fmt(format_args!("Lambda (type = {:?})", ty))?,
+				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {ty:?})"))?,
+				ProtoNodeInput::ShortCircut(ty) => f.write_fmt(format_args!("Lambda (type = {ty:?})"))?,
 				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
@@ -220,7 +220,7 @@ impl ProtoNodeInput {
 	pub fn unwrap_node(self) -> NodeId {
 		match self {
 			ProtoNodeInput::Node(id, _) => id,
-			_ => panic!("tried to unwrap id from non node input \n node: {:#?}", self),
+			_ => panic!("tried to unwrap id from non node input \n node: {self:#?}"),
 		}
 	}
 }
@@ -273,7 +273,7 @@ impl ProtoNode {
 	pub fn unwrap_construction_nodes(&self) -> Vec<(NodeId, bool)> {
 		match &self.construction_args {
 			ConstructionArgs::Nodes(nodes) => nodes.clone(),
-			_ => panic!("tried to unwrap nodes from non node construction args \n node: {:#?}", self),
+			_ => panic!("tried to unwrap nodes from non node construction args \n node: {self:#?}"),
 		}
 	}
 }
@@ -282,10 +282,7 @@ impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
 		assert!(
 			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
-			"Node id:{} has a reference which uses node id:{} which doesn't exist in network {:#?}",
-			id,
-			ref_id,
-			self
+			"Node id:{id} has a reference which uses node id:{ref_id} which doesn't exist in network {self:#?}"
 		);
 	}
 
@@ -403,7 +400,7 @@ impl ProtoNetwork {
 				return Ok(());
 			};
 			if temp_marks.contains(&node_id) {
-				return Err(format!("Cycle detected {:#?}, {:#?}", &inwards_edges, &network));
+				return Err(format!("Cycle detected {inwards_edges:#?}, {network:#?}"));
 			}
 
 			if let Some(dependencies) = inwards_edges.get(&node_id) {
@@ -586,7 +583,7 @@ impl TypingContext {
 			.ok_or(format!("No implementations found for {:?}. Other implementations found {:?}", node.identifier, self.lookup))?;
 
 		if matches!(input, Type::Generic(_)) {
-			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", &input, node.identifier));
+			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", input, node.identifier));
 		}
 		if parameters.iter().any(|p| {
 			matches!(p,
@@ -695,7 +692,7 @@ mod test {
 	fn topological_sort() {
 		let construction_network = test_network();
 		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
-		println!("{:#?}", sorted);
+		println!("{sorted:#?}");
 		assert_eq!(sorted, vec![14, 10, 11, 1]);
 	}
 
@@ -715,7 +712,7 @@ mod test {
 		println!("nodes: {:#?}", construction_network.nodes);
 		assert_eq!(sorted, vec![0, 1, 2, 3]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
-		println!("{:#?}", ids);
+		println!("{ids:#?}");
 		println!("nodes: {:#?}", construction_network.nodes);
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(ids, vec![0, 1, 2, 3]);
@@ -729,7 +726,7 @@ mod test {
 		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		assert_eq!(sorted, vec![0, 1, 2, 3]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
-		println!("{:#?}", ids);
+		println!("{ids:#?}");
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(ids, vec![0, 1, 2, 3]);
 	}
@@ -738,7 +735,7 @@ mod test {
 	fn input_resolution() {
 		let mut construction_network = test_network();
 		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
-		println!("{:#?}", construction_network);
+		println!("{construction_network:#?}");
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
 		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(3, false), (4, true)]));

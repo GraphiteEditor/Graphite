@@ -1044,7 +1044,7 @@ mod tests {
 		// TODO: 3 real root case
 		// for root in roots {
 		// 	if let Some(num) = root {
-		// 		print!("{:.32}", num);
+		// 		print!("{num:.32}");
 		// 	}
 		// }
 	}

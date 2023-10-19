@@ -116,7 +116,7 @@ fn top_level_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	}
 
 	let input_type = &input.ident;
-	let discriminant = call_site_ident(format!("{}Discriminant", input_type));
+	let discriminant = call_site_ident(format!("{input_type}Discriminant"));
 
 	Ok(quote::quote! {
 		#input

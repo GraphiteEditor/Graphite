@@ -21,7 +21,7 @@ fn parse_hint_helper_attrs(attrs: &[Attribute]) -> syn::Result<(Vec<LitStr>, Vec
 				// the first value is ok, the other ones should error
 				let after_first = v.into_iter().skip(1);
 				// this call to fold_error_iter will always return Err with a combined error
-				fold_error_iter(after_first.map(|lit| Err(syn::Error::new(lit.span(), format!("value for key {} was already given", k))))).map(|_: Vec<()>| unreachable!())
+				fold_error_iter(after_first.map(|lit| Err(syn::Error::new(lit.span(), format!("value for key {k} was already given"))))).map(|_: Vec<()>| unreachable!())
 			}
 		}))
 	})

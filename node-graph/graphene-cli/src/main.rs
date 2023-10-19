@@ -21,7 +21,7 @@ struct UpdateLogger {}
 
 impl NodeGraphUpdateSender for UpdateLogger {
 	fn send(&self, message: graphene_core::application_io::NodeGraphUpdateMessage) {
-		println!("{:?}", message);
+		println!("{message:?}");
 	}
 }
 
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	loop {
 		//println!("executing");
 		let _result = (&executor).execute(editor_api.clone()).await?;
-		//println!("result: {:?}", result);
+		//println!("result: {result:?}");
 		std::thread::sleep(std::time::Duration::from_millis(16));
 	}
 }
@@ -211,7 +211,7 @@ mod test {
 			render_config: graphene_core::application_io::RenderConfig::default(),
 		};
 		let result = (&executor).execute(editor_api.clone()).await.unwrap();
-		println!("result: {:?}", result);
+		println!("result: {result:?}");
 	}
 
 	#[tokio::test]
@@ -228,6 +228,6 @@ mod test {
 			render_config: graphene_core::application_io::RenderConfig::default(),
 		};
 		let result = (&executor).execute(editor_api.clone()).await.unwrap();
-		println!("result: {:?}", result);
+		println!("result: {result:?}");
 	}
 }

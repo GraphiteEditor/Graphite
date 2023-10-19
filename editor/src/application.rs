@@ -86,11 +86,11 @@ r#"
 			block_on(crate::node_graph_executor::run_node_graph());
 			let mut res = VecDeque::new();
 			editor.poll_node_graph_evaluation(&mut res);
-			//println!("node_graph_poll: {:#?}", res);
+			//println!("node_graph_poll: {res:#?}");
 
-			//println!("in: {:#?}", message);
+			//println!("in: {message:#?}");
 			let res = editor.handle_message(message);
-			//println!("out: {:#?}", res);
+			//println!("out: {res:#?}");
 			responses.push(res);
 		}
 		let responses = responses.pop().unwrap();
@@ -100,6 +100,6 @@ r#"
 		} else {
 			panic!();
 		}
-		println!("responses: {:#?}", responses);
+		println!("responses: {responses:#?}");
 	}
 }

@@ -382,7 +382,7 @@ impl<'a> Selected<'a> {
 					let original_layer_transforms = match self.original_transforms {
 						OriginalTransforms::Layer(layer_map) => *layer_map.get(&layer).unwrap(),
 						OriginalTransforms::Path(_path_map) => {
-							warn!("Found Path variant in original_transforms, returning identity transform for layer {:?}", layer);
+							warn!("Found Path variant in original_transforms, returning identity transform for layer {layer:?}");
 							DAffine2::IDENTITY
 						}
 					};

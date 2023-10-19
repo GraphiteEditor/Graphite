@@ -19,6 +19,6 @@ fn main() {
 	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_HASH={}", git_command(&["rev-parse", "HEAD"]));
 	let branch = std::env::var("GITHUB_HEAD_REF").unwrap_or_default();
 	let branch = if branch.is_empty() { git_command(&["name-rev", "--name-only", "HEAD"]) } else { branch };
-	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={}", branch);
-	println!("cargo:rustc-env=GRAPHITE_RELEASE_SERIES={}", GRAPHITE_RELEASE_SERIES);
+	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={branch}");
+	println!("cargo:rustc-env=GRAPHITE_RELEASE_SERIES={GRAPHITE_RELEASE_SERIES}");
 }
