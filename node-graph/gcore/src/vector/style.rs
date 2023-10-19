@@ -14,7 +14,7 @@ const OPACITY_PRECISION: usize = 3;
 
 fn format_opacity(name: &str, opacity: f32) -> String {
 	if (opacity - 1.).abs() > 10_f32.powi(-(OPACITY_PRECISION as i32)) {
-		format!(r#" {}-opacity="{:.precision$}""#, name, opacity, precision = OPACITY_PRECISION)
+		format!(r#" {name}-opacity="{opacity:.OPACITY_PRECISION$}""#)
 	} else {
 		String::new()
 	}
@@ -187,7 +187,7 @@ impl Fill {
 			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
 			Self::Gradient(gradient) => {
 				let gradient_id = gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
-				format!(r##" fill="url('#{}')""##, gradient_id)
+				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
 	}
@@ -533,7 +533,7 @@ impl PathStyle {
 			(_, None) => String::new(),
 		};
 
-		format!("{}{}", fill_attribute, stroke_attribute)
+		format!("{fill_attribute}{stroke_attribute}")
 	}
 }
 

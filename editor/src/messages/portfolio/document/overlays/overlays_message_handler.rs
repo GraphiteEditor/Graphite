@@ -20,7 +20,7 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 			#[remain::unsorted]
 			DispatchOperation(operation) => match self.overlays_document.handle_operation(*operation) {
 				Ok(_) => responses.add(OverlaysMessage::Rerender),
-				Err(e) => error!("OverlaysError: {:?}", e),
+				Err(e) => error!("OverlaysError: {e:?}"),
 			},
 
 			// Messages

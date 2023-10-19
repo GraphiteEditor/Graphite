@@ -202,7 +202,7 @@ impl<'a> TaggedValue {
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
-			TaggedValue::String(x) => format!("\"{}\"", x),
+			TaggedValue::String(x) => format!("\"{x}\""),
 			TaggedValue::U32(x) => x.to_string() + "_u32",
 			TaggedValue::F32(x) => x.to_string() + "_f32",
 			TaggedValue::F64(x) => x.to_string() + "_f64",

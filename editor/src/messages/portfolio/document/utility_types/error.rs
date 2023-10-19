@@ -32,7 +32,7 @@ macro_rules! derive_from {
 	($type:ty, $kind:ident) => {
 		impl From<$type> for EditorError {
 			fn from(error: $type) -> Self {
-				EditorError::$kind(format!("{:?}", error))
+				EditorError::$kind(format!("{error:?}"))
 			}
 		}
 	};

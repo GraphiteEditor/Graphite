@@ -75,7 +75,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let quantization = crate::quantization::generate_quantization_from_image_frame(&image);
 	#[cfg(not(feature = "quantization"))]
 	let quantization = QuantizationChannels::default();
-	log::debug!("quantization: {:?}", quantization);
+	log::debug!("quantization: {quantization:?}");
 
 	#[cfg(feature = "image-compare")]
 	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone()))
@@ -163,7 +163,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
-	log::debug!("inner_network: {:?}", inner_network);
+	log::debug!("inner_network: {inner_network:?}");
 	let network = NodeNetwork {
 		inputs: vec![2, 1], //vec![0, 1],
 		#[cfg(feature = "quantization")]
@@ -285,7 +285,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	let canvas = editor_api.application_io.create_surface();
 
 	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
-	//log::debug!("id: {:?}", surface);
+	//log::debug!("id: {surface:?}");
 	let surface_id = surface.surface_id;
 
 	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();

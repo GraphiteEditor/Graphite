@@ -72,8 +72,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					layout
 				} else {
 					warn!(
-						"UpdateLayout was called referencing an invalid layout. `widget_id: {}`, `layout_target: {:?}`",
-						widget_id, layout_target
+						"UpdateLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",
 					);
 					return;
 				};
@@ -82,8 +81,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					widget_holder
 				} else {
 					warn!(
-						"UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {}`, `layout_target: {:?}`",
-						widget_id, layout_target
+						"UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",
 					);
 					return;
 				};

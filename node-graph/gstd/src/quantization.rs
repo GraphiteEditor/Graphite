@@ -79,7 +79,7 @@ fn generate_quantization<const N: usize>(data: Vec<f64>, samples: usize, channel
 			None => Some(error.clone()),
 		};
 
-		println!("Merged: {:?}", merged_error);
+		println!("Merged: {merged_error:?}");
 
 		let bits = merged_error.as_ref().unwrap().bits.iter().map(|x| x[i]).collect::<Vec<_>>();
 		let model_fit = autoquant::models::OptimizedLin::new(channel_data, 1 << bits[bin_size]);

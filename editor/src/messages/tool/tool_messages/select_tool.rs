@@ -317,7 +317,7 @@ impl SelectToolData {
 			// let layer = match document.document_legacy.layer(layer_path) {
 			// 	Ok(layer) => layer.clone(),
 			// 	Err(e) => {
-			// 		warn!("Could not access selected layer {:?}: {:?}", layer_path, e);
+			// 		warn!("Could not access selected layer {layer_path:?}: {e:?}");
 			// 		continue;
 			// 	}
 			// };

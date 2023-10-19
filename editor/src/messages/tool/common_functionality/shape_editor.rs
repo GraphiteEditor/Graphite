@@ -71,7 +71,7 @@ impl ShapeState {
 		}
 
 		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document, mouse_position, select_threshold) {
-			trace!("Selecting... manipulator point: {:?}", manipulator_point_id);
+			trace!("Selecting... manipulator point: {manipulator_point_id:?}");
 
 			let subpaths = get_subpaths(layer, document)?;
 			let manipulator_group = get_manipulator_groups(subpaths).find(|group| group.id == manipulator_point_id.group)?;
@@ -631,7 +631,7 @@ impl ShapeState {
 			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document, layer, mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {
-					trace!("Selecting... manipulator point: {:?}", manipulator_point_id);
+					trace!("Selecting... manipulator point: {manipulator_point_id:?}");
 					return Some((layer, manipulator_point_id));
 				}
 			}

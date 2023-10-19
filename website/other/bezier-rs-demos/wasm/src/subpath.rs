@@ -26,7 +26,7 @@ fn parse_t_variant(t_variant: &String, t: f64) -> SubpathTValue {
 	match t_variant.as_str() {
 		"GlobalParametric" => SubpathTValue::GlobalParametric(t),
 		"GlobalEuclidean" => SubpathTValue::GlobalEuclidean(t),
-		_ => panic!("Unexpected TValue string: '{}'", t_variant),
+		_ => panic!("Unexpected TValue string: '{t_variant}'"),
 	}
 }
 
@@ -104,7 +104,7 @@ impl WasmSubpath {
 		let tvalue_type = match t_variant.as_str() {
 			"GlobalParametric" => TValueType::Parametric,
 			"GlobalEuclidean" => TValueType::Euclidean,
-			_ => panic!("Unexpected TValue string: '{}'", t_variant),
+			_ => panic!("Unexpected TValue string: '{t_variant}'"),
 		};
 		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));
 		let circles: String = table_values
@@ -385,7 +385,7 @@ impl WasmSubpath {
 			main_subpath.iter().enumerate().for_each(|(index, bezier)| {
 				let hue1 = &format!("hsla({}, 100%, 50%, 0.5)", 40 * index);
 				let hue2 = &format!("hsla({}, 100%, 50%, 0.5)", 40 * (index + 1));
-				let gradient_id = &format!("gradient{}", index);
+				let gradient_id = &format!("gradient{index}");
 				let start = bezier.start();
 				let end = bezier.end();
 				let _ = write!(
@@ -400,7 +400,7 @@ impl WasmSubpath {
 					hue2
 				);
 
-				let stroke = &format!("url(#{})", gradient_id);
+				let stroke = &format!("url(#{gradient_id})");
 				bezier.curve_to_svg(
 					&mut main_subpath_svg,
 					CURVE_ATTRIBUTES.to_string().replace(BLACK, stroke).replace("stroke-width=\"2\"", "stroke-width=\"8\""),
