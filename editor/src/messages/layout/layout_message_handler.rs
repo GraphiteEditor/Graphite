@@ -71,18 +71,14 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
 					layout
 				} else {
-					warn!(
-						"UpdateLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",
-					);
+					warn!("UpdateLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
 				};
 
 				let widget_holder = if let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) {
 					widget_holder
 				} else {
-					warn!(
-						"UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",
-					);
+					warn!("UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
 				};
 
