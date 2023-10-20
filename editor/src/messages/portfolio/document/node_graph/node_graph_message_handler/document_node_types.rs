@@ -2483,7 +2483,7 @@ impl DocumentNodeType {
 	}
 }
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
@@ -2520,11 +2520,18 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		..Default::default()
 	};
 
+	let mut begin_scope = resolve_document_node_type("Begin Scope")
+		.expect("Begin Scope node type not found")
+		.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default());
+	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
+		if let Some(node) = g.nodes.get_mut(&0) {
+			node.hash = hash;
+		}
+	}
+
 	// wrap the inner network in a scope
 	let nodes = vec![
-		resolve_document_node_type("Begin Scope")
-			.expect("Begin Scope node type not found")
-			.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default()),
+		begin_scope,
 		inner_network,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")

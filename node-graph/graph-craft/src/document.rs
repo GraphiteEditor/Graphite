@@ -41,6 +41,8 @@ pub struct DocumentNode {
 	pub metadata: DocumentNodeMetadata,
 	#[serde(default)]
 	pub skip_deduplication: bool,
+	#[serde(default)]
+	pub hash: u64,
 	pub path: Option<Vec<NodeId>>,
 }
 
@@ -103,6 +105,7 @@ impl DocumentNode {
 			construction_args: args,
 			document_node_path: self.path.unwrap_or(Vec::new()),
 			skip_deduplication: self.skip_deduplication,
+			hash: self.hash,
 		}
 	}
 

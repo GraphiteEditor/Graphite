@@ -197,6 +197,7 @@ pub struct ProtoNode {
 	pub identifier: NodeIdentifier,
 	pub document_node_path: Vec<NodeId>,
 	pub skip_deduplication: bool,
+	pub hash: u64,
 }
 
 /// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
@@ -235,6 +236,7 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.document_node_path.hash(&mut hasher);
 		}
+		self.hash.hash(&mut hasher);
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -256,6 +258,7 @@ impl ProtoNode {
 			input: ProtoNodeInput::None,
 			document_node_path: path,
 			skip_deduplication: false,
+			hash: 0,
 		}
 	}
 
@@ -364,6 +367,7 @@ impl ProtoNetwork {
 						input,
 						document_node_path: path,
 						skip_deduplication: false,
+						hash: 0,
 					},
 				));
 
