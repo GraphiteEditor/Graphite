@@ -46,10 +46,15 @@ pub use raster::Color;
 pub use types::Cow;
 
 // pub trait Node: for<'n> NodeIO<'n> {
+/// The node trait allows for defining any node. Nodes can only take one input, however they can store references to other nodes inside the struct.
+/// See `node_graph/README.md` for information on how to define a new node.
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
+	/// Evalutes the node with the single specified input.
 	fn eval(&'i self, input: Input) -> Self::Output;
+	/// Resets the node, e.g. the LetNode's cache is set to None.
 	fn reset(&self) {}
+	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
 	#[cfg(feature = "std")]
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());

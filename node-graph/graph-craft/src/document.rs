@@ -11,6 +11,8 @@ pub mod value;
 
 pub type NodeId = u64;
 
+/// Hash two ids together, returning a new id that is always consistant for two input ids in a specific order.
+/// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non conflicting ids for inner networks.
 fn merge_ids(a: u64, b: u64) -> u64 {
 	use std::hash::{Hash, Hasher};
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -21,6 +23,7 @@ fn merge_ids(a: u64, b: u64) -> u64 {
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Metadata about the node including its position in the graph UI
 pub struct DocumentNodeMetadata {
 	pub position: IVec2,
 }
@@ -40,18 +43,31 @@ fn return_true() -> bool {
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
+	/// An identifier used to display in the UI and to display the appropriate properties.
 	pub name: String,
+	/// The inputs to a node, which are either:
+	/// - From other nodes within this graph [`NodeInput::Node`],
+	/// - A constant value [`NodeInput::Value`],
+	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step.
 	pub inputs: Vec<NodeInput>,
+	/// TODO: what is this?
 	pub manual_composition: Option<Type>,
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
+	// A nested document network or a proto-node identifier
 	pub implementation: DocumentNodeImplementation,
+	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
+	/// When 2 different protonodes hash to the same value (e.g. 2 value nodes that contain `2u32` or 2 multiply nodes that have the same node ids as input)
+	/// the duplicates are removed. See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
 	pub hash: u64,
+	/// The path to this node as of when [`NodeNetwork::generate_node_paths`] was called. For example if this node was id 6 inside a node with id 4
+	/// and with a [`DocumentNodeImplementation::Network`], the path would be [4,6].
 	pub path: Option<Vec<NodeId>>,
 }
 
@@ -72,6 +88,7 @@ impl Default for DocumentNode {
 }
 
 impl DocumentNode {
+	/// Locate the input that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
 	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool) {
 		let (index, _) = self
 			.inputs
@@ -283,9 +300,13 @@ impl NodeInput {
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`NodeIdentifier`] or extract
 pub enum DocumentNodeImplementation {
+	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
+	/// A protonode identifier which can be found in `node_registry.rs`.
 	Unresolved(NodeIdentifier),
+	/// TODO: what?
 	Extract,
 }
 
@@ -317,6 +338,7 @@ impl DocumentNodeImplementation {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Defines a particular output port, specifying the node id and output index.
 pub struct NodeOutput {
 	pub node_id: NodeId,
 	pub node_output_index: usize,
@@ -329,6 +351,7 @@ impl NodeOutput {
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// A network of nodes containing each [`DocumentNode`] and its id, as well as a list of input nodes and [`NodeOutput`]s
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub outputs: Vec<NodeOutput>,
@@ -554,6 +577,7 @@ impl NodeNetwork {
 		}
 	}
 
+	/// Check there are no cycles in the graph (this should never happen).
 	pub fn is_acyclic(&self) -> bool {
 		let mut dependencies: HashMap<u64, Vec<u64>> = HashMap::new();
 		for (node_id, node) in &self.nodes {
@@ -587,6 +611,7 @@ impl NodeNetwork {
 	}
 }
 
+/// Iterate over the primary inputs of nodes, so in the case of `a -> b -> c`, this would yeild `c, b, a` if we started from `c`.
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
@@ -612,6 +637,7 @@ impl<'a> Iterator for FlowIter<'a> {
 
 /// Functions for compiling the network
 impl NodeNetwork {
+	/// Replace all references in the graph of a node id with a new node id defined by the function f.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.inputs.iter_mut().for_each(|id| *id = f(*id));
 		self.outputs.iter_mut().for_each(|output| output.node_id = f(output.node_id));
@@ -642,6 +668,7 @@ impl NodeNetwork {
 		outwards_links
 	}
 
+	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting protonodes to the document node for the purposes of typing and finding monitor nodes.
 	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
 		for (node_id, node) in &mut self.nodes {
 			let mut new_path = prefix.to_vec();
@@ -657,6 +684,7 @@ impl NodeNetwork {
 		}
 	}
 
+	/// Replace all references in any node of `old_input` with `new_input`
 	fn replace_node_inputs(&mut self, old_input: NodeInput, new_input: NodeInput) {
 		for node in self.nodes.values_mut() {
 			node.inputs.iter_mut().for_each(|input| {
@@ -667,6 +695,7 @@ impl NodeNetwork {
 		}
 	}
 
+	/// Replace all references in any node of `old_output` with `new_output`
 	fn replace_network_outputs(&mut self, old_output: NodeOutput, new_output: NodeOutput) {
 		for output in self.outputs.iter_mut() {
 			if *output == old_output {
@@ -709,11 +738,12 @@ impl NodeNetwork {
 		are_inputs_used
 	}
 
+	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node: NodeId) {
 		self.flatten_with_fns(node, merge_ids, generate_uuid)
 	}
 
-	/// Recursively dissolve non-primitive document nodes and return a single flattened network of nodes.
+	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		self.resolve_extract_nodes();
 		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
@@ -870,6 +900,7 @@ impl NodeNetwork {
 		Ok(())
 	}
 
+	/// Removes [`graphene_core::ops::IdNode`] that are unnecessary.
 	pub fn remove_redundant_id_nodes(&mut self) {
 		let id_nodes = self
 			.nodes
@@ -888,6 +919,7 @@ impl NodeNetwork {
 		}
 	}
 
+	/// TODO: what?
 	pub fn resolve_extract_nodes(&mut self) {
 		let mut extraction_nodes = self
 			.nodes
@@ -925,6 +957,7 @@ impl NodeNetwork {
 		self.nodes.extend(extraction_nodes);
 	}
 
+	/// Creates a protonetwork for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 		nodes.sort_unstable_by_key(|(i, _)| *i);
