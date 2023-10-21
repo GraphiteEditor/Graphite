@@ -151,7 +151,7 @@ register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData,
 
 Debugging inside your node can be done with the `log` macros, for example `info!("The opacity is {opacity_multiplier}");`.
 
-How should we debug 
+We need a utility to easily view a graph as the various steps are applied. We also need a way to transparently see which constructors are being run, which nodes are being evaluated and in what order.
 
 ## Conclusion
 
