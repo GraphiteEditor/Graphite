@@ -165,15 +165,7 @@ fn derive_transform() {
 
 					assert!(
 						new_transform.abs_diff_eq(original_transform, 1e-10),
-						"original_transform {} new_transform {} / scale {} new_scale {} / angle {} new_angle {} / shear {} / new_shear {}",
-						original_transform,
-						new_transform,
-						scale,
-						new_scale,
-						angle,
-						new_angle,
-						shear,
-						new_shear,
+						"original_transform {original_transform} new_transform {new_transform} / scale {scale} new_scale {new_scale} / angle {angle} new_angle {new_angle} / shear {shear} / new_shear {new_shear}",
 					);
 				}
 			}

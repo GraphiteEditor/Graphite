@@ -25,7 +25,7 @@ pub const TEXT_OFFSET_X: f64 = 5.;
 pub const TEXT_OFFSET_Y: f64 = 193.;
 
 pub fn wrap_svg_tag(contents: String) -> String {
-	format!("{}{}{}", SVG_OPEN_TAG, contents, SVG_CLOSE_TAG)
+	format!("{SVG_OPEN_TAG}{contents}{SVG_CLOSE_TAG}")
 }
 
 /// Helper function to create an SVG text entity.

@@ -24,7 +24,7 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 					};
 					is_sub_discriminant.push(true);
 				}
-				n => unimplemented!("#[sub_discriminant] on variants with {} fields is not supported (for now)", n),
+				n => unimplemented!("#[sub_discriminant] on variants with {n} fields is not supported (for now)"),
 			}
 		} else {
 			var.fields = Fields::Unit;

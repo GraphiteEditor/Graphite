@@ -174,7 +174,7 @@ impl JsEditorHandle {
 				}
 				#[cfg(feature = "tauri")]
 				{
-					let identifier = format!("http://localhost:3001/image/{:?}_{}", &image.path, document_id);
+					let identifier = format!("http://localhost:3001/image/{:?}_{}", image.path, document_id);
 					fetchImage(image.path.clone(), image.node_id, image.mime, document_id, identifier);
 				}
 			}
@@ -240,7 +240,7 @@ impl JsEditorHandle {
 				}
 			}
 			Err(error) => {
-				log::error!("tauri response: {:?}\n{:?}", error, _message);
+				log::error!("tauri response: {error:?}\n{_message:?}");
 			}
 		}
 	}
@@ -285,7 +285,7 @@ impl JsEditorHandle {
 				self.dispatch(message);
 				Ok(())
 			}
-			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {:?}\nValue: {:?}", target, val)).into()),
+			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
 	}
 
@@ -434,7 +434,7 @@ impl JsEditorHandle {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		trace!("Key down {:?}, name: {}, modifiers: {:?}, key repeat: {}", key, name, modifiers, key_repeat);
+		trace!("Key down {key:?}, name: {name}, modifiers: {modifiers:?}, key repeat: {key_repeat}");
 
 		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
 		self.dispatch(message);
@@ -446,7 +446,7 @@ impl JsEditorHandle {
 		let key = translate_key(&name);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		trace!("Key up {:?}, name: {}, modifiers: {:?}, key repeat: {}", key, name, modifier_keys, key_repeat);
+		trace!("Key up {key:?}, name: {name}, modifiers: {modifier_keys:?}, key repeat: {key_repeat}");
 
 		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
 		self.dispatch(message);

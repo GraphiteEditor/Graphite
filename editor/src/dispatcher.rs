@@ -175,7 +175,7 @@ impl Dispatcher {
 							),
 						);
 					} else {
-						warn!("Called ToolMessage without an active document.\nGot {:?}", message);
+						warn!("Called ToolMessage without an active document.\nGot {message:?}");
 					}
 				}
 				Workspace(message) => {
@@ -518,7 +518,7 @@ mod test {
 			paths.iter().map(|layer| layer.to_vec()).collect::<Vec<_>>()
 		}
 		let sorted_layers = map_to_vec(editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().all_layers_sorted());
-		println!("Sorted layers: {:?}", sorted_layers);
+		println!("Sorted layers: {sorted_layers:?}");
 
 		let verify_order = |handler: &mut DocumentMessageHandler| {
 			(
@@ -562,7 +562,7 @@ mod test {
 			println!();
 			println!("DisplayDialogError details:");
 			println!();
-			println!("Description: {}", value);
+			println!("Description: {value}");
 			println!("-------------------------------------------------");
 			println!();
 

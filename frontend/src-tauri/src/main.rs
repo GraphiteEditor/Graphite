@@ -85,7 +85,7 @@ fn set_random_seed(seed: f64) {
 #[tauri::command]
 fn handle_message(message: String) -> String {
 	let Ok(message) = ron::from_str::<graphite_editor::messages::message::Message>(&message) else {
-		panic!("Error parsing message: {}", message)
+		panic!("Error parsing message: {message}")
 	};
 	let responses = EDITOR.with(|editor| {
 		let mut editor = editor.borrow_mut();
@@ -103,7 +103,7 @@ fn handle_message(message: String) -> String {
 				let path = image.path.clone();
 				let mime = image.mime.clone();
 				let transform = image.transform;
-				images.insert(format!("{:?}_{}", &image.path, document_id), image);
+				images.insert(format!("{:?}_{}", image.path, document_id), image);
 				stub_data.push(FrontendImageData {
 					path,
 					node_id: None,
@@ -121,7 +121,7 @@ fn handle_message(message: String) -> String {
 	for response in &responses {
 		let serialized = ron::to_string(&send_frontend_message_to_js(response.clone())).unwrap();
 		if let Err(error) = ron::from_str::<FrontendMessage>(&serialized) {
-			log::error!("Error deserializing message: {}", error);
+			log::error!("Error deserializing message: {error}");
 		}
 	}
 

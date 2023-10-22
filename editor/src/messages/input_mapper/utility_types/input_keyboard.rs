@@ -214,7 +214,7 @@ pub enum Key {
 impl fmt::Display for Key {
 	// TODO: Relevant key labels should be localized when we get around to implementing localization/internationalization
 	fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-		let key_name = format!("{:?}", self);
+		let key_name = format!("{self:?}");
 
 		// Writing system keys
 		const DIGIT_PREFIX: &str = "Digit";
@@ -293,14 +293,14 @@ impl fmt::Display for Key {
 			_ => key_name.as_str(),
 		};
 
-		write!(f, "{}", name)
+		write!(f, "{name}")
 	}
 }
 
 impl From<Key> for LayoutKey {
 	fn from(key: Key) -> Self {
 		Self {
-			key: format!("{:?}", key),
+			key: format!("{key:?}"),
 			label: key.to_string(),
 		}
 	}
@@ -356,7 +356,7 @@ impl fmt::Display for KeysGroup {
 			joined.truncate(joined.len() - JOINER_MARK.len());
 		}
 
-		write!(f, "{}", joined)
+		write!(f, "{joined}")
 	}
 }
 

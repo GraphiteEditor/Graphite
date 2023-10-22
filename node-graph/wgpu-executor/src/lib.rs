@@ -206,11 +206,11 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	}
 
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<WgpuShaderInput> {
-		log::debug!("Creating output buffer with len: {}", len);
+		log::debug!("Creating output buffer with len: {len}");
 		let create_buffer = |usage| {
 			Ok::<_, anyhow::Error>(self.context.device.create_buffer(&BufferDescriptor {
 				label: None,
-				size: len as u64 * ty.size().ok_or_else(|| anyhow::anyhow!("Cannot create buffer of type {:?}", ty))? as u64,
+				size: len as u64 * ty.size().ok_or_else(|| anyhow::anyhow!("Cannot create buffer of type {ty:?}"))? as u64,
 				usage,
 				mapped_at_creation: false,
 			}))
@@ -290,7 +290,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 
 		let surface = &canvas.as_ref().surface;
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		println!("{:?}", surface_caps);
+		println!("{surface_caps:?}");
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
 			//return Ok(());
@@ -455,7 +455,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 
 		let size = window.surface.inner_size();
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		println!("{:?}", surface_caps);
+		println!("{surface_caps:?}");
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

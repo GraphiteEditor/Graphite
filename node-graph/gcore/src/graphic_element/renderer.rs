@@ -3,7 +3,7 @@ use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
 use base64::Engine;
 use bezier_rs::Subpath;
-use image::ImageEncoder;
+
 pub use quad::Quad;
 
 use glam::{DAffine2, DVec2};
@@ -156,7 +156,7 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	let mut result = "matrix(".to_string();
 	let cols = transform.to_cols_array();
 	for (index, item) in cols.iter().enumerate() {
-		write!(result, "{}", item).unwrap();
+		write!(result, "{item}").unwrap();
 		if index != cols.len() - 1 {
 			result.push_str(", ");
 		}
