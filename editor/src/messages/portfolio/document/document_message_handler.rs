@@ -100,14 +100,26 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor)> for DocumentMessageHandler {
+pub struct DocumentInputs<'a> {
+	pub document_id: u64,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub persistent_data: &'a PersistentData,
+	pub preferences: &'a PreferencesMessageHandler,
+	pub executor: &'a mut NodeGraphExecutor,
+	pub graph_open: bool,
+}
+
+impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_message(
-		&mut self,
-		message: DocumentMessage,
-		responses: &mut VecDeque<Message>,
-		(document_id, ipp, persistent_data, preferences, executor): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor),
-	) {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, document_inputs: DocumentInputs) {
+		let DocumentInputs {
+			document_id,
+			ipp,
+			persistent_data,
+			preferences,
+			executor,
+			graph_open,
+		} = document_inputs;
 		use DocumentMessage::*;
 
 		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
@@ -193,6 +205,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						document_id,
 						document_name: self.name.as_str(),
 						input: ipp,
+						graph_open,
 					},
 				);
 			}
@@ -300,8 +313,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.backup(responses);
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
-				for path in self.selected_layers_without_children() {
-					responses.add_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() });
+				for path in self.metadata().shallowest_unique_layers(self.metadata().selected_layers()) {
+					responses.add_front(DocumentMessage::DeleteLayer {
+						layer_path: path.last().unwrap().to_path(),
+					});
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
@@ -922,7 +937,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			CreateEmptyFolder,
 		);
 
-		if self.layer_metadata.values().any(|data| data.selected) {
+		if self.metadata().selected_layers().next().is_some() {
 			let select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,

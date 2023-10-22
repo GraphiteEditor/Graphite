@@ -6,6 +6,7 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::DocumentInputs;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -45,7 +46,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences, &mut self.executor))
+						let document_inputs = DocumentInputs {
+							document_id,
+							ipp,
+							persistent_data: &self.persistent_data,
+							preferences,
+							executor: &mut self.executor,
+							graph_open: self.graph_view_overlay_open,
+						};
+						document.process_message(message, responses, document_inputs)
 					}
 				}
 			}
@@ -54,7 +63,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences, &mut self.executor))
+					let document_inputs = DocumentInputs {
+						document_id,
+						ipp,
+						persistent_data: &self.persistent_data,
+						preferences,
+						executor: &mut self.executor,
+						graph_open: self.graph_view_overlay_open,
+					};
+					document.process_message(message, responses, document_inputs)
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
