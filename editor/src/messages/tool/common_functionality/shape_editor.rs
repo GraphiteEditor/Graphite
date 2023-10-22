@@ -11,6 +11,8 @@ use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
 
+use super::graph_modification_utils;
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ManipulatorAngle {
 	Smooth,
@@ -167,17 +169,16 @@ impl ShapeState {
 
 	/// Moves a control point to a `new_position` in document space.
 	/// Returns `Some(())` if successful and `None` otherwise.
-	pub fn reposition_control_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer_path: &[u64]) -> Option<()> {
-		let layer = document.layer(layer_path).ok()?;
-		let vector_data = layer.as_vector_data()?;
-		let transform = layer.transform.inverse();
-		let position = transform.transform_point2(new_position - layer.pivot);
-		let group = vector_data.manipulator_from_id(point.group)?;
+	pub fn reposition_control_point(&self, point: &ManipulatorPointId, responses: &mut VecDeque<Message>, document: &Document, new_position: DVec2, layer: LayerNodeIdentifier) -> Option<()> {
+		let subpaths = get_subpaths(layer, document)?;
+		let transform = document.metadata.transform_to_viewport(layer).inverse();
+		let position = transform.transform_point2(new_position);
+		let group = graph_modification_utils::get_manipulator_from_id(subpaths, point.group)?;
 		let delta = position - point.manipulator_type.get_position(group)?;
 
 		if point.manipulator_type.is_handle() {
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: false },
 			});
 		}
@@ -187,7 +188,7 @@ impl ShapeState {
 				return;
 			};
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: (position + delta) },
 			});
 		};
@@ -208,12 +209,8 @@ impl ShapeState {
 		let mut point_smoothness_status = self
 			.selected_shape_state
 			.iter()
-			.filter_map(|(layer_id, selection_state)| {
-				let layer = document.layer(&layer_id.to_path()).ok()?;
-				let vector_data = layer.as_vector_data()?;
-				Some((vector_data, selection_state))
-			})
-			.flat_map(|(vector_data, selection_state)| selection_state.selected_points.iter().map(|selected_point| vector_data.mirror_angle.contains(&selected_point.group)));
+			.filter_map(|(&layer, selection_state)| Some((graph_modification_utils::get_mirror_handles(layer, document)?, selection_state)))
+			.flat_map(|(mirror, selection_state)| selection_state.selected_points.iter().map(|selected_point| mirror.contains(&selected_point.group)));
 
 		let Some(first_is_smooth) = point_smoothness_status.next() else { return ManipulatorAngle::Mixed };
 
@@ -226,7 +223,7 @@ impl ShapeState {
 		}
 	}
 
-	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer: &LayerNodeIdentifier) {
+	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
 		let manipulator_groups = subpath.manipulator_groups();
 		let manipulator = manipulator_groups[index];
 
@@ -298,9 +295,8 @@ impl ShapeState {
 	pub fn smooth_selected_groups(&self, responses: &mut VecDeque<Message>, document: &Document) -> Option<()> {
 		let mut skip_set = HashSet::new();
 
-		for (layer_id, layer_state) in self.selected_shape_state.iter() {
-			let layer = document.layer(&layer_id.to_path()).ok()?;
-			let vector_data = layer.as_vector_data()?;
+		for (&layer, layer_state) in self.selected_shape_state.iter() {
+			let subpaths = get_subpaths(layer, document)?;
 
 			for point in layer_state.selected_points.iter() {
 				if skip_set.contains(&point.group) {
@@ -321,14 +317,14 @@ impl ShapeState {
 					group: point.group,
 					manipulator_type: SelectedType::InHandle,
 				});
-				let group = vector_data.manipulator_from_id(point.group)?;
+				let group = graph_modification_utils::get_manipulator_from_id(subpaths, point.group)?;
 
 				match (anchor_selected, out_selected, in_selected) {
 					(_, true, false) => {
 						let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
 						if let Some(position) = group.out_handle {
 							responses.add(GraphOperationMessage::Vector {
-								layer: layer_id.to_path(),
+								layer: layer.to_path(),
 								modification: VectorDataModification::SetManipulatorPosition { point: out_handle, position },
 							});
 						}
@@ -337,13 +333,13 @@ impl ShapeState {
 						let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
 						if let Some(position) = group.in_handle {
 							responses.add(GraphOperationMessage::Vector {
-								layer: layer_id.to_path(),
+								layer: layer.to_path(),
 								modification: VectorDataModification::SetManipulatorPosition { point: in_handle, position },
 							});
 						}
 					}
 					(_, _, _) => {
-						let found = vector_data.subpaths.iter().find_map(|subpath| {
+						let found = subpaths.iter().find_map(|subpath| {
 							let group_slice = subpath.manipulator_groups();
 							let index = group_slice.iter().position(|manipulator| manipulator.id == group.id)?;
 							// TODO: try subpath closed? wrapping
@@ -351,7 +347,7 @@ impl ShapeState {
 						});
 
 						if let Some((subpath, index)) = found {
-							self.smooth_manipulator_group(subpath, index, responses, layer_id);
+							self.smooth_manipulator_group(subpath, index, responses, layer);
 						}
 					}
 				}
@@ -764,7 +760,7 @@ impl ShapeState {
 			};
 
 			if already_sharp {
-				self.smooth_manipulator_group(subpath, index, responses, &layer);
+				self.smooth_manipulator_group(subpath, index, responses, layer);
 			} else {
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
 				responses.add(GraphOperationMessage::Vector {
