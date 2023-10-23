@@ -189,15 +189,15 @@ impl NodeRuntime {
 			},
 			image_frame: None,
 		};
-		error!("execute_network with fonts {:?}", self.font_cache.font_file_data.keys().collect::<Vec<_>>());
 
 		use std::collections::hash_map::DefaultHasher;
 		use std::hash::Hash;
 		use std::hash::Hasher;
-		let mut s = DefaultHasher::new();
-		editor_api.font_cache.hash(&mut s);
+		// Required to ensure that the appropriate protonodes are reinserted when the editor api changes.
+		let mut graph_input_hash = DefaultHasher::new();
+		editor_api.font_cache.hash(&mut graph_input_hash);
 
-		let scoped_network = wrap_network_in_scope(graph, s.finish());
+		let scoped_network = wrap_network_in_scope(graph, graph_input_hash.finish());
 
 		let monitor_nodes = scoped_network
 			.recursive_nodes()

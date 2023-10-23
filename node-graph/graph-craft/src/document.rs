@@ -41,6 +41,7 @@ pub struct DocumentNode {
 	pub metadata: DocumentNodeMetadata,
 	#[serde(default)]
 	pub skip_deduplication: bool,
+	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
 	pub hash: u64,
 	pub path: Option<Vec<NodeId>>,

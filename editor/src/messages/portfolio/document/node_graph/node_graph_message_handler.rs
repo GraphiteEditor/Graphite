@@ -870,8 +870,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
 			NodeGraphMessage::ToggleHidden => {
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::ToggleHiddenImpl);
+				if let Some(network) = document.document_network.nested_network(&self.network) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					let new_hidden = !document.metadata.selected_nodes().any(|id| network.disabled.contains(id));
+					for &node_id in document.metadata.selected_nodes() {
+						responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
+					}
+				}
 			}
 			NodeGraphMessage::SetHidden { node_id, hidden } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
@@ -885,32 +891,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-				}
-				self.update_selection_action_buttons(document, responses);
-			}
-			NodeGraphMessage::ToggleHiddenImpl => {
-				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
-					// Check if any of the selected nodes are hidden
-					if document.metadata.selected_nodes().any(|id| network.disabled.contains(id)) {
-						// Remove all selected nodes from the disabled list
-						network.disabled.retain(|id| !document.metadata.selected_nodes_ref().contains(id));
-					} else {
-						let original_outputs = network.original_outputs().iter().map(|output| output.node_id).collect::<Vec<_>>();
-						// Add all selected nodes to the disabled list (excluding input or output nodes)
-						network
-							.disabled
-							.extend(document.metadata.selected_nodes().filter(|&id| !network.inputs.contains(id) && !original_outputs.contains(id)));
-					}
-					Self::send_graph(network, &self.layer_path, responses);
-
-					// Only generate node graph if one of the selected nodes is connected to the output
-					if document.metadata.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
-						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-						} else {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
 					}
 				}
 				self.update_selection_action_buttons(document, responses);
