@@ -159,7 +159,7 @@ impl BorrowTree {
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
 				let construction_nodes = self.node_deps(&ids);
-				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {:?}", identifier))?;
+				let constructor = typing_context.constructor(id).ok_or(format!("No constructor found for node {identifier:?}"))?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
 				self.store_node(node, id);

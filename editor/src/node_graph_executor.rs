@@ -215,7 +215,7 @@ impl NodeRuntime {
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network).await {
-			error!("Failed to update executor:\n{}", e);
+			error!("Failed to update executor:\n{e}");
 			return (Err(e), monitor_nodes);
 		}
 
@@ -224,7 +224,7 @@ impl NodeRuntime {
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {:?}", t)),
+			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err("No input type".to_string()),
 		};
 		let result = match result {
@@ -516,7 +516,7 @@ impl NodeGraphExecutor {
 					self.thumbnails = new_thumbnails;
 					document.metadata.update_transforms(new_transforms, new_upstream_transforms);
 					document.metadata.update_click_targets(new_click_targets);
-					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {:?}", e))?;
+					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
 					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
@@ -625,7 +625,7 @@ impl NodeGraphExecutor {
 				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			_ => {
-				return Err(format!("Invalid node graph output type: {:#?}", node_graph_output));
+				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
 		Ok(())

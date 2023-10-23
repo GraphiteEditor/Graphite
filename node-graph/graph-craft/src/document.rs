@@ -61,9 +61,9 @@ impl DocumentNode {
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
-		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {:#?} with no inputs", self);
+		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
 		let DocumentNodeImplementation::Unresolved(fqn) = self.implementation else {
-			unreachable!("tried to resolve not flattened node on resolved node {:?}", self);
+			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![]))
@@ -71,7 +71,7 @@ impl DocumentNode {
 			let first = self.inputs.remove(0);
 			match first {
 				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0, "{}, {:?}", &self.name, &self.inputs);
+					assert_eq!(self.inputs.len(), 0, "{}, {:?}", self.name, self.inputs);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
@@ -85,9 +85,9 @@ impl DocumentNode {
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
 		assert!(
 			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
-			"recieved value as parameter. inupts: {:#?}, construction_args: {:#?}",
-			&self.inputs,
-			&args
+			"received value as parameter. inputs: {:#?}, construction_args: {:#?}",
+			self.inputs,
+			args
 		);
 
 		// If we have one parameter of the type inline, set it as the construction args
@@ -693,7 +693,7 @@ impl NodeNetwork {
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		self.resolve_extract_nodes();
 		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
-			warn!("The node which was supposed to be flattened does not exist in the network, id {} network {:#?}", node, self);
+			warn!("The node which was supposed to be flattened does not exist in the network, id {node} network {self:#?}");
 			return;
 		};
 
@@ -808,7 +808,7 @@ impl NodeNetwork {
 	}
 
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
-		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {} does not exist", id))?.clone();
+		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::Unresolved(ident) = &node.implementation {
 			if ident.name == "graphene_core::ops::IdNode" {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
@@ -859,7 +859,7 @@ impl NodeNetwork {
 			.collect::<Vec<_>>();
 		for id in id_nodes {
 			if let Err(e) = self.remove_id_node(id) {
-				log::warn!("{}", e)
+				log::warn!("{e}")
 			}
 		}
 	}
@@ -1074,8 +1074,8 @@ mod test {
 		network.generate_node_paths(&[]);
 		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
 		let flat_network = flat_network();
-		println!("{:#?}", flat_network);
-		println!("{:#?}", network);
+		println!("{flat_network:#?}");
+		println!("{network:#?}");
 
 		assert_eq!(flat_network, network);
 	}
@@ -1135,7 +1135,7 @@ mod test {
 		let resolved_network = network.into_proto_networks().collect::<Vec<_>>();
 
 		println!("{:#?}", resolved_network[0]);
-		println!("{:#?}", construction_network);
+		println!("{construction_network:#?}");
 		assert_eq!(resolved_network[0], construction_network);
 	}
 
@@ -1252,7 +1252,7 @@ mod test {
 	#[test]
 	fn simple_duplicate() {
 		let result = output_duplicate(vec![NodeOutput::new(1, 0)], NodeInput::node(1, 0));
-		println!("{:#?}", result);
+		println!("{result:#?}");
 		assert_eq!(result.outputs.len(), 1, "The number of outputs should remain as 1");
 		assert_eq!(result.outputs[0], NodeOutput::new(11, 0), "The outer network output should be from a duplicated inner network");
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();

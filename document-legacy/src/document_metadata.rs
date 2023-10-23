@@ -302,7 +302,7 @@ impl LayerNodeIdentifier {
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
 			is_layer_node(node_id, network),
-			"Layer identifer constructed from non layer node {node_id}: {:#?}",
+			"Layer identifier constructed from non layer node {node_id}: {:#?}",
 			network.nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)

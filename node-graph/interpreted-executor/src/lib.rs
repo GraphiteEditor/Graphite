@@ -74,7 +74,7 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network).expect("Graph should be generated");
 
-		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {}", e));
+		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {e}"));
 
 		let result = block_on((&exec).execute(32_u32)).unwrap();
 		assert_eq!(result, TaggedValue::U32(33));

@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicInfo) {
-	error!("{}", info);
+	error!("{info}");
 
 	JS_EDITOR_HANDLES.with(|instances| {
 		instances
@@ -68,7 +68,7 @@ impl log::Log for WasmLog {
 pub fn translate_key(name: &str) -> Key {
 	use Key::*;
 
-	trace!("Key event received: {}", name);
+	trace!("Key event received: {name}");
 
 	match name {
 		// Writing system keys

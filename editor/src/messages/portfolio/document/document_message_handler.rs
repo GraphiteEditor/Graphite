@@ -154,7 +154,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 							responses.add(BroadcastEvent::DocumentIsDirty);
 						}
 					}
-					Err(e) => error!("DocumentError: {:?}", e),
+					Err(e) => error!("DocumentError: {e:?}"),
 					Ok(_) => (),
 				}
 			}
@@ -202,7 +202,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			// Messages
 			AbortTransaction => {
 				if !self.undo_in_progress {
-					self.undo(responses).unwrap_or_else(|e| warn!("{}", e));
+					self.undo(responses).unwrap_or_else(|e| warn!("{e}"));
 					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 				}
 			}
@@ -320,8 +320,8 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 					responses.add_front(DocumentMessage::DirtyRenderDocument);
 				}
 			}
-			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{}", e)),
-			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{}", e)),
+			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{e}")),
+			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{e}")),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
@@ -652,7 +652,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				});
 			}
 			RollbackTransaction => {
-				self.rollback(responses).unwrap_or_else(|e| warn!("{}", e));
+				self.rollback(responses).unwrap_or_else(|e| warn!("{e}"));
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			SaveDocument => {
@@ -754,7 +754,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 						}
 					}
 					other => {
-						warn!("Setting blob URL for invalid layer type, which must be a `Layer` layer type. Found: `{:?}`", other);
+						warn!("Setting blob URL for invalid layer type, which must be a `Layer` layer type. Found: `{other:?}`");
 						return;
 					}
 				}
@@ -982,7 +982,7 @@ impl DocumentMessageHandler {
 		};
 		let outside_artboards_color = outside.map_or_else(|| if false { "ffffff" } else { "222222" }.to_string(), |col| col.rgba_hex());
 		let outside_artboards = match transparent_background {
-			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{}" />"##, outside_artboards_color),
+			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{outside_artboards_color}" />"##),
 			true => "".into(),
 		};
 		let matrix = transform
@@ -1055,7 +1055,7 @@ impl DocumentMessageHandler {
 			let data = self.layer_panel_entry(path.to_vec(), &render_data).ok()?;
 			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
-			warn!("Tried to select non existing layer {:?}", path);
+			warn!("Tried to select non existing layer {path:?}");
 			None
 		}
 	}
@@ -1185,7 +1185,7 @@ impl DocumentMessageHandler {
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
 				match self.document_legacy.indices_for_path(path) {
 					Err(err) => {
-						warn!("layers_sorted: Could not get indices for the layer {:?}: {:?}", path, err);
+						warn!("layers_sorted: Could not get indices for the layer {path:?}: {err:?}");
 						None
 					}
 					Ok(indices) => Some((path, indices)),
@@ -1214,7 +1214,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
-		self.layer_metadata.get(path).unwrap_or_else(|| panic!("Editor's layer metadata for {:?} does not exist", path))
+		self.layer_metadata.get(path).unwrap_or_else(|| panic!("Editor's layer metadata for {path:?} does not exist"))
 	}
 
 	pub fn layer_metadata_mut(&mut self, path: &[LayerId]) -> &mut LayerMetadata {
@@ -1224,7 +1224,7 @@ impl DocumentMessageHandler {
 	pub fn layer_metadata_mut_no_borrow_self<'a>(layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>, path: &[LayerId]) -> &'a mut LayerMetadata {
 		layer_metadata
 			.get_mut(path)
-			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {:?} does not exist", path))
+			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {path:?} does not exist"))
 	}
 
 	/// Places a document into the history system
@@ -1379,7 +1379,7 @@ impl DocumentMessageHandler {
 		let data: LayerMetadata = *self
 			.layer_metadata
 			.get_mut(&path)
-			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {:?}", path)))?;
+			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {path:?}")))?;
 		let layer = self.document_legacy.layer(&path)?;
 		let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
 		Ok(entry)

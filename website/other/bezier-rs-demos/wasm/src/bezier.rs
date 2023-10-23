@@ -48,7 +48,7 @@ fn parse_t_variant(t_variant: &String, t: f64) -> TValue {
 	match t_variant.as_str() {
 		"Parametric" => TValue::Parametric(t),
 		"Euclidean" => TValue::Euclidean(t),
-		_ => panic!("Unexpected TValue string: '{}'", t_variant),
+		_ => panic!("Unexpected TValue string: '{t_variant}'"),
 	}
 }
 
@@ -162,7 +162,7 @@ impl WasmBezier {
 		let tvalue_type = match t_variant.as_str() {
 			"Parametric" => TValueType::Parametric,
 			"Euclidean" => TValueType::Euclidean,
-			_ => panic!("Unexpected TValue string: '{}'", t_variant),
+			_ => panic!("Unexpected TValue string: '{t_variant}'"),
 		};
 		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));
 		let circles: String = table_values

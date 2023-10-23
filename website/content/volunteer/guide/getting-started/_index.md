@@ -16,6 +16,11 @@ Clone the project:
 git clone https://github.com/GraphiteEditor/Graphite.git
 ```
 
+On Debian-based Linux distributions, you may need to install the following packages:
+```sh
+sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
+```
+
 Then install the required Node.js packages:
 ```sh
 cd frontend

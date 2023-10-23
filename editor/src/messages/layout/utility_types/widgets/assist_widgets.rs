@@ -48,7 +48,7 @@ impl From<&str> for PivotPosition {
 			"BottomLeft" => PivotPosition::BottomLeft,
 			"BottomCenter" => PivotPosition::BottomCenter,
 			"BottomRight" => PivotPosition::BottomRight,
-			_ => panic!("Failed parsing unrecognized PivotPosition enum value '{}'", input),
+			_ => panic!("Failed parsing unrecognized PivotPosition enum value '{input}'"),
 		}
 	}
 }

@@ -161,7 +161,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								(Ok(layer), layer_metadata) => {
 									buffer.push(CopyBufferEntry { layer, layer_metadata });
 								}
-								(Err(e), _) => warn!("Could not access selected layer {:?}: {:?}", layer_path, e),
+								(Err(e), _) => warn!("Could not access selected layer {layer_path:?}: {e:?}"),
 							}
 						}
 					};
@@ -347,7 +347,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						self.load_document(document, document_id, responses);
 					}
 					Err(e) => {
-						println!("Failed to open document: {}", e);
+						println!("Failed to open document: {e}");
 						if !document_is_auto_saved {
 							responses.add(DialogMessage::DisplayDialogError {
 								title: "Failed to open document".to_string(),
@@ -384,7 +384,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			} => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if let Some(document) = self.active_document() {
-						trace!("Pasting into folder {:?} as index: {}", &path, insert_index);
+						trace!("Pasting into folder {path:?} as index: {insert_index}");
 						let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
 
 						responses.add_front(DocumentMessage::UpdateLayerMetadata {
@@ -622,7 +622,7 @@ impl PortfolioMessageHandler {
 
 		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
-			_ => format!("{} {}", DEFAULT_DOCUMENT_NAME, new_doc_title_num),
+			_ => format!("{DEFAULT_DOCUMENT_NAME} {new_doc_title_num}"),
 		}
 	}
 
@@ -681,7 +681,7 @@ impl PortfolioMessageHandler {
 		};
 
 		self.executor.poll_node_graph_evaluation(&mut active_document.document_legacy, responses).unwrap_or_else(|e| {
-			log::error!("Error while evaluating node graph: {}", e);
+			log::error!("Error while evaluating node graph: {e}");
 		});
 	}
 }

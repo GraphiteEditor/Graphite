@@ -140,7 +140,7 @@ impl ActionKeys {
 				}
 			}
 			Self::Keys(keys) => {
-				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {:?}.", keys);
+				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {keys:?}.");
 				String::new()
 			}
 		}

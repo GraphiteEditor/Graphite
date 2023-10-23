@@ -392,7 +392,7 @@ impl Subpath {
 				(true, true, true) => 'C',
 				(false, false, true) => 'L',
 				(_, false, false) => 'Z',
-				_ => panic!("Invalid shape {:#?}", self),
+				_ => panic!("Invalid shape {self:#?}"),
 			};
 
 			// Complete the last curve
@@ -567,7 +567,7 @@ impl From<&Subpath> for BezPath {
 					}
 				}
 				[None, None, None] => (PathEl::ClosePath, true),
-				_ => panic!("Invalid path element {:#?}", subpath),
+				_ => panic!("Invalid path element {subpath:#?}"),
 			}
 		};
 

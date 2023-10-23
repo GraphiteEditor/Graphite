@@ -438,10 +438,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Relight(_) => ToolType::Relight,
 		ToolMessage::Imaginate(_) => ToolType::Imaginate,
 		ToolMessage::Frame(_) => ToolType::Frame,
-		_ => panic!(
-			"Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {:?}",
-			tool_message
-		),
+		_ => panic!("Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {tool_message:?}"),
 	}
 }
 
@@ -475,10 +472,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
 		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
 		ToolType::Frame => ToolMessageDiscriminant::ActivateToolFrame,
-		_ => panic!(
-			"Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {:?}",
-			tool_type
-		),
+		_ => panic!("Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {tool_type:?}"),
 	}
 }
 
