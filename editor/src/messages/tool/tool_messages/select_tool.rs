@@ -799,18 +799,14 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Ready, SelectToolMessage::Enter) => {
-				let mut selected_layers = document.selected_layers();
+				let mut selected_layers = document.metadata().selected_layers();
 
-				if let Some(layer_path) = selected_layers.next() {
+				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
 					if selected_layers.next().is_none() {
-						if let Ok(layer) = document.document_legacy.layer(layer_path) {
-							if let Ok(network) = layer.as_layer_network() {
-								if network.nodes.values().any(|node| node.name == "Text") {
-									responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
-									responses.add(TextToolMessage::EditSelected);
-								}
-							}
+						if is_text_layer(layer, &document.document_legacy) {
+							responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
+							responses.add(TextToolMessage::EditSelected);
 						}
 					}
 				}
