@@ -343,7 +343,7 @@ impl OverlayRenderer {
 		let deselected_style = style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), POINT_STROKE_WEIGHT)), Fill::solid(Color::WHITE));
 		let selected_shape_state = state.get(&layer);
 		// Update if the manipulator points are shown as selected
-		// Here the index is important, even though overlays[..] has five elements we only care about the first three
+		// Here the index is important, even though overlays has five elements we only care about the first three
 		for (index, overlay) in [&overlays.in_handle, &overlays.out_handle, &overlays.anchor].into_iter().enumerate() {
 			let selected_type = [SelectedType::InHandle, SelectedType::OutHandle, SelectedType::Anchor][index];
 			if let Some(overlay_path) = overlay {

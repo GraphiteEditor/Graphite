@@ -1,3 +1,4 @@
+use super::graph_modification_utils;
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
@@ -10,8 +11,6 @@ use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::DVec2;
-
-use super::graph_modification_utils;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ManipulatorAngle {

@@ -540,6 +540,10 @@ enum SelectionStatus {
 }
 
 impl SelectionStatus {
+	fn is_none(&self) -> bool {
+		self == &SelectionStatus::None
+	}
+
 	fn as_one(&self) -> Option<&SingleSelectedPoint> {
 		match self {
 			SelectionStatus::One(one) => Some(one),
@@ -552,10 +556,6 @@ impl SelectionStatus {
 			SelectionStatus::Multiple(multiple) => Some(multiple),
 			_ => None,
 		}
-	}
-
-	fn is_none(&self) -> bool {
-		self == &SelectionStatus::None
 	}
 }
 
