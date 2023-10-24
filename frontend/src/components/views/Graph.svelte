@@ -446,8 +446,7 @@
 
 	// Check if this node should be inserted between two other nodes
 	function checkInsertBetween() {
-		if (selected.length !== 1)
-			return;
+		if (selected.length !== 1) return;
 		const selectedNodeId = selected[0];
 		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
 
@@ -457,8 +456,7 @@
 		const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
 
 		// TODO: Make sure inputs are correctly typed
-		if (!selectedNode || !notConnected || !input || !output || !nodesContainer) 
-			return;
+		if (!selectedNode || !notConnected || !input || !output || !nodesContainer) return;
 
 		// Fixes typing for some reason?
 		const theNodesContainer = nodesContainer;
@@ -489,11 +487,11 @@
 			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
 			editor.instance.shiftNode(selectedNodeId);
 		}
-		
 	}
 	function pointerUp(e: PointerEvent) {
 		panning = false;
 
+		const initialDisconnecting = disconnecting;
 		if (disconnecting) {
 			editor.instance.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
 		}
@@ -508,14 +506,23 @@
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
 				editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
-		} else if (linkInProgressFromConnector) {
-			if (nodeListLocation)
-				return;
+		} else if (linkInProgressFromConnector && !initialDisconnecting) {
+			// If the add node menu is already open, we don't want to open it again
+			if (nodeListLocation) return;
+
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
+
+			// Create the node list, which should set nodeListLocation to a valid value
 			loadNodeList(e, graphBounds);
-			if (nodeListLocation)
-				linkInProgressToConnector = new DOMRect((nodeListLocation.x * GRID_SIZE + transform.x) * transform.scale + graphBounds.x, (nodeListLocation.y * GRID_SIZE + transform.y) * transform.scale + graphBounds.y);
+			if (!nodeListLocation) return;
+			let nodeListLocation2: { x: number; y: number } = nodeListLocation;
+
+			linkInProgressToConnector = new DOMRect(
+				(nodeListLocation2.x * GRID_SIZE + transform.x) * transform.scale + graphBounds.x,
+				(nodeListLocation2.y * GRID_SIZE + transform.y) * transform.scale + graphBounds.y
+			);
+
 			return;
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x || draggingNodes.startY === e.y) {
@@ -528,7 +535,7 @@
 			if (selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.instance.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
 
 			checkInsertBetween();
-			
+
 			draggingNodes = undefined;
 			selectIfNotDragged = undefined;
 		}
@@ -541,7 +548,7 @@
 		if (!nodeListLocation) return;
 
 		const inputNodeConnectionIndex = 0;
-		const inputConnectedNodeID = editor.instance.createNode(nodeType, nodeListLocation.x, nodeListLocation.y-1);
+		const inputConnectedNodeID = editor.instance.createNode(nodeType, nodeListLocation.x, nodeListLocation.y - 1);
 		nodeListLocation = undefined;
 
 		if (!linkInProgressFromConnector) return;
@@ -688,7 +695,7 @@
 				</div>
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
-						{@html $nodeGraph.thumbnails.get(node.id) }
+						{@html $nodeGraph.thumbnails.get(node.id)}
 					{/if}
 					{#if node.primaryOutput}
 						<svg
