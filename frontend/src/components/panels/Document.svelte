@@ -19,8 +19,6 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		UpdateDocumentNodeRender,
-		UpdateDocumentTransform,
-		TriggerGraphViewOverlay,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -157,11 +155,6 @@
 		rasterizedCanvas = undefined;
 	}
 
-	export function updateDocumentTransform(transform: string) {
-		artworkTransform = transform;
-		rasterizedCanvas = undefined;
-	}
-
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
@@ -180,10 +173,10 @@
 
 		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
-		const artboards = artboardSvg;
+
 		const svg = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artboards}${nodeRenderSvg}</svg>
-				`.trim();
+			<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artboardSvg}${nodeRenderSvg}</svg>
+			`.trim();
 
 		if (!rasterizedCanvas) {
 			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor, "image/png");
