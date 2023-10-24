@@ -193,7 +193,7 @@ impl NodeRuntime {
 		use std::collections::hash_map::DefaultHasher;
 		use std::hash::Hash;
 		use std::hash::Hasher;
-		// Required to ensure that the appropriate protonodes are reinserted when the editor api changes.
+		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
 

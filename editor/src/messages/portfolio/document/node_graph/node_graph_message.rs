@@ -86,7 +86,7 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
-	SetSelectNodes {
+	SetSelectedNodes {
 		nodes: Vec<NodeId>,
 	},
 	ShiftNode {

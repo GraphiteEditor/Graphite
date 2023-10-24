@@ -746,7 +746,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				let nodes = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SetSelectNodes { nodes });
+				responses.add(NodeGraphMessage::SetSelectedNodes { nodes });
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
@@ -817,7 +817,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 			}
-			NodeGraphMessage::SetSelectNodes { nodes } => {
+			NodeGraphMessage::SetSelectedNodes { nodes } => {
 				responses.add(document.metadata.set_selected_nodes(nodes));
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}

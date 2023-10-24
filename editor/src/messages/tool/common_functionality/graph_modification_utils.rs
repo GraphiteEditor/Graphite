@@ -17,10 +17,10 @@ use std::collections::VecDeque;
 pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	let id = *layer_path.last().unwrap();
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths });
-	responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![id] })
+	responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![id] })
 }
 
-/// Creat a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
+/// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
 pub fn new_image_layer(image_frame: ImageFrame<Color>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id: *layer_path.last().unwrap(),
@@ -129,7 +129,6 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, document: &Document) -> Option
 	Some(*color)
 }
 
-/// Gets properties from the text node
 pub fn get_text_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, document)?.node_id("Text")
 }
@@ -147,6 +146,7 @@ pub fn get_text(layer: LayerNodeIdentifier, document: &Document) -> Option<(&Str
 	else {
 		return None;
 	};
+
 	let NodeInput::Value {
 		tagged_value: TaggedValue::Font(font),
 		..
@@ -154,6 +154,7 @@ pub fn get_text(layer: LayerNodeIdentifier, document: &Document) -> Option<(&Str
 	else {
 		return None;
 	};
+
 	let NodeInput::Value {
 		tagged_value: TaggedValue::F64(font_size),
 		..
@@ -161,6 +162,7 @@ pub fn get_text(layer: LayerNodeIdentifier, document: &Document) -> Option<(&Str
 	else {
 		return None;
 	};
+
 	Some((text, font, font_size))
 }
 

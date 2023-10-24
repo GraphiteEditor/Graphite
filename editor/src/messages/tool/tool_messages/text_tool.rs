@@ -272,7 +272,7 @@ impl TextToolData {
 
 		self.set_editing(true, render_data, document, responses);
 
-		responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![self.layer.to_node()] });
+		responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![self.layer.to_node()] });
 	}
 
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> TextToolFsmState {
@@ -307,7 +307,7 @@ impl TextToolData {
 
 			self.set_editing(true, render_data, document, responses);
 
-			responses.add(NodeGraphMessage::SetSelectNodes { nodes: self.layer.to_path() });
+			responses.add(NodeGraphMessage::SetSelectedNodes { nodes: self.layer.to_path() });
 
 			TextToolFsmState::Editing
 		} else {

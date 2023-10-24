@@ -180,18 +180,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
-		let text = {
-			let node_type = resolve_document_node_type("Text").expect("Text node does not exist");
-			node_type.to_document_node(
-				[
-					NodeInput::Network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi)),
-					NodeInput::value(TaggedValue::String(text), false),
-					NodeInput::value(TaggedValue::Font(font), false),
-					NodeInput::value(TaggedValue::F64(size), false),
-				],
-				Default::default(),
-			)
-		};
+		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
+			[
+				NodeInput::Network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi)),
+				NodeInput::value(TaggedValue::String(text), false),
+				NodeInput::value(TaggedValue::Font(font), false),
+				NodeInput::value(TaggedValue::F64(size), false),
+			],
+			Default::default(),
+		);
 		let cull = resolve_document_node_type("Cull").expect("Cull node does not exist").default_document_node();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
