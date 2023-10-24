@@ -102,6 +102,7 @@ impl BorrowTree {
 			old_nodes.remove(&id);
 		}
 		self.source_map.retain(|_, nid| !old_nodes.contains(nid));
+		self.nodes.retain(|nid, _| !old_nodes.contains(nid));
 		Ok(old_nodes.into_iter().collect())
 	}
 

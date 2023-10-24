@@ -107,6 +107,8 @@ thread_local! {
 	pub(crate) static NODE_RUNTIME: Rc<RefCell<Option<NodeRuntime>>> = Rc::new(RefCell::new(None));
 }
 
+type MonitorNodes = Vec<Vec<NodeId>>;
+
 impl NodeRuntime {
 	fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
 		let executor = DynamicExecutor::default();
@@ -146,15 +148,7 @@ impl NodeRuntime {
 					viewport_resolution,
 					..
 				}) => {
-					let network = wrap_network_in_scope(graph);
-
-					let monitor_nodes = network
-						.recursive_nodes()
-						.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"))
-						.map(|(_, node)| node.path.clone().unwrap_or_default())
-						.collect::<Vec<_>>();
-
-					let result = self.execute_network(&path, network, transform, viewport_resolution).await;
+					let (result, monitor_nodes) = self.execute_network(&path, graph, transform, viewport_resolution).await;
 					let mut responses = VecDeque::new();
 					self.update_thumbnails(&path, &monitor_nodes, &mut responses);
 					self.update_upstream_transforms(&path, &monitor_nodes, &mut responses);
@@ -173,11 +167,10 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], scoped_network: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> Result<TaggedValue, String> {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
-
 		let editor_api = WasmEditorApi {
 			font_cache: &self.font_cache,
 			application_io: self.wasm_io.as_ref().unwrap(),
@@ -197,15 +190,33 @@ impl NodeRuntime {
 			image_frame: None,
 		};
 
+		use std::collections::hash_map::DefaultHasher;
+		use std::hash::Hash;
+		use std::hash::Hasher;
+		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
+		let mut graph_input_hash = DefaultHasher::new();
+		editor_api.font_cache.hash(&mut graph_input_hash);
+
+		let scoped_network = wrap_network_in_scope(graph, graph_input_hash.finish());
+
+		let monitor_nodes = scoped_network
+			.recursive_nodes()
+			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"))
+			.map(|(_, node)| node.path.clone().unwrap_or_default())
+			.collect::<Vec<_>>();
+
 		// We assume only one output
 		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 		let c = Compiler {};
-		let proto_network = c.compile_single(scoped_network)?;
+		let proto_network = match c.compile_single(scoped_network) {
+			Ok(network) => network,
+			Err(e) => return (Err(e), monitor_nodes),
+		};
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		if let Err(e) = self.executor.update(proto_network).await {
 			error!("Failed to update executor:\n{e}");
-			return Err(e);
+			return (Err(e), monitor_nodes);
 		}
 
 		use graph_craft::graphene_compiler::Executor;
@@ -215,7 +226,11 @@ impl NodeRuntime {
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err("No input type".to_string()),
-		}?;
+		};
+		let result = match result {
+			Ok(value) => value,
+			Err(e) => return (Err(e), monitor_nodes),
+		};
 
 		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
 			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
@@ -227,7 +242,7 @@ impl NodeRuntime {
 				}
 			}
 		}
-		Ok(result)
+		(Ok((result)), monitor_nodes)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.

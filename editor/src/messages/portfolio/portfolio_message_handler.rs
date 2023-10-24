@@ -219,14 +219,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			} => {
 				let font = Font::new(font_family, font_style);
 
-				if let Some(document) = self.active_document_mut() {
-					Self::uploaded_new_font(document, &font, responses);
-					responses.add(DocumentMessage::RenderDocument);
-					responses.add(BroadcastEvent::DocumentIsDirty);
-				}
-
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
+
+				if let Some(document) = self.active_document_mut() {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(BroadcastEvent::DocumentIsDirty);
+				}
 			}
 			PortfolioMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
@@ -673,37 +672,6 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
-	}
-
-	fn uploaded_new_font(document: &mut DocumentMessageHandler, target_font: &Font, responses: &mut VecDeque<Message>) {
-		let mut stack = vec![(&document.document_legacy.root, Vec::new())];
-
-		while let Some((layer, layer_path)) = stack.pop() {
-			match &layer.data {
-				LayerDataType::Folder(folder) => stack.extend(folder.layers.iter().zip(folder.layer_ids.iter().map(|id| {
-					let mut x = layer_path.clone();
-					x.push(*id);
-					x
-				}))),
-				LayerDataType::Layer(layer) => {
-					let input_is_font = |input: &NodeInput| {
-						let NodeInput::Value {
-							tagged_value: TaggedValue::Font(font),
-							..
-						} = input
-						else {
-							return false;
-						};
-						font == target_font
-					};
-					let should_rerender = layer.network.nodes.values().any(|node| node.inputs.iter().any(input_is_font));
-					if should_rerender {
-						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-					}
-				}
-				_ => {}
-			}
-		}
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {

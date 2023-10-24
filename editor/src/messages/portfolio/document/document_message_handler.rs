@@ -1430,37 +1430,18 @@ impl DocumentMessageHandler {
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, _document_id: u64) {
-		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, fonts: &mut HashSet<Font>) {
-			match data {
-				LayerDataType::Folder(folder) => {
-					for (id, layer) in folder.layer_ids.iter().zip(folder.layers().iter()) {
-						path.push(*id);
-						walk_layers(&layer.data, path, responses, fonts);
-						path.pop();
-					}
+		let mut fonts = HashSet::new();
+		for (_node_id, node) in self.document_legacy.document_network.recursive_nodes() {
+			for input in &node.inputs {
+				if let NodeInput::Value {
+					tagged_value: TaggedValue::Font(font),
+					..
+				} = input
+				{
+					fonts.insert(font.clone());
 				}
-				LayerDataType::Layer(layer) => {
-					if layer.cached_output_data == CachedOutputData::None {
-						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: path.clone() });
-					}
-					for node in layer.network.nodes.values() {
-						for input in &node.inputs {
-							if let NodeInput::Value {
-								tagged_value: TaggedValue::Font(font),
-								..
-							} = input
-							{
-								fonts.insert(font.clone());
-							}
-						}
-					}
-				}
-				_ => {}
 			}
 		}
-
-		let mut fonts = HashSet::new();
-		walk_layers(root, &mut path, responses, &mut fonts);
 		for font in fonts {
 			responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default: false });
 		}

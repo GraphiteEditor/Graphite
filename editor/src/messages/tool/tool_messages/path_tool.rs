@@ -246,7 +246,7 @@ impl PathToolData {
 			if shift {
 				responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![layer.to_node()] });
 			} else {
-				responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![layer.to_node()] });
+				responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![layer.to_node()] });
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
@@ -382,7 +382,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
+					responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -397,7 +397,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
+					responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);

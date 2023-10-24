@@ -746,7 +746,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				let nodes = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SetSelectNodes { nodes });
+				responses.add(NodeGraphMessage::SetSelectedNodes { nodes });
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
@@ -817,7 +817,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 			}
-			NodeGraphMessage::SetSelectNodes { nodes } => {
+			NodeGraphMessage::SetSelectedNodes { nodes } => {
 				responses.add(document.metadata.set_selected_nodes(nodes));
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
@@ -870,31 +870,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
 			NodeGraphMessage::ToggleHidden => {
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::ToggleHiddenImpl);
+				if let Some(network) = document.document_network.nested_network(&self.network) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					let new_hidden = !document.metadata.selected_nodes().any(|id| network.disabled.contains(id));
+					for &node_id in document.metadata.selected_nodes() {
+						responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
+					}
+				}
 			}
-			NodeGraphMessage::ToggleHiddenImpl => {
+			NodeGraphMessage::SetHidden { node_id, hidden } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
-					// Check if any of the selected nodes are hidden
-					if document.metadata.selected_nodes().any(|id| network.disabled.contains(id)) {
-						// Remove all selected nodes from the disabled list
-						network.disabled.retain(|id| !document.metadata.selected_nodes_ref().contains(id));
-					} else {
-						let original_outputs = network.original_outputs().iter().map(|output| output.node_id).collect::<Vec<_>>();
-						// Add all selected nodes to the disabled list (excluding input or output nodes)
-						network
-							.disabled
-							.extend(document.metadata.selected_nodes().filter(|&id| !network.inputs.contains(id) && !original_outputs.contains(id)));
+					if !hidden {
+						network.disabled.retain(|&id| node_id != id);
+					} else if !network.inputs.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
+						network.disabled.push(node_id);
 					}
 					Self::send_graph(network, &self.layer_path, responses);
 
 					// Only generate node graph if one of the selected nodes is connected to the output
-					if document.metadata.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
-						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-						} else {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
+					if network.connected_to_output(node_id) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 				self.update_selection_action_buttons(document, responses);

@@ -5,6 +5,7 @@ use bezier_rs::{ManipulatorGroup, Subpath};
 use document_legacy::{document::Document, document_metadata::LayerNodeIdentifier, LayerId, Operation};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
+use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
 use graphene_core::Color;
@@ -16,10 +17,10 @@ use std::collections::VecDeque;
 pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	let id = *layer_path.last().unwrap();
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths });
-	responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![id] })
+	responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![id] })
 }
 
-/// Creat a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
+/// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
 pub fn new_image_layer(image_frame: ImageFrame<Color>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id: *layer_path.last().unwrap(),
@@ -119,6 +120,52 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document: &Document) -> Option<G
 	})
 }
 
+/// Get the current fill of a layer from the closest fill node
+pub fn get_fill_color(layer: LayerNodeIdentifier, document: &Document) -> Option<Color> {
+	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Fill")?;
+	let TaggedValue::Color(color) = inputs.get(2)?.as_value()? else {
+		return None;
+	};
+	Some(*color)
+}
+
+pub fn get_text_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, document)?.node_id("Text")
+}
+pub fn get_fill_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, document)?.node_id("Fill")
+}
+
+/// Gets properties from the text node
+pub fn get_text(layer: LayerNodeIdentifier, document: &Document) -> Option<(&String, &Font, f64)> {
+	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Text")?;
+	let NodeInput::Value {
+		tagged_value: TaggedValue::String(text),
+		..
+	} = &inputs[1]
+	else {
+		return None;
+	};
+
+	let NodeInput::Value {
+		tagged_value: TaggedValue::Font(font),
+		..
+	} = &inputs[2]
+	else {
+		return None;
+	};
+
+	let NodeInput::Value {
+		tagged_value: TaggedValue::F64(font_size),
+		..
+	} = inputs[3]
+	else {
+		return None;
+	};
+
+	Some((text, font, font_size))
+}
+
 /// Is a specified layer an artboard?
 pub fn is_artboard(layer: LayerNodeIdentifier, document: &Document) -> bool {
 	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Artboard"))
@@ -191,6 +238,11 @@ impl<'a> NodeGraphLayer<'a> {
 	/// Does a node exist in the layer's primary flow
 	pub fn uses_node(&self, node_name: &str) -> bool {
 		self.primary_layer_flow().any(|(node, _id)| node.name == node_name)
+	}
+
+	/// Node id of a node if it exists in the layer's primary flow
+	pub fn node_id(&self, node_name: &str) -> Option<NodeId> {
+		self.primary_layer_flow().find(|(node, _id)| node.name == node_name).map(|(_node, id)| id)
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow
