@@ -22,7 +22,7 @@
 		width: auto;
 		height: auto;
 
-		+ .image-label {
+		+ .image-label.image-label {
 			margin-left: 8px;
 		}
 	}

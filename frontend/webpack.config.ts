@@ -1,3 +1,5 @@
+// TODO: Investigate replacing this with https://github.com/vitejs/vite/discussions/7722#discussioncomment-4007436
+
 import * as path from "path";
 import fs from "fs";
 import { spawnSync } from "child_process";
@@ -33,7 +35,7 @@ const config: webpack.Configuration = {
 		new LicenseCheckerWebpackPlugin({
 			allow: "(Apache-2.0 OR BSD-2-Clause OR BSD-3-Clause OR MIT OR 0BSD)",
 			emitError: true,
-			outputFilename: "third-party-licenses.txt",
+			outputFilename: "../dist/third-party-licenses.txt",
 			outputWriter: formatThirdPartyLicenses,
 			// Workaround for failure caused in WebPack 5: https://github.com/microsoft/license-checker-webpack-plugin/issues/25#issuecomment-833325799
 			filter: /(^.*[/\\]node_modules[/\\]((?:@[^/\\]+[/\\])?(?:[^@/\\][^/\\]*)))/,
