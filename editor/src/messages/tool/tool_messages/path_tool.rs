@@ -206,6 +206,8 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	/// Describes information about the selected point(s), if any, across one or multiple shapes and manipulator point types (anchor or handle).
+	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
 	selection_status: SelectionStatus,
 }
 
@@ -572,12 +574,18 @@ struct SingleSelectedPoint {
 	manipulator_angle: ManipulatorAngle,
 }
 
-// If there is one selected and only one manipulator group this yields the selected control point,
-// if only one handle is selected it will yield that handle, otherwise it will yield the group's anchor.
+/// Sets the cumulative description of the selected points: if `None` are selected, if `One` is selected, or if `Multiple` are selected.
+/// Applies to any selected points, whether they are anchors or handles; and whether they are from a single shape or across multiple shapes.
 fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> SelectionStatus {
-	// Check to see if only one manipulator group is selected
-	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (*k, v.selected_points_count())).collect();
-	if let [(layer, 1)] = selection_layers[..] {
+	let mut selection_layers = shape_state.selected_shape_state.iter().map(|(k, v)| (*k, v.selected_points_count()));
+	let total_selected_points = selection_layers.clone().map(|(_, v)| v).sum::<usize>();
+
+	// Check to see if only one manipulator group in a single shape is selected
+	if total_selected_points == 1 {
+		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
+			return SelectionStatus::None;
+		};
+
 		let Some(subpaths) = get_subpaths(layer, document) else {
 			return SelectionStatus::None;
 		};
@@ -605,7 +613,8 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 		});
 	};
 
-	if !selection_layers.is_empty() {
+	// Check to see if multiple manipulator groups are selected
+	if total_selected_points > 1 {
 		return SelectionStatus::Multiple(MultipleSelectedPoints {
 			manipulator_angle: shape_state.selected_manipulator_angles(document),
 		});
