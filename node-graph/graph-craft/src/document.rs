@@ -106,7 +106,7 @@ impl DocumentNode {
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
 			}
 		};
-		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
+		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "received non resolved parameter");
 		assert!(
 			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
 			"received value as parameter. inputs: {:#?}, construction_args: {:#?}",
@@ -115,7 +115,7 @@ impl DocumentNode {
 		);
 
 		// If we have one parameter of the type inline, set it as the construction args
-		if let &[NodeInput::Inline(ref inline)] = &self.inputs[..] {
+		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
 			args = ConstructionArgs::Inline(inline.clone());
 		}
 		if let ConstructionArgs::Nodes(nodes) = &mut args {
