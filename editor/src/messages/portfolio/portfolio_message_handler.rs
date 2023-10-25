@@ -52,7 +52,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							persistent_data: &self.persistent_data,
 							preferences,
 							executor: &mut self.executor,
-							graph_open: self.graph_view_overlay_open,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -69,7 +68,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						persistent_data: &self.persistent_data,
 						preferences,
 						executor: &mut self.executor,
-						graph_open: self.graph_view_overlay_open,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -579,7 +577,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				);
 				common.extend(select);
 			}
-			common.extend(document.actions());
+			common.extend(document.actions_with_graph_open(self.graph_view_overlay_open));
 		}
 
 		common

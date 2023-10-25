@@ -106,7 +106,6 @@ pub struct DocumentInputs<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
-	pub graph_open: bool,
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
@@ -118,7 +117,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			persistent_data,
 			preferences,
 			executor,
-			graph_open,
 		} = document_inputs;
 		use DocumentMessage::*;
 
@@ -205,7 +203,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						document_id,
 						document_name: self.name.as_str(),
 						input: ipp,
-						graph_open,
 					},
 				);
 			}
@@ -921,6 +918,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 	}
 
 	fn actions(&self) -> ActionList {
+		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+	}
+}
+
+impl DocumentMessageHandler {
+	pub fn actions_with_graph_open(&self, graph_open: bool) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,
 			Redo,
@@ -952,7 +955,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			common.extend(select);
 		}
 		common.extend(self.navigation_handler.actions());
-		common.extend(self.node_graph_handler.actions());
+		common.extend(self.node_graph_handler.actions_with_node_graph_open(graph_open));
 		common
 	}
 }

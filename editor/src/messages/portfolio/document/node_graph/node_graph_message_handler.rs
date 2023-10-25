@@ -121,7 +121,6 @@ pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<LayerId>>,
 	pub network: Vec<NodeId>,
 	has_selection: bool,
-	graph_open: bool,
 	#[serde(skip)]
 	pub widgets: [LayoutGroup; 2],
 }
@@ -348,15 +347,15 @@ impl NodeGraphMessageHandler {
 			return false;
 		}
 
-		let mut first_input_node: Option<NodeInput> = None;
+		let mut reconnect_to_input: Option<NodeInput> = None;
 
 		if reconnect {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
 				// Reconnect to the node below when deleting a layer node.
-				let index = if node.name == "Layer" { 7 } else { 0 };
-				if matches!(&node.inputs.get(index), Some(NodeInput::Node { .. })) {
-					first_input_node = Some(node.inputs[index].clone());
+				let reconnect_from_input_index = if node.name == "Layer" { 7 } else { 0 };
+				if matches!(&node.inputs.get(reconnect_from_input_index), Some(NodeInput::Node { .. })) {
+					reconnect_to_input = Some(node.inputs[reconnect_from_input_index].clone());
 				}
 			}
 		}
@@ -388,10 +387,10 @@ impl NodeGraphMessageHandler {
 
 					// Use the first input node as the new input if deleting node's first input is a node,
 					// and the current node uses its primary output too
-					if let Some(input_node) = &first_input_node {
+					if let Some(reconnect_to_input) = &reconnect_to_input {
 						if *output_index == 0 {
 							refers_to_output_node = true;
-							*input = input_node.clone()
+							*input = reconnect_to_input.clone()
 						}
 					}
 
@@ -440,7 +439,6 @@ pub struct NodeGraphHandlerData<'a> {
 	pub document_id: u64,
 	pub document_name: &'a str,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub graph_open: bool,
 }
 
 impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
@@ -782,8 +780,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetNodeInput { node_id, input_index, input } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						let structure_changed = node.inputs[input_index].as_node().is_some() || input.as_node().is_some();
-						node.inputs[input_index] = input;
+						let Some(node_input) = node.inputs.get_mut(input_index) else {
+							error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
+							return;
+						};
+						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
+						*node_input = input;
 						if structure_changed {
 							document.metadata.load_structure(&document.document_network);
 						}
@@ -932,11 +934,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 		}
 		self.has_selection = document.metadata.has_selected_nodes();
-		self.graph_open = data.graph_open;
 	}
 
 	fn actions(&self) -> ActionList {
-		if self.has_selection && self.graph_open {
+		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+	}
+}
+
+impl NodeGraphMessageHandler {
+	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
+		if self.has_selection && graph_open {
 			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleHidden)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
