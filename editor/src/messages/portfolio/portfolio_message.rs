@@ -59,9 +59,6 @@ pub enum PortfolioMessage {
 		open: bool,
 	},
 	GraphViewOverlayToggle,
-	GraphViewOverlayToggleDisabled {
-		disabled: bool,
-	},
 	ImaginateCheckServerStatus,
 	ImaginatePollServerStatus,
 	ImaginatePreferences,

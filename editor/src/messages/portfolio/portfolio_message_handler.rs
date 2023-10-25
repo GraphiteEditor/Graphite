@@ -26,7 +26,6 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: Option<u64>,
 	graph_view_overlay_open: bool,
-	graph_view_overlay_toggle_disabled: bool,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
@@ -245,12 +244,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
 			PortfolioMessage::GraphViewOverlayToggle => {
-				if !self.graph_view_overlay_toggle_disabled {
-					responses.add(PortfolioMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
-				}
-			}
-			PortfolioMessage::GraphViewOverlayToggleDisabled { disabled } => {
-				self.graph_view_overlay_toggle_disabled = disabled;
+				responses.add(PortfolioMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				let server_status = self.persistent_data.imaginate.server_status().clone();
@@ -544,7 +538,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			GraphViewOverlayToggle,
-			GraphViewOverlayToggleDisabled,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			CloseAllDocumentsWithConfirmation,

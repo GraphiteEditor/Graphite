@@ -1590,7 +1590,7 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new(
 				"Canvas Navigation",
-				"Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.",
+				"Interactive options in this popover\nmenu are coming soon.\n\nZoom:\n• Shift + Middle Click Drag\n• Ctrl + Scroll Wheel Roll\nRotate:\n• Alt + Left Click Drag",
 			)
 			.widget_holder(),
 		]);
