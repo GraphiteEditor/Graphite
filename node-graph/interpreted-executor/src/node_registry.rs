@@ -460,7 +460,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f32)],
 			),
 		)],
-		raster_node!(graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>, params: [Color, f32, f32, f32, f32, f32, f32]),
+		raster_node!(graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>, params: [Color, f32, f32, f32, f32, f32, f32]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f32, f32, f32]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
 		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f32, f32, LuminanceCalculation]),

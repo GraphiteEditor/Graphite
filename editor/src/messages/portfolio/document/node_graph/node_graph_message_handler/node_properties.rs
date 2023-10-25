@@ -687,7 +687,7 @@ pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
-pub fn grayscale_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	const MIN: f64 = -200.;
 	const MAX: f64 = 300.;
 	// TODO: Add tint color (blended above using the "Color" blend mode)

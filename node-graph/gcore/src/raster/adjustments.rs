@@ -279,7 +279,7 @@ fn levels_node(color: Color, input_start: f32, input_mid: f32, input_end: f32, o
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
+pub struct BlackAndWhiteNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 	tint: Tint,
 	reds: Reds,
 	yellows: Yellows,
@@ -291,8 +291,8 @@ pub struct GrayscaleNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
 
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
-#[node_macro::node_fn(GrayscaleNode)]
-fn grayscale_color_node(color: Color, tint: Color, reds: f32, yellows: f32, greens: f32, cyans: f32, blues: f32, magentas: f32) -> Color {
+#[node_macro::node_fn(BlackAndWhiteNode)]
+fn black_and_white_color_node(color: Color, tint: Color, reds: f32, yellows: f32, greens: f32, cyans: f32, blues: f32, magentas: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let reds = reds / 100.;

@@ -163,10 +163,6 @@
 	function nodeIcon(nodeName: string): IconName {
 		const iconMap: Record<string, IconName> = {
 			Output: "NodeOutput",
-			Imaginate: "NodeImaginate",
-			"Hue Shift Image": "NodeColorCorrection",
-			"Brighten Image": "NodeColorCorrection",
-			"Grayscale Image": "NodeColorCorrection",
 		};
 		return iconMap[nodeName] || "NodeNodes";
 	}

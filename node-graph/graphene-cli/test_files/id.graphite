@@ -211,7 +211,7 @@
                                                 "path": null
                                             },
                                             "2037214651900404495": {
-                                                "name": "Grayscale",
+                                                "name": "Black & White",
                                                 "inputs": [
                                                     {
                                                         "Value": {
@@ -299,7 +299,7 @@
                                                 ],
                                                 "implementation": {
                                                     "Unresolved": {
-                                                        "name": "graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>"
+                                                        "name": "graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"
                                                     }
                                                 },
                                                 "metadata": {

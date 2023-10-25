@@ -686,9 +686,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Grayscale",
+			name: "Black & White",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType {
 					name: "Image",
@@ -732,7 +732,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::grayscale_properties,
+			properties: node_properties::black_and_white_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
