@@ -423,6 +423,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					node.into_type_erased()
 				})
 			},
+			// This is how we can generically define composition of two nodes.
+			// See further details in the code definition for the `struct ComposeNode<First, Second, I> { ... }` struct.
 			NodeIOTypes::new(
 				generic!(T),
 				generic!(U),

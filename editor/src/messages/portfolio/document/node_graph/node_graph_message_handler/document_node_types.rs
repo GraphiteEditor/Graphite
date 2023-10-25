@@ -93,6 +93,7 @@ impl NodeImplementation {
 	}
 }
 
+/// Acts as a description for a [DocumentNode] before it gets instantiated as one.
 #[derive(Clone)]
 pub struct DocumentNodeType {
 	pub name: &'static str,
@@ -125,6 +126,8 @@ impl Default for DocumentNodeType {
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeType>> = once_cell::sync::Lazy::new(static_nodes);
 
 // TODO: Dynamic node library
+/// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
+/// The document node is the instance while these are the "class" (or "blueprint").
 fn static_nodes() -> Vec<DocumentNodeType> {
 	vec![
 		DocumentNodeType {
@@ -498,7 +501,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Consumes the scope opened by the Begin Scope node and evaluates the contained node network"),
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -798,8 +801,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
-				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
+				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
 				nodes: [
+					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
+					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
+					// Diagram: <https://files.keavon.com/-/AchingSecondHypsilophodon/capture.png>
 					DocumentNode {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],

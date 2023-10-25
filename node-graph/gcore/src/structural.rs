@@ -2,6 +2,25 @@ use core::marker::PhantomData;
 
 use crate::{Node, NodeMut};
 
+// This is how we can generically define composition of two nodes.
+// This is done generically as shown: <https://files.keavon.com/-/SurprisedGaseousAnhinga/capture.png>
+// A concrete example: <https://files.keavon.com/-/ExcitableGoldRay/capture.png>
+// And showing the direction of data flow: <https://files.keavon.com/-/SoreShimmeringElephantseal/capture.png>
+///                       ┌────────────────┐
+///                 T     │                │     U
+///           ───────────►│  Compose Node  ├───────────►
+///                       │                │
+///                       └────┬───────────┤
+///  ┌──────────┐              │           │
+///  │          │    T -> V    │           │
+///  │  First   ├─────────────►│           │
+///  │          │              │           │
+///  └──────────┘              │           │
+///  ┌──────────┐              │           │
+///  │          │    V -> U    │           │
+///  │  Second  ├─────────────►│           │
+///  │          │              └───────────┘
+///  └──────────┘
 #[derive(Clone, Copy)]
 pub struct ComposeNode<First, Second, I> {
 	first: First,
