@@ -11,7 +11,7 @@ use graph_craft::Type;
 
 use crate::node_registry;
 
-/// An executor of a node graph that does not require us to pay for a compilation server, and instead uses `Box<dyn ...>`.
+/// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 pub struct DynamicExecutor {
 	output: NodeId,
 	/// Stores all of the dynamic node structs.
@@ -48,7 +48,7 @@ impl DynamicExecutor {
 		})
 	}
 
-	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], resuing nodes where possible.
+	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
@@ -85,9 +85,9 @@ impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
 #[derive(Default)]
 /// A store of the dynamically typed nodes and also the source map.
 pub struct BorrowTree {
-	/// A hashmap of node ids and dynamically typed nodes.
+	/// A hashmap of node IDs and dynamically typed nodes.
 	nodes: HashMap<NodeId, SharedNodeContainer>,
-	/// A hashmap from the document path to the protonode id
+	/// A hashmap from the document path to the protonode ID.
 	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 

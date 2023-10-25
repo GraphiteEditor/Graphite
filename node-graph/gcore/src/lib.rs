@@ -47,7 +47,7 @@ pub use types::Cow;
 
 // pub trait Node: for<'n> NodeIO<'n> {
 /// The node trait allows for defining any node. Nodes can only take one input, however they can store references to other nodes inside the struct.
-/// See `node_graph/README.md` for information on how to define a new node.
+/// See `node-graph/README.md` for information on how to define a new node.
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
 	/// Evalutes the node with the single specified input.

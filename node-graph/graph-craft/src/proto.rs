@@ -78,12 +78,12 @@ impl NodeContainer {
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
-/// A list of [`ProtoNode`], which is an itermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
+/// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
+	// TODO: remove this since it seems to be unused?
 	// Should a proto Network even allow inputs? Don't think so
-	/// Unused TODO: remove.
 	pub inputs: Vec<NodeId>,
-	/// The node id that provides the output. This node is then responsible for calling the rest of the graph.
+	/// The node ID that provides the output. This node is then responsible for calling the rest of the graph.
 	pub output: NodeId,
 	/// A list of nodes stored in a Vec to allow for sorting.
 	pub nodes: Vec<(NodeId, ProtoNode)>,
@@ -140,15 +140,15 @@ impl core::fmt::Display for ProtoNetwork {
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
-/// Defines the argument used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
+/// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
 	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
 	Value(value::TaggedValue),
-	/// A list of nodes used as inputs the the constructor function in `node_registry.rs`.
+	// TODO: use a struct for clearer naming.
+	/// A list of nodes used as inputs to the constructor function in `node_registry.rs`.
 	/// The bool indicates whether to treat the node as lambda node.
-	/// TODO: use struct for clearer naming.
 	Nodes(Vec<(NodeId, bool)>),
-	/// TODO: What?
+	// TODO: What?
 	Inline(InlineRust),
 }
 
@@ -188,7 +188,7 @@ impl Hash for ConstructionArgs {
 }
 
 impl ConstructionArgs {
-	/// TODO: what? Used in the gpu_compiler crate for something.
+	// TODO: what? Used in the gpu_compiler crate for something.
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
@@ -215,16 +215,16 @@ pub struct ProtoNode {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProtoNodeInput {
-	/// [`ProtoNode`]s do not require any input e.g. the value node just takes in [`ConstructionArgs`].
+	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
 	None,
-	/// A ManualComposition input represents an input that is not resolved through the `ComposeNode` running the previous node with the input and then passing the result to this node.
-	/// actually consuming the provided input instead of passing it to its predecessor.
+	/// A ManualComposition input represents an input that opts out of being resolved through the default `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated result to this node
+	/// Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
 	///
-	/// Say we have the network `a -> b -> c` where c is the output node and a is the input node.
+	/// Say we have the network `a -> b -> c` where `c` is the output node and `a` is the input node.
 	/// We would expect `a` to get input from the network, `b` to get input from `a`, and `c` to get input from `b`.
-	/// This could be represented as `f(x) = c(b(a(x)))`. `a` is run with input from the network. `b` is run with input from `a`. `c` is run with input from `b`.
+	/// This could be represented as `f(x) = c(b(a(x)))`. `a` is run with input `x` from the network. `b` is run with input from `a`. `c` is run with input from `b`.
 	///
-	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not executed.
+	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not automatically executed as it would be using the default ComposeNode flow.
 	ManualComposition(Type),
 	/// the bool indicates whether to treat the node as lambda node.
 	/// When treating it as a lambda, only the node that is connected itself is fed as input.
@@ -242,8 +242,8 @@ impl ProtoNodeInput {
 }
 
 impl ProtoNode {
-	/// A stable node id is a hash of a node that should stay constant. This is used in order to remove duplicates from the graph.
-	/// In the case of `skip_deduplication`, the `document_node_path` is also hashed in order to avoid duplicate monitor nodes from being removed (which would make it impossible to load the thumbnail).
+	/// A stable node ID is a hash of a node that should stay constant. This is used in order to remove duplicates from the graph.
+	/// In the case of `skip_deduplication`, the `document_node_path` is also hashed in order to avoid duplicate monitor nodes from being removed (which would make it impossible to load thumbnails).
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
 		let mut hasher = rustc_hash::FxHasher::default();
@@ -277,8 +277,8 @@ impl ProtoNode {
 		}
 	}
 
-	/// Converts all references to other node ids to new ids by running the specified function on them.
-	/// This can be used when changing the ids of the nodes for example in the case of generating stable ids.
+	/// Converts all references to other node IDs into new IDs by running the specified function on them.
+	/// This can be used when changing the IDs of the nodes, for example in the case of generating stable IDs.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId, skip_lambdas: bool) {
 		if let ProtoNodeInput::Node(id, lambda) = self.input {
 			if !(skip_lambdas && lambda) {
@@ -306,7 +306,7 @@ impl ProtoNetwork {
 		);
 	}
 
-	/// Construct a hashmap containing a list of the nodes that depend on me.
+	/// Construct a hashmap containing a list of the nodes that depend on this proto network.
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
@@ -324,8 +324,8 @@ impl ProtoNetwork {
 		edges
 	}
 
-	/// Convert all node ids to be stable (based on the hash generated by [`ProtoNode::stable_node_id`]).
-	/// This function requires that the graph be topicogically sorted.
+	/// Convert all node IDs to be stable (based on the hash generated by [`ProtoNode::stable_node_id`]).
+	/// This function requires that the graph be topologically sorted.
 	pub fn generate_stable_node_ids(&mut self) {
 		debug_assert!(self.is_topologically_sorted());
 		let outwards_edges = self.collect_outwards_edges();
@@ -339,7 +339,7 @@ impl ProtoNetwork {
 		}
 	}
 
-	/// Create a hashmap with the list of nodes I depend on / use as inputs.
+	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
@@ -397,7 +397,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	/// Update all of the references to a node id in the graph with a new id named `compose_node_id`.
+	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<u64, Vec<u64>>, node_id: u64, compose_node_id: u64, skip_lambdas: bool) {
 		// Update references in other nodes to use the new compose node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
@@ -492,7 +492,7 @@ impl ProtoNetwork {
 		sorted
 	}*/
 
-	/// Sort the nodes vec so it is in a topilogical order. This ensures that no node takes an input from a node that is found later in the list.
+	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {
 		let order = self.topological_sort()?;
 

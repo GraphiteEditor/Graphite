@@ -11,8 +11,8 @@ pub mod value;
 
 pub type NodeId = u64;
 
-/// Hash two ids together, returning a new id that is always consistant for two input ids in a specific order.
-/// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non conflicting ids for inner networks.
+/// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
+/// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
 fn merge_ids(a: u64, b: u64) -> u64 {
 	use std::hash::{Hash, Hasher};
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -50,28 +50,33 @@ pub struct DocumentNode {
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks. In the root network, it is resolved when evaluating the borrow tree.
 	pub inputs: Vec<NodeInput>,
-	/// Usually, the primary input node is evaluated before the node is run, for example a node that takes an image will get an actual image as input.
+	/// Manual composition is a way to override the default composition flow of one node into another.
+	///
+	/// Through the usual node composition flow, the upstream node providing the primary input for a node is evaluated before the node itself is run.
+	/// For example a node that takes an image as primary input will get image data as input from an upstream node that's evaluated first.
 	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and feed the output into the second node.
+	/// The `ComposeNode` is basically a function composition operator: the parentheses in `f(g)`.
+	/// For flexability, Graphene splits out composition itself as its own node so it can be overridden. That's what `manual_composition` allows.
 	///
 	/// A ManualComposition input represents an input that is not resolved through the `ComposeNode`, and is instead just passed in when evaluating this node within the borrow tree.
 	/// This is similar to having the first input be a NodeInput::Network after the graph flattening.
 	pub manual_composition: Option<Type>,
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
-	// A nested document network or a proto-node identifier
+	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
-	/// When 2 different protonodes hash to the same value (e.g. 2 value nodes that contain `2u32` or 2 multiply nodes that have the same node ids as input)
-	/// the duplicates are removed. See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// When two different protonodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
+	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
 	pub hash: u64,
-	/// The path to this node as of when [`NodeNetwork::generate_node_paths`] was called. For example if this node was id 6 inside a node with id 4
-	/// and with a [`DocumentNodeImplementation::Network`], the path would be [4,6].
+	/// The path to this node as of when [`NodeNetwork::generate_node_paths`] was called.
+	/// For example if this node was ID 6 inside a node with ID 4 and with a [`DocumentNodeImplementation::Network`], the path would be [4, 6].
 	pub path: Option<Vec<NodeId>>,
 }
 
@@ -198,6 +203,11 @@ pub enum NodeInput {
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
 	Network(Type),
 
+	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
+	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
+	Inline(InlineRust),
+
+	// TODO: Update, remove, or transplant this comment to a new place (ShortCircuit was renamed to ManualComposition, and may also have some relationship to Network?)
 	/// A short circuting input represents an input that is not resolved through function composition
 	/// but rather by actually consuming the provided input instead of passing it to its predecessor.
 	///
@@ -230,12 +240,7 @@ pub enum NodeInput {
 	///
 	/// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
 	/// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
-	// TODO: Update
 	// ShortCircut(Type),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, DynAny)]
@@ -304,14 +309,14 @@ impl NodeInput {
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`NodeIdentifier`] or extract
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`NodeIdentifier`], or extract.
 pub enum DocumentNodeImplementation {
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
 	/// A protonode identifier which can be found in `node_registry.rs`.
 	Unresolved(NodeIdentifier),
 	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`.
-	/// The referenced node are removed from the network, and any `NodeInput::Node`s used by the refereced node are replaced with a generically typed network input.
+	/// The referenced node (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	Extract,
 }
 
@@ -343,7 +348,7 @@ impl DocumentNodeImplementation {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, specta::Type, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Defines a particular output port, specifying the node id and output index.
+/// Defines a particular output port, specifying the node ID and output index.
 pub struct NodeOutput {
 	pub node_id: NodeId,
 	pub node_output_index: usize,
@@ -356,7 +361,7 @@ impl NodeOutput {
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// A network of nodes containing each [`DocumentNode`] and its id, as well as a list of input nodes and [`NodeOutput`]s
+/// A network of nodes containing each [`DocumentNode`] and its ID, as well as a list of input nodes and [`NodeOutput`]s
 pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub outputs: Vec<NodeOutput>,
@@ -616,7 +621,7 @@ impl NodeNetwork {
 	}
 }
 
-/// Iterate over the primary inputs of nodes, so in the case of `a -> b -> c`, this would yeild `c, b, a` if we started from `c`.
+/// Iterate over the primary inputs of nodes, so in the case of `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
@@ -642,7 +647,7 @@ impl<'a> Iterator for FlowIter<'a> {
 
 /// Functions for compiling the network
 impl NodeNetwork {
-	/// Replace all references in the graph of a node id with a new node id defined by the function f.
+	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.inputs.iter_mut().for_each(|id| *id = f(*id));
 		self.outputs.iter_mut().for_each(|output| output.node_id = f(output.node_id));
@@ -709,7 +714,7 @@ impl NodeNetwork {
 		}
 	}
 
-	/// Removes unused nodes from the graph. Returns a list of bools which represent if each of the inputs have been retained
+	/// Removes unused nodes from the graph. Returns a list of booleans which represent if each of the inputs have been retained.
 	pub fn remove_dead_nodes(&mut self) -> Vec<bool> {
 		// Take all the nodes out of the nodes list
 		let mut old_nodes = std::mem::take(&mut self.nodes);
@@ -905,7 +910,7 @@ impl NodeNetwork {
 		Ok(())
 	}
 
-	/// Removes [`graphene_core::ops::IdNode`] that are unnecessary.
+	/// Strips out any [`graphene_core::ops::IdNode`]s that are unnecessary.
 	pub fn remove_redundant_id_nodes(&mut self) {
 		let id_nodes = self
 			.nodes
@@ -926,7 +931,7 @@ impl NodeNetwork {
 
 	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
 	/// the `DocumentNode` specified by the single `NodeInput::Node`.
-	/// The referenced node are removed from the network, and any `NodeInput::Node`s used by the refereced node are replaced with a generically typed network input.
+	/// The referenced node is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	pub fn resolve_extract_nodes(&mut self) {
 		let mut extraction_nodes = self
 			.nodes
@@ -962,7 +967,7 @@ impl NodeNetwork {
 		self.nodes.extend(extraction_nodes);
 	}
 
-	/// Creates a protonetwork for evaluating each output of this network.
+	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 		nodes.sort_unstable_by_key(|(i, _)| *i);
