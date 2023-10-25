@@ -48,9 +48,13 @@ pub struct DocumentNode {
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
 	/// - A constant value [`NodeInput::Value`],
-	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step.
+	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks. In the root network, it is resolved when evaluating the borrow tree.
 	pub inputs: Vec<NodeInput>,
-	/// TODO: what is this?
+	/// Usually, the primary input node is evaluated before the node is run, for example a node that takes an image will get an actual image as input.
+	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and feed the output into the second node.
+	///
+	/// A ManualComposition input represents an input that is not resolved through the `ComposeNode`, and is instead just passed in when evaluating this node within the borrow tree.
+	/// This is similar to having the first input be a NodeInput::Network after the graph flattening.
 	pub manual_composition: Option<Type>,
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
@@ -107,7 +111,7 @@ impl DocumentNode {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
-			(ProtoNodeInput::ShortCircut(ty), ConstructionArgs::Nodes(vec![]))
+			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {
 			let first = self.inputs.remove(0);
 			match first {
@@ -119,7 +123,7 @@ impl DocumentNode {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode. {:#?}", self.name);
 					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
 				}
-				NodeInput::Network(ty) => (ProtoNodeInput::Network(ty), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Network(ty) => (ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
 			}
 		};
@@ -306,7 +310,8 @@ pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	/// A protonode identifier which can be found in `node_registry.rs`.
 	Unresolved(NodeIdentifier),
-	/// TODO: what?
+	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`.
+	/// The referenced node are removed from the network, and any `NodeInput::Node`s used by the refereced node are replaced with a generically typed network input.
 	Extract,
 }
 
@@ -919,7 +924,9 @@ impl NodeNetwork {
 		}
 	}
 
-	/// TODO: what?
+	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
+	/// the `DocumentNode` specified by the single `NodeInput::Node`.
+	/// The referenced node are removed from the network, and any `NodeInput::Node`s used by the refereced node are replaced with a generically typed network input.
 	pub fn resolve_extract_nodes(&mut self) {
 		let mut extraction_nodes = self
 			.nodes
@@ -930,29 +937,27 @@ impl NodeNetwork {
 		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
 		for (_, node) in &mut extraction_nodes {
-			if let DocumentNodeImplementation::Extract = node.implementation {
-				assert_eq!(node.inputs.len(), 1);
-				let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
-					panic!("Extract node has no input, inputs: {:?}", node.inputs);
+			assert_eq!(node.inputs.len(), 1);
+			let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
+				panic!("Extract node has no input, inputs: {:?}", node.inputs);
+			};
+			assert_eq!(output_index, 0);
+			// TODO: check if we can read lambda checking?
+			let mut input_node = self.nodes.remove(&node_id).unwrap();
+			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into());
+			if let Some(input) = input_node.inputs.get_mut(0) {
+				*input = match &input {
+					NodeInput::Node { .. } => NodeInput::Network(generic!(T)),
+					ni => NodeInput::Network(ni.ty()),
 				};
-				assert_eq!(output_index, 0);
-				// TODO: check if we can readd lambda checking
-				let mut input_node = self.nodes.remove(&node_id).unwrap();
-				node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into());
-				if let Some(input) = input_node.inputs.get_mut(0) {
-					*input = match &input {
-						NodeInput::Node { .. } => NodeInput::Network(generic!(T)),
-						ni => NodeInput::Network(ni.ty()),
-					};
-				}
-
-				for input in input_node.inputs.iter_mut() {
-					if let NodeInput::Node { .. } = input {
-						*input = NodeInput::Network(generic!(T))
-					}
-				}
-				node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
 			}
+
+			for input in input_node.inputs.iter_mut() {
+				if let NodeInput::Node { .. } = input {
+					*input = NodeInput::Network(generic!(T))
+				}
+			}
+			node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
 		}
 		self.nodes.extend(extraction_nodes);
 	}
@@ -1149,7 +1154,7 @@ mod test {
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
-			input: ProtoNodeInput::Network(concrete!(u32)),
+			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 			construction_args: ConstructionArgs::Nodes(vec![(0, false)]),
 			document_node_path: vec![],
 			skip_deduplication: false,
@@ -1167,7 +1172,7 @@ mod test {
 					10,
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
-						input: ProtoNodeInput::Network(concrete!(u32)),
+						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![1, 0],
 						skip_deduplication: false,

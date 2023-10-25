@@ -17,7 +17,11 @@ pub struct DocumentNode {
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step.
 	pub inputs: Vec<NodeInput>,
-	/// TODO: what is this?
+	/// Usually, the primary input node is evaluated before the node is run, for example a node that takes an image will get an actual image as input.
+	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and feed the output into the second node.
+	///
+	/// A ManualComposition input represents an input that is not resolved through the `ComposeNode`, and is instead just passed in when evaluating this node within the borrow tree.
+	/// This is similar to having the first input be a NodeInput::Network after the graph flattening.
 	pub manual_composition: Option<Type>,
 	// A nested document network or a proto-node identifier
 	pub implementation: DocumentNodeImplementation,
@@ -128,6 +132,12 @@ fn image_opacity(color: Color, opacity_multiplier: f64) -> Color {
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
 ```
+
+## Alternative macros
+
+`#[node_macro::node_fn(NodeName)]` generates an implementation of the `Node` trait for NodeName with the specific input types, and also generates a `fn new` that can be used to construct the node struct. If multiple implementations for different types are needed, then it is necessary to avoid creating this `new` function twice, so you can use `#[node_macro::node_impl(NodeName)]`.
+
+If you need to manually implement the `Node` trait without using the macro, but wish to have an automatically generated `fn new`, you can use `#[node_macro::node_new(NodeName)]`, which can be applied to a function.
 
 ## Executing a document `NodeNetwork`
 

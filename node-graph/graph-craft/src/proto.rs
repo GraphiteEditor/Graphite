@@ -108,8 +108,7 @@ impl core::fmt::Display for ProtoNetwork {
 			f.write_str("Primary input: ")?;
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
-				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {ty:?})"))?,
-				ProtoNodeInput::ShortCircut(ty) => f.write_fmt(format_args!("Lambda (type = {ty:?})"))?,
+				ProtoNodeInput::ManualComposition(ty) => f.write_fmt(format_args!("Manual Composition (type = {ty:?})"))?,
 				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
@@ -218,18 +217,15 @@ pub struct ProtoNode {
 pub enum ProtoNodeInput {
 	/// [`ProtoNode`]s do not require any input e.g. the value node just takes in [`ConstructionArgs`].
 	None,
-	/// The primary input
-	Network(Type),
-	/// A ShortCircut input represents an input that is not resolved through function composition but
+	/// A ManualComposition input represents an input that is not resolved through the `ComposeNode` running the previous node with the input and then passing the result to this node.
 	/// actually consuming the provided input instead of passing it to its predecessor.
 	///
 	/// Say we have the network `a -> b -> c` where c is the output node and a is the input node.
 	/// We would expect `a` to get input from the network, `b` to get input from `a`, and `c` to get input from `b`.
 	/// This could be represented as `f(x) = c(b(a(x)))`. `a` is run with input from the network. `b` is run with input from `a`. `c` is run with input from `b`.
 	///
-	/// However if `b`'s input is short circuting, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` does not.
-	/// TODO: is this correct??
-	ShortCircut(Type),
+	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not executed.
+	ManualComposition(Type),
 	/// the bool indicates whether to treat the node as lambda node.
 	/// When treating it as a lambda, only the node that is connected itself is fed as input.
 	/// Otherwise, the the entire network of which the node is the output is fed as input.
@@ -261,10 +257,7 @@ impl ProtoNode {
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
-			ProtoNodeInput::ShortCircut(ref ty) => {
-				ty.hash(&mut hasher);
-			}
-			ProtoNodeInput::Network(ref ty) => {
+			ProtoNodeInput::ManualComposition(ref ty) => {
 				ty.hash(&mut hasher);
 			}
 			ProtoNodeInput::Node(id, lambda) => (id, lambda).hash(&mut hasher),
@@ -602,8 +595,7 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
-			ProtoNodeInput::ShortCircut(ref ty) => ty.clone(),
-			ProtoNodeInput::Network(ref ty) => ty.clone(),
+			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id, _) => {
 				let input = self
 					.inferred
@@ -825,7 +817,7 @@ mod test {
 					10,
 					ProtoNode {
 						identifier: "cons".into(),
-						input: ProtoNodeInput::Network(concrete!(u32)),
+						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![],
 						skip_deduplication: false,

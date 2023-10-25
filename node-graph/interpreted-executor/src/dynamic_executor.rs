@@ -133,13 +133,14 @@ impl BorrowTree {
 		self.nodes.get(&id).cloned()
 	}
 
-	/// Evaluate the output node of the [`BorrowTree`]
+	/// Evaluate the output node of the [`BorrowTree`].
 	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
 		let output = node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
-	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value
+	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
+	/// This ensures that no borrowed data can escape the node graph.
 	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
