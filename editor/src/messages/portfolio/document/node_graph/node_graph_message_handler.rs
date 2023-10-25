@@ -347,13 +347,15 @@ impl NodeGraphMessageHandler {
 			return false;
 		}
 
-		let mut first_input_node: Option<NodeInput> = None;
+		let mut reconnect_to_input: Option<NodeInput> = None;
 
 		if reconnect {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
-				if matches!(node.inputs.first(), Some(NodeInput::Node { .. })) {
-					first_input_node = Some(node.inputs[0].clone());
+				// Reconnect to the node below when deleting a layer node.
+				let reconnect_from_input_index = if node.name == "Layer" { 7 } else { 0 };
+				if matches!(&node.inputs.get(reconnect_from_input_index), Some(NodeInput::Node { .. })) {
+					reconnect_to_input = Some(node.inputs[reconnect_from_input_index].clone());
 				}
 			}
 		}
@@ -385,10 +387,10 @@ impl NodeGraphMessageHandler {
 
 					// Use the first input node as the new input if deleting node's first input is a node,
 					// and the current node uses its primary output too
-					if let Some(input_node) = &first_input_node {
+					if let Some(reconnect_to_input) = &reconnect_to_input {
 						if *output_index == 0 {
 							refers_to_output_node = true;
-							*input = input_node.clone()
+							*input = reconnect_to_input.clone()
 						}
 					}
 
@@ -481,7 +483,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
 					return;
 				};
-				document.metadata.load_structure(&document.document_network);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -779,7 +780,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetNodeInput { node_id, input_index, input } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						node.inputs[input_index] = input
+						let Some(node_input) = node.inputs.get_mut(input_index) else {
+							error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
+							return;
+						};
+						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
+						*node_input = input;
+						if structure_changed {
+							document.metadata.load_structure(&document.document_network);
+						}
 					}
 				}
 			}
@@ -928,7 +937,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		if self.has_selection {
+		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+	}
+}
+
+impl NodeGraphMessageHandler {
+	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
+		if self.has_selection && graph_open {
 			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleHidden)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)

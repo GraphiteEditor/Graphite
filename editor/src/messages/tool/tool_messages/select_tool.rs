@@ -301,7 +301,7 @@ impl SelectToolData {
 		self.not_duplicated_layers = Some(self.layers_dragging.clone());
 
 		// Duplicate each previously selected layer and select the new ones.
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter()) {
+		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
 			let layer = layer_ancestors.last().unwrap();
 			// Moves the original back to its starting position.
 			responses.add_front(GraphOperationMessage::TransformChange {
@@ -352,14 +352,14 @@ impl SelectToolData {
 		responses.add(DocumentMessage::DeselectAllLayers);
 
 		// Delete the duplicated layers
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter()) {
+		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
 			responses.add(GraphOperationMessage::DeleteLayer {
 				id: layer_ancestors.last().unwrap().to_node(),
 			});
 		}
 
 		// Move the original to under the mouse
-		for layer_ancestors in document.metadata().shallowest_unique_layers(originals.iter()) {
+		for layer_ancestors in document.metadata().shallowest_unique_layers(originals.iter().copied()) {
 			responses.add_front(GraphOperationMessage::TransformChange {
 				layer: layer_ancestors.last().unwrap().to_path(),
 				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
@@ -581,7 +581,7 @@ impl Fsm for SelectToolFsmState {
 
 				let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter()) {
+				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer: layer_ancestors.last().unwrap().to_path(),
 						transform: DAffine2::from_translation(mouse_delta + closest_move),

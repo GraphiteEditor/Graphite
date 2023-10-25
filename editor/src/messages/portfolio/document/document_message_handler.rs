@@ -100,14 +100,24 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor)> for DocumentMessageHandler {
+pub struct DocumentInputs<'a> {
+	pub document_id: u64,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub persistent_data: &'a PersistentData,
+	pub preferences: &'a PreferencesMessageHandler,
+	pub executor: &'a mut NodeGraphExecutor,
+}
+
+impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_message(
-		&mut self,
-		message: DocumentMessage,
-		responses: &mut VecDeque<Message>,
-		(document_id, ipp, persistent_data, preferences, executor): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor),
-	) {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, document_inputs: DocumentInputs) {
+		let DocumentInputs {
+			document_id,
+			ipp,
+			persistent_data,
+			preferences,
+			executor,
+		} = document_inputs;
 		use DocumentMessage::*;
 
 		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
@@ -300,8 +310,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.backup(responses);
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
-				for path in self.selected_layers_without_children() {
-					responses.add_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() });
+				for path in self.metadata().shallowest_unique_layers(self.metadata().selected_layers()) {
+					responses.add_front(DocumentMessage::DeleteLayer {
+						layer_path: path.last().unwrap().to_path(),
+					});
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
@@ -906,6 +918,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 	}
 
 	fn actions(&self) -> ActionList {
+		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+	}
+}
+
+impl DocumentMessageHandler {
+	pub fn actions_with_graph_open(&self, graph_open: bool) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,
 			Redo,
@@ -922,7 +940,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			CreateEmptyFolder,
 		);
 
-		if self.layer_metadata.values().any(|data| data.selected) {
+		if self.metadata().selected_layers().next().is_some() {
 			let select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
@@ -937,7 +955,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			common.extend(select);
 		}
 		common.extend(self.navigation_handler.actions());
-		common.extend(self.node_graph_handler.actions());
+		common.extend(self.node_graph_handler.actions_with_node_graph_open(graph_open));
 		common
 	}
 }
