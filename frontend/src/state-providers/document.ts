@@ -13,7 +13,6 @@ import {
 	UpdateWorkingColorsLayout,
 	UpdateGraphViewOverlayButtonLayout,
 	UpdateNodeGraphBarLayout,
-	UpdateDocumentTransform,
 	TriggerGraphViewOverlay,
 } from "@graphite/wasm-communication/messages";
 
@@ -30,8 +29,6 @@ export function createDocumentState(editor: Editor) {
 		nodeGraphBarLayout: defaultWidgetLayout(),
 		// Graph view overlay
 		graphViewOverlayOpen: false,
-		// CSS transform property to be applied to artwork
-		artworkTransform: "",
 	});
 	const { subscribe, update } = state;
 
@@ -105,14 +102,6 @@ export function createDocumentState(editor: Editor) {
 
 		// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
 		window.dispatchEvent(new CustomEvent("resize"));
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentTransform, async (data) => {
-		await tick();
-
-		update((state) => {
-			state.artworkTransform = data.transform;
-			return state;
-		});
 	});
 	// Show or hide the graph view overlay
 	editor.subscriptions.subscribeJsMessage(TriggerGraphViewOverlay, (triggerGraphViewOverlay) => {

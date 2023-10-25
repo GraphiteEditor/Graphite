@@ -880,7 +880,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			UpdateDocumentTransform { transform } => {
 				self.document_legacy.metadata.document_to_viewport = transform;
 				let transform = graphene_core::renderer::format_transform_matrix(transform);
-				responses.add(FrontendMessage::UpdateDocumentTransform { transform });
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
