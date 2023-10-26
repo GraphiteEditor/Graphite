@@ -86,14 +86,17 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
-	SetSelectNodes {
+	SetSelectedNodes {
 		nodes: Vec<NodeId>,
 	},
 	ShiftNode {
 		node_id: NodeId,
 	},
 	ToggleHidden,
-	ToggleHiddenImpl,
+	SetHidden {
+		node_id: NodeId,
+		hidden: bool,
+	},
 	TogglePreview {
 		node_id: NodeId,
 	},

@@ -31,17 +31,44 @@ impl DocumentNodeMetadata {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, Default)]
+/// Utility function for providing a default boolean value to serde.
+#[inline(always)]
+fn return_true() -> bool {
+	true
+}
+
+#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	pub name: String,
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
+	#[serde(default = "return_true")]
+	pub has_primary_output: bool,
 	pub implementation: DocumentNodeImplementation,
 	pub metadata: DocumentNodeMetadata,
 	#[serde(default)]
 	pub skip_deduplication: bool,
+	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
+	#[serde(default)]
+	pub hash: u64,
 	pub path: Option<Vec<NodeId>>,
+}
+
+impl Default for DocumentNode {
+	fn default() -> Self {
+		Self {
+			name: Default::default(),
+			inputs: Default::default(),
+			manual_composition: Default::default(),
+			has_primary_output: true,
+			implementation: Default::default(),
+			metadata: Default::default(),
+			skip_deduplication: Default::default(),
+			hash: Default::default(),
+			path: Default::default(),
+		}
+	}
 }
 
 impl DocumentNode {
@@ -79,7 +106,7 @@ impl DocumentNode {
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
 			}
 		};
-		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "recieved non resolved parameter");
+		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "received non resolved parameter");
 		assert!(
 			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
 			"received value as parameter. inputs: {:#?}, construction_args: {:#?}",
@@ -88,7 +115,7 @@ impl DocumentNode {
 		);
 
 		// If we have one parameter of the type inline, set it as the construction args
-		if let &[NodeInput::Inline(ref inline)] = &self.inputs[..] {
+		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
 			args = ConstructionArgs::Inline(inline.clone());
 		}
 		if let ConstructionArgs::Nodes(nodes) = &mut args {
@@ -103,6 +130,7 @@ impl DocumentNode {
 			construction_args: args,
 			document_node_path: self.path.unwrap_or(Vec::new()),
 			skip_deduplication: self.skip_deduplication,
+			hash: self.hash,
 		}
 	}
 
@@ -137,55 +165,55 @@ impl DocumentNode {
 }
 
 /// Represents the possible inputs to a node.
-///
-/// # More about short circuting
-///
-/// In Graphite nodes are functions and by default, these are composed into a single function
-/// by inserting Compose nodes.
-///
-/// ```text
-/// ┌─────────────────┐               ┌──────────────────┐                ┌──────────────────┐
-/// │                 │◄──────────────┤                  │◄───────────────┤                  │
-/// │        A        │               │        B         │                │        C         │
-/// │                 ├──────────────►│                  ├───────────────►│                  │
-/// └─────────────────┘               └──────────────────┘                └──────────────────┘
-/// ```
-///
-/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`).
-/// But sometimes we might want to have a little more control over the order of execution.
-/// This is why we allow nodes to opt out of the input forwarding by consuming the input directly.
-///
-/// ```text
-///                                    ┌─────────────────────┐                ┌─────────────┐
-///                                    │                     │◄───────────────┤             │
-///                                    │     Cache Node      │                │      C      │
-///                                    │                     ├───────────────►│             │
-/// ┌──────────────────┐               ├─────────────────────┤                └─────────────┘
-/// │                  │◄──────────────┤                     │
-/// │        A         │               │ * Cached Node       │
-/// │                  ├──────────────►│                     │
-/// └──────────────────┘               └─────────────────────┘
-/// ```
-///
-/// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
-/// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
 #[derive(Debug, Clone, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeInput {
-	Node {
-		node_id: NodeId,
-		output_index: usize,
-		lambda: bool,
-	},
-	Value {
-		tagged_value: TaggedValue,
-		exposed: bool,
-	},
+	/// A reference to another node in the same network from which this node can receive its input.
+	Node { node_id: NodeId, output_index: usize, lambda: bool },
+
+	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
+	Value { tagged_value: TaggedValue, exposed: bool },
+
+	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
 	Network(Type),
+
 	/// A short circuting input represents an input that is not resolved through function composition
-	/// but actually consuming the provided input instead of passing it to its predecessor.
-	/// See [NodeInput] docs for more explanation.
+	/// but rather by actually consuming the provided input instead of passing it to its predecessor.
+	///
+	/// In Graphite nodes are functions, and by default these are composed into a single function
+	/// by automatic insertion of inserting Compose nodes.
+	///
+	/// ```text
+	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+	/// │               │◄───┤               │◄───┤               │
+	/// │       A       │    │       B       │    │       C       │
+	/// │               ├───►│               ├───►│               │
+	/// └───────────────┘    └───────────────┘    └───────────────┘
+	/// ```
+	///
+	/// This is equivalent to calling c(b(a(input))) when evaluating c with input ( `c.eval(input)`).
+	/// But sometimes we might want to have a little more control over the order of execution.
+	/// This is why we allow nodes to opt out of the input forwarding by consuming the input directly.
+	///
+	/// ```text
+	///                      ┌───────────────┐    ┌───────────────┐
+	///                      │               │◄───┤               │
+	///                      │  Cache Node   │    │      C        │
+	///                      │               ├───►│               │
+	/// ┌───────────────┐    ├───────────────┤    └───────────────┘
+	/// │               │◄───┤               │
+	/// │       A       │    │ * Cached Node │
+	/// │               ├───►│               │
+	/// └───────────────┘    └───────────────┘
+	/// ```
+	///
+	/// In this case the Cache node actually consumes its input and then manually forwards it to its parameter Node.
+	/// This is necessary because the Cache Node needs to short-circut the actual node evaluation.
 	// TODO: Update
+	// ShortCircut(Type),
+
+	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
+	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
 	Inline(InlineRust),
 }
 

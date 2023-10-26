@@ -643,16 +643,18 @@ impl JsEditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
-		let message = NodeGraphMessage::CreateNode { node_id: None, node_type, x, y };
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> u64 {
+		let id = generate_uuid();
+		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
 		self.dispatch(message);
+		id
 	}
 
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
 	pub fn select_nodes(&self, nodes: Option<Vec<u64>>) {
 		let nodes = nodes.unwrap_or_default();
-		let message = NodeGraphMessage::SetSelectNodes { nodes };
+		let message = NodeGraphMessage::SetSelectedNodes { nodes };
 		self.dispatch(message);
 	}
 

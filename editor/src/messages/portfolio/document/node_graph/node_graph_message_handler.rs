@@ -58,14 +58,14 @@ impl FrontendGraphDataType {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct NodeGraphInput {
+pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct NodeGraphOutput {
+pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
@@ -77,13 +77,13 @@ pub struct FrontendNode {
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 	#[serde(rename = "primaryInput")]
-	pub primary_input: Option<FrontendGraphDataType>,
+	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]
-	pub exposed_inputs: Vec<NodeGraphInput>,
+	pub exposed_inputs: Vec<FrontendGraphInput>,
 	#[serde(rename = "primaryOutput")]
-	pub primary_output: Option<NodeGraphOutput>,
+	pub primary_output: Option<FrontendGraphOutput>,
 	#[serde(rename = "exposedOutputs")]
-	pub exposed_outputs: Vec<NodeGraphOutput>,
+	pub exposed_outputs: Vec<FrontendGraphOutput>,
 	pub position: (i32, i32),
 	pub disabled: bool,
 	pub previewed: bool,
@@ -291,34 +291,26 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (id, node) in &network.nodes {
+			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
 			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
 				warn!("Node '{}' does not exist in library", node.name);
 				continue;
 			};
 
-			let primary_input = node
-				.inputs
-				.first()
-				.filter(|input| input.is_exposed())
-				.and_then(|_| node_type.inputs.get(0))
-				.map(|input_type| input_type.data_type);
-			let exposed_inputs = node
-				.inputs
-				.iter()
-				.zip(node_type.inputs.iter())
-				.skip(1)
-				.filter(|(input, _)| input.is_exposed())
-				.map(|(_, input_type)| NodeGraphInput {
-					data_type: input_type.data_type,
-					name: input_type.name.to_string(),
-				})
-				.collect();
+			// Inputs
+			let mut inputs = node.inputs.iter().zip(node_type.inputs.iter().map(|input_type| FrontendGraphInput {
+				data_type: input_type.data_type,
+				name: input_type.name.to_string(),
+			}));
+			let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
+			let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
 
-			let mut outputs = node_type.outputs.iter().map(|output_type| NodeGraphOutput {
+			// Outputs
+			let mut outputs = node_type.outputs.iter().map(|output_type| FrontendGraphOutput {
 				data_type: output_type.data_type,
 				name: output_type.name.to_string(),
 			});
-			let primary_output = outputs.next();
+			let primary_output = if node.has_primary_output { outputs.next() } else { None };
 
 			let _graph_identifier = GraphIdentifier::new(layer_id);
 
@@ -355,13 +347,15 @@ impl NodeGraphMessageHandler {
 			return false;
 		}
 
-		let mut first_input_node: Option<NodeInput> = None;
+		let mut reconnect_to_input: Option<NodeInput> = None;
 
 		if reconnect {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
-				if matches!(node.inputs.first(), Some(NodeInput::Node { .. })) {
-					first_input_node = Some(node.inputs[0].clone());
+				// Reconnect to the node below when deleting a layer node.
+				let reconnect_from_input_index = if node.name == "Layer" { 7 } else { 0 };
+				if matches!(&node.inputs.get(reconnect_from_input_index), Some(NodeInput::Node { .. })) {
+					reconnect_to_input = Some(node.inputs[reconnect_from_input_index].clone());
 				}
 			}
 		}
@@ -393,10 +387,10 @@ impl NodeGraphMessageHandler {
 
 					// Use the first input node as the new input if deleting node's first input is a node,
 					// and the current node uses its primary output too
-					if let Some(input_node) = &first_input_node {
+					if let Some(reconnect_to_input) = &reconnect_to_input {
 						if *output_index == 0 {
 							refers_to_output_node = true;
-							*input = input_node.clone()
+							*input = reconnect_to_input.clone()
 						}
 					}
 
@@ -489,7 +483,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
 					return;
 				};
-				document.metadata.load_structure(&document.document_network);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -746,7 +739,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				let nodes = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SetSelectNodes { nodes });
+				responses.add(NodeGraphMessage::SetSelectedNodes { nodes });
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
@@ -787,7 +780,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetNodeInput { node_id, input_index, input } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						node.inputs[input_index] = input
+						let Some(node_input) = node.inputs.get_mut(input_index) else {
+							error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
+							return;
+						};
+						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
+						*node_input = input;
+						if structure_changed {
+							document.metadata.load_structure(&document.document_network);
+						}
 					}
 				}
 			}
@@ -817,7 +818,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 			}
-			NodeGraphMessage::SetSelectNodes { nodes } => {
+			NodeGraphMessage::SetSelectedNodes { nodes } => {
 				responses.add(document.metadata.set_selected_nodes(nodes));
 				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
@@ -870,31 +871,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
 			NodeGraphMessage::ToggleHidden => {
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::ToggleHiddenImpl);
+				if let Some(network) = document.document_network.nested_network(&self.network) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					let new_hidden = !document.metadata.selected_nodes().any(|id| network.disabled.contains(id));
+					for &node_id in document.metadata.selected_nodes() {
+						responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
+					}
+				}
 			}
-			NodeGraphMessage::ToggleHiddenImpl => {
+			NodeGraphMessage::SetHidden { node_id, hidden } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
-					// Check if any of the selected nodes are hidden
-					if document.metadata.selected_nodes().any(|id| network.disabled.contains(id)) {
-						// Remove all selected nodes from the disabled list
-						network.disabled.retain(|id| !document.metadata.selected_nodes_ref().contains(id));
-					} else {
-						let original_outputs = network.original_outputs().iter().map(|output| output.node_id).collect::<Vec<_>>();
-						// Add all selected nodes to the disabled list (excluding input or output nodes)
-						network
-							.disabled
-							.extend(document.metadata.selected_nodes().filter(|&id| !network.inputs.contains(id) && !original_outputs.contains(id)));
+					if !hidden {
+						network.disabled.retain(|&id| node_id != id);
+					} else if !network.inputs.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
+						network.disabled.push(node_id);
 					}
 					Self::send_graph(network, &self.layer_path, responses);
 
 					// Only generate node graph if one of the selected nodes is connected to the output
-					if document.metadata.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
-						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-						} else {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
+					if network.connected_to_output(node_id) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 				self.update_selection_action_buttons(document, responses);
@@ -940,7 +937,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		if self.has_selection {
+		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+	}
+}
+
+impl NodeGraphMessageHandler {
+	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
+		if self.has_selection && graph_open {
 			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleHidden)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)

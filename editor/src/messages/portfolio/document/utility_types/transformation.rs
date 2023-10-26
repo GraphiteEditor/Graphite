@@ -375,7 +375,7 @@ impl<'a> Selected<'a> {
 			let transformation = pivot * delta * pivot.inverse();
 
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer_ancestors in self.document.metadata.shallowest_unique_layers(self.selected.iter()) {
+			for layer_ancestors in self.document.metadata.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
 				let parent = layer.parent(&self.document.metadata);
 				if *self.tool_type == ToolType::Select {

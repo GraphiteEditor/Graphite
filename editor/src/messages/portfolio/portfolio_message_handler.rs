@@ -6,6 +6,7 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::DocumentInputs;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -26,7 +27,6 @@ pub struct PortfolioMessageHandler {
 	document_ids: Vec<u64>,
 	active_document_id: Option<u64>,
 	graph_view_overlay_open: bool,
-	graph_view_overlay_toggle_disabled: bool,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
@@ -46,7 +46,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences, &mut self.executor))
+						let document_inputs = DocumentInputs {
+							document_id,
+							ipp,
+							persistent_data: &self.persistent_data,
+							preferences,
+							executor: &mut self.executor,
+						};
+						document.process_message(message, responses, document_inputs)
 					}
 				}
 			}
@@ -55,7 +62,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.process_message(message, responses, (document_id, ipp, &self.persistent_data, preferences, &mut self.executor))
+					let document_inputs = DocumentInputs {
+						document_id,
+						ipp,
+						persistent_data: &self.persistent_data,
+						preferences,
+						executor: &mut self.executor,
+					};
+					document.process_message(message, responses, document_inputs)
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
@@ -219,14 +233,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			} => {
 				let font = Font::new(font_family, font_style);
 
-				if let Some(document) = self.active_document_mut() {
-					Self::uploaded_new_font(document, &font, responses);
-					responses.add(DocumentMessage::RenderDocument);
-					responses.add(BroadcastEvent::DocumentIsDirty);
-				}
-
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
+
+				if let Some(document) = self.active_document_mut() {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(BroadcastEvent::DocumentIsDirty);
+				}
 			}
 			PortfolioMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
@@ -246,12 +259,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
 			PortfolioMessage::GraphViewOverlayToggle => {
-				if !self.graph_view_overlay_toggle_disabled {
-					responses.add(PortfolioMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
-				}
-			}
-			PortfolioMessage::GraphViewOverlayToggleDisabled { disabled } => {
-				self.graph_view_overlay_toggle_disabled = disabled;
+				responses.add(PortfolioMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				let server_status = self.persistent_data.imaginate.server_status().clone();
@@ -545,7 +553,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			GraphViewOverlayToggle,
-			GraphViewOverlayToggleDisabled,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			CloseAllDocumentsWithConfirmation,
@@ -570,7 +577,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				);
 				common.extend(select);
 			}
-			common.extend(document.actions());
+			common.extend(document.actions_with_graph_open(self.graph_view_overlay_open));
 		}
 
 		common
@@ -673,37 +680,6 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: u64) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
-	}
-
-	fn uploaded_new_font(document: &mut DocumentMessageHandler, target_font: &Font, responses: &mut VecDeque<Message>) {
-		let mut stack = vec![(&document.document_legacy.root, Vec::new())];
-
-		while let Some((layer, layer_path)) = stack.pop() {
-			match &layer.data {
-				LayerDataType::Folder(folder) => stack.extend(folder.layers.iter().zip(folder.layer_ids.iter().map(|id| {
-					let mut x = layer_path.clone();
-					x.push(*id);
-					x
-				}))),
-				LayerDataType::Layer(layer) => {
-					let input_is_font = |input: &NodeInput| {
-						let NodeInput::Value {
-							tagged_value: TaggedValue::Font(font),
-							..
-						} = input
-						else {
-							return false;
-						};
-						font == target_font
-					};
-					let should_rerender = layer.network.nodes.values().any(|node| node.inputs.iter().any(input_is_font));
-					if should_rerender {
-						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-					}
-				}
-				_ => {}
-			}
-		}
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {

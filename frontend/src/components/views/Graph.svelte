@@ -163,10 +163,6 @@
 	function nodeIcon(nodeName: string): IconName {
 		const iconMap: Record<string, IconName> = {
 			Output: "NodeOutput",
-			Imaginate: "NodeImaginate",
-			"Hue Shift Image": "NodeColorCorrection",
-			"Brighten Image": "NodeColorCorrection",
-			"Grayscale Image": "NodeColorCorrection",
 		};
 		return iconMap[nodeName] || "NodeNodes";
 	}
@@ -271,7 +267,20 @@
 		if (e.key.toLowerCase() === "escape") {
 			nodeListLocation = undefined;
 			document.removeEventListener("keydown", keydown);
+			linkInProgressFromConnector = undefined;
 		}
+	}
+
+	function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
+		nodeListLocation = {
+			x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
+			y: Math.round(((e.clientY - graphBounds.y) / transform.scale - transform.y) / GRID_SIZE),
+		};
+
+		// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
+		setTimeout(() => nodeSearchInput?.focus(), 0);
+
+		document.addEventListener("keydown", keydown);
 	}
 
 	// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the whole browser window) works
@@ -287,15 +296,7 @@
 		if (rmb) {
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
-			nodeListLocation = {
-				x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
-				y: Math.round(((e.clientY - graphBounds.y) / transform.scale - transform.y) / GRID_SIZE),
-			};
-
-			// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
-			setTimeout(() => nodeSearchInput?.focus(), 0);
-
-			document.addEventListener("keydown", keydown);
+			loadNodeList(e, graphBounds);
 			return;
 		}
 
@@ -303,7 +304,10 @@
 		if (lmb && nodeList) return;
 
 		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
-		if (lmb) nodeListLocation = undefined;
+		if (lmb) {
+			nodeListLocation = undefined;
+			linkInProgressFromConnector = undefined;
+		}
 
 		// Alt-click sets the clicked node as previewed
 		if (lmb && e.altKey && nodeId) {
@@ -389,7 +393,7 @@
 		if (panning) {
 			transform.x += e.movementX / transform.scale;
 			transform.y += e.movementY / transform.scale;
-		} else if (linkInProgressFromConnector) {
+		} else if (linkInProgressFromConnector && !nodeListLocation) {
 			const target = e.target as Element | undefined;
 			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
 			if (dot) {
@@ -436,9 +440,54 @@
 		else return undefined;
 	}
 
+	// Check if this node should be inserted between two other nodes
+	function checkInsertBetween() {
+		if (selected.length !== 1) return;
+		const selectedNodeId = selected[0];
+		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
+
+		// Check that neither the input or output of the selected node are already connected.
+		const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
+		const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
+		const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
+
+		// TODO: Make sure inputs are correctly typed
+		if (!selectedNode || !notConnected || !input || !output || !nodesContainer) return;
+
+		// Fixes typing for some reason?
+		const theNodesContainer = nodesContainer;
+
+		// Find the link that the node has been dragged on top of
+		const link = $nodeGraph.links.find((link): boolean => {
+			const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+			if (!nodeInput || !nodeOutput) return false;
+
+			const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
+
+			const selectedNodeBounds = selectedNode.getBoundingClientRect();
+			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
+
+			return editor.instance.rectangleIntersects(
+				new Float64Array(wireCurveLocations.map((loc) => loc.x)),
+				new Float64Array(wireCurveLocations.map((loc) => loc.y)),
+				selectedNodeBounds.top - containerBoundsBounds.y,
+				selectedNodeBounds.left - containerBoundsBounds.x,
+				selectedNodeBounds.bottom - containerBoundsBounds.y,
+				selectedNodeBounds.right - containerBoundsBounds.x
+			);
+		});
+
+		// If the node has been dragged on top of the link then connect it into the middle.
+		if (link) {
+			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
+			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
+			editor.instance.shiftNode(selectedNodeId);
+		}
+	}
 	function pointerUp(e: PointerEvent) {
 		panning = false;
 
+		const initialDisconnecting = disconnecting;
 		if (disconnecting) {
 			editor.instance.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
 		}
@@ -453,6 +502,24 @@
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
 				editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
+		} else if (linkInProgressFromConnector && !initialDisconnecting) {
+			// If the add node menu is already open, we don't want to open it again
+			if (nodeListLocation) return;
+
+			const graphBounds = graph?.getBoundingClientRect();
+			if (!graphBounds) return;
+
+			// Create the node list, which should set nodeListLocation to a valid value
+			loadNodeList(e, graphBounds);
+			if (!nodeListLocation) return;
+			let nodeListLocation2: { x: number; y: number } = nodeListLocation;
+
+			linkInProgressToConnector = new DOMRect(
+				(nodeListLocation2.x * GRID_SIZE + transform.x) * transform.scale + graphBounds.x,
+				(nodeListLocation2.y * GRID_SIZE + transform.y) * transform.scale + graphBounds.y
+			);
+
+			return;
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x || draggingNodes.startY === e.y) {
 				if (selectIfNotDragged !== undefined && (selected.length !== 1 || selected[0] !== selectIfNotDragged)) {
@@ -463,48 +530,7 @@
 
 			if (selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.instance.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
 
-			// Check if this node should be inserted between two other nodes
-			if (selected.length === 1) {
-				const selectedNodeId = selected[0];
-				const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
-
-				// Check that neither the input or output of the selected node are already connected.
-				const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
-				const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
-				const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
-
-				// TODO: Make sure inputs are correctly typed
-				if (selectedNode && notConnected && input && output && nodesContainer) {
-					const theNodesContainer = nodesContainer;
-
-					// Find the link that the node has been dragged on top of
-					const link = $nodeGraph.links.find((link): boolean => {
-						const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
-						if (!nodeInput || !nodeOutput) return false;
-
-						const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
-
-						const selectedNodeBounds = selectedNode.getBoundingClientRect();
-						const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
-
-						return editor.instance.rectangleIntersects(
-							new Float64Array(wireCurveLocations.map((loc) => loc.x)),
-							new Float64Array(wireCurveLocations.map((loc) => loc.y)),
-							selectedNodeBounds.top - containerBoundsBounds.y,
-							selectedNodeBounds.left - containerBoundsBounds.x,
-							selectedNodeBounds.bottom - containerBoundsBounds.y,
-							selectedNodeBounds.right - containerBoundsBounds.x
-						);
-					});
-
-					// If the node has been dragged on top of the link then connect it into the middle.
-					if (link) {
-						editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
-						editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
-						editor.instance.shiftNode(selectedNodeId);
-					}
-				}
-			}
+			checkInsertBetween();
 
 			draggingNodes = undefined;
 			selectIfNotDragged = undefined;
@@ -517,8 +543,19 @@
 	function createNode(nodeType: string): void {
 		if (!nodeListLocation) return;
 
-		editor.instance.createNode(nodeType, nodeListLocation.x, nodeListLocation.y);
+		const inputNodeConnectionIndex = 0;
+		const inputConnectedNodeID = editor.instance.createNode(nodeType, nodeListLocation.x, nodeListLocation.y - 1);
 		nodeListLocation = undefined;
+
+		if (!linkInProgressFromConnector) return;
+		const from = connectorToNodeIndex(linkInProgressFromConnector);
+
+		if (from !== undefined) {
+			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
+			editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+		}
+
+		linkInProgressFromConnector = undefined;
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
@@ -644,9 +681,9 @@
 						viewBox="0 0 8 8"
 						class="port"
 						data-port="input"
-						data-datatype={node.primaryInput}
-						style:--data-color={`var(--color-data-${node.primaryInput})`}
-						style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+						data-datatype={node.primaryInput?.dataType}
+						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
+						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 					>
 						<title>{node.primaryInput} data</title>
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -654,7 +691,7 @@
 				</div>
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
-						{@html $nodeGraph.thumbnails.get(node.id) }
+						{@html $nodeGraph.thumbnails.get(node.id)}
 					{/if}
 					{#if node.primaryOutput}
 						<svg
@@ -731,15 +768,15 @@
 				{/if}
 				<!-- Input ports -->
 				<div class="input ports">
-					{#if node.primaryInput}
+					{#if node.primaryInput?.dataType}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port primary-port"
 							data-port="input"
-							data-datatype={node.primaryInput}
-							style:--data-color={`var(--color-data-${node.primaryInput})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput}-dim)`}
+							data-datatype={node.primaryInput?.dataType}
+							style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 						>
 							<title>{node.primaryInput} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -798,7 +835,7 @@
 						<clipPath id={clipPathId}>
 							<path
 								clip-rule="evenodd"
-								d={nodeBorderMask(120, node.primaryInput !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+								d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
 							/>
 						</clipPath>
 					</defs>

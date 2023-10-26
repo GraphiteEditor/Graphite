@@ -102,12 +102,18 @@ impl PartialEq for TypeDescriptor {
 	}
 }
 
+/// Graph runtime type information used for type inference.
 #[derive(Clone, PartialEq, Eq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
+	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),
+	/// A wrapper around the Rust type id for any concrete Rust type. Allows us to do equality comparisons, like checking if a String == a String.
 	Concrete(TypeDescriptor),
+	/// Runtime type information for a function. Given some input, gives some output.
+	/// See the example and explanation in the `ComposeNode` implementation within the node registry for more info.
 	Fn(Box<Type>, Box<Type>),
+	/// Not used at the moment.
 	Future(Box<Type>),
 }
 

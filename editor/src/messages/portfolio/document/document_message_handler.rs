@@ -100,14 +100,24 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor)> for DocumentMessageHandler {
+pub struct DocumentInputs<'a> {
+	pub document_id: u64,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub persistent_data: &'a PersistentData,
+	pub preferences: &'a PreferencesMessageHandler,
+	pub executor: &'a mut NodeGraphExecutor,
+}
+
+impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
 	#[remain::check]
-	fn process_message(
-		&mut self,
-		message: DocumentMessage,
-		responses: &mut VecDeque<Message>,
-		(document_id, ipp, persistent_data, preferences, executor): (u64, &InputPreprocessorMessageHandler, &PersistentData, &PreferencesMessageHandler, &mut NodeGraphExecutor),
-	) {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, document_inputs: DocumentInputs) {
+		let DocumentInputs {
+			document_id,
+			ipp,
+			persistent_data,
+			preferences,
+			executor,
+		} = document_inputs;
 		use DocumentMessage::*;
 
 		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
@@ -300,8 +310,10 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 				self.backup(responses);
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
-				for path in self.selected_layers_without_children() {
-					responses.add_front(DocumentMessage::DeleteLayer { layer_path: path.to_vec() });
+				for path in self.metadata().shallowest_unique_layers(self.metadata().selected_layers()) {
+					responses.add_front(DocumentMessage::DeleteLayer {
+						layer_path: path.last().unwrap().to_path(),
+					});
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
@@ -880,7 +892,6 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			UpdateDocumentTransform { transform } => {
 				self.document_legacy.metadata.document_to_viewport = transform;
 				let transform = graphene_core::renderer::format_transform_matrix(transform);
-				responses.add(FrontendMessage::UpdateDocumentTransform { transform });
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -907,6 +918,12 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 	}
 
 	fn actions(&self) -> ActionList {
+		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+	}
+}
+
+impl DocumentMessageHandler {
+	pub fn actions_with_graph_open(&self, graph_open: bool) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,
 			Redo,
@@ -923,7 +940,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			CreateEmptyFolder,
 		);
 
-		if self.layer_metadata.values().any(|data| data.selected) {
+		if self.metadata().selected_layers().next().is_some() {
 			let select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
@@ -938,7 +955,7 @@ impl MessageHandler<DocumentMessage, (u64, &InputPreprocessorMessageHandler, &Pe
 			common.extend(select);
 		}
 		common.extend(self.navigation_handler.actions());
-		common.extend(self.node_graph_handler.actions());
+		common.extend(self.node_graph_handler.actions_with_node_graph_open(graph_open));
 		common
 	}
 }
@@ -1430,37 +1447,18 @@ impl DocumentMessageHandler {
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, _document_id: u64) {
-		fn walk_layers(data: &LayerDataType, path: &mut Vec<LayerId>, responses: &mut VecDeque<Message>, fonts: &mut HashSet<Font>) {
-			match data {
-				LayerDataType::Folder(folder) => {
-					for (id, layer) in folder.layer_ids.iter().zip(folder.layers().iter()) {
-						path.push(*id);
-						walk_layers(&layer.data, path, responses, fonts);
-						path.pop();
-					}
+		let mut fonts = HashSet::new();
+		for (_node_id, node) in self.document_legacy.document_network.recursive_nodes() {
+			for input in &node.inputs {
+				if let NodeInput::Value {
+					tagged_value: TaggedValue::Font(font),
+					..
+				} = input
+				{
+					fonts.insert(font.clone());
 				}
-				LayerDataType::Layer(layer) => {
-					if layer.cached_output_data == CachedOutputData::None {
-						responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: path.clone() });
-					}
-					for node in layer.network.nodes.values() {
-						for input in &node.inputs {
-							if let NodeInput::Value {
-								tagged_value: TaggedValue::Font(font),
-								..
-							} = input
-							{
-								fonts.insert(font.clone());
-							}
-						}
-					}
-				}
-				_ => {}
 			}
 		}
-
-		let mut fonts = HashSet::new();
-		walk_layers(root, &mut path, responses, &mut fonts);
 		for font in fonts {
 			responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default: false });
 		}
@@ -1609,7 +1607,7 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new(
 				"Canvas Navigation",
-				"Interactive options in this popover menu are coming soon.\nZoom with Shift + MMB Drag or Ctrl + Scroll Wheel Roll.\nRotate with Ctrl + MMB Drag.",
+				"Interactive options in this popover\nmenu are coming soon.\n\nZoom:\n• Shift + Middle Click Drag\n• Ctrl + Scroll Wheel Roll\nRotate:\n• Alt + Left Click Drag",
 			)
 			.widget_holder(),
 		]);

@@ -93,6 +93,7 @@ impl NodeImplementation {
 	}
 }
 
+/// Acts as a description for a [DocumentNode] before it gets instantiated as one.
 #[derive(Clone)]
 pub struct DocumentNodeType {
 	pub name: &'static str,
@@ -100,7 +101,7 @@ pub struct DocumentNodeType {
 	pub identifier: NodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
-	pub primary_output: bool,
+	pub has_primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 	pub manual_composition: Option<graphene_core::Type>,
 }
@@ -113,7 +114,7 @@ impl Default for DocumentNodeType {
 			identifier: Default::default(),
 			inputs: Default::default(),
 			outputs: Default::default(),
-			primary_output: Default::default(),
+			has_primary_output: true,
 			properties: node_properties::no_properties,
 			manual_composition: Default::default(),
 		}
@@ -125,6 +126,8 @@ impl Default for DocumentNodeType {
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeType>> = once_cell::sync::Lazy::new(static_nodes);
 
 // TODO: Dynamic node library
+/// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
+/// The document node is the instance while these are the "class" (or "blueprint").
 fn static_nodes() -> Vec<DocumentNodeType> {
 	vec![
 		DocumentNodeType {
@@ -498,7 +501,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				name: "Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("The graph's output is drawn in the layer"),
+			properties: |_document_node, _node_id, _context| node_properties::string_properties("Consumes the scope opened by the Begin Scope node and evaluates the contained node network"),
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -686,9 +689,9 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Grayscale",
+			name: "Black & White",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::raster::GrayscaleNode<_, _, _, _, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType {
 					name: "Image",
@@ -732,7 +735,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 				},
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::grayscale_properties,
+			properties: node_properties::black_and_white_properties,
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -798,8 +801,11 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			category: "Image Adjustments",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
-				outputs: vec![NodeOutput::new(4, 0), NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
+				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
 				nodes: [
+					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
+					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
+					// Diagram: <https://files.keavon.com/-/AchingSecondHypsilophodon/capture.png>
 					DocumentNode {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
@@ -830,12 +836,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
 						..Default::default()
 					},
-					DocumentNode {
-						name: "EmptyOutput".to_string(),
-						inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
-						..Default::default()
-					},
 				]
 				.into_iter()
 				.enumerate()
@@ -846,13 +846,12 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			}),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![
-				DocumentOutputType::new("Empty", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Red", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Green", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Blue", FrontendGraphDataType::Raster),
 				DocumentOutputType::new("Alpha", FrontendGraphDataType::Raster),
 			],
-			primary_output: false,
+			has_primary_output: false,
 			..Default::default()
 		},
 		DocumentNodeType {
@@ -2462,6 +2461,7 @@ impl DocumentNodeType {
 		DocumentNode {
 			name: self.name.to_string(),
 			inputs,
+			has_primary_output: self.has_primary_output,
 			implementation: self.generate_implementation(),
 			metadata,
 			manual_composition: self.manual_composition.clone(),
@@ -2483,7 +2483,7 @@ impl DocumentNodeType {
 	}
 }
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
@@ -2520,11 +2520,18 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		..Default::default()
 	};
 
+	let mut begin_scope = resolve_document_node_type("Begin Scope")
+		.expect("Begin Scope node type not found")
+		.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default());
+	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
+		if let Some(node) = g.nodes.get_mut(&0) {
+			node.hash = hash;
+		}
+	}
+
 	// wrap the inner network in a scope
 	let nodes = vec![
-		resolve_document_node_type("Begin Scope")
-			.expect("Begin Scope node type not found")
-			.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default()),
+		begin_scope,
 		inner_network,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")

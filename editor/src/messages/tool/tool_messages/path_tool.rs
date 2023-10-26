@@ -2,12 +2,14 @@ use std::vec;
 
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, remove_bounding_box, update_bounding_box};
 
 use document_legacy::document::Document;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -204,6 +206,8 @@ struct PathToolData {
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
+	/// Describes information about the selected point(s), if any, across one or multiple shapes and manipulator point types (anchor or handle).
+	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
 	selection_status: SelectionStatus,
 }
 
@@ -246,7 +250,7 @@ impl PathToolData {
 			if shift {
 				responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![layer.to_node()] });
 			} else {
-				responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![layer.to_node()] });
+				responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![layer.to_node()] });
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
@@ -382,7 +386,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
+					responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -397,7 +401,7 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
-					responses.add(NodeGraphMessage::SetSelectNodes { nodes: vec![] });
+					responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
@@ -469,14 +473,14 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
-				if let Some(&SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer_path);
+				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
+					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
-				if let Some(&SingleSelectedPoint { coordinates, id, ref layer_path, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer_path);
+				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
+					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer);
 				}
 				PathToolFsmState::Ready
 			}
@@ -538,6 +542,10 @@ enum SelectionStatus {
 }
 
 impl SelectionStatus {
+	fn is_none(&self) -> bool {
+		self == &SelectionStatus::None
+	}
+
 	fn as_one(&self) -> Option<&SingleSelectedPoint> {
 		match self {
 			SelectionStatus::One(one) => Some(one),
@@ -551,10 +559,6 @@ impl SelectionStatus {
 			_ => None,
 		}
 	}
-
-	fn is_none(&self) -> bool {
-		self == &SelectionStatus::None
-	}
 }
 
 #[derive(Debug, PartialEq)]
@@ -566,44 +570,51 @@ struct MultipleSelectedPoints {
 struct SingleSelectedPoint {
 	coordinates: DVec2,
 	id: ManipulatorPointId,
-	layer_path: Vec<u64>,
+	layer: LayerNodeIdentifier,
 	manipulator_angle: ManipulatorAngle,
 }
 
-// If there is one selected and only one manipulator group this yields the selected control point,
-// if only one handle is selected it will yield that handle, otherwise it will yield the group's anchor.
+/// Sets the cumulative description of the selected points: if `None` are selected, if `One` is selected, or if `Multiple` are selected.
+/// Applies to any selected points, whether they are anchors or handles; and whether they are from a single shape or across multiple shapes.
 fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> SelectionStatus {
-	// Check to see if only one manipulator group is selected
-	let selection_layers: Vec<_> = shape_state.selected_shape_state.iter().take(2).map(|(k, v)| (k, v.selected_points_count())).collect();
-	if let [(layer, 1)] = selection_layers[..] {
-		let Some(layer_data) = document.layer(&layer.to_path()).ok() else { return SelectionStatus::None };
-		let Some(vector_data) = layer_data.as_vector_data() else { return SelectionStatus::None };
+	let mut selection_layers = shape_state.selected_shape_state.iter().map(|(k, v)| (*k, v.selected_points_count()));
+	let total_selected_points = selection_layers.clone().map(|(_, v)| v).sum::<usize>();
+
+	// Check to see if only one manipulator group in a single shape is selected
+	if total_selected_points == 1 {
+		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
+			return SelectionStatus::None;
+		};
+
+		let Some(subpaths) = get_subpaths(layer, document) else {
+			return SelectionStatus::None;
+		};
+		let Some(mirror) = get_mirror_handles(layer, document) else {
+			return SelectionStatus::None;
+		};
 		let Some(point) = shape_state.selected_points().next() else {
 			return SelectionStatus::None;
 		};
 
-		let Some(group) = vector_data.manipulator_from_id(point.group) else {
+		let Some(group) = get_manipulator_from_id(subpaths, point.group) else {
 			return SelectionStatus::None;
 		};
 		let Some(local_position) = point.manipulator_type.get_position(group) else {
 			return SelectionStatus::None;
 		};
 
-		let manipulator_angle = if vector_data.mirror_angle.contains(&point.group) {
-			ManipulatorAngle::Smooth
-		} else {
-			ManipulatorAngle::Sharp
-		};
+		let manipulator_angle = if mirror.contains(&point.group) { ManipulatorAngle::Smooth } else { ManipulatorAngle::Sharp };
 
 		return SelectionStatus::One(SingleSelectedPoint {
-			coordinates: layer_data.transform.transform_point2(local_position) + layer_data.pivot,
-			layer_path: layer.to_path(),
+			coordinates: document.metadata.transform_to_document(layer).transform_point2(local_position),
+			layer,
 			id: *point,
 			manipulator_angle,
 		});
 	};
 
-	if !selection_layers.is_empty() {
+	// Check to see if multiple manipulator groups are selected
+	if total_selected_points > 1 {
 		return SelectionStatus::Multiple(MultipleSelectedPoints {
 			manipulator_angle: shape_state.selected_manipulator_angles(document),
 		});

@@ -252,7 +252,6 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
 				self.transform_operation = TransformOperation::None;
-				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: false });
 			}
 			TransformFromMenuEnd { commit_key } => {
 				let abort_transform = commit_key == Key::Rmb;
@@ -273,9 +272,6 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])]),
 				});
-				// Because the pan key shares the Spacebar with toggling the graph view overlay, now that we've begun panning,
-				// we need to prevent the graph view overlay from toggling when the control key is pressed.
-				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 
 				self.mouse_position = ipp.mouse.position;
 				self.transform_operation = TransformOperation::Pan { pre_commit_pan: self.pan };
@@ -325,10 +321,6 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 					snap_zoom_enabled: false,
 				};
 				self.mouse_position = ipp.mouse.position;
-
-				// Because the zoom key shares the Spacebar with toggling the graph view overlay, now that we've begun zooming,
-				// we need to prevent the graph view overlay from toggling when the control key is pressed.
-				responses.add(PortfolioMessage::GraphViewOverlayToggleDisabled { disabled: true });
 			}
 		}
 	}

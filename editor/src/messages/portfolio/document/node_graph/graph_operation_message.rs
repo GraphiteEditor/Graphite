@@ -3,6 +3,7 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
 use graphene_core::raster::ImageFrame;
+use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
@@ -67,6 +68,12 @@ pub enum GraphOperationMessage {
 	NewVectorLayer {
 		id: NodeId,
 		subpaths: Vec<Subpath<ManipulatorGroupId>>,
+	},
+	NewTextLayer {
+		id: NodeId,
+		text: String,
+		font: Font,
+		size: f64,
 	},
 	ResizeArtboard {
 		id: NodeId,

@@ -77,7 +77,7 @@ impl DocumentMetadata {
 		self.structure.entry(node_identifier).or_default()
 	}
 
-	pub fn shallowest_unique_layers<'a>(&self, layers: impl Iterator<Item = &'a LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
+	pub fn shallowest_unique_layers(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
 		let mut sorted_layers = layers
 			.map(|layer| {
 				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
