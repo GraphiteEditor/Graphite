@@ -1,6 +1,6 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-use graphene_core::{NodeIdentifier, Type};
+use graphene_core::{GraphicGroup, NodeIdentifier, Type};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
@@ -1004,6 +1004,48 @@ impl NodeNetwork {
 			node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
 		}
 		self.nodes.extend(extraction_nodes);
+	}
+
+	/// Due to the adaptive resolution system, nodes that take a `GraphicGroup` as input must call the upstream node with the `Footprint` parameter.
+	///
+	/// However, in the case of the default input, we must insert a node that takes an input of `Footprint` and returns `GraphicGroup::Empty`, in order to satisfy the type system.
+	/// This is because the standard value node takes in `()`.
+	pub fn resolve_empty_stacks(&mut self) {
+		let new_id = generate_uuid();
+		let mut used = false;
+
+		for node in self.nodes.values_mut() {
+			// Do not do this to the newly inserted empty stack (in case `resolve_empty_stacks` runs multiple times).
+			if node.name == "Empty Stack" {
+				continue;
+			}
+			for input in &mut node.inputs {
+				if !matches!(
+					input,
+					NodeInput::Value {
+						tagged_value: TaggedValue::GraphicGroup(GraphicGroup::EMPTY),
+						..
+					}
+				) {
+					continue;
+				}
+
+				*input = NodeInput::node(new_id, 0);
+				used = true;
+			}
+		}
+
+		// Only insert the node if necessary.
+		if used {
+			let new_node = DocumentNode {
+				name: "Empty Stack".to_string(),
+				implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+				manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
+				inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), false)],
+				..Default::default()
+			};
+			self.nodes.insert(new_id, new_node);
+		}
 	}
 
 	/// Creates a proto network for evaluating each output of this network.
