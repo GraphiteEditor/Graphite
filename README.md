@@ -34,7 +34,7 @@ We are also in search of artists to create beautiful sample work in Graphite and
 
 By submitting code for inclusion in the project, you are agreeing to license your changes under the Apache 2.0 license, and that you have the authority to do so. Some directories may have other licenses, like dual-licensed MIT/Apache 2.0, and code submissions to those directories mean you agree to the applicable license(s).
 
-## Feature and roadmap
+## Features and roadmap
 
 [See the web page for this information.](https://graphite.rs/features/)
 
