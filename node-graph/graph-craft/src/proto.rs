@@ -78,10 +78,14 @@ impl NodeContainer {
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
+/// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
+	// TODO: remove this since it seems to be unused?
 	// Should a proto Network even allow inputs? Don't think so
 	pub inputs: Vec<NodeId>,
+	/// The node ID that provides the output. This node is then responsible for calling the rest of the graph.
 	pub output: NodeId,
+	/// A list of nodes stored in a Vec to allow for sorting.
 	pub nodes: Vec<(NodeId, ProtoNode)>,
 }
 
@@ -104,8 +108,7 @@ impl core::fmt::Display for ProtoNetwork {
 			f.write_str("Primary input: ")?;
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
-				ProtoNodeInput::Network(ty) => f.write_fmt(format_args!("Network (type = {ty:?})"))?,
-				ProtoNodeInput::ShortCircut(ty) => f.write_fmt(format_args!("Lambda (type = {ty:?})"))?,
+				ProtoNodeInput::ManualComposition(ty) => f.write_fmt(format_args!("Manual Composition (type = {ty:?})"))?,
 				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
 			}
 			f.write_str("\n")?;
@@ -137,10 +140,15 @@ impl core::fmt::Display for ProtoNetwork {
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
+/// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
+	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
 	Value(value::TaggedValue),
-	// the bool indicates whether to treat the node as lambda node
+	// TODO: use a struct for clearer naming.
+	/// A list of nodes used as inputs to the constructor function in `node_registry.rs`.
+	/// The bool indicates whether to treat the node as lambda node.
 	Nodes(Vec<(NodeId, bool)>),
+	// TODO: What?
 	Inline(InlineRust),
 }
 
@@ -166,9 +174,9 @@ impl PartialEq for ConstructionArgs {
 
 impl Hash for ConstructionArgs {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		core::mem::discriminant(self).hash(state);
 		match self {
 			Self::Nodes(nodes) => {
-				"nodes".hash(state);
 				for node in nodes {
 					node.hash(state);
 				}
@@ -180,6 +188,7 @@ impl Hash for ConstructionArgs {
 }
 
 impl ConstructionArgs {
+	// TODO: what? Used in the gpu_compiler crate for something.
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
@@ -191,6 +200,7 @@ impl ConstructionArgs {
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
+/// A protonode is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -200,17 +210,22 @@ pub struct ProtoNode {
 	pub hash: u64,
 }
 
-/// A ProtoNodeInput represents the input of a node in a ProtoNetwork.
-/// For documentation on the meaning of the variants, see the documentation of the `NodeInput` enum
-/// in the `document` module
+/// A ProtoNodeInput represents the primary input of a node in a ProtoNetwork.
+/// Similar to [`crate::document::NodeInput`].
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProtoNodeInput {
+	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
 	None,
-	Network(Type),
-	/// A ShortCircut input represents an input that is not resolved through function composition but
-	/// actually consuming the provided input instead of passing it to its predecessor
-	ShortCircut(Type),
+	/// A ManualComposition input represents an input that opts out of being resolved through the default `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated result to this node
+	/// Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
+	///
+	/// Say we have the network `a -> b -> c` where `c` is the output node and `a` is the input node.
+	/// We would expect `a` to get input from the network, `b` to get input from `a`, and `c` to get input from `b`.
+	/// This could be represented as `f(x) = c(b(a(x)))`. `a` is run with input `x` from the network. `b` is run with input from `a`. `c` is run with input from `b`.
+	///
+	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not automatically executed as it would be using the default ComposeNode flow.
+	ManualComposition(Type),
 	/// the bool indicates whether to treat the node as lambda node.
 	/// When treating it as a lambda, only the node that is connected itself is fed as input.
 	/// Otherwise, the the entire network of which the node is the output is fed as input.
@@ -227,6 +242,8 @@ impl ProtoNodeInput {
 }
 
 impl ProtoNode {
+	/// A stable node ID is a hash of a node that should stay constant. This is used in order to remove duplicates from the graph.
+	/// In the case of `skip_deduplication`, the `document_node_path` is also hashed in order to avoid duplicate monitor nodes from being removed (which would make it impossible to load thumbnails).
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
 		let mut hasher = rustc_hash::FxHasher::default();
@@ -240,10 +257,7 @@ impl ProtoNode {
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
-			ProtoNodeInput::ShortCircut(ref ty) => {
-				ty.hash(&mut hasher);
-			}
-			ProtoNodeInput::Network(ref ty) => {
+			ProtoNodeInput::ManualComposition(ref ty) => {
 				ty.hash(&mut hasher);
 			}
 			ProtoNodeInput::Node(id, lambda) => (id, lambda).hash(&mut hasher),
@@ -251,6 +265,7 @@ impl ProtoNode {
 		Some(hasher.finish() as NodeId)
 	}
 
+	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
 			identifier: NodeIdentifier::new("graphene_core::value::ClonedNode"),
@@ -262,6 +277,8 @@ impl ProtoNode {
 		}
 	}
 
+	/// Converts all references to other node IDs into new IDs by running the specified function on them.
+	/// This can be used when changing the IDs of the nodes, for example in the case of generating stable IDs.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId, skip_lambdas: bool) {
 		if let ProtoNodeInput::Node(id, lambda) = self.input {
 			if !(skip_lambdas && lambda) {
@@ -289,6 +306,7 @@ impl ProtoNetwork {
 		);
 	}
 
+	/// Construct a hashmap containing a list of the nodes that depend on this proto network.
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
@@ -306,6 +324,8 @@ impl ProtoNetwork {
 		edges
 	}
 
+	/// Convert all node IDs to be stable (based on the hash generated by [`ProtoNode::stable_node_id`]).
+	/// This function requires that the graph be topologically sorted.
 	pub fn generate_stable_node_ids(&mut self) {
 		debug_assert!(self.is_topologically_sorted());
 		let outwards_edges = self.collect_outwards_edges();
@@ -319,6 +339,7 @@ impl ProtoNetwork {
 		}
 	}
 
+	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
@@ -336,6 +357,7 @@ impl ProtoNetwork {
 		edges
 	}
 
+	/// Inserts a [`graphene_core::structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
 	pub fn resolve_inputs(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
@@ -375,6 +397,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
+	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<u64, Vec<u64>>, node_id: u64, compose_node_id: u64, skip_lambdas: bool) {
 		// Update references in other nodes to use the new compose node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
@@ -469,6 +492,7 @@ impl ProtoNetwork {
 		sorted
 	}*/
 
+	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {
 		let order = self.topological_sort()?;
 
@@ -571,8 +595,7 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
-			ProtoNodeInput::ShortCircut(ref ty) => ty.clone(),
-			ProtoNodeInput::Network(ref ty) => ty.clone(),
+			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id, _) => {
 				let input = self
 					.inferred
@@ -794,7 +817,7 @@ mod test {
 					10,
 					ProtoNode {
 						identifier: "cons".into(),
-						input: ProtoNodeInput::Network(concrete!(u32)),
+						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![],
 						skip_deduplication: false,

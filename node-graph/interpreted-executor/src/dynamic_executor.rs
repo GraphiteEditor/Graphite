@@ -11,9 +11,12 @@ use graph_craft::Type;
 
 use crate::node_registry;
 
+/// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 pub struct DynamicExecutor {
 	output: NodeId,
+	/// Stores all of the dynamic node structs.
 	tree: BorrowTree,
+	/// Stores the types of the protonodes.
 	typing_context: TypingContext,
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: Vec<NodeId>,
@@ -45,6 +48,7 @@ impl DynamicExecutor {
 		})
 	}
 
+	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), String> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
@@ -58,6 +62,7 @@ impl DynamicExecutor {
 		Ok(())
 	}
 
+	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		self.tree.introspect(node_path)
 	}
@@ -78,8 +83,11 @@ impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
 }
 
 #[derive(Default)]
+/// A store of the dynamically typed nodes and also the source map.
 pub struct BorrowTree {
+	/// A hashmap of node IDs and dynamically typed nodes.
 	nodes: HashMap<NodeId, SharedNodeContainer>,
+	/// A hashmap from the document path to the protonode ID.
 	source_map: HashMap<Vec<NodeId>, NodeId>,
 }
 
@@ -114,6 +122,7 @@ impl BorrowTree {
 		self.nodes.insert(id, node);
 	}
 
+	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
 		let id = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
@@ -124,11 +133,14 @@ impl BorrowTree {
 		self.nodes.get(&id).cloned()
 	}
 
+	/// Evaluate the output node of the [`BorrowTree`].
 	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
 		let output = node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
+	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
+	/// This ensures that no borrowed data can escape the node graph.
 	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
@@ -139,6 +151,7 @@ impl BorrowTree {
 		self.nodes.remove(&id);
 	}
 
+	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
 	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), String> {
 		let ProtoNode {
 			construction_args,
