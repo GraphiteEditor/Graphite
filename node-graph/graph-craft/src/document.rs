@@ -48,44 +48,77 @@ pub struct DocumentNode {
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
 	/// - A constant value [`NodeInput::Value`],
-	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks. In the root network, it is resolved when evaluating the borrow tree.
+	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
+	///   In the root network, it is resolved when evaluating the borrow tree.
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
 	///
 	/// Through the usual node composition flow, the upstream node providing the primary input for a node is evaluated before the node itself is run.
-	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the primary input of downstream node `F`, just like function composition where function `F` is evaluated and its result is fed into function `F`.
+	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the primary input of downstream node `F`,
+	///   just like function composition where function `F` is evaluated and its result is fed into function `F`.
 	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
 	///
-	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and feed the output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G)` or circle operator in `G ∘ F`.
-	/// For flexability, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden. That's what `manual_composition` allows.
+	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
+	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(G ∘ F)(x)`.
+	/// For flexability, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
+	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
+	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
+	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the parameters of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
 	///
-	/// A manual composition input represents an input that is not resolved through the `ComposeNode`, and is instead just passed in when evaluating this node within the borrow tree.
-	/// This is similar to having the first input be a NodeInput::Network after the graph flattening.
+	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
+	/// and is instead just passed in when evaluating this node within the borrow tree.
+	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
 	///
-	/// ## Example
+	/// ## Example Use Case: CacheNode
 	///
 	/// The `CacheNode` is a pass-through node on cache miss, but on cache hit it needs to avoid evaluating the upstream node and instead just return the cached value.
 	///
-	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` just always acted as a pass-through:
+	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` instead just always acted as a pass-through (akin to a cache that always misses):
 	///
 	/// ```text
-	///              [ComposeNode]         [ComposeNode]
-	/// ┌───────────────┐  |  ┌───────────────┐  |  ┌───────────────┐
-	/// │               │◄─|──┤               │◄─|──┤               │◄─── EVAL (START)
-	/// │       G       │  |  │PassThroughNode│  |  │       F       │
-	/// │               ├──|─►│               ├──|─►│               │───► RESULT (END)
-	/// └───────────────┘  |  └───────────────┘  |  └───────────────┘
+	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+	/// │               │◄───┤               │◄───┤               │◄─── EVAL (START)
+	/// │       G       │    │PassThroughNode│    │       F       │
+	/// │               ├───►│               ├───►│               │───► RESULT (END)
+	/// └───────────────┘    └───────────────┘    └───────────────┘
 	/// ```
 	///
-	/// Without manual composition, `ComposeNode`s would be automatically inserted (during the graph rewriting step) between nodes where the arrows are drawn in the diagram above.
 	/// This acts like the function call `F(PassThroughNode(G(input)))` when evaluating `F` with some `input`: `F.eval(input)`.
 	/// - The diagram's upper track of arrows represents the flow of building up the call stack:
 	///   since `F` is the output it is encountered first but deferred to its upstream caller `PassThroughNode` and that is once again deferred to its upstream caller `G`.
 	/// - The diagram's lower track of arrows represents the flow of evaluating the call stack:
 	///   `G` is evaluated first, then `PassThroughNode` is evaluated with the result of `G`, and finally `F` is evaluated with the result of `PassThroughNode`.
 	///
-	/// But to make the `CacheNode` work, we need to override the default composition flow so that `G` is not automatically evaluated when the cache is hit. We need to give the `CacheNode` more manual control over the order of execution. So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
+	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
+	///
+	/// ```text
+	///                                           ┌───────────────┐    ┌───────────────┐
+	///                                           │               │◄───┤               │◄─── EVAL (START)
+	///                                           │  ComposeNode  │    │       F       │
+	///                      ┌───────────────┐    │               ├───►│               │───► RESULT (END)
+	///                      │               │◄─┐ ├───────────────┤    └───────────────┘
+	///                      │       F       │  └─┤               │
+	///                      │               ├─┐  │     First     │
+	///                      └───────────────┘ └─►│               │
+	///                      ┌───────────────┐    ├───────────────┤
+	///                      │               │◄───┤               │
+	///                      │  ComposeNode  │    │     Second    │
+	/// ┌───────────────┐    │               ├───►│               │
+	/// │               │◄─┐ ├───────────────┤    └───────────────┘
+	/// │       G       │  └─┤               │
+	/// │               ├─┐  │     First     │
+	/// └───────────────┘ └─►│               │
+	/// ┌───────────────┐    ├───────────────┤
+	/// |               │◄───┤               │
+	/// │PassThroughNode│    │     Second    │
+	/// │               ├───►│               │
+	/// └───────────────┘    └───────────────┘
+	/// ```
+	///
+	/// Now let's swap back from the `PassThroughNode` to the `CacheNode` to make caching actually work.
+	/// It needs to override the default composition flow so that `G` is not automatically evaluated when the cache is hit.
+	/// We need to give the `CacheNode` more manual control over the order of execution.
+	/// So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
 	///
 	/// ```text
 	///                      ┌───────────────┐    ┌───────────────┐
@@ -99,7 +132,8 @@ pub struct DocumentNode {
 	/// └───────────────┘    └───────────────┘
 	/// ```
 	///
-	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)` in the event of a cache miss or just return the cached data in the event of a cache hit.
+	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
+	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 	pub manual_composition: Option<Type>,
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
