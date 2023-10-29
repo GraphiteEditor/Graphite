@@ -1011,34 +1011,31 @@ impl NodeNetwork {
 	/// However, in the case of the default input, we must insert a node that takes an input of `Footprint` and returns `GraphicGroup::Empty`, in order to satisfy the type system.
 	/// This is because the standard value node takes in `()`.
 	pub fn resolve_empty_stacks(&mut self) {
+		const EMPTY_STACK: &str = "Empty Stack";
+
 		let new_id = generate_uuid();
 		let mut used = false;
 
-		for node in self.nodes.values_mut() {
-			// Do not do this to the newly inserted empty stack (in case `resolve_empty_stacks` runs multiple times).
-			if node.name == "Empty Stack" {
-				continue;
-			}
+		// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
+		for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
 			for input in &mut node.inputs {
-				if !matches!(
+				if matches!(
 					input,
 					NodeInput::Value {
 						tagged_value: TaggedValue::GraphicGroup(GraphicGroup::EMPTY),
 						..
 					}
 				) {
-					continue;
+					*input = NodeInput::node(new_id, 0);
+					used = true;
 				}
-
-				*input = NodeInput::node(new_id, 0);
-				used = true;
 			}
 		}
 
 		// Only insert the node if necessary.
 		if used {
 			let new_node = DocumentNode {
-				name: "Empty Stack".to_string(),
+				name: EMPTY_STACK.to_string(),
 				implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
 				manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
 				inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), false)],
@@ -1131,7 +1128,7 @@ mod test {
 	fn map_ids() {
 		let mut network = add_network();
 		network.map_ids(|id| id + 1);
-		let maped_add = NodeNetwork {
+		let mapped_add = NodeNetwork {
 			inputs: vec![1, 1],
 			outputs: vec![NodeOutput::new(2, 0)],
 			nodes: [
@@ -1158,7 +1155,7 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		assert_eq!(network, maped_add);
+		assert_eq!(network, mapped_add);
 	}
 
 	#[test]
