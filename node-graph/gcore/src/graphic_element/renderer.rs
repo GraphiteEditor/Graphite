@@ -381,9 +381,15 @@ impl Primative for bool {}
 impl Primative for f32 {}
 impl Primative for f64 {}
 
+fn text_attributes(attributes: &mut SvgRenderAttrs) {
+	attributes.push("fill", "white");
+	attributes.push("y", "30");
+	attributes.push("font-size", "30");
+}
+
 impl<T: Primative> GraphicElementRendered for T {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		render.parent_tag("text", |_| {}, |render| render.leaf_node(format!("{self}")));
+		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
 	}
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
@@ -400,11 +406,11 @@ impl GraphicElementRendered for Option<Color> {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("width", "100");
 			attributes.push("height", "100");
-			attributes.push("y", "2");
+			attributes.push("y", "40");
 			attributes.push("fill", format!("#{}", color.rgba_hex()));
 		});
 		let colour_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
-		render.parent_tag("text", |_| {}, |render| render.leaf_node(colour_info))
+		render.parent_tag("text", text_attributes, |render| render.leaf_node(colour_info))
 	}
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
