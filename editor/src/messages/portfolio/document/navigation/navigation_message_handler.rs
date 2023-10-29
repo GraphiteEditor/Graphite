@@ -94,7 +94,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
@@ -214,7 +214,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			SetCanvasRotation { angle_radians } => {
 				self.tilt = angle_radians;
-				self.create_document_transform(responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -224,7 +224,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 			}
 			TransformCanvasEnd { abort_transform } => {
 				if abort_transform {
@@ -235,12 +235,12 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 						}
 						TransformOperation::Pan { pre_commit_pan, .. } => {
 							self.pan = pre_commit_pan;
-							self.create_document_transform(responses);
+							self.create_document_transform(ipp.viewport_bounds.center(), responses);
 						}
 						TransformOperation::Zoom { pre_commit_zoom, .. } => {
 							self.zoom = pre_commit_zoom;
 							responses.add(PortfolioMessage::UpdateDocumentWidgets);
-							self.create_document_transform(responses);
+							self.create_document_transform(ipp.viewport_bounds.center(), responses);
 						}
 					}
 				}
@@ -264,7 +264,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
@@ -281,7 +281,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -381,21 +381,21 @@ impl NavigationMessageHandler {
 		}
 	}
 
-	pub fn calculate_offset_transform(&self, offset: DVec2) -> DAffine2 {
+	pub fn calculate_offset_transform(&self, viewport_centre: DVec2) -> DAffine2 {
 		// Try to avoid fractional coordinates to reduce anti aliasing.
 		let scale = self.snapped_scale();
-		let rounded_pan = ((self.pan + offset) * scale).round() / scale - offset;
+		let rounded_pan = ((self.pan + viewport_centre) * scale).round() / scale - viewport_centre;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
-		let offset_transform = DAffine2::from_translation(offset);
+		let offset_transform = DAffine2::from_translation(viewport_centre);
 		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(rounded_pan);
-		scale_transform * offset_transform * angle_transform * translation_transform
+		scale_transform * offset_transform * angle_transform * offset_transform.inverse() * translation_transform
 	}
 
-	fn create_document_transform(&self, responses: &mut VecDeque<Message>) {
-		let transform = self.calculate_offset_transform(DVec2::ZERO);
+	fn create_document_transform(&self, viewport_centre: DVec2, responses: &mut VecDeque<Message>) {
+		let transform = self.calculate_offset_transform(viewport_centre);
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 

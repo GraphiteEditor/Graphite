@@ -120,7 +120,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Update the document metadata structure
 		if let Some(new_id) = new_id {
-			let parent = LayerNodeIdentifier::new(output_node_id, self.network);
+			let parent = if self.network.nodes.get(&output_node_id).is_some_and(|node| node.name == "Layer") {
+				LayerNodeIdentifier::new(output_node_id, self.network)
+			} else {
+				LayerNodeIdentifier::ROOT
+			};
 			let new_child = LayerNodeIdentifier::new(new_id, self.network);
 			parent.push_front_child(self.document_metadata, new_child);
 			self.responses.add(DocumentMessage::DocumentStructureChanged);
@@ -562,25 +566,25 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
 			}
 			GraphOperationMessage::NewBitmapLayer { id, image_frame } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0) {
 					modify_inputs.insert_image_data(image_frame, layer);
 				}
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
 			}
 			GraphOperationMessage::NewTextLayer { id, text, font, size } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.outputs[0].node_id, 0) {
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
 			}

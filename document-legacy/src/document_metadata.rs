@@ -290,7 +290,7 @@ impl core::fmt::Display for LayerNodeIdentifier {
 }
 
 impl LayerNodeIdentifier {
-	const ROOT: Self = LayerNodeIdentifier::new_unchecked(0);
+	pub const ROOT: Self = LayerNodeIdentifier::new_unchecked(0);
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
 	pub const fn new_unchecked(node_id: NodeId) -> Self {

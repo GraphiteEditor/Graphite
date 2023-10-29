@@ -9,13 +9,13 @@ use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscrimina
 use document_legacy::{LayerId, Operation};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
+use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::renderer::{ClickTarget, SvgSegment, SvgSegmentList};
+use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
@@ -167,7 +167,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], mut graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -196,6 +196,18 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
+
+		// Ensure that the render node is used where applicable to fix previewing
+		if let Some(mut output) = graph.previous_outputs.take() {
+			if let Some(NodeOutput { node_id, .. }) = output.first().copied() {
+				if let Some(output_node) = graph.nodes.get_mut(&node_id).filter(|node| node.name == "Output") {
+					if graph.outputs[0].node_id != node_id {
+						output_node.inputs[0] = NodeInput::node(graph.outputs[0].node_id, graph.outputs[0].node_output_index);
+					}
+				}
+			}
+			graph.outputs = output;
+		}
 
 		let scoped_network = wrap_network_in_scope(graph, graph_input_hash.finish());
 
@@ -540,47 +552,15 @@ impl NodeGraphExecutor {
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
-			TaggedValue::VectorData(vector_data) => {
-				// Update the cached vector data on the layer
-				let transform = vector_data.transform.to_cols_array();
-				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetVectorData { path: layer_path, vector_data });
-			}
 			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {
 				let transform = transform.to_cols_array();
 				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 				responses.add(Operation::SetSurface { path: layer_path, surface_id });
 			}
-			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
-				// Don't update the frame's transform if the new transform is DAffine2::ZERO.
-				let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
-
-				// If no image was generated, clear the frame
-				if image.width == 0 || image.height == 0 {
-					responses.add(DocumentMessage::FrameClear);
-
-					// Update the transform based on the graph output
-					if let Some(transform) = transform {
-						responses.add(Operation::SetLayerTransform { path: layer_path, transform });
-					}
-				} else {
-					// Update the image data
-					let image_data = vec![Self::to_frontend_image_data(image, transform, &layer_path, None, None)?];
-					responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
-				}
-			}
-			TaggedValue::Artboard(artboard) => {
-				warn!("Rendered graph produced artboard (which is not currently rendered): {artboard:#?}");
-				return Err("Artboard (see console)".to_string());
-			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
-				//log::debug!("svg: {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
-				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-
-				//return Err("Graphic group (see console)".to_string());
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
 				// Send to frontend
@@ -602,27 +582,6 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 
 				//return Err("Graphic group (see console)".to_string());
-			}
-			TaggedValue::GraphicGroup(graphic_group) => {
-				use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
-
-				// Setup rendering
-				let mut render = SvgRender::new();
-				let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::BlobUrl, None, false);
-
-				// Render svg
-				graphic_group.render_svg(&mut render, &render_params);
-
-				// Conctenate the defs and the svg into one string
-				let mut svg = "<defs>".to_string();
-				svg.push_str(&render.svg_defs);
-				svg.push_str("</defs>");
-				use std::fmt::Write;
-				write!(svg, "{}", render.svg).unwrap();
-
-				// Send to frontend
-				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			_ => {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));

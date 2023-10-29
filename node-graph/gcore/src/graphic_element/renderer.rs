@@ -1,4 +1,5 @@
 use crate::raster::{Image, ImageFrame};
+use crate::text;
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
 use base64::Engine;
@@ -88,6 +89,15 @@ impl SvgRender {
 		self.svg.push("</svg>");
 	}
 
+	/// Wraps the svg with `<svg><g transform="...">`, which allows for rotation
+	pub fn wrap_with_transform(&mut self, transform: DAffine2) {
+		let defs = &self.svg_defs;
+
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><defs>{defs}</defs><g transform="{}">"#, format_transform_matrix(transform));
+		self.svg.insert(0, svg_header.into());
+		self.svg.push("</g></svg>");
+	}
+
 	pub fn leaf_tag(&mut self, name: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs)) {
 		self.indent();
 		self.svg.push("<");
@@ -95,6 +105,11 @@ impl SvgRender {
 		attributes(&mut SvgRenderAttrs(self));
 
 		self.svg.push("/>");
+	}
+
+	pub fn leaf_node(&mut self, content: impl Into<SvgSegment>) {
+		self.indent();
+		self.svg.push(content);
 	}
 
 	pub fn parent_tag(&mut self, name: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs), inner: impl FnOnce(&mut Self)) {
@@ -357,6 +372,44 @@ impl GraphicElementRendered for GraphicElementData {
 			GraphicElementData::Artboard(artboard) => artboard.add_click_targets(click_targets),
 		}
 	}
+}
+
+/// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
+trait Primative: core::fmt::Display {}
+impl Primative for String {}
+impl Primative for bool {}
+impl Primative for f32 {}
+impl Primative for f64 {}
+
+impl<T: Primative> GraphicElementRendered for T {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		render.parent_tag("text", |_| {}, |render| render.leaf_node(format!("{self}")));
+	}
+	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
+		None
+	}
+	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+}
+
+impl GraphicElementRendered for Option<Color> {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		let Some(color) = self else {
+			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty colour"));
+			return;
+		};
+		render.leaf_tag("rect", |attributes| {
+			attributes.push("width", "100");
+			attributes.push("height", "100");
+			attributes.push("y", "2");
+			attributes.push("fill", format!("#{}", color.rgba_hex()));
+		});
+		let colour_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
+		render.parent_tag("text", |_| {}, |render| render.leaf_node(colour_info))
+	}
+	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
+		None
+	}
+	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 /// A segment of an svg string to allow for embedding blob urls

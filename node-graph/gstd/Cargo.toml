@@ -42,7 +42,7 @@ graphene-core = { path = "../gcore", features = [
 	"alloc",
 ], default-features = false }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
-graph-craft = { path = "../graph-craft" }
+graph-craft = { path = "../graph-craft", features = ["serde"] }
 vulkan-executor = { path = "../vulkan-executor", optional = true }
 wgpu-executor = { path = "../wgpu-executor", optional = true, version = "0.1" }
 gpu-executor = { path = "../gpu-executor", optional = true }
