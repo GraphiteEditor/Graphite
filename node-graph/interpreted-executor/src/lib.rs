@@ -90,7 +90,7 @@ mod tests {
 			inputs: vec![0],
 			outputs: vec![NodeOutput::new(1, 0)],
 			nodes: [
-				// Simple identity node taking a number as input from ouside the graph
+				// Simple identity node taking a number as input from outside the graph
 				(
 					0,
 					DocumentNode {

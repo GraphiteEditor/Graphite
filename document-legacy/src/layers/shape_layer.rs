@@ -91,7 +91,7 @@ impl ShapeLayer {
 		transforms.iter().skip(start).fold(DAffine2::IDENTITY, |a, b| a * *b)
 	}
 
-	/// TODO The behavior of ngon changed from the previous iteration slightly, match original behavior
+	// TODO The behavior of ngon changed from the previous iteration slightly, match original behavior
 	/// Create an N-gon.
 	///
 	/// # Panics

@@ -107,7 +107,6 @@ impl<'a> ModifyInputsContext<'a> {
 			} else {
 				// The user has connected another node to the output. Insert a layer node between the output and the node.
 				let mut node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-				self.add_empty_stack(&mut node);
 				let node_id = self.insert_between(generate_uuid(), NodeOutput::new(node_id, output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
 				NodeOutput::new(node_id, 0)
 			};
@@ -116,7 +115,6 @@ impl<'a> ModifyInputsContext<'a> {
 			self.insert_between(new_id, sibling_layer, output, node, 7, 0, IVec2::new(0, 3))
 		} else {
 			let mut layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
-			self.add_empty_stack(&mut layer_node);
 			self.insert_node_before(new_id, output_node_id, input_index, layer_node, IVec2::new(-5, 3))
 		};
 
@@ -131,15 +129,7 @@ impl<'a> ModifyInputsContext<'a> {
 		new_id
 	}
 
-	fn add_empty_stack(&mut self, node: &mut DocumentNode) {
-		let empty_stack = resolve_document_node_type("Empty Stack").expect("EmptyStack node").default_document_node();
-		let empty_id = generate_uuid();
-		self.network.nodes.insert(empty_id, empty_stack);
-		*node.inputs.last_mut().unwrap() = NodeInput::node(empty_id, 0);
-	}
-
 	fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
-		let cull_node = resolve_document_node_type("Cull").expect("Node").default_document_node();
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
 				None,
@@ -152,8 +142,7 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		let cull_id = generate_uuid();
-		self.insert_node_before(cull_id, layer, 0, cull_node, IVec2::new(-8, 0));
-		self.insert_node_before(generate_uuid(), cull_id, 0, artboard_node, IVec2::new(-8, 0))
+		self.insert_node_before(generate_uuid(), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
 	fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {

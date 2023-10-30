@@ -263,15 +263,6 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 			..Default::default()
 		},
 		DocumentNodeType {
-			name: "Empty Stack",
-			category: "Hidden",
-			identifier: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
-			manual_composition: Some(concrete!(Footprint)),
-			inputs: vec![DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), false)],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
-			..Default::default()
-		},
-		DocumentNodeType {
 			name: "Input Frame",
 			category: "Ignore",
 			identifier: NodeImplementation::proto("graphene_core::ExtractImageFrame"),
@@ -2486,6 +2477,7 @@ impl DocumentNodeType {
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
+	network.resolve_empty_stacks();
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
 		network.flatten(id);
