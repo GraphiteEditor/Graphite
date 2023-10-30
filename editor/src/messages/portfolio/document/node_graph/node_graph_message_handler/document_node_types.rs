@@ -475,7 +475,7 @@ fn static_nodes() -> Vec<DocumentNodeType> {
 		DocumentNodeType {
 			name: "End Scope",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_core::memo::EndLetNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
 			inputs: vec![
 				DocumentInputType {
 					name: "Scope",

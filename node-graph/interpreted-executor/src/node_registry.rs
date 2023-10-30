@@ -546,28 +546,35 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f32, f32, f32]),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<WasmEditorApi>, params: []),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: ImageFrame<Color>, params: [ImageFrame<Color>]),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: VectorData, params: [VectorData]),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: RenderOutput, params: [RenderOutput]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: ImageFrame<Color>, params: [ImageFrame<Color>]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: VectorData, params: [VectorData]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, params: [RenderOutput]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, params: [f32]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, params: [f64]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, params: [bool]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, params: [String]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, params: [Option<Color>]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => VectorData]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ImageFrame<Color>]),
 		async_node!(
-			graphene_core::memo::EndLetNode<_>,
+			graphene_core::memo::EndLetNode<_, _>,
 			input: WasmEditorApi,
 			output: graphene_core::GraphicGroup,
 			params: [graphene_core::GraphicGroup]
 		),
 		async_node!(
-			graphene_core::memo::EndLetNode<_>,
+			graphene_core::memo::EndLetNode<_, _>,
 			input: WasmEditorApi,
 			output: graphene_core::Artboard,
 			params: [graphene_core::Artboard]
 		),
 		async_node!(
-			graphene_core::memo::EndLetNode<_>,
+			graphene_core::memo::EndLetNode<_, _>,
 			input: WasmEditorApi,
 			output: WasmSurfaceHandleFrame,
 			params: [WasmSurfaceHandleFrame]
 		),
-		async_node!(graphene_core::memo::EndLetNode<_>, input: WasmEditorApi, output: SurfaceFrame, params: [SurfaceFrame]),
+		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: SurfaceFrame, params: [SurfaceFrame]),
 		vec![
 			(
 				NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),

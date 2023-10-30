@@ -1019,15 +1019,15 @@ impl NodeNetwork {
 		// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
 		for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
 			for input in &mut node.inputs {
-				if matches!(
-					input,
-					NodeInput::Value {
-						tagged_value: TaggedValue::GraphicGroup(GraphicGroup::EMPTY),
-						..
+				if let NodeInput::Value {
+					tagged_value: TaggedValue::GraphicGroup(graphic_group),
+					..
+				} = input
+				{
+					if *graphic_group == GraphicGroup::EMPTY {
+						*input = NodeInput::node(new_id, 0);
+						used = true;
 					}
-				) {
-					*input = NodeInput::node(new_id, 0);
-					used = true;
 				}
 			}
 		}

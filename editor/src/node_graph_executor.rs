@@ -82,6 +82,7 @@ pub(crate) struct GenerationResponse {
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_transforms: HashMap<LayerNodeIdentifier, DAffine2>,
 	new_upstream_transforms: HashMap<NodeId, DAffine2>,
+	transform: DAffine2,
 }
 
 enum NodeGraphUpdate {
@@ -160,6 +161,7 @@ impl NodeRuntime {
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_transforms: self.transforms.clone().into_iter().map(|(id, transform)| (LayerNodeIdentifier::new_unchecked(id), transform)).collect(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
+						transform,
 					};
 					self.sender.send_generation_response(response);
 				}
@@ -196,18 +198,6 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
-
-		// Ensure that the render node is used where applicable to fix previewing
-		if let Some(mut output) = graph.previous_outputs.take() {
-			if let Some(NodeOutput { node_id, .. }) = output.first().copied() {
-				if let Some(output_node) = graph.nodes.get_mut(&node_id).filter(|node| node.name == "Output") {
-					if graph.outputs[0].node_id != node_id {
-						output_node.inputs[0] = NodeInput::node(graph.outputs[0].node_id, graph.outputs[0].node_output_index);
-					}
-				}
-			}
-			graph.outputs = output;
-		}
 
 		let scoped_network = wrap_network_in_scope(graph, graph_input_hash.finish());
 
@@ -524,6 +514,7 @@ impl NodeGraphExecutor {
 					new_click_targets,
 					new_transforms,
 					new_upstream_transforms,
+					transform,
 				}) => {
 					self.thumbnails = new_thumbnails;
 					document.metadata.update_transforms(new_transforms, new_upstream_transforms);
@@ -531,7 +522,7 @@ impl NodeGraphExecutor {
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
-					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
+					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses, execution_context.document_id)?;
 					responses.add(DocumentMessage::LayerChanged {
 						affected_layer_path: execution_context.layer_path,
 					});
@@ -549,7 +540,25 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+	fn render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
+		use graphene_core::renderer::{RenderParams, SvgRender};
+
+		// Setup rendering
+		let mut render = SvgRender::new();
+		let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::BlobUrl, None, false);
+
+		// Render svg
+		render_object.render_svg(&mut render, &render_params);
+
+		// Conctenate the defs and the svg into one string
+		render.wrap_with_transform(transform);
+		let svg = render.svg.to_string();
+
+		// Send to frontend
+		responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+	}
+
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
 			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {
@@ -583,6 +592,13 @@ impl NodeGraphExecutor {
 
 				//return Err("Graphic group (see console)".to_string());
 			}
+			TaggedValue::Bool(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::String(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::F32(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::F64(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::OptionalColor(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::VectorData(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::ImageFrame(render_object) => Self::render(render_object, transform, responses),
 			_ => {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
