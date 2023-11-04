@@ -213,9 +213,7 @@ impl<'a, IO> From<EditorApi<'a, IO>> for Footprint {
 
 // Required for the EndLetNode
 impl<'a, IO> From<EditorApi<'a, IO>> for () {
-	fn from(_value: EditorApi<'a, IO>) -> Self {
-		()
-	}
+	fn from(_value: EditorApi<'a, IO>) -> Self {}
 }
 
 #[derive(Debug, Clone, Copy, Default)]

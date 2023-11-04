@@ -381,21 +381,21 @@ impl NavigationMessageHandler {
 		}
 	}
 
-	pub fn calculate_offset_transform(&self, viewport_centre: DVec2) -> DAffine2 {
+	pub fn calculate_offset_transform(&self, viewport_center: DVec2) -> DAffine2 {
 		// Try to avoid fractional coordinates to reduce anti aliasing.
 		let scale = self.snapped_scale();
-		let rounded_pan = ((self.pan + viewport_centre) * scale).round() / scale - viewport_centre;
+		let rounded_pan = ((self.pan + viewport_center) * scale).round() / scale - viewport_center;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
-		let offset_transform = DAffine2::from_translation(viewport_centre);
+		let offset_transform = DAffine2::from_translation(viewport_center);
 		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * offset_transform.inverse() * translation_transform
 	}
 
-	fn create_document_transform(&self, viewport_centre: DVec2, responses: &mut VecDeque<Message>) {
-		let transform = self.calculate_offset_transform(viewport_centre);
+	fn create_document_transform(&self, viewport_center: DVec2, responses: &mut VecDeque<Message>) {
+		let transform = self.calculate_offset_transform(viewport_center);
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 

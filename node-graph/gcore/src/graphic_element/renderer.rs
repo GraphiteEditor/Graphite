@@ -1,5 +1,4 @@
 use crate::raster::{Image, ImageFrame};
-use crate::text;
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
 use base64::Engine;
@@ -89,7 +88,7 @@ impl SvgRender {
 		self.svg.push("</svg>");
 	}
 
-	/// Wraps the svg with `<svg><g transform="...">`, which allows for rotation
+	/// Wraps the SVG with `<svg><g transform="...">`, which allows for rotation
 	pub fn wrap_with_transform(&mut self, transform: DAffine2) {
 		let defs = &self.svg_defs;
 
@@ -375,11 +374,11 @@ impl GraphicElementRendered for GraphicElementData {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primative: core::fmt::Display {}
-impl Primative for String {}
-impl Primative for bool {}
-impl Primative for f32 {}
-impl Primative for f64 {}
+trait Primitive: core::fmt::Display {}
+impl Primitive for String {}
+impl Primitive for bool {}
+impl Primitive for f32 {}
+impl Primitive for f64 {}
 
 fn text_attributes(attributes: &mut SvgRenderAttrs) {
 	attributes.push("fill", "white");
@@ -387,34 +386,39 @@ fn text_attributes(attributes: &mut SvgRenderAttrs) {
 	attributes.push("font-size", "30");
 }
 
-impl<T: Primative> GraphicElementRendered for T {
+impl<T: Primitive> GraphicElementRendered for T {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
 	}
+
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
+
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 impl GraphicElementRendered for Option<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		let Some(color) = self else {
-			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty colour"));
+			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
 			return;
 		};
+
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("width", "100");
 			attributes.push("height", "100");
 			attributes.push("y", "40");
 			attributes.push("fill", format!("#{}", color.rgba_hex()));
 		});
-		let colour_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
-		render.parent_tag("text", text_attributes, |render| render.leaf_node(colour_info))
+		let color_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
+		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
+
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
+
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 

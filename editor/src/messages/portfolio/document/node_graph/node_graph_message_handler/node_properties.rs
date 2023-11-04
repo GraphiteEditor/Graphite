@@ -546,7 +546,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 			move |_: &IconButton| {
 				let mut new_positions = positions.clone();
 
-				// Blend linearly between the two colours.
+				// Blend linearly between the two colors.
 				let get_color = |index: usize| match (new_positions[index].1, new_positions.get(index + 1).and_then(|x| x.1)) {
 					(Some(a), Some(b)) => Color::from_rgbaf32((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
 					(Some(v), _) | (_, Some(v)) => Some(v),

@@ -541,16 +541,16 @@ impl NodeGraphExecutor {
 	}
 
 	fn render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
-		use graphene_core::renderer::{RenderParams, SvgRender};
+		use graphene_core::renderer::{ImageRenderMode, RenderParams, SvgRender};
 
 		// Setup rendering
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::BlobUrl, None, false);
+		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, None, false);
 
-		// Render svg
+		// Render SVG
 		render_object.render_svg(&mut render, &render_params);
 
-		// Conctenate the defs and the svg into one string
+		// Concatenate the defs and the SVG into one string
 		render.wrap_with_transform(transform);
 		let svg = render.svg.to_string();
 
@@ -573,9 +573,7 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
 				// Send to frontend
-				//log::debug!("svg: {svg}");
 				responses.add(DocumentMessage::RenderScrollbars);
-				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				let matrix = frame
 					.transform
 					.to_cols_array()
@@ -589,8 +587,6 @@ impl NodeGraphExecutor {
 					1920, 1080, matrix, frame.surface_id.0
 				);
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-
-				//return Err("Graphic group (see console)".to_string());
 			}
 			TaggedValue::Bool(render_object) => Self::render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::render(render_object, transform, responses),
@@ -618,6 +614,6 @@ impl NodeGraphExecutor {
 				return;
 			}
 		}
-		warn!("Recieved blob url for invalid segment")
+		warn!("Received blob url for invalid segment")
 	}
 }

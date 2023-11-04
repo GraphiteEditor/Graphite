@@ -363,18 +363,19 @@ where
 	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
+
 	#[inline]
 	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
 		Box::pin(async move {
 			let footprint = editor.render_config.viewport;
 			let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
-			let output_format = editor.render_config.export_format;
 
+			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
 				#[cfg(any(feature = "resvg", feature = "vello"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
-				_ => todo!("Non svg render output for {output_format:?}"),
+				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
 		})
 	}
@@ -392,15 +393,17 @@ where
 	#[inline]
 	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
 		Box::pin(async move {
-			let footprint = editor.render_config.viewport;
-			let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
-			let output_format = editor.render_config.export_format;
+			use graphene_core::renderer::ImageRenderMode;
 
+			let footprint = editor.render_config.viewport;
+			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, None, false);
+
+			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
 				#[cfg(any(feature = "resvg", feature = "vello"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(()).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
-				_ => todo!("Non svg render output for {output_format:?}"),
+				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
 		})
 	}
