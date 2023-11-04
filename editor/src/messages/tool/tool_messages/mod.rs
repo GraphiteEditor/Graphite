@@ -3,7 +3,6 @@ pub mod brush_tool;
 pub mod ellipse_tool;
 pub mod eyedropper_tool;
 pub mod fill_tool;
-pub mod frame_tool;
 pub mod freehand_tool;
 pub mod gradient_tool;
 pub mod imaginate_tool;

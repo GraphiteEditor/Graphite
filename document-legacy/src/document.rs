@@ -590,6 +590,7 @@ impl Document {
 
 				Some(responses)
 			}
+			// TODO: Remove
 			Operation::AddFrame {
 				path,
 				insert_index,

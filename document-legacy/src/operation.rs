@@ -14,6 +14,7 @@ use std::hash::{Hash, Hasher};
 // TODO: Rename all instances of `path` to `layer_path`
 /// Operations that can be performed to mutate the document.
 pub enum Operation {
+	// TODO: Remove
 	AddFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,

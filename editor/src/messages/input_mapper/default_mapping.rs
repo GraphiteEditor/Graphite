@@ -150,13 +150,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
-		// FrameToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=FrameToolMessage::DragStart),
-		entry!(KeyUp(Lmb); action_dispatch=FrameToolMessage::DragStop),
-		entry!(KeyDown(Rmb); action_dispatch=FrameToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=FrameToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=FrameToolMessage::Resize { center: Alt, lock_ratio: Shift }),
-		//
 		// EllipseToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=EllipseToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=EllipseToolMessage::DragStop),

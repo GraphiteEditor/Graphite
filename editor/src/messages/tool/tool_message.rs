@@ -82,9 +82,6 @@ pub enum ToolMessage {
 	#[remain::unsorted]
 	#[child]
 	Imaginate(ImaginateToolMessage),
-	#[remain::unsorted]
-	#[child]
-	Frame(FrameToolMessage),
 
 	// Messages
 	#[remain::unsorted]
@@ -123,8 +120,6 @@ pub enum ToolMessage {
 	ActivateToolBrush,
 	#[remain::unsorted]
 	ActivateToolImaginate,
-	#[remain::unsorted]
-	ActivateToolFrame,
 
 	ActivateTool {
 		tool_type: ToolType,

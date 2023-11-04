@@ -260,7 +260,6 @@ import GeneralSelectTool from "@graphite-frontend/assets/icon-24px-two-tone/gene
 import RasterBrushTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-brush-tool.svg";
 import RasterCloneTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-detail-tool.svg";
-import RasterFrameTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-frame-tool.svg";
 import RasterHealTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-heal-tool.svg";
 import RasterImaginateTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-imaginate-tool.svg";
 import RasterPatchTool from "@graphite-frontend/assets/icon-24px-two-tone/raster-patch-tool.svg";
@@ -285,7 +284,6 @@ const TWO_TONE_24PX = {
 	RasterBrushTool: { svg: RasterBrushTool, size: 24 },
 	RasterCloneTool: { svg: RasterCloneTool, size: 24 },
 	RasterDetailTool: { svg: RasterDetailTool, size: 24 },
-	RasterFrameTool: { svg: RasterFrameTool, size: 24 },
 	RasterHealTool: { svg: RasterHealTool, size: 24 },
 	RasterImaginateTool: { svg: RasterImaginateTool, size: 24 },
 	RasterPatchTool: { svg: RasterPatchTool, size: 24 },
