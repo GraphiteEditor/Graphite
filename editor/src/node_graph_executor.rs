@@ -9,13 +9,13 @@ use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscrimina
 use document_legacy::{LayerId, Operation};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
+use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::renderer::{ClickTarget, SvgSegment, SvgSegmentList};
+use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
@@ -82,6 +82,7 @@ pub(crate) struct GenerationResponse {
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_transforms: HashMap<LayerNodeIdentifier, DAffine2>,
 	new_upstream_transforms: HashMap<NodeId, DAffine2>,
+	transform: DAffine2,
 }
 
 enum NodeGraphUpdate {
@@ -160,6 +161,7 @@ impl NodeRuntime {
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_transforms: self.transforms.clone().into_iter().map(|(id, transform)| (LayerNodeIdentifier::new_unchecked(id), transform)).collect(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
+						transform,
 					};
 					self.sender.send_generation_response(response);
 				}
@@ -167,7 +169,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], mut graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -512,6 +514,7 @@ impl NodeGraphExecutor {
 					new_click_targets,
 					new_transforms,
 					new_upstream_transforms,
+					transform,
 				}) => {
 					self.thumbnails = new_thumbnails;
 					document.metadata.update_transforms(new_transforms, new_upstream_transforms);
@@ -519,7 +522,7 @@ impl NodeGraphExecutor {
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
-					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), responses, execution_context.document_id)?;
+					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses, execution_context.document_id)?;
 					responses.add(DocumentMessage::LayerChanged {
 						affected_layer_path: execution_context.layer_path,
 					});
@@ -537,56 +540,40 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+	fn render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
+		use graphene_core::renderer::{ImageRenderMode, RenderParams, SvgRender};
+
+		// Setup rendering
+		let mut render = SvgRender::new();
+		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, None, false);
+
+		// Render SVG
+		render_object.render_svg(&mut render, &render_params);
+
+		// Concatenate the defs and the SVG into one string
+		render.wrap_with_transform(transform);
+		let svg = render.svg.to_string();
+
+		// Send to frontend
+		responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+	}
+
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
-			TaggedValue::VectorData(vector_data) => {
-				// Update the cached vector data on the layer
-				let transform = vector_data.transform.to_cols_array();
-				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetVectorData { path: layer_path, vector_data });
-			}
 			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {
 				let transform = transform.to_cols_array();
 				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 				responses.add(Operation::SetSurface { path: layer_path, surface_id });
 			}
-			TaggedValue::ImageFrame(ImageFrame { image, transform }) => {
-				// Don't update the frame's transform if the new transform is DAffine2::ZERO.
-				let transform = (!transform.abs_diff_eq(DAffine2::ZERO, f64::EPSILON)).then_some(transform.to_cols_array());
-
-				// If no image was generated, clear the frame
-				if image.width == 0 || image.height == 0 {
-					responses.add(DocumentMessage::FrameClear);
-
-					// Update the transform based on the graph output
-					if let Some(transform) = transform {
-						responses.add(Operation::SetLayerTransform { path: layer_path, transform });
-					}
-				} else {
-					// Update the image data
-					let image_data = vec![Self::to_frontend_image_data(image, transform, &layer_path, None, None)?];
-					responses.add(FrontendMessage::UpdateImageData { document_id, image_data });
-				}
-			}
-			TaggedValue::Artboard(artboard) => {
-				warn!("Rendered graph produced artboard (which is not currently rendered): {artboard:#?}");
-				return Err("Artboard (see console)".to_string());
-			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
-				//log::debug!("svg: {svg}");
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
-				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-
-				//return Err("Graphic group (see console)".to_string());
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
 				// Send to frontend
-				//log::debug!("svg: {svg}");
 				responses.add(DocumentMessage::RenderScrollbars);
-				//responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 				let matrix = frame
 					.transform
 					.to_cols_array()
@@ -600,30 +587,14 @@ impl NodeGraphExecutor {
 					1920, 1080, matrix, frame.surface_id.0
 				);
 				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-
-				//return Err("Graphic group (see console)".to_string());
 			}
-			TaggedValue::GraphicGroup(graphic_group) => {
-				use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
-
-				// Setup rendering
-				let mut render = SvgRender::new();
-				let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::BlobUrl, None, false);
-
-				// Render svg
-				graphic_group.render_svg(&mut render, &render_params);
-
-				// Conctenate the defs and the svg into one string
-				let mut svg = "<defs>".to_string();
-				svg.push_str(&render.svg_defs);
-				svg.push_str("</defs>");
-				use std::fmt::Write;
-				write!(svg, "{}", render.svg).unwrap();
-
-				// Send to frontend
-				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
-				responses.add(DocumentMessage::RenderScrollbars);
-			}
+			TaggedValue::Bool(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::String(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::F32(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::F64(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::OptionalColor(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::VectorData(render_object) => Self::render(render_object, transform, responses),
+			TaggedValue::ImageFrame(render_object) => Self::render(render_object, transform, responses),
 			_ => {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
@@ -643,6 +614,6 @@ impl NodeGraphExecutor {
 				return;
 			}
 		}
-		warn!("Recieved blob url for invalid segment")
+		warn!("Received blob url for invalid segment")
 	}
 }

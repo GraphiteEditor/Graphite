@@ -127,12 +127,12 @@ impl Gradient {
 
 		// Compute the color of the inserted stop
 		let get_color = |index: usize, time: f64| match (self.positions[index].1, self.positions.get(index + 1).and_then(|x| x.1)) {
-			// Lerp between the nearest colours if applicable
+			// Lerp between the nearest colors if applicable
 			(Some(a), Some(b)) => a.lerp(
 				b,
 				((time - self.positions[index].0) / self.positions.get(index + 1).map(|end| end.0 - self.positions[index].0).unwrap_or_default()) as f32,
 			),
-			// Use the start or the end colour if applicable
+			// Use the start or the end color if applicable
 			(Some(v), _) | (_, Some(v)) => v,
 			_ => Color::WHITE,
 		};

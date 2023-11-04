@@ -141,7 +141,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		inner_network,
 		DocumentNode {
 			name: "End Scope".to_string(),
-			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_>"),
+			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
 			inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
 			..Default::default()
 		},

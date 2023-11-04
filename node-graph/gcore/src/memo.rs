@@ -111,23 +111,24 @@ impl<T> LetNode<T> {
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EndLetNode<Input> {
+pub struct EndLetNode<Input, Parameter> {
 	input: Input,
+	paramenter: PhantomData<Parameter>,
 }
-impl<'i, T: 'i, Input> Node<'i, T> for EndLetNode<Input>
+impl<'i, T: 'i, Parameter: 'i + From<T>, Input> Node<'i, T> for EndLetNode<Input, Parameter>
 where
-	Input: Node<'i, ()>,
+	Input: Node<'i, Parameter>,
 {
 	type Output = <Input>::Output;
-	fn eval(&'i self, _: T) -> Self::Output {
-		let result = self.input.eval(());
+	fn eval(&'i self, t: T) -> Self::Output {
+		let result = self.input.eval(Parameter::from(t));
 		result
 	}
 }
 
-impl<Input> EndLetNode<Input> {
-	pub const fn new(input: Input) -> EndLetNode<Input> {
-		EndLetNode { input }
+impl<Input, Parameter> EndLetNode<Input, Parameter> {
+	pub const fn new(input: Input) -> EndLetNode<Input, Parameter> {
+		EndLetNode { input, paramenter: PhantomData }
 	}
 }
 

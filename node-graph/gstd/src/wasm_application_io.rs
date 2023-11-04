@@ -15,6 +15,7 @@ use graphene_core::{Color, GraphicGroup};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
@@ -288,77 +289,132 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 }
 pub use graph_craft::document::value::RenderOutput;
 
-pub struct RenderNode<Data, Surface> {
+pub struct RenderNode<Data, Surface, Parameter> {
 	data: Data,
 	surface_handle: Surface,
+	parameter: PhantomData<Parameter>,
 }
 
-#[node_macro::node_fn(RenderNode)]
-async fn render_node<'a: 'input, F: Future<Output = GraphicGroup>>(
-	editor: WasmEditorApi<'a>,
-	data: impl Node<'input, Footprint, Output = F>,
+fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutput {
+	data.render_svg(&mut render, &render_params);
+	render.wrap_with_transform(footprint.transform);
+	RenderOutput::Svg(render.svg.to_string())
+}
+
+#[cfg(any(feature = "resvg", feature = "vello"))]
+fn render_canvas(
+	data: impl GraphicElementRendered,
+	mut render: SvgRender,
+	render_params: RenderParams,
+	footprint: Footprint,
+	editor: WasmEditorApi<'_>,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> RenderOutput {
-	let footprint = editor.render_config.viewport;
-	let data = self.data.eval(footprint).await;
-	let mut render = SvgRender::new();
-	let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
-	let output_format = editor.render_config.export_format;
 	let resolution = footprint.resolution;
+	data.render_svg(&mut render, &render_params);
+	// TODO: reenable once we switch to full node graph
+	let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+	let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+	render.format_svg(min, max);
+	let string = render.svg.to_string();
+	let array = string.as_bytes();
+	let canvas = &surface_handle.surface;
+	canvas.set_width(resolution.x);
+	canvas.set_height(resolution.y);
+	let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
 
-	match output_format {
-		ExportFormat::Svg => {
-			data.render_svg(&mut render, &render_params);
-			// TODO: reenable once we switch to full node graph
-			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
-			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
-			render.format_svg(min, max);
-			RenderOutput::Svg(render.svg.to_string())
-		}
-		#[cfg(any(feature = "resvg", feature = "vello"))]
-		ExportFormat::Canvas => {
-			data.render_svg(&mut render, &render_params);
-			// TODO: reenable once we switch to full node graph
-			let min = footprint.transform.inverse().transform_point2((0., 0.).into());
-			let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
-			render.format_svg(min, max);
-			let string = render.svg.to_string();
-			let array = string.as_bytes();
-			let canvas = &surface_handle.surface;
-			canvas.set_width(resolution.x);
-			canvas.set_height(resolution.y);
-			let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
+	if let Some(exec) = editor.application_io.gpu_executor() {
+		todo!()
+	} else {
+		let rtree = resvg::Tree::from_usvg(&usvg_tree);
 
-			if let Some(exec) = editor.application_io.gpu_executor() {
-				todo!()
-			} else {
-				let rtree = resvg::Tree::from_usvg(&usvg_tree);
+		let pixmap_size = rtree.size.to_int_size();
+		let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
+		rtree.render(resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+		let array: Clamped<&[u8]> = Clamped(pixmap.data());
+		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");
+		context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+	}
+	/*
+	let preamble = "data:image/svg+xml;base64,";
+	let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+	base64_string.push_str(preamble);
+	base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
 
-				let pixmap_size = rtree.size.to_int_size();
-				let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
-				rtree.render(resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
-				let array: Clamped<&[u8]> = Clamped(pixmap.data());
-				let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-				let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");
-				context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+	let image_data = web_sys::HtmlImageElement::new().unwrap();
+	image_data.set_src(base64_string.as_str());
+	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+	context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
+	*/
+	let frame = SurfaceHandleFrame {
+		surface_handle,
+		transform: DAffine2::IDENTITY,
+	};
+	RenderOutput::CanvasFrame(frame.into())
+}
+
+// Render with the data node taking in Footprint.
+impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, WasmEditorApi<'a>>
+	for RenderNode<Data, Surface, Footprint>
+where
+	Data: Node<'input, Footprint, Output = F>,
+	Surface: Node<'input, (), Output = SurfaceFuture>,
+	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+{
+	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
+
+	#[inline]
+	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
+		Box::pin(async move {
+			let footprint = editor.render_config.viewport;
+			let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
+
+			let output_format = editor.render_config.export_format;
+			match output_format {
+				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
+				#[cfg(any(feature = "resvg", feature = "vello"))]
+				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
+				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
-			/*
-			let preamble = "data:image/svg+xml;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+		})
+	}
+}
 
-			let image_data = web_sys::HtmlImageElement::new().unwrap();
-			image_data.set_src(base64_string.as_str());
-			wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-			context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
-			*/
-			let frame = SurfaceHandleFrame {
-				surface_handle,
-				transform: DAffine2::IDENTITY,
-			};
-			RenderOutput::CanvasFrame(frame.into())
+// Render with the data node taking in ().
+impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, WasmEditorApi<'a>>
+	for RenderNode<Data, Surface, ()>
+where
+	Data: Node<'input, (), Output = F>,
+	Surface: Node<'input, (), Output = SurfaceFuture>,
+	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+{
+	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
+	#[inline]
+	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
+		Box::pin(async move {
+			use graphene_core::renderer::ImageRenderMode;
+
+			let footprint = editor.render_config.viewport;
+			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, None, false);
+
+			let output_format = editor.render_config.export_format;
+			match output_format {
+				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
+				#[cfg(any(feature = "resvg", feature = "vello"))]
+				ExportFormat::Canvas => render_canvas(self.data.eval(()).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
+				_ => todo!("Non-SVG render output for {output_format:?}"),
+			}
+		})
+	}
+}
+#[automatically_derived]
+impl<Data, Surface, Parameter> RenderNode<Data, Surface, Parameter> {
+	pub const fn new(data: Data, surface_handle: Surface) -> Self {
+		Self {
+			data,
+			surface_handle,
+			parameter: PhantomData,
 		}
-		_ => todo!("Non svg render output for {output_format:?}"),
 	}
 }

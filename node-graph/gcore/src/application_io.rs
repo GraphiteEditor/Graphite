@@ -204,6 +204,18 @@ impl<'a, T> AsRef<EditorApi<'a, T>> for EditorApi<'a, T> {
 	}
 }
 
+// Required for the EndLetNode
+impl<'a, IO> From<EditorApi<'a, IO>> for Footprint {
+	fn from(value: EditorApi<'a, IO>) -> Self {
+		value.render_config.viewport
+	}
+}
+
+// Required for the EndLetNode
+impl<'a, IO> From<EditorApi<'a, IO>> for () {
+	fn from(_value: EditorApi<'a, IO>) -> Self {}
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExtractImageFrame;
 

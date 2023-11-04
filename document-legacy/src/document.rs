@@ -60,7 +60,7 @@ impl Default for Document {
 					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
 					implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
 						inputs: vec![3, 0],
-						outputs: vec![NodeOutput::new(4, 0)],
+						outputs: vec![NodeOutput::new(3, 0)],
 						nodes: [
 							DocumentNode {
 								name: "EditorApi".to_string(),
@@ -83,15 +83,13 @@ impl Default for Document {
 								..Default::default()
 							},
 							DocumentNode {
-								name: "Conversion".to_string(),
-								inputs: vec![NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))))],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
-								..Default::default()
-							},
-							DocumentNode {
 								name: "RenderNode".to_string(),
-								inputs: vec![NodeInput::node(0, 0), NodeInput::node(3, 0), NodeInput::node(2, 0)],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
+								inputs: vec![
+									NodeInput::node(0, 0),
+									NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
+									NodeInput::node(2, 0),
+								],
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
 								..Default::default()
 							},
 						]
