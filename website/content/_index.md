@@ -374,7 +374,7 @@ You can help realize Graphite's ambitious vision of building the ultimate 2D cre
 Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
 </p>
 
-### Summer 2023 fundraising goal:
+<!-- ### Summer 2023 fundraising goal:
 
 <div class="fundraising loading" data-fundraising>
 	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
@@ -386,14 +386,14 @@ Graphite is built by a small, dedicated crew of volunteers in need of resources 
 	</div>
 </div>
 
-[Become a monthly supporter](https://github.com/sponsors/Keavon) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration.
+[Become a monthly supporter](https://github.com/sponsors/GraphiteEditor) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration. -->
 
-<a href="https://github.com/sponsors/Keavon" class="button arrow">Donate</a>
+<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
 
 </div>
 
 <!-- <div class="graphic">
-	<a href="https://github.com/sponsors/Keavon"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
+	<a href="https://github.com/sponsors/GraphiteEditor"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
 </div> -->
 
 </div>
@@ -420,7 +420,7 @@ The data-driven approach to design affords unique capabilities that are presentl
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span class="balance-text">Integrates generative AI models and graphics algorithms</span>
+		<span class="balance-text">Integrated generative AI models and graphics algorithms</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />

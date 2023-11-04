@@ -11,12 +11,16 @@ js = ["/fundraising.js"]
 
 # Donate
 
-**Safeguard the sustainable, independent future of Graphite.** Your monthly support (or one-off contribution) is needed for the speedy growth of the project.
+**Safeguard the sustainable, independent future of Graphite.**
+
+Your monthly support (or one-off contribution) will help provide the resources needed to grow Graphite into the ultimate 2D creative tool.
+
+<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">&hearts; Give now</a>
 
 </div>
 </section>
 
-<section id="fundraising" class="feature-box">
+<!-- <section id="fundraising" class="feature-box">
 <div class="box">
 <div>
 
@@ -41,16 +45,16 @@ Graphite is built by a small, dedicated crew of volunteers in need of resources 
 	</div>
 </div>
 
-[Become a monthly supporter](https://github.com/sponsors/Keavon) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration.
+[Become a monthly supporter](https://github.com/sponsors/GraphiteEditor) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration.
 
-<a href="https://github.com/sponsors/Keavon" class="button arrow">Donate</a>
-
-</div>
-
-<!-- <div class="graphic">
-	<a href="https://github.com/sponsors/Keavon"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
-</div> -->
+<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
 
 </div>
+
+<div class="graphic">
+	<a href="https://github.com/sponsors/GraphiteEditor"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
 </div>
-</section>
+
+</div>
+</div>
+</section> -->
