@@ -743,10 +743,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
-			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender {
-				document_id: document_id,
-				layer_path: Vec::new(),
-			}),
+			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path: Vec::new() }),
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = document.document_network.nested_network(&self.network) {
 					Self::send_graph(network, &self.layer_path, responses);

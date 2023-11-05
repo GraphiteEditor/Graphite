@@ -70,12 +70,10 @@ impl Gradient {
 		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 		let updated_transform = multiplied_transform * bound_transform;
 
-		let positions = self
-			.positions
-			.iter()
-			.filter_map(|(pos, color)| color.map(|color| (pos, color)))
-			.map(|(position, color)| format!(r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex()))
-			.collect::<String>();
+		let mut positions = String::new();
+		for (position, color) in self.positions.iter().filter_map(|(pos, color)| color.map(|color| (pos, color))) {
+			let _ = write!(positions, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex());
+		}
 
 		let mod_gradient = transformed_bound_transform.inverse();
 		let mod_points = mod_gradient.inverse() * transformed_bound_transform.inverse() * updated_transform;

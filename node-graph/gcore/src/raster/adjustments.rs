@@ -861,7 +861,6 @@ pub struct PosterizeNode<P> {
 fn posterize(color: Color, posterize_value: f32) -> Color {
 	let color = color.to_gamma_srgb();
 
-	let posterize_value = posterize_value;
 	let number_of_areas = posterize_value.recip();
 	let size_of_areas = (posterize_value - 1.).recip();
 	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;

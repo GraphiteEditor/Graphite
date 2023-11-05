@@ -62,7 +62,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Updates the input of an existing node
 	fn modify_existing_node_inputs(&mut self, node_id: NodeId, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let document_node = self.network.nodes.get_mut(&node_id).unwrap();
-		update_input(&mut document_node.inputs, node_id, &self.document_metadata);
+		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
 	pub fn insert_between(&mut self, id: NodeId, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize, shift_upstream: IVec2) -> Option<NodeId> {
@@ -106,7 +106,7 @@ impl<'a> ModifyInputsContext<'a> {
 				NodeOutput::new(node_id, 0)
 			} else {
 				// The user has connected another node to the output. Insert a layer node between the output and the node.
-				let mut node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
 				let node_id = self.insert_between(generate_uuid(), NodeOutput::new(node_id, output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
 				NodeOutput::new(node_id, 0)
 			};
@@ -114,7 +114,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
 			self.insert_between(new_id, sibling_layer, output, node, 7, 0, IVec2::new(0, 3))
 		} else {
-			let mut layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
+			let layer_node = resolve_document_node_type("Layer").expect("Node").default_document_node();
 			self.insert_node_before(new_id, output_node_id, input_index, layer_node, IVec2::new(-5, 3))
 		};
 
@@ -145,7 +145,6 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
-		let cull_id = generate_uuid();
 		self.insert_node_before(generate_uuid(), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
@@ -257,7 +256,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		let mut new_document_node = node_type.to_document_node_default_inputs([Some(new_input)], metadata);
-		update_input(&mut new_document_node.inputs, node_id, &self.document_metadata);
+		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
 		self.network.nodes.insert(node_id, new_document_node);
 	}
 
@@ -361,7 +360,10 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
 
-			if let Some(current_transform) = current_transform.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.) {
+			if current_transform
+				.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)
+				.is_some()
+			{
 				transform = transform * upstream_transform.inverse();
 			}
 			let final_transform = pivot.inverse() * to.inverse() * transform * pivot;
@@ -546,7 +548,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
-				let transform = transform.to_cols_array();
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
 				let bounds = LayerBounds::new(document, &layer);

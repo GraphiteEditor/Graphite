@@ -1,19 +1,16 @@
 #![allow(clippy::too_many_arguments)]
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, SELECTION_TOLERANCE};
-use crate::messages::portfolio::document::node_graph::new_text_network;
+use crate::consts::COLOR_ACCENT;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_text_layer};
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::intersection::Quad;
-use document_legacy::layers::layer_info::Layer;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::text::{load_face, Font};
 use graphene_core::Color;
 
@@ -277,7 +274,7 @@ impl TextToolData {
 
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
-		if let Some(clicked_text_layer_path) = document.metadata().click(mouse, &document.network()).filter(|&layer| is_text_layer(layer, &document.document_legacy)) {
+		if let Some(clicked_text_layer_path) = document.metadata().click(mouse, document.network()).filter(|&layer| is_text_layer(layer, &document.document_legacy)) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, render_data, responses);
 
 			TextToolFsmState::Editing

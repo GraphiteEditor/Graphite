@@ -374,8 +374,7 @@ impl PathGraph {
 
 	pub fn get_cycles(&self) -> Vec<Cycle> {
 		let mut cycles = Vec::new();
-		let mut markers = Vec::new();
-		markers.resize(self.size(), 0);
+		let mut markers = vec![0; self.size()];
 
 		self.vertices.iter().enumerate().for_each(|(vertex_index, _vertex)| {
 			if (markers[vertex_index] & 1) == 0 {

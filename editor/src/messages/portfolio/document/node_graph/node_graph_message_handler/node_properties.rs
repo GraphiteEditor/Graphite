@@ -1171,7 +1171,7 @@ pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, 
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
 		let pivot_index = 5;
 		if let NodeInput::Value {

@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::{self, RenderData};
+use document_legacy::layers::style;
 use document_legacy::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
@@ -51,7 +51,7 @@ impl Pivot {
 	}
 
 	/// Recomputes the pivot position and transform.
-	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler, render_data: &RenderData) {
+	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
 		let mut layers = document.metadata().selected_visible_layers();
 		let Some(first) = layers.next() else {
 			// If no layers are selected then we revert things back to default
@@ -138,8 +138,8 @@ impl Pivot {
 		responses.add(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: inner, transform }.into()));
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) {
-		self.recalculate_pivot(document, render_data);
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.recalculate_pivot(document);
 		self.redraw_pivot(responses);
 	}
 

@@ -1,5 +1,5 @@
 use crate::messages::frontend::utility_types::FrontendImageData;
-use crate::messages::portfolio::document::node_graph::{transform_utils, wrap_network_in_scope};
+use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
 use crate::messages::prelude::*;
 
@@ -9,12 +9,12 @@ use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscrimina
 use document_legacy::{LayerId, Operation};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::raster::Image;
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
@@ -152,7 +152,7 @@ impl NodeRuntime {
 					let (result, monitor_nodes) = self.execute_network(&path, graph, transform, viewport_resolution).await;
 					let mut responses = VecDeque::new();
 					self.update_thumbnails(&path, &monitor_nodes, &mut responses);
-					self.update_upstream_transforms(&path, &monitor_nodes, &mut responses);
+					self.update_upstream_transforms(&monitor_nodes);
 					let response = GenerationResponse {
 						generation_id,
 						result,
@@ -169,7 +169,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], mut graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -244,7 +244,7 @@ impl NodeRuntime {
 				}
 			}
 		}
-		(Ok((result)), monitor_nodes)
+		(Ok(result), monitor_nodes)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
@@ -306,7 +306,7 @@ impl NodeRuntime {
 		}
 	}
 
-	pub fn update_upstream_transforms(&mut self, layer_path: &[LayerId], monitor_nodes: &[Vec<u64>], responses: &mut VecDeque<Message>) {
+	pub fn update_upstream_transforms(&mut self, monitor_nodes: &[Vec<u64>]) {
 		for node_path in monitor_nodes {
 			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
 				warn!("Monitor node has invalid node id");
@@ -522,7 +522,7 @@ impl NodeGraphExecutor {
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
-					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses, execution_context.document_id)?;
+					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses)?;
 					responses.add(DocumentMessage::LayerChanged {
 						affected_layer_path: execution_context.layer_path,
 					});
@@ -558,7 +558,7 @@ impl NodeGraphExecutor {
 		responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>, document_id: u64) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
 			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {

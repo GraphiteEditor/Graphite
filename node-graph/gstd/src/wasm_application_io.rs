@@ -7,11 +7,11 @@ use graphene_core::raster::Image;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
+use graphene_core::Color;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
 	Node,
 };
-use graphene_core::{Color, GraphicGroup};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
@@ -28,9 +28,6 @@ use web_sys::window;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
-
-use base64::Engine;
-use glam::DAffine2;
 
 pub struct Canvas(CanvasRenderingContext2d);
 
