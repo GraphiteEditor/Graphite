@@ -990,13 +990,9 @@ impl DocumentMessageHandler {
 			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, &render_data).unwrap(), None),
 			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
 		};
-		let artboards = match transparent_background {
-			false => "<!--artboards-->",
-			true => "",
-		};
-		let outside_artboards_color = outside.map_or_else(|| if false { "ffffff" } else { "222222" }.to_string(), |col| col.rgba_hex());
-		let outside_artboards = match transparent_background {
-			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{outside_artboards_color}" />"##),
+		let canvas_background_color = outside.map_or_else(|| "222222".to_string(), |col| col.rgba_hex());
+		let canvas_background = match transparent_background {
+			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{canvas_background_color}" />"##),
 			true => "".into(),
 		};
 		let matrix = transform
@@ -1005,7 +1001,7 @@ impl DocumentMessageHandler {
 			.enumerate()
 			.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
 		let svg = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{outside_artboards}<g transform="matrix({matrix})">{artboards}{artwork}</g></svg>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{canvas_background}<g transform="matrix({matrix})">{artwork}</g></svg>"#,
 			size.x, size.y, "\n",
 		);
 

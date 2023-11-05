@@ -693,8 +693,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Enter) => {
-				// rerender_selected_layers(tool_data, responses);
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::Undo,
 					false => DocumentMessage::CommitTransaction,
@@ -705,8 +703,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
-				// rerender_selected_layers(tool_data, responses);
-
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
@@ -740,8 +736,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				// rerender_selected_layers(tool_data, responses);
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::Undo,
 					false => DocumentMessage::CommitTransaction,
@@ -757,8 +751,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				// rerender_selected_layers(tool_data, responses);
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::Undo,
 					false => DocumentMessage::CommitTransaction,
@@ -811,8 +803,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
-				// rerender_selected_layers(tool_data, responses);
-
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::Undo);
 
@@ -909,12 +899,6 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
-// fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
-// 	for layer in &tool_data.layers_dragging {
-// 		responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
-// 	}
-// }
-
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
 	let layer = selected[0];
 	let ancestor = layer.ancestors(document.metadata()).find(|&ancestor| document.metadata().selected_layers_contains(ancestor));
@@ -964,14 +948,3 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document: &Docume
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }
-
-// #[allow(clippy::if_same_then_else)]
-// fn recursive_search(document: &DocumentMessageHandler, layer_path: &[u64], incoming_layer_path_vector: &Vec<u64>) -> bool {
-// 	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
-// 	for path in layer_paths {
-// 		if path == *incoming_layer_path_vector || (document.document_legacy.is_folder(&path) && recursive_search(document, &path, incoming_layer_path_vector)) {
-// 			return true;
-// 		}
-// 	}
-// 	false
-// }
