@@ -1,6 +1,6 @@
 import { type Editor } from "@graphite/wasm-communication/editor";
 import { TriggerTextCopy } from "@graphite/wasm-communication/messages";
-import { imageToPNG } from "~src/utility-functions/rasterization";
+import { imageToPNG } from "@graphite/utility-functions/rasterization";
 
 export function createClipboardManager(editor: Editor): void {
 	// Subscribe to process backend event

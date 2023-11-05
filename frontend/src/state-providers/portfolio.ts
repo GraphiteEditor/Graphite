@@ -20,7 +20,7 @@ import {
 	UpdateImageData,
 	UpdateOpenDocumentsList,
 } from "@graphite/wasm-communication/messages";
-import { copyToClipboardFileURL } from "~src/io-managers/clipboard";
+import { copyToClipboardFileURL } from "@graphite/io-managers/clipboard";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
@@ -52,7 +52,7 @@ export function createPortfolioState(editor: Editor) {
 
 			const filename = url.pathname.split("/").pop() || "Untitled";
 			const content = await data.text();
-			
+
 			editor.instance.openDocumentFile(filename, content);
 		} catch {
 			editor.instance.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
