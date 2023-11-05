@@ -26,7 +26,7 @@ pub struct DocumentNode {
 Each `DocumentNode` is of a particular type, for example the "Opacity" node type. You can define your own type of document node in `editor/src/messages/portfolio/document/node_graph/node_graph_message_handler/document_node_types.rs`. A sample document node type definition for the opacity node is shown:
 
 ```rs
-DocumentNodeType {
+DocumentNodeBlueprint {
 	name: "Opacity",
 	category: "Image Adjustments",
 	identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),

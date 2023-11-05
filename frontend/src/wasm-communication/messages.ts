@@ -694,11 +694,6 @@ export class LayerMetadata {
 
 export type LayerType = "Folder" | "Layer";
 
-export type LayerTypeData = {
-	name: string;
-	icon: IconName;
-};
-
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
 

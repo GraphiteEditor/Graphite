@@ -3,8 +3,7 @@
 
 	import { currentDraggingElement } from "@graphite/io-managers/drag";
 
-	import type { LayerType, LayerTypeData } from "@graphite/wasm-communication/messages";
-	import { layerTypeData } from "@graphite/wasm-communication/messages";
+	import type { LayerType } from "@graphite/wasm-communication/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";

@@ -10,7 +10,6 @@
 		UpdateDocumentLayerDetails,
 		UpdateDocumentLayerTreeStructureJs,
 		UpdateLayerTreeOptionsLayout,
-		layerTypeData,
 	} from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -282,7 +281,7 @@
 				const layerId = BigInt(item.layerId.toString());
 				path.push(layerId);
 
-				const mapping = layerCache.get([path[path.length-1]].toString());
+				const mapping = layerCache.get([path[path.length - 1]].toString());
 				if (mapping) {
 					mapping.layerType = item.children.length >= 1 ? "Folder" : "Layer";
 					mapping.path = new BigUint64Array(path);
