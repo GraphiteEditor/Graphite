@@ -11,11 +11,9 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::layers::layer_info::LayerDataType;
 use document_legacy::layers::style::RenderData;
 use document_legacy::Operation as DocumentOperation;
-use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
 use std::sync::Arc;
@@ -236,7 +234,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 
-				if let Some(document) = self.active_document_mut() {
+				if self.active_document_mut().is_some() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
@@ -298,7 +296,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				if let Some(document) = self.document_mut(document_id) {
-					document.load_layer_resources(responses, &document.document_legacy.root.data, Vec::new(), document_id);
+					document.load_layer_resources(responses);
 				}
 			}
 			PortfolioMessage::LoadFont { font, is_default } => {
@@ -400,7 +398,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							layer_path: destination_path.clone(),
 							layer_metadata: entry.layer_metadata,
 						});
-						document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
+						document.load_layer_resources(responses);
 						responses.add_front(DocumentOperation::InsertLayer {
 							layer: Box::new(entry.layer.clone()),
 							destination_path,
@@ -433,7 +431,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						for entry in data.iter().rev() {
 							let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
 
-							document.load_layer_resources(responses, &entry.layer.data, destination_path.clone(), self.active_document_id.unwrap());
+							document.load_layer_resources(responses);
 							responses.add(DocumentOperation::InsertLayer {
 								layer: Box::new(entry.layer.clone()),
 								destination_path: destination_path.clone(),

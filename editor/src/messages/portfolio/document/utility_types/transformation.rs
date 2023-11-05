@@ -6,7 +6,6 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::RenderData;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -31,13 +30,11 @@ impl OriginalTransforms {
 		}
 	}
 
-	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], responses: &'a mut VecDeque<Message>, document: &'a Document, shape_editor: Option<&'a ShapeState>, tool_type: &'a ToolType) {
+	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], document: &'a Document, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				for &layer in selected {
-					if !layer_map.contains_key(&layer) {
-						layer_map.insert(layer, document.metadata.transform_to_document(layer));
-					}
+					layer_map.entry(layer).or_insert_with(|| document.metadata.transform_to_document(layer));
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -335,7 +332,7 @@ impl<'a> Selected<'a> {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
 
-		original_transforms.update(selected, responses, document, shape_editor, tool_type);
+		original_transforms.update(selected, document, shape_editor);
 
 		Self {
 			selected,
@@ -348,7 +345,7 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn mean_average_of_pivots(&mut self, render_data: &RenderData) -> DVec2 {
+	pub fn mean_average_of_pivots(&mut self) -> DVec2 {
 		let xy_summation = self
 			.selected
 			.iter()
@@ -359,7 +356,7 @@ impl<'a> Selected<'a> {
 		xy_summation / self.selected.len() as f64
 	}
 
-	pub fn center_of_aabb(&mut self, render_data: &RenderData) -> DVec2 {
+	pub fn center_of_aabb(&mut self) -> DVec2 {
 		let [min, max] = self
 			.selected
 			.iter()

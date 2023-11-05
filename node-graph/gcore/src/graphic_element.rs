@@ -1,5 +1,5 @@
 use crate::raster::{BlendMode, ImageFrame};
-use crate::vector::{subpath, VectorData};
+use crate::vector::VectorData;
 use crate::{Color, Node};
 
 use bezier_rs::BezierHandles;
@@ -231,7 +231,6 @@ impl GraphicElement {
 				let mut builder = PathBuilder::new();
 
 				let transform = to_transform(vector_data.transform);
-				let style = &vector_data.style;
 				for subpath in vector_data.subpaths.iter() {
 					let start = vector_data.transform.transform_point2(subpath[0].anchor);
 					builder.move_to(start.x as f32, start.y as f32);
@@ -300,7 +299,7 @@ impl GraphicElement {
 				group_element
 			}
 			// TODO
-			GraphicElementData::Artboard(board) => usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default())),
+			GraphicElementData::Artboard(_board) => usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default())),
 		}
 	}
 }

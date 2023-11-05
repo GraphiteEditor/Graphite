@@ -99,21 +99,21 @@ impl ToolMetadata for SelectTool {
 }
 
 impl SelectTool {
-	fn deep_selection_widget(&self) -> WidgetHolder {
-		let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
-			.iter()
-			.map(|mode| {
-				DropdownEntryData::new(mode.to_string())
-					.value(mode.to_string())
-					.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
-			})
-			.collect();
+	// fn deep_selection_widget(&self) -> WidgetHolder {
+	// 	let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
+	// 		.iter()
+	// 		.map(|mode| {
+	// 			DropdownEntryData::new(mode.to_string())
+	// 				.value(mode.to_string())
+	// 				.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
+	// 		})
+	// 		.collect();
 
-		DropdownInput::new(vec![layer_selection_behavior_entries])
-			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
-			.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
-			.widget_holder()
-	}
+	// 	DropdownInput::new(vec![layer_selection_behavior_entries])
+	// 		.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
+	// 		.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
+	// 		.widget_holder()
+	// }
 
 	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
 		PivotAssist::new(self.tool_data.pivot.to_pivot_position())
@@ -155,7 +155,7 @@ impl SelectTool {
 
 	fn boolean_widgets(&self) -> impl Iterator<Item = WidgetHolder> {
 		["Union", "Subtract Front", "Subtract Back", "Intersect", "Difference"].into_iter().map(|name| {
-			IconButton::new(format!("Boolean{}", name.replace(" ", "")), 24)
+			IconButton::new(format!("Boolean{}", name.replace(' ', "")), 24)
 				.tooltip(format!("Boolean {name} (coming soon)"))
 				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
 				.widget_holder()
@@ -337,10 +337,10 @@ impl SelectToolData {
 			// });
 		}
 
-		// Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
-		for layer_path in self.not_duplicated_layers.iter().flatten() {
-			//responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
-		}
+		// // Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
+		// for layer_path in self.not_duplicated_layers.iter().flatten() {
+		// 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
+		// }
 	}
 
 	/// Removes the duplicated layers. Called when Alt is released and the layers have previously been duplicated.
@@ -393,8 +393,8 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
-				tool_data.path_outlines.update_selected(document.metadata().selected_layers(), document, responses, render_data);
-				tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
+				tool_data.path_outlines.update_selected(document.metadata().selected_layers(), document, responses);
+				tool_data.path_outlines.intersect_test_hovered(input, document, responses);
 
 				match (document.metadata().selected_visible_layers_bounding_box_viewport(), tool_data.bounding_box_overlays.take()) {
 					(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
@@ -411,7 +411,7 @@ impl Fsm for SelectToolFsmState {
 					(_, _) => {}
 				};
 
-				tool_data.pivot.update_pivot(document, render_data, responses);
+				tool_data.pivot.update_pivot(document, responses);
 
 				self
 			}
@@ -419,14 +419,14 @@ impl Fsm for SelectToolFsmState {
 				// Edit the clicked layer
 				if let Some(intersect) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) {
 					match tool_data.nested_selection_behavior {
-						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, tool_data, responses),
+						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.document_legacy, responses),
 					}
 				}
 
 				self
 			}
-			(SelectToolFsmState::Ready, SelectToolMessage::DragStart { add_to_selection, select_deepest }) => {
+			(SelectToolFsmState::Ready, SelectToolMessage::DragStart { add_to_selection, select_deepest: _ }) => {
 				tool_data.path_outlines.clear_hovered(responses);
 
 				tool_data.drag_start = input.mouse.position;
@@ -451,7 +451,6 @@ impl Fsm for SelectToolFsmState {
 					.unwrap_or_default();
 
 				let mut selected: Vec<_> = document.metadata().selected_visible_layers().collect();
-				let quad = tool_data.selection_quad();
 				let intersection = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
@@ -466,12 +465,12 @@ impl Fsm for SelectToolFsmState {
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
-				} else if let Some(selected_edges) = dragging_bounds {
+				} else if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
 
-					let snap_x = selected_edges.2 || selected_edges.3;
-					let snap_y = selected_edges.0 || selected_edges.1;
-
+					// let snap_x = selected_edges.2 || selected_edges.3;
+					// let snap_y = selected_edges.0 || selected_edges.1;
+					//
 					// tool_data
 					// 	.snap_manager
 					// 	.start_snap(document, input, document.bounding_boxes(Some(&selected), None, render_data), snap_x, snap_y);
@@ -493,7 +492,7 @@ impl Fsm for SelectToolFsmState {
 							None,
 							&ToolType::Select,
 						);
-						bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
 
 					SelectToolFsmState::ResizingBounds
@@ -511,7 +510,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 
-						bounds.center_of_transformation = selected.mean_average_of_pivots(render_data);
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
 
 					tool_data.layers_dragging = selected;
@@ -681,7 +680,7 @@ impl Fsm for SelectToolFsmState {
 
 				// Generate the select outline (but not if the user is going to use the bound overlays)
 				if cursor == MouseCursorIcon::Default {
-					tool_data.path_outlines.intersect_test_hovered(input, document, responses, render_data);
+					tool_data.path_outlines.intersect_test_hovered(input, document, responses);
 				} else {
 					tool_data.path_outlines.clear_hovered(responses);
 				}
@@ -694,8 +693,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Enter) => {
-				rerender_selected_layers(tool_data, responses);
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::Undo,
 					false => DocumentMessage::CommitTransaction,
@@ -706,8 +703,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
-				rerender_selected_layers(tool_data, responses);
-
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
@@ -741,8 +736,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				rerender_selected_layers(tool_data, responses);
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::Undo,
 					false => DocumentMessage::CommitTransaction,
@@ -758,8 +751,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				rerender_selected_layers(tool_data, responses);
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::Undo,
 					false => DocumentMessage::CommitTransaction,
@@ -803,19 +794,15 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() {
-						if is_text_layer(layer, &document.document_legacy) {
-							responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
-							responses.add(TextToolMessage::EditSelected);
-						}
+					if selected_layers.next().is_none() && is_text_layer(layer, &document.document_legacy) {
+						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
+						responses.add(TextToolMessage::EditSelected);
 					}
 				}
 
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
-				rerender_selected_layers(tool_data, responses);
-
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::Undo);
 
@@ -912,12 +899,7 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
-fn rerender_selected_layers(tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
-	// for layer in &tool_data.layers_dragging {
-	// 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
-	// }
-}
-fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
+fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
 	let layer = selected[0];
 	let ancestor = layer.ancestors(document.metadata()).find(|&ancestor| document.metadata().selected_layers_contains(ancestor));
 
@@ -942,13 +924,11 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Ve
 	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
 }
 
-fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, tool_data: &mut SelectToolData, responses: &mut VecDeque<Message>) {
+fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	if document.metadata().selected_layers_contains(layer) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 		return;
 	}
-
-	let selected_layers_collected: Vec<_> = document.selected_layers().collect();
 
 	let Some(new_selected) = layer
 		.ancestors(document.metadata())
@@ -967,15 +947,4 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document: &Docume
 	} else if is_shape_layer(layer, document) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
-}
-
-#[allow(clippy::if_same_then_else)]
-fn recursive_search(document: &DocumentMessageHandler, layer_path: &[u64], incoming_layer_path_vector: &Vec<u64>) -> bool {
-	let layer_paths = document.document_legacy.folder_children_paths(layer_path);
-	for path in layer_paths {
-		if path == *incoming_layer_path_vector || (document.document_legacy.is_folder(&path) && recursive_search(document, &path, incoming_layer_path_vector)) {
-			return true;
-		}
-	}
-	false
 }

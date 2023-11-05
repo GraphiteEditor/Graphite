@@ -112,11 +112,11 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document: &Document) -> Option<G
 		return None;
 	};
 	Some(Gradient {
-		start: start.clone(),
-		end: end.clone(),
-		transform: transform.clone(),
+		start: *start,
+		end: *end,
+		transform: *transform,
 		positions: positions.clone(),
-		gradient_type: gradient_type.clone(),
+		gradient_type: *gradient_type,
 	})
 }
 
@@ -194,7 +194,7 @@ pub fn get_manipulator_from_id(subpaths: &[Subpath<ManipulatorGroupId>], id: Man
 /// An immutable reference to a layer within the document node graph for easy access.
 pub struct NodeGraphLayer<'a> {
 	node_graph: &'a NodeNetwork,
-	outwards_links: HashMap<NodeId, Vec<NodeId>>,
+	_outwards_links: HashMap<NodeId, Vec<NodeId>>,
 	layer_node: NodeId,
 }
 
@@ -206,7 +206,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 		Some(Self {
 			node_graph,
-			outwards_links,
+			_outwards_links: outwards_links,
 			layer_node: layer.to_node(),
 		})
 	}
@@ -225,7 +225,7 @@ impl<'a> NodeGraphLayer<'a> {
 		}
 		Some(Self {
 			node_graph,
-			outwards_links,
+			_outwards_links: outwards_links,
 			layer_node,
 		})
 	}

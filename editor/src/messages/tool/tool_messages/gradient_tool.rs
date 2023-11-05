@@ -252,7 +252,7 @@ impl SelectedGradient {
 		};
 
 		// Clear the gradient if layer deleted
-		if !inner_gradient.layer.exists(&document.metadata()) {
+		if !inner_gradient.layer.exists(document.metadata()) {
 			responses.add(ToolMessage::RefreshToolOptions);
 			*gradient = None;
 			return;
@@ -497,7 +497,7 @@ impl Fsm for GradientToolFsmState {
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
 							tool_data.selected_gradient = Some(SelectedGradient {
-								layer: overlay.layer.clone(),
+								layer: overlay.layer,
 								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging: GradientDragTarget::Step(index),
@@ -514,7 +514,7 @@ impl Fsm for GradientToolFsmState {
 							dragging = true;
 							start_snap(&mut tool_data.snap_manager, document, input, render_data);
 							tool_data.selected_gradient = Some(SelectedGradient {
-								layer: overlay.layer.clone(),
+								layer: overlay.layer,
 								transform: overlay.transform,
 								gradient: overlay.gradient.clone(),
 								dragging: dragging_target,

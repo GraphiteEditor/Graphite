@@ -228,7 +228,7 @@ impl DocumentNode {
 			identifier: fqn,
 			input,
 			construction_args: args,
-			document_node_path: self.path.unwrap_or(Vec::new()),
+			document_node_path: self.path.unwrap_or_default(),
 			skip_deduplication: self.skip_deduplication,
 			hash: self.hash,
 		}

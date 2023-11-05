@@ -22,13 +22,11 @@ use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::blend_mode::BlendMode;
 
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
-use document_legacy::layers::layer_layer::CachedOutputData;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::ImageFrame;
-use graphene_core::text::Font;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -891,7 +889,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			UpdateDocumentTransform { transform } => {
 				self.document_legacy.metadata.document_to_viewport = transform;
-				let transform = graphene_core::renderer::format_transform_matrix(transform);
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -993,13 +990,9 @@ impl DocumentMessageHandler {
 			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, &render_data).unwrap(), None),
 			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
 		};
-		let artboards = match transparent_background {
-			false => "<!--artboards-->",
-			true => "".into(),
-		};
-		let outside_artboards_color = outside.map_or_else(|| if false { "ffffff" } else { "222222" }.to_string(), |col| col.rgba_hex());
-		let outside_artboards = match transparent_background {
-			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{outside_artboards_color}" />"##),
+		let canvas_background_color = outside.map_or_else(|| "222222".to_string(), |col| col.rgba_hex());
+		let canvas_background = match transparent_background {
+			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{canvas_background_color}" />"##),
 			true => "".into(),
 		};
 		let matrix = transform
@@ -1008,7 +1001,7 @@ impl DocumentMessageHandler {
 			.enumerate()
 			.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
 		let svg = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{outside_artboards}<g transform="matrix({matrix})">{artboards}{artwork}</g></svg>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{canvas_background}<g transform="matrix({matrix})">{artwork}</g></svg>"#,
 			size.x, size.y, "\n",
 		);
 
@@ -1128,11 +1121,11 @@ impl DocumentMessageHandler {
 
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
 		let mut space = 0;
-		for layer_node in folder.children(&self.metadata()) {
+		for layer_node in folder.children(self.metadata()) {
 			data.push(layer_node.to_node());
 			info!("Pushed child");
 			space += 1;
-			if layer_node.has_children(&self.metadata()) {
+			if layer_node.has_children(self.metadata()) {
 				path.push(layer_node.to_node());
 
 				// TODO: Skip if folder is not expanded.
@@ -1197,7 +1190,7 @@ impl DocumentMessageHandler {
 		// Compute the indices for each layer to be able to sort them
 		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
 			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter_map(|path| (!path.is_empty()).then_some(path))
+			.filter(|path| !path.is_empty())
 			.filter_map(|path| {
 				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
 				match self.document_legacy.indices_for_path(path) {
@@ -1446,7 +1439,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, root: &LayerDataType, mut path: Vec<LayerId>, _document_id: u64) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
 		for (_node_id, node) in self.document_legacy.document_network.recursive_nodes() {
 			for input in &node.inputs {

@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
-use document_legacy::layers::style::RenderData;
 use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
@@ -38,10 +37,10 @@ impl TransformLayerMessageHandler {
 	}
 }
 
-type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a RenderData<'a>, &'a ToolData, &'a mut ShapeState);
+type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, render_data, tool_data, shape_editor): TransformData) {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, tool_data, shape_editor): TransformData) {
 		use TransformLayerMessage::*;
 
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
@@ -88,7 +87,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 					}
 				}
 			} else {
-				*selected.pivot = selected.mean_average_of_pivots(render_data);
+				*selected.pivot = selected.mean_average_of_pivots();
 			}
 
 			*mouse_position = ipp.mouse.position;

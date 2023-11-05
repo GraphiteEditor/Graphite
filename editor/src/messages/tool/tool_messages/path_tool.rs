@@ -2,7 +2,7 @@ use std::vec;
 
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_manipulator_from_id, get_mirror_handles, get_subpaths};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;

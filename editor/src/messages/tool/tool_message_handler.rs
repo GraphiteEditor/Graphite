@@ -35,7 +35,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 			#[remain::unsorted]
 			ToolMessage::TransformLayer(message) => self
 				.transform_layer_handler
-				.process_message(message, responses, (document, input, &render_data, &self.tool_state.tool_data, &mut self.shape_editor)),
+				.process_message(message, responses, (document, input, &self.tool_state.tool_data, &mut self.shape_editor)),
 
 			#[remain::unsorted]
 			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),

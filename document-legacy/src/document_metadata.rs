@@ -122,7 +122,7 @@ impl DocumentMetadata {
 		let Some(output_node) = graph.nodes.get(&id) else {
 			return;
 		};
-		let Some((layer_node, node_id)) = first_child_layer(graph, output_node, id) else {
+		let Some((layer_node, node_id)) = first_child_layer(graph, output_node) else {
 			return;
 		};
 		let parent = LayerNodeIdentifier::ROOT;
@@ -134,21 +134,21 @@ impl DocumentMetadata {
 				if !self.structure.contains_key(&current_identifier) {
 					parent.push_child(self, current_identifier);
 
-					if let Some((child_node, child_id)) = first_child_layer(graph, current_node, current_id) {
+					if let Some((child_node, child_id)) = first_child_layer(graph, current_node) {
 						stack.push((child_node, child_id, current_identifier));
 					}
 				}
 
-				current = sibling_below(graph, current_node, current_id);
+				current = sibling_below(graph, current_node);
 			}
 		}
 	}
 }
 
-fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode, id: NodeId) -> Option<(&'a DocumentNode, NodeId)> {
+fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
 	graph.primary_flow_from_opt(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.name == "Layer")
 }
-fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode, id: NodeId) -> Option<(&'a DocumentNode, NodeId)> {
+fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
 	node.inputs[7].as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.name == "Layer").map(|node| (node, id)))
 }
 
@@ -211,7 +211,7 @@ impl DocumentMetadata {
 
 	/// Find the layer that has been clicked on from a viewport space location
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).next()
+		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
