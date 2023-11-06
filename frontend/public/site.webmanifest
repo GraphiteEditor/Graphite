@@ -1,6 +1,8 @@
 {
     "name": "Graphite",
     "short_name": "Graphite",
+    "start_url": "/",
+    "id": "/",
     "icons": [
         {
             "src": "./android-chrome-192x192.png",
@@ -14,6 +16,6 @@
         }
     ],
     "theme_color": "#ffffff",
-    "background_color": "#ffffff",
+    "background_color": "#222222",
     "display": "standalone"
 }
