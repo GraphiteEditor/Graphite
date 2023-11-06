@@ -17,14 +17,5 @@
     ],
     "theme_color": "#ffffff",
     "background_color": "#222222",
-    "display": "standalone",
-    "screenshots": [
-        {
-            "src": "https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif",
-            "sizes": "1920x1080",
-            "type": "image/avif",
-            "form_factor": "wide",
-            "label": "Graphite Editor on desktop."
-        }
-    ]
+    "display": "standalone"
 }
