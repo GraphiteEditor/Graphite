@@ -1,4 +1,3 @@
-const webpackConfigPath = require.resolve("@webpack/webpack.config.js");
 
 module.exports = {
 	root: true,
@@ -19,7 +18,6 @@ module.exports = {
 		"import/resolver": {
 			// `node` must be listed first!
 			node: {},
-			webpack: { config: webpackConfigPath },
 		},
 	},
 	ignorePatterns: [

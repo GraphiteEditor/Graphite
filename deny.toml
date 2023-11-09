@@ -70,20 +70,22 @@ unlicensed = "deny"
 # List of explicitly allowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
+#
+# Keep this list in sync with those in `/about.toml` and `/frontend/vite.config.ts`.
 allow = [
-	"MIT",
-	"MIT-0",
-	"Apache-2.0",
-	"BSD-3-Clause",
-	"BSD-2-Clause",
-	"Zlib",
-	"Unicode-DFS-2016",
-	"ISC",
-	"MPL-2.0",
-	"CC0-1.0",
-	"OpenSSL",
-	"BSL-1.0",
 	"Apache-2.0 WITH LLVM-exception",
+	"Apache-2.0",
+	"BSD-2-Clause",
+	"BSD-3-Clause",
+	"BSL-1.0",
+	"CC0-1.0",
+	"ISC",
+	"MIT-0",
+	"MIT",
+	"MPL-2.0",
+	"OpenSSL",
+	"Unicode-DFS-2016",
+	"Zlib",
 ]
 # List of explicitly disallowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
@@ -135,7 +137,7 @@ expression = "MIT AND ISC AND OpenSSL"
 # depending on the rest of your configuration
 license-files = [
 	# Each entry is a crate relative path, and the (opaque) hash of its contents
-	{ path = "LICENSE", hash = 0xbd0eed23 }
+	{ path = "LICENSE", hash = 0xbd0eed23 },
 ]
 
 [licenses.private]

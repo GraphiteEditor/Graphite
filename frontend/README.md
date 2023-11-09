@@ -6,7 +6,7 @@ For lack of other options, the frontend is currently written as a web app. Maint
 
 ## Bundled assets: `assets/`
 
-Icons and images that are used in components and embedded into the application bundle by the build system using [loaders](https://webpack.js.org/loaders/).
+Icons and images that are used in components and embedded into the application bundle by the build system.
 
 ## Public assets: `public/`
 
@@ -26,7 +26,7 @@ Wraps the editor backend codebase (`/editor`) and provides a JS-centric API for 
 
 ## npm ecosystem packages: `package.json`
 
-While we don't use Node.js as a JS-based server, we do have to rely on its wide ecosystem of packages for our build system toolchain. If you're just getting started, make sure to install the latest LTS copy of Node.js and then run `cd frontend && npm install` to install these packages on your system. Our project's philosophy on third-party packages is to keep our dependency tree as light as possible, so adding anything new to our `package.json` should have overwhelming justification. Most of the packages are just development tooling (TypeScript, Webpack, ESLint, Prettier, wasm-pack, and [Sass](https://sass-lang.com/)) that run in your console during the build process.
+While we don't use Node.js as a JS-based server, we do have to rely on its wide ecosystem of packages for our build system toolchain. If you're just getting started, make sure to install the latest LTS copy of Node.js and then run `cd frontend && npm install` to install these packages on your system. Our project's philosophy on third-party packages is to keep our dependency tree as light as possible, so adding anything new to our `package.json` should have overwhelming justification. Most of the packages are just development tooling (TypeScript, Vite, ESLint, Prettier, wasm-pack, and [Sass](https://sass-lang.com/)) that run in your console during the build process.
 
 ## npm package installed versions: `package-lock.json`
 
@@ -36,6 +36,6 @@ Specifies the exact versions of packages installed in the npm dependency tree. W
 
 Basic configuration options for the TypeScript build tool to do its job in our repository.
 
-## Webpack configurations: `webpack.config.js`
+## Vite configurations: `vite.config.js`
 
-We use the [Webpack](https://webpack.js.org/) bundler/build system. This file is where we configure Webpack to set up plugins (like wasm-pack and license-checker) and loaders (like for Svelte and SVG files). Part of the license-checker plugin setup includes some functions to format web package licenses, as well as Rust package licenses provided by [cargo-about](https://github.com/EmbarkStudios/cargo-about), into a text file that's distributed with the application to provide license notices for third-party code.
+We use the [Vite](https://vitejs.dev/) bundler/build system. This file is where we configure Vite to set up plugins (like the third-party license checker/generator). Part of the license checker plugin setup includes some functions to format web package licenses, as well as Rust package licenses provided by [cargo-about](https://github.com/EmbarkStudios/cargo-about), into a text file that's distributed with the application to provide license notices for third-party code.

@@ -1,17 +1,18 @@
+# Keep this list in sync with those in `/deny.toml` and `/frontend/vite.config.ts`.
 accepted = [
+	"Apache-2.0 WITH LLVM-exception",
 	"Apache-2.0",
-	"MIT",
-	"MIT-0",
 	"BSD-2-Clause",
 	"BSD-3-Clause",
-	"BSD-2-Clause",
-	"Zlib",
-	"Unicode-DFS-2016",
-	"ISC",
-	"MPL-2.0",
-	"CC0-1.0",
-	"OpenSSL",
 	"BSL-1.0",
+	"CC0-1.0",
+	"ISC",
+	"MIT-0",
+	"MIT",
+	"MPL-2.0",
+	"OpenSSL",
+	"Unicode-DFS-2016",
+	"Zlib",
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
