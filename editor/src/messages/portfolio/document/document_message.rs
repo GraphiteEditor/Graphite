@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::blend_mode::BlendMode;
 use document_legacy::layers::style::ViewMode;
 use document_legacy::LayerId;
@@ -106,9 +107,8 @@ pub enum DocumentMessage {
 		affected_layer_path: Vec<LayerId>,
 	},
 	MoveSelectedLayersTo {
-		folder_path: Vec<LayerId>,
+		parent: LayerNodeIdentifier,
 		insert_index: isize,
-		reverse_index: bool,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
@@ -169,6 +169,9 @@ pub enum DocumentMessage {
 	SetOverlaysVisibility {
 		visible: bool,
 	},
+	SetRangeLayer {
+		new_layer: Option<LayerNodeIdentifier>,
+	},
 	SetSelectedLayers {
 		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},
@@ -189,9 +192,6 @@ pub enum DocumentMessage {
 	},
 	Undo,
 	UndoFinished,
-	UngroupLayers {
-		folder_path: Vec<LayerId>,
-	},
 	UngroupSelectedLayers,
 	UpdateDocumentTransform {
 		transform: glam::DAffine2,

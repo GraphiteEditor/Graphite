@@ -1,6 +1,8 @@
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
+use document_legacy::document_metadata::LayerNodeIdentifier;
+use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
@@ -64,6 +66,12 @@ pub enum GraphOperationMessage {
 	NewBitmapLayer {
 		id: NodeId,
 		image_frame: ImageFrame<Color>,
+	},
+	NewCustomLayer {
+		id: NodeId,
+		nodes: HashMap<NodeId, DocumentNode>,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
 	},
 	NewVectorLayer {
 		id: NodeId,

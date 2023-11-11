@@ -5,6 +5,7 @@
 use crate::helpers::{translate_key, Error};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
@@ -547,9 +548,8 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, folder_path: Vec<LayerId>, insert_index: isize) {
 		let message = DocumentMessage::MoveSelectedLayersTo {
-			folder_path,
+			parent: folder_path.last().copied().map(LayerNodeIdentifier::new_unchecked).unwrap_or(LayerNodeIdentifier::ROOT),
 			insert_index,
-			reverse_index: true,
 		};
 		self.dispatch(message);
 	}

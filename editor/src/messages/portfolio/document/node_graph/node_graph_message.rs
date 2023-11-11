@@ -12,6 +12,9 @@ pub enum NodeGraphMessage {
 	AddSelectNodes {
 		nodes: Vec<NodeId>,
 	},
+	RemoveSelectNodes {
+		nodes: Vec<NodeId>,
+	},
 	SelectedNodesUpdated,
 	CloseNodeGraph,
 	ConnectNodesByLink {

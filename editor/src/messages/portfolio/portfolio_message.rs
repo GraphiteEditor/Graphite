@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use document_legacy::LayerId;
+use document_legacy::{document_metadata::LayerNodeIdentifier, LayerId};
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
@@ -87,13 +87,9 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 	},
-	// TODO: Paste message is unused, delete it?
-	Paste {
-		clipboard: Clipboard,
-	},
 	PasteIntoFolder {
 		clipboard: Clipboard,
-		folder_path: Vec<LayerId>,
+		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},
 	PasteSerializedData {

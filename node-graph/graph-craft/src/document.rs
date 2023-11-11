@@ -616,13 +616,23 @@ impl NodeNetwork {
 		FlowIter {
 			stack: self.outputs.iter().map(|output| output.node_id).collect(),
 			network: self,
+			primary: true,
 		}
 	}
 
-	pub fn primary_flow_from_opt(&self, id: Option<NodeId>) -> impl Iterator<Item = (&DocumentNode, u64)> {
+	pub fn primary_flow_from_node(&self, id: Option<NodeId>) -> impl Iterator<Item = (&DocumentNode, u64)> {
 		FlowIter {
 			stack: id.map_or_else(|| self.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
 			network: self,
+			primary: true,
+		}
+	}
+
+	pub fn all_dependencies(&self, id: NodeId) -> impl Iterator<Item = (&DocumentNode, u64)> {
+		FlowIter {
+			stack: vec![id],
+			network: self,
+			primary: false,
 		}
 	}
 
@@ -664,6 +674,7 @@ impl NodeNetwork {
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
+	primary: bool,
 }
 impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
@@ -671,13 +682,13 @@ impl<'a> Iterator for FlowIter<'a> {
 		loop {
 			let node_id = self.stack.pop()?;
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				self.stack.extend(
-					document_node
-						.inputs
-						.iter()
-						.take(1) // Only show the primary input
-						.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None }),
-				);
+				self.stack.extend(document_node.inputs.iter().take(if self.primary { 1 } else { usize::MAX }).filter_map(|input| {
+					if let NodeInput::Node { node_id: ref_id, .. } = input {
+						Some(*ref_id)
+					} else {
+						None
+					}
+				}));
 				return Some((document_node, node_id));
 			};
 		}

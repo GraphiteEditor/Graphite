@@ -202,6 +202,7 @@ pub enum Key {
 
 	// Other keys that aren't part of the W3C spec
 	Command,
+
 	Accel,
 	Lmb,
 	Rmb,
