@@ -132,7 +132,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let new_id = if let Some(sibling_layer) = sibling_layer {
 			self.insert_between(new_id, sibling_layer, output, layer_node, 7, 0, shift)
 		} else {
-			self.insert_node_before(new_id, output_node_id, input_index, layer_node, shift)
+			self.insert_node_before(new_id, output.node_id, output.node_output_index, layer_node, shift)
 		};
 
 		// Update the document metadata structure

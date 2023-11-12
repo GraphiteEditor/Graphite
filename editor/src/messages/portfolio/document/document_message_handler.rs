@@ -681,7 +681,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			SelectLayer { layer_path, ctrl, shift } => {
-				let clicked_node = layer_path[0];
+				let clicked_node = *layer_path.last().expect("Cannot select root");
 				let layer = LayerNodeIdentifier::new(clicked_node, self.network());
 				let mut nodes = vec![];
 
