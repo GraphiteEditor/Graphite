@@ -190,6 +190,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 									.collect(),
 							)
 							.collect(),
+							selected: active_document.metadata().selected_layers_contains(layer),
+							colapsed: false,
 						});
 					}
 				};
@@ -383,12 +385,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if let Some(document) = self.active_document() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
+						let id = generate_uuid();
 						responses.add(GraphOperationMessage::NewCustomLayer {
-							id: generate_uuid(),
+							id,
 							nodes: entry.nodes.clone(),
 							parent,
 							insert_index,
 						});
+						if entry.selected {
+							responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![id] });
+						}
 					}
 				};
 
@@ -412,12 +418,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
+							let id = generate_uuid();
 							responses.add(GraphOperationMessage::NewCustomLayer {
-								id: generate_uuid(),
+								id,
 								nodes: entry.nodes,
 								parent,
 								insert_index: -1,
 							});
+							if entry.selected {
+								responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![id] });
+							}
 						}
 
 						responses.add(DocumentMessage::CommitTransaction);

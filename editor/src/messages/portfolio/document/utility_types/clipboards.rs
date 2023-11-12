@@ -23,4 +23,6 @@ pub const INTERNAL_CLIPBOARD_COUNT: u8 = Clipboard::_InternalClipboardCount as u
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CopyBufferEntry {
 	pub nodes: HashMap<NodeId, DocumentNode>,
+	pub selected: bool,
+	pub colapsed: bool,
 }

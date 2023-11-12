@@ -477,6 +477,7 @@ impl<'a> ModifyInputsContext<'a> {
 		LayerNodeIdentifier::new(id, self.network).delete(self.document_metadata);
 
 		let new_input = node.inputs[7].clone();
+		let deleted_position = node.metadata.position;
 
 		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
 			let Some(node) = self.network.nodes.get_mut(post_node) else {
@@ -502,6 +503,16 @@ impl<'a> ModifyInputsContext<'a> {
 		for node_id in &delete_nodes {
 			self.network.nodes.remove(node_id);
 		}
+
+		if let Some(node_id) = new_input.as_node() {
+			if let Some(shift) = self.network.nodes.get(&node_id).map(|node| deleted_position - node.metadata.position) {
+				for node_id in self.network.all_dependencies(node_id).map(|(_, id)| id).collect::<Vec<_>>() {
+					let Some(node) = self.network.nodes.get_mut(&node_id) else { continue };
+					node.metadata.position += shift;
+				}
+			}
+		}
+
 		self.responses.add(self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id)));
 
 		self.responses.add(DocumentMessage::DocumentStructureChanged);
@@ -605,9 +616,19 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				};
 				if let Some(layer) = modify_inputs.create_layer(id, output_node_id, 0, skip_layer_nodes) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, crate::application::generate_uuid())).collect();
+					let shift = nodes
+						.get(&0)
+						.and_then(|node| {
+							modify_inputs
+								.network
+								.nodes
+								.get(&layer)
+								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
+						})
+						.unwrap_or_default();
 					for (old_id, mut document_node) in nodes {
 						// Shift copied node
-						//document_node.metadata.position += shift;
+						document_node.metadata.position += shift;
 
 						// Get the new, non-conflicting id
 						let node_id = *new_ids.get(&old_id).unwrap();
