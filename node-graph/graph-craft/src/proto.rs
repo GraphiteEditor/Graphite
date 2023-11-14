@@ -207,7 +207,21 @@ pub struct ProtoNode {
 	pub identifier: NodeIdentifier,
 	pub document_node_path: Vec<NodeId>,
 	pub skip_deduplication: bool,
-	pub hash: u64,
+	/// Represents a global state on which the node depends. This is a hack, TODO: figure out a proper solution
+	pub world_state_hash: u64,
+}
+
+impl Default for ProtoNode {
+	fn default() -> Self {
+		Self {
+			identifier: NodeIdentifier::new("graphene_core::ops::IdNode"),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
+			input: ProtoNodeInput::None,
+			document_node_path: vec![],
+			skip_deduplication: false,
+			world_state_hash: 0,
+		}
+	}
 }
 
 /// A ProtoNodeInput represents the primary input of a node in a ProtoNetwork.
@@ -253,7 +267,7 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.document_node_path.hash(&mut hasher);
 		}
-		self.hash.hash(&mut hasher);
+		self.world_state_hash.hash(&mut hasher);
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -273,7 +287,7 @@ impl ProtoNode {
 			input: ProtoNodeInput::None,
 			document_node_path: path,
 			skip_deduplication: false,
-			hash: 0,
+			world_state_hash: 0,
 		}
 	}
 
@@ -386,7 +400,7 @@ impl ProtoNetwork {
 						input,
 						document_node_path: path,
 						skip_deduplication: false,
-						hash: 0,
+						world_state_hash: 0,
 					},
 				));
 
@@ -778,12 +792,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				2785293541695324513,
-				12994980551665119079,
-				17926586814106640907,
-				2523412932923113119,
-				12965978620570332342,
-				16191561097939296982
+				17957338642374791135,
+				1303972037140595827,
+				15485192931817078264,
+				9739645351331265115,
+				4165308598738454684,
+				5557529806312473178
 			]
 		);
 	}
@@ -799,8 +813,7 @@ mod test {
 						identifier: "id".into(),
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(
@@ -809,8 +822,7 @@ mod test {
 						identifier: "id".into(),
 						input: ProtoNodeInput::Node(11, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(
@@ -819,8 +831,7 @@ mod test {
 						identifier: "cons".into(),
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(
@@ -829,8 +840,7 @@ mod test {
 						identifier: "add".into(),
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(
@@ -839,8 +849,7 @@ mod test {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 			]
@@ -860,8 +869,7 @@ mod test {
 						identifier: "id".into(),
 						input: ProtoNodeInput::Node(2, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(
@@ -870,8 +878,7 @@ mod test {
 						identifier: "id".into(),
 						input: ProtoNodeInput::Node(1, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 			]

@@ -2519,7 +2519,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default());
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
 		if let Some(node) = g.nodes.get_mut(&0) {
-			node.hash = hash;
+			node.world_state_hash = hash;
 		}
 	}
 
