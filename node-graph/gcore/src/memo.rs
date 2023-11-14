@@ -64,7 +64,6 @@ impl<'i, 'a: 'i, T, I, N> Node<'i, I> for MonitorNode<I, T, N>
 where
 	I: Clone + 'static,
 	<N as Node<'i, I>>::Output: Future<Output = T>,
-	//for<'a> <<N as Node<'a, I>>::Output as core::future::IntoFuture>::Output: Clone + 'static,
 	T: Clone + 'static,
 	N: Node<'i, I>,
 {
