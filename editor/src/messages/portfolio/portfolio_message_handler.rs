@@ -12,7 +12,6 @@ use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::layers::style::RenderData;
-use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
@@ -166,30 +165,49 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::Copy { clipboard } => {
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
-				if let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) {
-					let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-						for layer_path in active_document.selected_layers_without_children() {
-							match (active_document.document_legacy.layer(layer_path).map(|t| t.clone()), *active_document.layer_metadata(layer_path)) {
-								(Ok(layer), layer_metadata) => {
-									buffer.push(CopyBufferEntry { layer, layer_metadata });
-								}
-								(Err(e), _) => warn!("Could not access selected layer {layer_path:?}: {e:?}"),
-							}
-						}
-					};
+				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) else {
+					return;
+				};
 
-					if clipboard == Clipboard::Device {
-						let mut buffer = Vec::new();
-						copy_val(&mut buffer);
-						let mut copy_text = String::from("graphite/layer: ");
-						copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
+					for layer_path in active_document.metadata().shallowest_unique_layers(active_document.metadata().selected_layers()) {
+						let Some(layer) = layer_path.last().copied() else {
+							continue;
+						};
 
-						responses.add(FrontendMessage::TriggerTextCopy { copy_text });
-					} else {
-						let copy_buffer = &mut self.copy_buffer;
-						copy_buffer[clipboard as usize].clear();
-						copy_val(&mut copy_buffer[clipboard as usize]);
+						let node = layer.to_node();
+						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
+							continue;
+						};
+
+						buffer.push(CopyBufferEntry {
+							nodes: NodeGraphMessageHandler::copy_nodes(
+								active_document.network(),
+								&active_document
+									.network()
+									.all_dependencies(node)
+									.enumerate()
+									.map(|(index, (_, node_id))| (node_id, index as NodeId))
+									.collect(),
+							)
+							.collect(),
+							selected: active_document.metadata().selected_layers_contains(layer),
+							collapsed: false,
+						});
 					}
+				};
+
+				if clipboard == Clipboard::Device {
+					let mut buffer = Vec::new();
+					copy_val(&mut buffer);
+					let mut copy_text = String::from("graphite/layer: ");
+					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+
+					responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+				} else {
+					let copy_buffer = &mut self.copy_buffer;
+					copy_buffer[clipboard as usize].clear();
+					copy_val(&mut copy_buffer[clipboard as usize]);
 				}
 			}
 			PortfolioMessage::Cut { clipboard } => {
@@ -364,47 +382,20 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				}
 			}
-			// TODO: Paste message is unused, delete it?
-			PortfolioMessage::Paste { clipboard } => {
-				let shallowest_common_folder = self.active_document().map(|document| {
-					document
-						.document_legacy
-						.shallowest_common_folder(document.selected_layers())
-						.expect("While pasting, the selected layers did not exist while attempting to find the appropriate folder path for insertion")
-				});
-
-				if let Some(folder) = shallowest_common_folder {
-					responses.add(DocumentMessage::DeselectAllLayers);
-					responses.add(DocumentMessage::StartTransaction);
-					responses.add(PortfolioMessage::PasteIntoFolder {
-						clipboard,
-						folder_path: folder.to_vec(),
-						insert_index: -1,
-					});
-					responses.add(DocumentMessage::CommitTransaction);
-				}
-			}
-			PortfolioMessage::PasteIntoFolder {
-				clipboard,
-				folder_path: path,
-				insert_index,
-			} => {
+			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
-					if let Some(document) = self.active_document() {
-						trace!("Pasting into folder {path:?} as index: {insert_index}");
-						let destination_path = [path.to_vec(), vec![generate_uuid()]].concat();
-
-						responses.add_front(DocumentMessage::UpdateLayerMetadata {
-							layer_path: destination_path.clone(),
-							layer_metadata: entry.layer_metadata,
-						});
-						document.load_layer_resources(responses);
-						responses.add_front(DocumentOperation::InsertLayer {
-							layer: Box::new(entry.layer.clone()),
-							destination_path,
+					if self.active_document().is_some() {
+						trace!("Pasting into folder {parent:?} as index: {insert_index}");
+						let id = generate_uuid();
+						responses.add(GraphOperationMessage::NewCustomLayer {
+							id,
+							nodes: entry.nodes.clone(),
+							parent,
 							insert_index,
-							duplicating: false,
 						});
+						if entry.selected {
+							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
+						}
 					}
 				};
 
@@ -421,27 +412,23 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
-						let shallowest_common_folder = document
-							.document_legacy
-							.shallowest_common_folder(document.selected_layers())
-							.expect("While pasting from serialized, the selected layers did not exist while attempting to find the appropriate folder path for insertion");
+						let parent = document.metadata().deepest_common_ancestor(document.metadata().selected_layers());
+
 						responses.add(DocumentMessage::DeselectAllLayers);
 						responses.add(DocumentMessage::StartTransaction);
 
-						for entry in data.iter().rev() {
-							let destination_path = [shallowest_common_folder.to_vec(), vec![generate_uuid()]].concat();
-
+						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
-							responses.add(DocumentOperation::InsertLayer {
-								layer: Box::new(entry.layer.clone()),
-								destination_path: destination_path.clone(),
+							let id = generate_uuid();
+							responses.add(GraphOperationMessage::NewCustomLayer {
+								id,
+								nodes: entry.nodes,
+								parent,
 								insert_index: -1,
-								duplicating: false,
 							});
-							responses.add(DocumentMessage::UpdateLayerMetadata {
-								layer_path: destination_path,
-								layer_metadata: entry.layer_metadata,
-							});
+							if entry.selected {
+								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
+							}
 						}
 
 						responses.add(DocumentMessage::CommitTransaction);
@@ -557,7 +544,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			Import,
 			NextDocument,
 			OpenDocument,
-			Paste,
 			PasteIntoFolder,
 			PrevDocument,
 		);
@@ -568,7 +554,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		}
 
 		if let Some(document) = self.active_document() {
-			if document.layer_metadata.values().any(|data| data.selected) {
+			if document.metadata().selected_layers().next().is_some() {
 				let select = actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,

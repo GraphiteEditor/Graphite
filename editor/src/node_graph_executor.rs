@@ -279,17 +279,6 @@ impl NodeRuntime {
 
 			let old_thumbnail = self.thumbnails.entry(node_id).or_default();
 			if *old_thumbnail != render.svg {
-				responses.add(FrontendMessage::UpdateDocumentLayerDetails {
-					data: LayerPanelEntry {
-						name: "Layer".to_string(),
-						tooltip: format!("Layer id: {node_id}"),
-						visible: true,
-						layer_type: LayerDataTypeDiscriminant::Layer,
-						layer_metadata: LayerMetadata::new(true),
-						path: vec![node_id],
-						thumbnail: render.svg.to_string(),
-					},
-				});
 				responses.add(FrontendMessage::UpdateNodeThumbnail {
 					id: node_id,
 					value: render.svg.to_string(),
@@ -516,6 +505,26 @@ impl NodeGraphExecutor {
 					new_upstream_transforms,
 					transform,
 				}) => {
+					for (&node_id, svg) in &new_thumbnails {
+						if !document.document_network.nodes.contains_key(&node_id) {
+							warn!("Missing node");
+							continue;
+						}
+						responses.add(FrontendMessage::UpdateDocumentLayerDetails {
+							data: LayerPanelEntry {
+								name: "Layer".to_string(),
+								tooltip: format!("Layer id: {node_id}"),
+								visible: true,
+								layer_type: LayerDataTypeDiscriminant::Layer,
+								layer_metadata: LayerMetadata {
+									expanded: true,
+									selected: document.metadata.selected_layers_contains(LayerNodeIdentifier::new(node_id, &document.document_network)),
+								},
+								path: vec![node_id],
+								thumbnail: svg.to_string(),
+							},
+						});
+					}
 					self.thumbnails = new_thumbnails;
 					document.metadata.update_transforms(new_transforms, new_upstream_transforms);
 					document.metadata.update_click_targets(new_click_targets);

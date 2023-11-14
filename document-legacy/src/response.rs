@@ -22,11 +22,6 @@ pub enum DocumentResponse {
 	LayerChanged {
 		path: Vec<LayerId>,
 	},
-	MoveSelectedLayersTo {
-		folder_path: Vec<LayerId>,
-		insert_index: isize,
-		reverse_index: bool,
-	},
 	DeletedSelectedManipulatorPoints,
 }
 
@@ -39,7 +34,6 @@ impl fmt::Display for DocumentResponse {
 			DocumentResponse::LayerChanged { .. } => write!(f, "LayerChanged"),
 			DocumentResponse::DeletedLayer { .. } => write!(f, "DeleteLayer"),
 			DocumentResponse::DeletedSelectedManipulatorPoints { .. } => write!(f, "DeletedSelectedManipulatorPoints"),
-			DocumentResponse::MoveSelectedLayersTo { .. } => write!(f, "MoveSelectedLayersTo"),
 		}
 	}
 }

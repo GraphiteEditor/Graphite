@@ -9,9 +9,6 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 pub enum NodeGraphMessage {
 	// Messages
 	Init,
-	AddSelectNodes {
-		nodes: Vec<NodeId>,
-	},
 	SelectedNodesUpdated,
 	CloseNodeGraph,
 	ConnectNodesByLink {
@@ -67,6 +64,15 @@ pub enum NodeGraphMessage {
 		serialized_nodes: String,
 	},
 	RunDocumentGraph,
+	SelectedNodesAdd {
+		nodes: Vec<NodeId>,
+	},
+	SelectedNodesRemove {
+		nodes: Vec<NodeId>,
+	},
+	SelectedNodesSet {
+		nodes: Vec<NodeId>,
+	},
 	SendGraph {
 		should_rerender: bool,
 	},
@@ -85,9 +91,6 @@ pub enum NodeGraphMessage {
 		node_path: Vec<NodeId>,
 		input_index: usize,
 		value: TaggedValue,
-	},
-	SetSelectedNodes {
-		nodes: Vec<NodeId>,
 	},
 	ShiftNode {
 		node_id: NodeId,

@@ -417,14 +417,14 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Gets the default node input based on the node name and the input index
-	fn default_node_input(name: String, index: usize) -> Option<NodeInput> {
+	pub fn default_node_input(name: String, index: usize) -> Option<NodeInput> {
 		resolve_document_node_type(&name)
 			.and_then(|node| node.inputs.get(index))
 			.map(|input: &DocumentInputType| input.default.clone())
 	}
 
 	/// Returns an iterator of nodes to be copied and their ids, excluding output and input nodes
-	fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
+	pub fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
 			.filter(|&(&id, _)| !network.outputs_contain(id))
@@ -455,12 +455,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				document.metadata.load_structure(&document.document_network);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
-			NodeGraphMessage::AddSelectNodes { nodes } => {
-				responses.add(document.metadata.add_selected_nodes(nodes));
-			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				self.update_selection_action_buttons(document, responses);
 				self.update_selected(document, responses);
+				if document.metadata.selected_layers().count() <= 1 {
+					responses.add(DocumentMessage::SetRangeSelectionLayer {
+						new_layer: document.metadata.selected_layers().next(),
+					});
+				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::CloseNodeGraph => {}
 			NodeGraphMessage::ConnectNodesByLink {
@@ -739,11 +742,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				let nodes = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SetSelectedNodes { nodes });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
 			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path: Vec::new() }),
+			NodeGraphMessage::SelectedNodesAdd { nodes } => {
+				responses.add(document.metadata.add_selected_nodes(nodes));
+			}
+			NodeGraphMessage::SelectedNodesRemove { nodes } => {
+				responses.add(document.metadata.retain_selected_nodes(|node| !nodes.contains(node)));
+			}
+			NodeGraphMessage::SelectedNodesSet { nodes } => {
+				responses.add(document.metadata.set_selected_nodes(nodes));
+				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = document.document_network.nested_network(&self.network) {
 					Self::send_graph(network, &self.layer_path, responses);
@@ -814,10 +827,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 				}
-			}
-			NodeGraphMessage::SetSelectedNodes { nodes } => {
-				responses.add(document.metadata.set_selected_nodes(nodes));
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
 			NodeGraphMessage::ShiftNode { node_id } => {
 				let Some(network) = document.document_network.nested_network_mut(&self.network) else {

@@ -302,7 +302,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			folder_path: vec![],
+			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
@@ -341,7 +341,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			folder_path: vec![],
+			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
 
@@ -407,12 +407,12 @@ mod test {
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			folder_path: vec![],
+			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			folder_path: vec![],
+			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
 
@@ -479,12 +479,12 @@ mod test {
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			folder_path: vec![],
+			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			folder_path: vec![],
+			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
 

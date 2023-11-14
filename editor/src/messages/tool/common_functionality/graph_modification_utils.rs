@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	let id = *layer_path.last().unwrap();
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths });
-	responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![id] })
+	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] })
 }
 
 /// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
@@ -232,7 +232,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Return an iterator up the primary flow of the layer
 	pub fn primary_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, u64)> {
-		self.node_graph.primary_flow_from_opt(Some(self.layer_node))
+		self.node_graph.primary_flow_from_node(Some(self.layer_node))
 	}
 
 	/// Does a node exist in the layer's primary flow

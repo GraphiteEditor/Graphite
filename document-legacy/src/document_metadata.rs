@@ -77,6 +77,7 @@ impl DocumentMetadata {
 		self.structure.entry(node_identifier).or_default()
 	}
 
+	/// Layers excluding ones that are children of other layers in the list.
 	pub fn shallowest_unique_layers(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
 		let mut sorted_layers = layers
 			.map(|layer| {
@@ -89,6 +90,34 @@ impl DocumentMetadata {
 		// Sorting here creates groups of similar UUID paths
 		sorted_layers.dedup_by(|a, b| a.starts_with(b));
 		sorted_layers
+	}
+
+	/// Ancestor that is shared by all layers and that is deepest (more nested). May be the root layer.
+	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> LayerNodeIdentifier {
+		layers
+			.map(|layer| {
+				let mut layer_path = layer.ancestors(self).skip(1).collect::<Vec<_>>();
+				layer_path.reverse();
+				layer_path
+			})
+			.reduce(|mut a, b| {
+				a.truncate(a.iter().zip(b.iter()).position(|(&a, &b)| a != b).unwrap_or_else(|| a.len().min(b.len())));
+				a
+			})
+			.and_then(|path| path.last().copied())
+			.unwrap_or(LayerNodeIdentifier::ROOT)
+	}
+
+	/// Filter out non folder layers
+	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		layers.filter(|layer| layer.has_children(self))
+	}
+
+	/// Folders sorted from most nested to least nested
+	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
+		let mut folders: Vec<_> = self.folders(layers).collect();
+		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
+		folders
 	}
 }
 
@@ -146,7 +175,7 @@ impl DocumentMetadata {
 }
 
 fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-	graph.primary_flow_from_opt(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.name == "Layer")
+	graph.primary_flow_from_node(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.name == "Layer")
 }
 fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
 	node.inputs[7].as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.name == "Layer").map(|node| (node, id)))
@@ -178,7 +207,7 @@ impl DocumentMetadata {
 }
 
 fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.primary_flow_from_opt(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
+	network.primary_flow_from_node(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
 }
 
 // click targets
@@ -299,6 +328,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node
+	#[track_caller]
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
 			is_layer_node(node_id, network),
