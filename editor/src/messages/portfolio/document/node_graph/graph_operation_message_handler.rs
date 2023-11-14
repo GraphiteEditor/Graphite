@@ -606,7 +606,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				}
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
-				error!("Insert index {insert_index}");
+				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 
