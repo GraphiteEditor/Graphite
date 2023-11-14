@@ -369,7 +369,7 @@ impl SelectToolData {
 		}
 
 		// Select the originals
-		responses.add(NodeGraphMessage::SetSelectedNodes {
+		responses.add(NodeGraphMessage::SelectedNodesSet {
 			nodes: originals.iter().map(|layer| layer.to_node()).collect::<Vec<_>>(),
 		});
 
@@ -714,13 +714,13 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging.clear();
 						tool_data.layers_dragging.extend(replacement_selected_layers.iter());
 
-						responses.add(NodeGraphMessage::SetSelectedNodes {
+						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: replacement_selected_layers.iter().map(|layer| layer.to_node()).collect(),
 						});
 					}
 				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
 					if !tool_data.has_dragged {
-						responses.add(NodeGraphMessage::SetSelectedNodes {
+						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: vec![selecting_layer.to_node()],
 						});
 					}
@@ -778,7 +778,7 @@ impl Fsm for SelectToolFsmState {
 				let quad = tool_data.selection_quad();
 				// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
 				tool_data.layers_dragging = document.metadata().intersect_quad(quad, &document.document_legacy.document_network).collect();
-				responses.add_front(NodeGraphMessage::SetSelectedNodes {
+				responses.add_front(NodeGraphMessage::SelectedNodesSet {
 					nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 				});
 				responses.add_front(DocumentMessage::Overlays(
@@ -906,7 +906,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	let new_selected = ancestor.unwrap_or_else(|| layer.child_of_root(document.metadata()));
 
 	tool_data.layers_dragging = vec![new_selected];
-	responses.add(NodeGraphMessage::SetSelectedNodes {
+	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});
 	// tool_data
@@ -916,7 +916,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {
 	tool_data.layers_dragging.append(&mut selected);
-	responses.add(NodeGraphMessage::SetSelectedNodes {
+	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});
 	// tool_data
@@ -937,7 +937,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 		return;
 	};
 
-	responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![new_selected.to_node()] });
+	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document: &Document, responses: &mut VecDeque<Message>) {

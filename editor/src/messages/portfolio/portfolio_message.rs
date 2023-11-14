@@ -1,7 +1,8 @@
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
-use document_legacy::{document_metadata::LayerNodeIdentifier, LayerId};
+use document_legacy::document_metadata::LayerNodeIdentifier;
+use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 

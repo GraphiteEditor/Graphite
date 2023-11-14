@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
 	let id = *layer_path.last().unwrap();
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths });
-	responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![id] })
+	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] })
 }
 
 /// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]

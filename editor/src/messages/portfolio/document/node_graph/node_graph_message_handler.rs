@@ -455,17 +455,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				document.metadata.load_structure(&document.document_network);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
-			NodeGraphMessage::AddSelectNodes { nodes } => {
-				responses.add(document.metadata.add_selected_nodes(nodes));
-			}
-			NodeGraphMessage::RemoveSelectNodes { nodes } => {
-				responses.add(document.metadata.retain_selected_nodes(|node| !nodes.contains(node)));
-			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				self.update_selection_action_buttons(document, responses);
 				self.update_selected(document, responses);
 				if document.metadata.selected_layers().count() <= 1 {
-					responses.add(DocumentMessage::SetRangeLayer {
+					responses.add(DocumentMessage::SetRangeSelectionLayer {
 						new_layer: document.metadata.selected_layers().next(),
 					});
 				}
@@ -748,11 +742,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				let nodes = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SetSelectedNodes { nodes });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
 			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path: Vec::new() }),
+			NodeGraphMessage::SelectedNodesAdd { nodes } => {
+				responses.add(document.metadata.add_selected_nodes(nodes));
+			}
+			NodeGraphMessage::SelectedNodesRemove { nodes } => {
+				responses.add(document.metadata.retain_selected_nodes(|node| !nodes.contains(node)));
+			}
+			NodeGraphMessage::SelectedNodesSet { nodes } => {
+				responses.add(document.metadata.set_selected_nodes(nodes));
+				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = document.document_network.nested_network(&self.network) {
 					Self::send_graph(network, &self.layer_path, responses);
@@ -823,10 +827,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 				}
-			}
-			NodeGraphMessage::SetSelectedNodes { nodes } => {
-				responses.add(document.metadata.set_selected_nodes(nodes));
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
 			}
 			NodeGraphMessage::ShiftNode { node_id } => {
 				let Some(network) = document.document_network.nested_network_mut(&self.network) else {

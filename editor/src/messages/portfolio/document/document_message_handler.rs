@@ -309,7 +309,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			DeselectAllLayers => {
 				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
-				self.layer_range_selection_reference.take();
+				self.layer_range_selection_reference = None;
 			}
 			DirtyRenderDocument => {
 				// Mark all non-overlay caches as dirty
@@ -341,7 +341,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DuplicateSelectedLayers => {
 				self.backup(responses);
 				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
-				self.layer_range_selection_reference.take();
+				self.layer_range_selection_reference = None;
 				for path in self.selected_layers_sorted() {
 					responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
 				}
@@ -432,22 +432,24 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
 				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers());
 
-				let folder = generate_uuid();
+				let folder_id = generate_uuid();
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
+
 				responses.add(GraphOperationMessage::NewCustomLayer {
-					id: folder,
+					id: folder_id,
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
-					parent: LayerNodeIdentifier::new_unchecked(folder),
+					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-				responses.add(NodeGraphMessage::SetSelectedNodes { nodes: vec![folder] });
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
 			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
 			ImaginateGenerate { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
@@ -484,7 +486,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.metadata().selected_layers().collect::<Vec<_>>();
 
-				// Prevent trying to insert into self
+				// Disallow trying to insert into self
 				if selected_layers.iter().any(|&layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer)) {
 					return;
 				}
@@ -683,12 +685,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SelectLayer { layer_path, ctrl, shift } => {
 				let clicked_node = *layer_path.last().expect("Cannot select root");
 				let layer = LayerNodeIdentifier::new(clicked_node, self.network());
+
 				let mut nodes = vec![];
 
 				// If we have shift pressed and a layer already selected then fill the range
 				if let Some(last_selected) = self.layer_range_selection_reference.filter(|_| shift) {
 					nodes.push(last_selected.to_node());
 					nodes.push(clicked_node);
+
 					// Fill the selection range
 					self.metadata()
 						.all_layers()
@@ -700,9 +704,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					if ctrl {
 						// Toggle selection when holding ctrl
 						if self.metadata().selected_layers_contains(layer) {
-							responses.add_front(NodeGraphMessage::RemoveSelectNodes { nodes: vec![clicked_node] });
+							responses.add_front(NodeGraphMessage::SelectedNodesRemove { nodes: vec![clicked_node] });
 						} else {
-							responses.add_front(NodeGraphMessage::AddSelectNodes { nodes: vec![clicked_node] });
+							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![clicked_node] });
 						}
 						responses.add(BroadcastEvent::SelectionChanged);
 					} else {
@@ -717,9 +721,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				if !nodes.is_empty() {
 					// Add or set our selected layers
 					if ctrl {
-						responses.add_front(NodeGraphMessage::AddSelectNodes { nodes });
+						responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes });
 					} else {
-						responses.add_front(NodeGraphMessage::SetSelectedNodes { nodes });
+						responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes });
 					}
 				}
 			}
@@ -786,7 +790,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(OverlaysMessage::ClearAllOverlays);
 				responses.add(OverlaysMessage::Rerender);
 			}
-			SetRangeLayer { new_layer } => {
+			SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
 			}
 			SetSelectedLayers { replacement_selected_layers } => {
@@ -843,14 +847,18 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			UndoFinished => self.undo_in_progress = false,
 			UngroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
-				let folder_paths = self.metadata().sorted_folders(self.metadata().selected_layers());
+
+				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.metadata().selected_layers());
+
 				for folder in folder_paths {
 					// Select all the children of the folder
-					responses.add(NodeGraphMessage::SetSelectedNodes {
+					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: folder.children(self.metadata()).map(LayerNodeIdentifier::to_node).collect(),
 					});
+
 					// Copy them
 					responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
+
 					// Paste them into the folder above
 					responses.add(PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::Internal,
@@ -1713,7 +1721,6 @@ impl DocumentMessageHandler {
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
 		self.backup(responses);
 
-		let all_layer_paths = self.metadata().all_layers();
 		let mut selected_layers = self.metadata().selected_layers();
 
 		let first_or_last_selected_layer = match relative_index_offset.signum() {
@@ -1725,26 +1732,27 @@ impl DocumentMessageHandler {
 		let Some(pivot_layer) = first_or_last_selected_layer else {
 			return;
 		};
-
 		let Some(parent) = pivot_layer.parent(self.metadata()) else {
 			return;
 		};
+
 		let sibling_layer_paths: Vec<_> = parent.children(self.metadata()).collect();
 		let Some(pivot_index) = sibling_layer_paths.iter().position(|path| *path == pivot_layer) else {
 			return;
 		};
+
 		let max = sibling_layer_paths.len() as i64 - 1;
 		let insert_index = (pivot_index as i64 + relative_index_offset as i64).clamp(0, max) as usize;
 
-		let Some(&neighbour) = sibling_layer_paths.get(insert_index) else {
+		let Some(&neighbor) = sibling_layer_paths.get(insert_index) else {
 			return;
 		};
-		let Some(neighbour_index) = sibling_layer_paths.iter().position(|path| *path == neighbour) else {
+		let Some(neighbor_index) = sibling_layer_paths.iter().position(|path| *path == neighbor) else {
 			return;
 		};
 
 		// If moving down, insert below this layer. If moving up, insert above this layer.
-		let insert_index = if relative_index_offset < 0 { neighbour_index } else { neighbour_index + 1 } as isize;
+		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 } as isize;
 
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}

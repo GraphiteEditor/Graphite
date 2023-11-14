@@ -607,15 +607,20 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				error!("Insert index {insert_index}");
+
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+
 				let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
+
 				let output_node_id = if parent == LayerNodeIdentifier::ROOT {
 					modify_inputs.network.original_outputs()[0].node_id
 				} else {
 					parent.to_node()
 				};
+
 				if let Some(layer) = modify_inputs.create_layer(id, output_node_id, 0, skip_layer_nodes) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, crate::application::generate_uuid())).collect();
+
 					let shift = nodes
 						.get(&0)
 						.and_then(|node| {
@@ -626,6 +631,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
 						})
 						.unwrap_or_default();
+
 					for (old_id, mut document_node) in nodes {
 						// Shift copied node
 						document_node.metadata.position += shift;
@@ -637,13 +643,16 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 						// Insert node into network
 						modify_inputs.network.nodes.insert(node_id, document_node);
 					}
+
 					if let Some(layer_node) = modify_inputs.network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&0) {
 							layer_node.inputs[0] = NodeInput::node(input, 0)
 						}
 					}
+
 					modify_inputs.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 				}
+
 				document.metadata.load_structure(&document.document_network);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths } => {

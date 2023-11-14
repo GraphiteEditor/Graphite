@@ -682,13 +682,11 @@ impl<'a> Iterator for FlowIter<'a> {
 		loop {
 			let node_id = self.stack.pop()?;
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				self.stack.extend(document_node.inputs.iter().take(if self.primary { 1 } else { usize::MAX }).filter_map(|input| {
-					if let NodeInput::Node { node_id: ref_id, .. } = input {
-						Some(*ref_id)
-					} else {
-						None
-					}
-				}));
+				let inputs = document_node.inputs.iter().take(if self.primary { 1 } else { usize::MAX });
+				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None });
+
+				self.stack.extend(node_ids);
+
 				return Some((document_node, node_id));
 			};
 		}

@@ -547,10 +547,9 @@ impl JsEditorHandle {
 	/// Move a layer to be next to the specified neighbor
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, folder_path: Vec<LayerId>, insert_index: isize) {
-		let message = DocumentMessage::MoveSelectedLayersTo {
-			parent: folder_path.last().copied().map(LayerNodeIdentifier::new_unchecked).unwrap_or(LayerNodeIdentifier::ROOT),
-			insert_index,
-		};
+		let parent = folder_path.last().copied().map(LayerNodeIdentifier::new_unchecked).unwrap_or(LayerNodeIdentifier::ROOT);
+
+		let message = DocumentMessage::MoveSelectedLayersTo { parent, insert_index };
 		self.dispatch(message);
 	}
 
@@ -654,7 +653,7 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = selectNodes)]
 	pub fn select_nodes(&self, nodes: Option<Vec<u64>>) {
 		let nodes = nodes.unwrap_or_default();
-		let message = NodeGraphMessage::SetSelectedNodes { nodes };
+		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);
 	}
 

@@ -114,7 +114,7 @@ impl DocumentMetadata {
 	}
 
 	/// Folders sorted from most nested to least nested
-	pub fn sorted_folders(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
+	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
 		let mut folders: Vec<_> = self.folders(layers).collect();
 		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
 		folders

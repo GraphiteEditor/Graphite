@@ -169,7 +169,7 @@ pub enum DocumentMessage {
 	SetOverlaysVisibility {
 		visible: bool,
 	},
-	SetRangeLayer {
+	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
 	},
 	SetSelectedLayers {

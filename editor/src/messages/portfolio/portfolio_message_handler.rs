@@ -12,7 +12,6 @@ use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::layers::style::RenderData;
-use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
@@ -169,11 +168,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) else {
 					return;
 				};
+
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					for layer_path in active_document.metadata().shallowest_unique_layers(active_document.metadata().selected_layers()) {
 						let Some(layer) = layer_path.last().copied() else {
 							continue;
 						};
+
 						let node = layer.to_node();
 						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
 							continue;
@@ -191,7 +192,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							)
 							.collect(),
 							selected: active_document.metadata().selected_layers_contains(layer),
-							colapsed: false,
+							collapsed: false,
 						});
 					}
 				};
@@ -383,7 +384,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
-					if let Some(document) = self.active_document() {
+					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let id = generate_uuid();
 						responses.add(GraphOperationMessage::NewCustomLayer {
@@ -393,7 +394,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							insert_index,
 						});
 						if entry.selected {
-							responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![id] });
+							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
 					}
 				};
@@ -426,7 +427,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								insert_index: -1,
 							});
 							if entry.selected {
-								responses.add(NodeGraphMessage::AddSelectNodes { nodes: vec![id] });
+								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 							}
 						}
 
