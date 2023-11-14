@@ -148,7 +148,7 @@ pub struct DocumentNode {
 	pub skip_deduplication: bool,
 	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
-	pub hash: u64,
+	pub world_state_hash: u64,
 	/// The path to this node as of when [`NodeNetwork::generate_node_paths`] was called.
 	/// For example if this node was ID 6 inside a node with ID 4 and with a [`DocumentNodeImplementation::Network`], the path would be [4, 6].
 	pub path: Option<Vec<NodeId>>,
@@ -164,7 +164,7 @@ impl Default for DocumentNode {
 			implementation: Default::default(),
 			metadata: Default::default(),
 			skip_deduplication: Default::default(),
-			hash: Default::default(),
+			world_state_hash: Default::default(),
 			path: Default::default(),
 		}
 	}
@@ -230,7 +230,7 @@ impl DocumentNode {
 			construction_args: args,
 			document_node_path: self.path.unwrap_or_default(),
 			skip_deduplication: self.skip_deduplication,
-			hash: self.hash,
+			world_state_hash: self.world_state_hash,
 		}
 	}
 
@@ -1248,8 +1248,7 @@ mod test {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 			construction_args: ConstructionArgs::Nodes(vec![(0, false)]),
-			document_node_path: vec![],
-			skip_deduplication: false,
+			..Default::default()
 		};
 		assert_eq!(proto_node, reference);
 	}
@@ -1267,7 +1266,7 @@ mod test {
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
 						document_node_path: vec![1, 0],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(
@@ -1277,7 +1276,7 @@ mod test {
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![1, 1],
-						skip_deduplication: false,
+						..Default::default()
 					},
 				),
 				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)), vec![1, 4])),

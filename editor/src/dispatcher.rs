@@ -260,6 +260,7 @@ mod test {
 	use crate::messages::prelude::*;
 	use crate::test_utils::EditorTestUtils;
 
+	use document_legacy::document_metadata::LayerNodeIdentifier;
 	use document_legacy::LayerId;
 	use document_legacy::Operation;
 	use graphene_core::raster::color::Color;
