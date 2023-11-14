@@ -16,7 +16,6 @@ members = [
 	"node-graph/vulkan-executor",
 	"node-graph/wgpu-executor",
 	"node-graph/gpu-executor",
-	"node-graph/future-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
 	"libraries/bezier-rs",
@@ -38,6 +37,71 @@ specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c086
 rustc-hash = "1.1.0"
 # wasm-bindgen upgrades may break various things so we pin the version
 wasm-bindgen = "=0.2.87"
+
+
+dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
+document-legacy = { path = "document-legacy", package = "graphite-document-legacy" }
+graphene-core = { path = "node-graph/gcore" }
+graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
+
+spirv-std = { version = "0.9" }
+bytemuck = { version = "1.13", features = ["derive"] }
+async-trait = { version = "0.1" }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["rustls", "rustls-tls", "json"] }
+futures = "0.3"
+log = { version = "0.4" }
+bitflags = { version = "2.4", features = ["serde"] }
+remain = "0.2.2"
+derivative = "2.2.0"
+tempfile = "3"
+
+thiserror = "1.0"
+anyhow = "1.0.66"
+
+proc-macro2 = "1"
+syn = { version = "2.0", default-features = false, features = ["full"] }
+quote = "1.0"
+
+axum = "0.6"
+chrono = "^0.4.23"
+ron = "0.8"
+
+wgpu-types = "0.17"
+wgpu = "0.17"
+wasm-bindgen-futures = { version = "0.4.36" }
+winit = "0.28.6"
+url = "2.4.0"
+tokio = { version = "1.29", features = ["fs", "io-std"] }
+vello = { git = "https://github.com/linebender/vello", version = "0.0.1" }
+vello_svg = { git = "https://github.com/linebender/vello", version = "0.0.1" }
+resvg = { version = "0.35.0" }
+
+rand = { version = "0.8.5", default-features = false }
+rand_chacha = { version = "0.3.1" }
+bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
+kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
+	"serde",
+] }
+glam = { version = "0.24", default-features = false, features = ["serde"] }
+node-macro = { path = "node-graph/node-macro" }
+base64 = { version = "0.21" }
+image = { version = "0.24", default-features = false, features = ["png"] }
+rustybuzz = { version = "0.8.0" }
+
+num-derive = { version = "0.4" }
+num-traits = { version = "0.2.15", default-features = false, features = [
+	"i128",
+] }
+
+js-sys = { version = "0.3.55" }
+usvg = "0.35.0"
+
+web-sys = { version = "0.3.55" }
+spirv = "0.2.0"
+fern = { version = "0.6", features = ["colored"] }
+
 
 [profile.dev.package.graphite-editor]
 opt-level = 1

@@ -12,32 +12,22 @@ passthrough = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-graphene-core = { path = "../gcore", features = [
-	"async",
-	"std",
-	"alloc",
-	"gpu",
-] }
-graph-craft = { path = "../graph-craft" }
+graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
+graph-craft = { workspace = true }
 gpu-executor = { path = "../gpu-executor" }
-dyn-any = { path = "../../libraries/dyn-any", features = [
-	"log-bad-types",
-	"rc",
-	"glam",
-] }
-future-executor = { path = "../future-executor" }
-num-traits = "0.2"
-log = "0.4"
-serde = { version = "1", features = ["derive", "rc"], optional = true }
-glam = { version = "0.24" }
-base64 = "0.21"
+dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
+num-traits = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, optional = true }
+glam = { workspace = true }
+base64 = { workspace = true }
 
-bytemuck = { version = "1.8" }
-anyhow = "1.0.66"
-wgpu = { version = "0.17", features = ["spirv"] }
-spirv = "0.2.0"
+bytemuck = { workspace = true }
+anyhow = { workspace = true }
+wgpu = { workspace = true, features = ["spirv"] }
+spirv = { workspace = true }
+futures = { workspace = true }
 futures-intrusive = "0.5.0"
-futures = "0.3.25"
-web-sys = { version = "0.3.4", features = ["HtmlCanvasElement"] }
-winit = "0.28.6"
+web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+winit = { workspace = true }
 nvtx = { version = "1.2", optional = true }

@@ -14,9 +14,9 @@ readme = "../README.md"
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1"
-quote = "1"
-syn = { version = "1", default-features = false, features = [
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true, default-features = false, features = [
 	"derive",
 	"parsing",
 	"proc-macro",

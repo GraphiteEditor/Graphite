@@ -10,15 +10,19 @@ default = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-graphene-core = { path = "../gcore", features = ["async", "std", "alloc", "gpu"] }
-graph-craft = {path = "../graph-craft" }
-dyn-any = { path = "../../libraries/dyn-any", features = ["log-bad-types", "rc", "glam"] }
-num-traits = "0.2"
-log = "0.4"
-serde = { version = "1", features = ["derive", "rc"], optional = true }
-glam = { version = "0.24" }
-base64 = "0.21"
+graphene-core = { path = "../gcore", features = ["std", "alloc", "gpu"] }
+graph-craft = { path = "../graph-craft" }
+dyn-any = { path = "../../libraries/dyn-any", features = [
+	"log-bad-types",
+	"rc",
+	"glam",
+] }
+num-traits = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, optional = true }
+glam = { workspace = true }
+base64 = { workspace = true }
 
-vulkano = { git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu"}
-bytemuck = { version = "1.13" }
-anyhow = "1.0"
+vulkano = { git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu" }
+bytemuck = { workspace = true }
+anyhow = { workspace = true }

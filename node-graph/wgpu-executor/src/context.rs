@@ -51,8 +51,4 @@ impl Context {
 			instance: Arc::new(instance),
 		})
 	}
-
-	pub fn new_sync() -> Option<Self> {
-		future_executor::block_on(Self::new())
-	}
 }

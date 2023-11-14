@@ -17,7 +17,7 @@ gpu = [
 	"gpu-executor",
 ]
 vulkan = ["gpu", "vulkan-executor"]
-wgpu = ["gpu", "wgpu-executor"]
+wgpu = ["gpu", "wgpu-executor", "dep:wgpu"]
 quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
@@ -27,16 +27,15 @@ resvg = ["dep:resvg"]
 wayland = []
 
 [dependencies]
-rand = { version = "0.8.5", features = [
+rand = { workspace = true, features = [
 	"alloc",
 	"small_rng",
 ], default-features = false }
-rand_chacha = { version = "0.3.1", default-features = false }
+rand_chacha = { workspace = true }
 autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
 	"fitting",
 ] }
 graphene-core = { path = "../gcore", features = [
-	"async",
 	"std",
 	"serde",
 	"alloc",
@@ -44,48 +43,48 @@ graphene-core = { path = "../gcore", features = [
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 vulkan-executor = { path = "../vulkan-executor", optional = true }
-wgpu-executor = { path = "../wgpu-executor", optional = true, version = "0.1" }
+wgpu-executor = { path = "../wgpu-executor", optional = true }
 gpu-executor = { path = "../gpu-executor", optional = true }
 gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
 compilation-client = { path = "../compilation-client", optional = true }
-bytemuck = { version = "1.13" }
+bytemuck = { workspace = true }
 tempfile = "3"
-image = { version = "0.24", default-features = false, features = [
+image = { workspace = true, default-features = false, features = [
 	"png",
 	"jpeg",
 ] }
-base64 = { version = "0.21", optional = true }
+base64 = { workspace = true, optional = true }
 dyn-clone = "1.0"
 
-log = "0.4"
-bezier-rs = { path = "../../libraries/bezier-rs", features = ["serde"] }
-glam = { version = "0.24", features = ["serde"] }
-node-macro = { path = "../node-macro" }
+wgpu = { workspace = true, optional = true }
+log = { workspace = true }
+bezier-rs = { workspace = true, features = ["serde"] }
+glam = { workspace = true, features = ["serde"] }
+node-macro = { workspace = true }
 rustc-hash = { workspace = true }
-serde_json = "1.0.96"
-reqwest = { version = "0.11.18", features = ["rustls", "rustls-tls", "json"] }
-futures = "0.3.28"
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+futures = { workspace = true }
 wasm-bindgen = { workspace = true, optional = true }
-js-sys = { version = "0.3.63", optional = true }
-wgpu-types = "0.17"
-wgpu = "0.17"
-wasm-bindgen-futures = { version = "0.4.36", optional = true }
-winit = "0.28.6"
-url = "2.4.0"
-tokio = { version = "1.29.0", optional = true, features = ["fs", "io-std"] }
+js-sys = { workspace = true, optional = true }
+wgpu-types = { workspace = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
+winit = { workspace = true }
+url = { workspace = true }
+tokio = { workspace = true, optional = true, features = ["fs", "io-std"] }
 image-compare = { version = "0.3.0", optional = true }
-vello = { git = "https://github.com/linebender/vello", version = "0.0.1", optional = true }
-vello_svg = { git = "https://github.com/linebender/vello", version = "0.0.1", optional = true }
-resvg = { version = "0.35.0", optional = true }
+vello = { workspace = true, optional = true }
+vello_svg = { workspace = true, optional = true }
+resvg = { workspace = true, optional = true }
 
 [dependencies.serde]
-version = "1.0"
+workspace = true
 optional = true
 features = ["derive"]
 
 
 [dependencies.web-sys]
-version = "0.3.63"
+workspace = true
 optional = true
 features = [
 	"Window",

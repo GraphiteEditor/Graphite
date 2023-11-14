@@ -15,24 +15,29 @@ rust-version = "1.66.0"
 tauri-build = { version = "1.2", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.2", features = ["api-all", "devtools", "linux-protocol-headers", "wry"] }
-axum = "0.6.1"
-graphite-editor = { version = "0.0.0", path = "../../editor" }
-chrono = "^0.4.23"
-tokio = { version = "1", features = ["full"] }
-ron = "0.8"
-log = "0.4"
-fern = { version = "0.6", features = ["colored"] }
-futures = "0.3.25"
+serde_json = { workspace = true }
+serde = { workspace = true }
+tauri = { version = "1.2", features = [
+	"api-all",
+	"devtools",
+	"linux-protocol-headers",
+	"wry",
+] }
+axum = { workspace = true }
+graphite-editor = { path = "../../editor" }
+chrono = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+ron = { workspace = true }
+log = { workspace = true }
+fern = { workspace = true }
+futures = { workspace = true }
 
 [features]
 gpu = ["graphite-editor/gpu"]
 quantization = ["graphite-editor/quantization"]
 # by default Tauri runs in production mode
 # when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
-default = [ "custom-protocol" ]
+default = ["custom-protocol"]
 # this feature is used for production builds where `devPath` points to the filesystem
 # DO NOT remove this
 custom-protocol = ["tauri/custom-protocol"]
