@@ -55,7 +55,6 @@ image = { workspace = true, default-features = false, features = [
 ] }
 base64 = { workspace = true, optional = true }
 dyn-clone = "1.0"
-
 wgpu = { workspace = true, optional = true }
 log = { workspace = true }
 bezier-rs = { workspace = true, features = ["serde"] }
@@ -81,7 +80,6 @@ resvg = { workspace = true, optional = true }
 workspace = true
 optional = true
 features = ["derive"]
-
 
 [dependencies.web-sys]
 workspace = true

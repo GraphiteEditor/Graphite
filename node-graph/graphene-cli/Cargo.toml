@@ -31,8 +31,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
-
-# Node graph
 graphene-std = { path = "../gstd" }
 image = { workspace = true, default-features = false, features = [
 	"bmp",
@@ -44,7 +42,6 @@ gpu-executor = { path = "../gpu-executor", optional = true }
 interpreted-executor = { path = "../interpreted-executor" }
 dyn-any = { workspace = true }
 graphene-core = { workspace = true }
-
 wasm-bindgen = { workspace = true, optional = true }
 futures = { workspace = true }
 fern = { workspace = true }

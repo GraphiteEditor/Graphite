@@ -15,9 +15,7 @@ graph-craft = { path = "../node-graph/graph-craft", features = ["serde"] }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 graphene-core = { workspace = true, features = ["serde"] }
 image = { workspace = true, default-features = false }
-
 log = { workspace = true }
-
 bezier-rs = { workspace = true }
 kurbo = { workspace = true }
 specta = { workspace = true }

@@ -58,14 +58,14 @@ mod uuid_generation {
 	}
 
 	pub fn generate_uuid() -> u64 {
-		let Ok(mut lock) = RNG.lock() else { panic!("uuid mutex poisoned") };
+		let Ok(mut lock) = RNG.lock() else { panic!("UUID mutex poisoned") };
 		if lock.is_none() {
 			UUID_SEED.with(|seed| {
 				let random_seed = seed.get().unwrap_or(42);
 				*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
 			})
 		}
-		lock.as_mut().map(ChaCha20Rng::next_u64).expect("uuid mutex poisoned")
+		lock.as_mut().map(ChaCha20Rng::next_u64).expect("UUID mutex poisoned")
 	}
 }
 

@@ -235,7 +235,7 @@ mod test {
 			name: "project".to_owned(),
 			authors: vec!["Example <john.smith@example.com>".to_owned(), "smith.john@example.com".to_owned()],
 		});
-		let cargo_toml = cargo_toml.expect("failed to build carog toml template");
+		let cargo_toml = cargo_toml.expect("Failed to build cargo toml template");
 		let lines = cargo_toml.split('\n').collect::<Vec<_>>();
 		let cargo_toml = lines[..lines.len() - 2].join("\n");
 		let reference = r#"[package]

@@ -22,7 +22,6 @@ log = { workspace = true }
 serde = { workspace = true, optional = true }
 glam = { workspace = true }
 base64 = { workspace = true }
-
 vulkano = { git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu" }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }
