@@ -125,6 +125,17 @@ impl Default for DocumentNodeBlueprint {
 // TODO: make document nodes not require a `'static` lifetime to avoid having to split the construction into const and non-const parts.
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeBlueprint>> = once_cell::sync::Lazy::new(static_nodes);
 
+fn monitor_node() -> DocumentNode {
+	DocumentNode {
+		name: "Monitor".to_string(),
+		inputs: Vec::new(),
+		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+		manual_composition: Some(concrete!(Footprint)),
+		skip_deduplication: true,
+		..Default::default()
+	}
+}
+
 // TODO: Dynamic node library
 /// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
 /// The document node is the instance while these are the "class" (or "blueprint").
@@ -203,11 +214,8 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 					(
 						1,
 						DocumentNode {
-							name: "Monitor".to_string(),
 							inputs: vec![NodeInput::node(0, 0)],
-							implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-							skip_deduplication: true,
-							..Default::default()
+							..monitor_node()
 						},
 					),
 					(
@@ -2122,11 +2130,8 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Monitor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(VectorData))],
-						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-						skip_deduplication: true,
-						..Default::default()
+						..monitor_node()
 					},
 					DocumentNode {
 						name: "Transform".to_string(),
@@ -2329,11 +2334,8 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeBlueprint> = Lazy::new(|| DocumentNo
 			(
 				0,
 				DocumentNode {
-					name: "Frame Monitor".into(),
 					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_>"),
-					skip_deduplication: true,
-					..Default::default()
+					..monitor_node()
 				},
 			),
 			(
