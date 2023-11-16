@@ -40,6 +40,7 @@
 	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
+	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
 
 	function watchOpen(open: boolean) {
 		highlighted = activeEntry;
@@ -214,7 +215,7 @@
 			{#if sectionIndex > 0}
 				<Separator type="List" direction="Vertical" />
 			{/if}
-			{#each virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section as entry, entryIndex (entryIndex + (virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0))}
+			{#each virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
@@ -359,4 +360,5 @@
 			}
 		}
 	}
+	// paddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpadding
 </style>
