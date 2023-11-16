@@ -1,24 +1,25 @@
-
 module.exports = {
 	root: true,
-	env: {
-		browser: true,
-		node: true,
-		es2020: true,
-	},
-	parserOptions: {
-		ecmaVersion: 2020,
-	},
+	env: { browser: true, node: true },
 	extends: [
-		// General Prettier defaults
+		"eslint:recommended",
+		"plugin:import/recommended",
+		"plugin:@typescript-eslint/recommended",
+		"plugin:import/typescript",
+		"plugin:svelte/recommended",
+		"plugin:svelte/prettier",
 		"prettier",
 	],
+	plugins: ["import", "@typescript-eslint", "prettier"],
 	settings: {
-		// https://github.com/import-js/eslint-plugin-import#resolvers
-		"import/resolver": {
-			// `node` must be listed first!
-			node: {},
-		},
+		"import/parsers": { "@typescript-eslint/parser": [".ts", ".tsx"] },
+		"import/resolver": { typescript: true, node: true },
+	},
+	parser: "@typescript-eslint/parser",
+	parserOptions: {
+		ecmaVersion: "latest",
+		project: "./tsconfig.json",
+		extraFileExtensions: [".svelte"],
 	},
 	ignorePatterns: [
 		// Ignore generated directories
@@ -26,13 +27,24 @@ module.exports = {
 		"dist/",
 		"pkg/",
 		"wasm/pkg/",
-
 		// Don't ignore JS and TS dotfiles in this folder
 		"!.*.js",
 		"!.*.ts",
 	],
+	overrides: [
+		{
+			files: ["*.js"],
+			rules: { "@typescript-eslint/explicit-function-return-type": ["off"] },
+		},
+		{
+			files: ["*.svelte"],
+			parser: "svelte-eslint-parser",
+			// Parse the `<script>` in `.svelte` as TypeScript by adding the following configuration.
+			parserOptions: { parser: "@typescript-eslint/parser" },
+		},
+	],
 	rules: {
-		// Standard ESLint config
+		// Standard ESLint config (for ordinary JS syntax linting)
 		indent: "off",
 		quotes: ["error", "double", { allowTemplateLiterals: true }],
 		camelcase: ["error", { properties: "always" }],
@@ -48,12 +60,11 @@ module.exports = {
 		"no-use-before-define": "off",
 		"no-restricted-imports": ["error", { patterns: [".*", "!@graphite/*"] }],
 
-		// TypeScript plugin config
+		// TypeScript plugin config (for TS-specific linting)
 		"@typescript-eslint/indent": "off",
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
 		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
-		"@typescript-eslint/explicit-function-return-type": "error",
 		"@typescript-eslint/consistent-type-imports": "error",
 		"@typescript-eslint/consistent-type-definitions": ["error", "type"],
 		"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
@@ -61,34 +72,25 @@ module.exports = {
 		"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
 		"@typescript-eslint/ban-types": ["error", { types: { null: "Use `undefined` instead." } }],
 
-		// Import plugin config (used to intelligently validate module import statements)
+		// Prettier plugin config (for validating and fixing formatting)
+		"prettier/prettier": "error",
+
+		// Svelte plugin config (for validating Svelte-specific syntax)
+		"svelte/no-at-html-tags": "off",
+		"svelte/valid-compile": ["error", { ignoreWarnings: true }],
+
+		// Import plugin config (for intelligently validating module import statements)
+		"import/no-unresolved": "error",
 		"import/prefer-default-export": "off",
 		"import/no-relative-packages": "error",
 		"import/order": [
 			"error",
 			{
-				alphabetize: {
-					order: "asc",
-					caseInsensitive: true,
-				},
-				warnOnUnassignedImports: true,
+				alphabetize: { order: "asc", caseInsensitive: true },
+				pathGroups: [{ pattern: "**/*.svelte", group: "unknown", position: "after" }],
 				"newlines-between": "always-and-inside-groups",
-				pathGroups: [
-					{
-						pattern: "**/*.svelte",
-						group: "unknown",
-						position: "after",
-					},
-				],
+				warnOnUnassignedImports: true,
 			},
 		],
 	},
-	overrides: [
-		{
-			files: ["*.js"],
-			rules: {
-				"@typescript-eslint/explicit-function-return-type": ["off"],
-			},
-		},
-	],
 };

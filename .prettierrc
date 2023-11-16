@@ -3,12 +3,19 @@
 	"useTabs": true,
 	"tabWidth": 4,
 	"printWidth": 200,
+	"plugins": ["prettier-plugin-svelte"],
 	"overrides": [
 		{
 			"files": ["*.yml", "*.yaml"],
 			"options": {
 				"useTabs": false,
 				"tabWidth": 2
+			}
+		},
+		{
+			"files": ["*.svelte"],
+			"options": {
+				"parser": "svelte"
 			}
 		}
 	]

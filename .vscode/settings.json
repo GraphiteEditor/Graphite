@@ -6,7 +6,7 @@
 		"editor.defaultFormatter": "rust-lang.rust-analyzer"
 	},
 	// Web: save on format
-	"[typescript][javascript]": {
+	"[javascript][typescript][svelte]": {
 		"editor.codeActionsOnSave": {
 			"source.fixAll.eslint": true
 		},
@@ -39,7 +39,7 @@
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],
-	"eslint.validate": ["javascript", "typescript"],
+	"eslint.validate": ["javascript", "typescript", "svelte"],
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",

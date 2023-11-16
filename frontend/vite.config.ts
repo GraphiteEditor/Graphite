@@ -30,7 +30,7 @@ export default defineConfig({
 		svelte({
 			preprocess: [sveltePreprocess()],
 			onwarn(warning, defaultHandler) {
-				const suppressed = ["vite-plugin-svelte-css-no-scopable-elements"];
+				const suppressed = ["css-unused-selector", "vite-plugin-svelte-css-no-scopable-elements"];
 				if (suppressed.includes(warning.code)) return;
 
 				defaultHandler?.(warning);
