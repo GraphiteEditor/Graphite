@@ -92,6 +92,17 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
+	pub fn skip_artboards(&self, output: &mut NodeOutput) -> Option<(NodeId, usize)> {
+		while let NodeInput::Node { node_id, output_index, .. } = &self.network.nodes.get(&output.node_id)?.inputs[output.node_output_index] {
+			let sibling_node = self.network.nodes.get(node_id)?;
+			if sibling_node.name != "Artboard" {
+				return Some((*node_id, *output_index));
+			}
+			*output = NodeOutput::new(*node_id, *output_index)
+		}
+		return None;
+	}
+
 	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, input_index: usize, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.network.nodes.contains_key(&new_id), "Creating already existing layer");
 
@@ -99,10 +110,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut sibling_layer = None;
 		let mut shift = IVec2::new(0, 3);
 		// Locate the node output of the first sibling layer to the new layer
-		if let NodeInput::Node { node_id, output_index, .. } = &self.network.nodes.get(&output_node_id)?.inputs[input_index] {
-			let sibling_node = &self.network.nodes.get(node_id)?;
-			let node_id = *node_id;
-			let output_index = *output_index;
+		if let Some((node_id, output_index)) = self.skip_artboards(&mut output) {
+			let sibling_node = self.network.nodes.get(&node_id)?;
 			if sibling_node.name == "Layer" {
 				// There is already a layer node
 				sibling_layer = Some(NodeOutput::new(node_id, 0));
