@@ -17,7 +17,7 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 
 	id!: string;
 
-	connectedCallback(): void {
+	connectedCallback() {
 		this.demos = [
 			{
 				title: "Open Subpath",
@@ -52,7 +52,7 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 		this.render();
 	}
 
-	render(): void {
+	render() {
 		renderDemoPane(this);
 	}
 

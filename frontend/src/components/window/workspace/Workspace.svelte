@@ -1,13 +1,16 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+
+	import type { DialogState } from "@graphite/state-providers/dialog";
+	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+	import type { Editor } from "@graphite/wasm-communication/editor";
+
+	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
+
 	import DialogModal from "@graphite/components/floating-menus/DialogModal.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Panel from "@graphite/components/window/workspace/Panel.svelte";
-	import { getContext } from "svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
-	import type { DialogState } from "@graphite/state-providers/dialog";
-	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -66,7 +69,7 @@
 
 		const mouseStart = isHorizontal ? e.clientX : e.clientY;
 
-		const updatePosition = (e: PointerEvent): void => {
+		const updatePosition = (e: PointerEvent) => {
 			const mouseCurrent = isHorizontal ? e.clientX : e.clientY;
 			let mouseDelta = mouseStart - mouseCurrent;
 
@@ -79,7 +82,7 @@
 			window.dispatchEvent(new CustomEvent("resize"));
 		};
 
-		const cleanup = (e: PointerEvent): void => {
+		const cleanup = (e: PointerEvent) => {
 			gutter.releasePointerCapture(e.pointerId);
 
 			document.removeEventListener("pointermove", updatePosition);

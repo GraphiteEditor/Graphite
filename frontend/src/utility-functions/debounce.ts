@@ -9,13 +9,13 @@ export function debouncer<T>(callFn: (value: T) => unknown, { debounceTime = 60 
 	let currentValue: T | undefined;
 	let recentlyUpdated: boolean = false;
 
-	const emitValue = (): void => {
+	const emitValue = () => {
 		recentlyUpdated = false;
 		if (currentValue === undefined) return;
 		updateValue(currentValue);
 	};
 
-	const updateValue = (newValue: T): void => {
+	const updateValue = (newValue: T) => {
 		if (recentlyUpdated) {
 			currentValue = newValue;
 			return;

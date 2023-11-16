@@ -41,7 +41,7 @@ class BezierDemoPane extends HTMLElement implements DemoPane {
 
 	id!: string;
 
-	connectedCallback(): void {
+	connectedCallback() {
 		this.key = (this.getAttribute("name") || "") as BezierFeatureKey;
 		this.id = `bezier/${this.key}`;
 		this.name = bezierFeatures[this.key].name;
@@ -62,7 +62,7 @@ class BezierDemoPane extends HTMLElement implements DemoPane {
 		this.render();
 	}
 
-	render(): void {
+	render() {
 		renderDemoPane(this);
 	}
 

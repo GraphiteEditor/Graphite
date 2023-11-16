@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { IconName } from "@graphite/utility-functions/icons";
+
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";

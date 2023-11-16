@@ -1,9 +1,9 @@
 <script lang="ts" context="module">
 	import Document from "@graphite/components/panels/Document.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import LayerTree from "@graphite/components/panels/LayerTree.svelte";
-	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
 	const PANEL_COMPONENTS = {
@@ -19,6 +19,7 @@
 
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -26,7 +27,6 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	const editor = getContext<Editor>("editor");
 

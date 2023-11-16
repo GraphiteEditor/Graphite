@@ -174,8 +174,9 @@
 	function onCancelTextChange() {
 		updateValue(undefined, min, max, displayDecimalPlaces, unit);
 
-		rangeSliderValue = value;
-		rangeSliderValueAsRendered = value;
+		const valueOrZero = value !== undefined ? value : 0;
+		rangeSliderValue = valueOrZero;
+		rangeSliderValueAsRendered = valueOrZero;
 
 		editing = false;
 

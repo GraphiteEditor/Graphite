@@ -1,9 +1,13 @@
-import { defineConfig } from "vite";
+/* eslint-disable no-console */
+
 import { spawnSync } from "child_process";
-import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { sveltePreprocess } from "svelte-preprocess/dist/autoProcess";
+
 import path from "path";
+
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import rollupPluginLicense, { type Dependency } from "rollup-plugin-license";
+import { sveltePreprocess } from "svelte-preprocess/dist/autoProcess";
+import { defineConfig } from "vite";
 
 const projectRootDir = path.resolve(__dirname);
 
@@ -30,11 +34,11 @@ export default defineConfig({
 		svelte({
 			preprocess: [sveltePreprocess()],
 			onwarn(warning, defaultHandler) {
-				const suppressed = ["vite-plugin-svelte-css-no-scopable-elements"];
+				const suppressed = ["css-unused-selector", "vite-plugin-svelte-css-no-scopable-elements"];
 				if (suppressed.includes(warning.code)) return;
 
 				defaultHandler?.(warning);
-			}
+			},
 		}),
 	],
 	resolve: {
@@ -44,7 +48,7 @@ export default defineConfig({
 			{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
 			{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
 			{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
-		]
+		],
 	},
 	server: {
 		port: 8080,
@@ -70,18 +74,18 @@ export default defineConfig({
 	},
 });
 
-interface LicenseInfo {
+type LicenseInfo = {
 	licenseName: string;
 	licenseText: string;
 	packages: PackageInfo[];
-}
+};
 
-interface PackageInfo {
+type PackageInfo = {
 	name: string;
 	version: string;
 	author: string;
 	repository: string;
-}
+};
 
 function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 	// Generate the Rust license information.
@@ -90,8 +94,8 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 	// Ensure we have license information to work with before proceeding.
 	if (licenses.length === 0) {
 		// This is probably caused by `cargo about` not being installed.
-		console.error("Could not run \`cargo about\`, which is required to generate license information.");
-		console.error("To install cargo-about on your system, you can run \`cargo install cargo-about\`.");
+		console.error("Could not run `cargo about`, which is required to generate license information.");
+		console.error("To install cargo-about on your system, you can run `cargo install cargo-about`.");
 		console.error("License information is required in production builds. Aborting.");
 
 		process.exit(1);
@@ -136,9 +140,10 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 
 	// Filter out the internal Graphite crates, which are not third-party.
 	licenses = licenses.filter((license) => {
-		license.packages = license.packages.filter((packageInfo) =>
-			!(packageInfo.repository && packageInfo.repository.toLowerCase().includes("github.com/GraphiteEditor/Graphite".toLowerCase())) &&
-			!(packageInfo.author && packageInfo.author.toLowerCase().includes("contact@graphite.rs"))
+		license.packages = license.packages.filter(
+			(packageInfo) =>
+				!(packageInfo.repository && packageInfo.repository.toLowerCase().includes("github.com/GraphiteEditor/Graphite".toLowerCase())) &&
+				!(packageInfo.author && packageInfo.author.toLowerCase().includes("contact@graphite.rs")),
 		);
 		return license.packages.length > 0;
 	});
@@ -207,18 +212,24 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		// We call eval indirectly to avoid a warning as explained here: <https://esbuild.github.io/content-types/#direct-eval>.
 		const indirectEval = eval;
 		const licensesArray = indirectEval(stdout) as LicenseInfo[];
-	
+
 		// Remove the HTML character encoding caused by Handlebars.
-		let rustLicenses = (licensesArray || []).map((rustLicense): LicenseInfo => ({
-			licenseName: htmlDecode(rustLicense.licenseName),
-			licenseText: trimBlankLines(htmlDecode(rustLicense.licenseText)),
-			packages: rustLicense.packages.map((packageInfo): PackageInfo => ({
-				name: htmlDecode(packageInfo.name),
-				version: htmlDecode(packageInfo.version),
-				author: htmlDecode(packageInfo.author).replace(/\[(.*), \]/, "$1").replace("[]", ""),
-				repository: htmlDecode(packageInfo.repository),
-			})),
-		}));
+		const rustLicenses = (licensesArray || []).map(
+			(rustLicense): LicenseInfo => ({
+				licenseName: htmlDecode(rustLicense.licenseName),
+				licenseText: trimBlankLines(htmlDecode(rustLicense.licenseText)),
+				packages: rustLicense.packages.map(
+					(packageInfo): PackageInfo => ({
+						name: htmlDecode(packageInfo.name),
+						version: htmlDecode(packageInfo.version),
+						author: htmlDecode(packageInfo.author)
+							.replace(/\[(.*), \]/, "$1")
+							.replace("[]", ""),
+						repository: htmlDecode(packageInfo.repository),
+					}),
+				),
+			}),
+		);
 
 		return rustLicenses;
 	} catch (_) {

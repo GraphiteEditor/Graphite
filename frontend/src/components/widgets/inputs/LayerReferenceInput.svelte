@@ -24,13 +24,13 @@
 
 	$: droppable = hoveringDrop && Boolean(currentDraggingElement());
 
-	function dragOver(e: DragEvent): void {
+	function dragOver(e: DragEvent) {
 		hoveringDrop = true;
 
 		e.preventDefault();
 	}
 
-	function drop(e: DragEvent): void {
+	function drop(e: DragEvent) {
 		hoveringDrop = false;
 
 		const element = currentDraggingElement();

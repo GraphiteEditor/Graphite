@@ -104,16 +104,16 @@ import Copy from "@graphite-frontend/assets/icon-16px-solid/copy.svg";
 import Credits from "@graphite-frontend/assets/icon-16px-solid/credits.svg";
 import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
 import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
-import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
 import EyeHidden from "@graphite-frontend/assets/icon-16px-solid/eye-hidden.svg";
 import EyeVisible from "@graphite-frontend/assets/icon-16px-solid/eye-visible.svg";
+import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
 import File from "@graphite-frontend/assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@graphite-frontend/assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@graphite-frontend/assets/icon-16px-solid/flip-vertical.svg";
 import Folder from "@graphite-frontend/assets/icon-16px-solid/folder.svg";
-import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
 import GraphViewClosed from "@graphite-frontend/assets/icon-16px-solid/graph-view-closed.svg";
 import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-open.svg";
+import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
 import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
@@ -269,8 +269,8 @@ import VectorFreehandTool from "@graphite-frontend/assets/icon-24px-two-tone/vec
 import VectorLineTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-line-tool.svg";
 import VectorPathTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-path-tool.svg";
 import VectorPenTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-pen-tool.svg";
-import VectorRectangleTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-rectangle-tool.svg";
 import VectorPolygonTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-polygon-tool.svg";
+import VectorRectangleTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-rectangle-tool.svg";
 import VectorSplineTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-spline-tool.svg";
 import VectorTextTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-text-tool.svg";
 

@@ -1,7 +1,7 @@
 let draggingElement: HTMLElement | undefined;
 
 export function createDragManager(): () => void {
-	const clearDraggingElement = (): void => {
+	const clearDraggingElement = () => {
 		draggingElement = undefined;
 	};
 
@@ -17,7 +17,7 @@ export function createDragManager(): () => void {
 	};
 }
 
-export function beginDraggingElement(element: HTMLElement): void {
+export function beginDraggingElement(element: HTMLElement) {
 	draggingElement = element;
 }
 

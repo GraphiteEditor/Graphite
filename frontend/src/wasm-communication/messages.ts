@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable max-classes-per-file */
 
 import { Transform, Type, plainToClass } from "class-transformer";
@@ -11,7 +12,7 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
+// const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
 
@@ -506,19 +507,19 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage { }
+export class TriggerLoadAutoSaveDocuments extends JsMessage {}
 
-export class TriggerLoadPreferences extends JsMessage { }
+export class TriggerLoadPreferences extends JsMessage {}
 
 export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly url!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage { }
+export class TriggerOpenDocument extends JsMessage {}
 
-export class TriggerImport extends JsMessage { }
+export class TriggerImport extends JsMessage {}
 
-export class TriggerPaste extends JsMessage { }
+export class TriggerPaste extends JsMessage {}
 
 export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 	readonly blobUrl!: string;
@@ -557,7 +558,7 @@ export class TriggerRasterizeRegionBelowLayer extends JsMessage {
 	readonly size!: [number, number];
 }
 
-export class TriggerRefreshBoundsOfViewports extends JsMessage { }
+export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
 	readonly url!: string;
@@ -567,10 +568,13 @@ export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
 }
 
-export class DocumentChanged extends JsMessage { }
+export class DocumentChanged extends JsMessage {}
 
 export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
-	constructor(readonly layerId: bigint, readonly children: UpdateDocumentLayerTreeStructureJs[]) {
+	constructor(
+		readonly layerId: bigint,
+		readonly children: UpdateDocumentLayerTreeStructureJs[],
+	) {
 		super();
 	}
 }
@@ -660,7 +664,7 @@ export class UpdateImageData extends JsMessage {
 	readonly imageData!: ImaginateImageData[];
 }
 
-export class DisplayRemoveEditableTextbox extends JsMessage { }
+export class DisplayRemoveEditableTextbox extends JsMessage {}
 
 export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
@@ -706,7 +710,7 @@ export class ImaginateImageData {
 	readonly transform!: Float64Array;
 }
 
-export class DisplayDialogDismiss extends JsMessage { }
+export class DisplayDialogDismiss extends JsMessage {}
 
 export class Font {
 	fontFamily!: string;
@@ -729,7 +733,7 @@ export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
-export class TriggerTextCommit extends JsMessage { }
+export class TriggerTextCommit extends JsMessage {}
 
 export class TriggerTextCopy extends JsMessage {
 	readonly copyText!: string;
@@ -739,7 +743,7 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-export class TriggerViewportResize extends JsMessage { }
+export class TriggerViewportResize extends JsMessage {}
 
 // WIDGET PROPS
 
@@ -760,7 +764,7 @@ export class CheckboxInput extends WidgetProps {
 
 export class ColorInput extends WidgetProps {
 	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
-		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha)
+		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha),
 	)
 	value!: Color;
 
@@ -784,7 +788,7 @@ type MenuEntryCommon = {
 export type MenuBarEntry = MenuEntryCommon & {
 	action: Widget;
 	children?: MenuBarEntry[][];
-	disabled?: boolean,
+	disabled?: boolean;
 };
 
 // An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
@@ -1042,7 +1046,7 @@ export class TextButton extends WidgetProps {
 	emphasized!: boolean;
 
 	noBackground!: boolean;
-	
+
 	minWidth!: number;
 
 	disabled!: boolean;
@@ -1217,7 +1221,7 @@ export function defaultWidgetLayout(): WidgetLayout {
 }
 
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
-export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate): void {
+export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate) {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
@@ -1315,19 +1319,19 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 }
 
 // WIDGET LAYOUTS
-export class UpdateDialogButtons extends WidgetDiffUpdate { }
+export class UpdateDialogButtons extends WidgetDiffUpdate {}
 
-export class UpdateDialogColumn1 extends WidgetDiffUpdate { }
+export class UpdateDialogColumn1 extends WidgetDiffUpdate {}
 
-export class UpdateDialogColumn2 extends WidgetDiffUpdate { }
+export class UpdateDialogColumn2 extends WidgetDiffUpdate {}
 
-export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
+export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
+export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
-export class UpdateGraphViewOverlayButtonLayout extends WidgetDiffUpdate { }
+export class UpdateGraphViewOverlayButtonLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate { }
+export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1339,17 +1343,17 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layout!: MenuBarEntry[];
 }
 
-export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate { }
+export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate {}
 
-export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate { }
+export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate {}
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
+export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
 
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
+export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
-export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
+export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
 
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
+export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
@@ -1366,7 +1370,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 			action: hoistWidgetHolders([entry.action])[0],
 			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
 			disabled: entry.disabled ?? false,
-		}))
+		})),
 	);
 }
 

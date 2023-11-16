@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import { clamp } from "@graphite/utility-functions/math";
 	import type { Curve, CurveManipulatorGroup } from "@graphite/wasm-communication/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import { clamp } from "@graphite/utility-functions/math";
 
 	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{
@@ -145,7 +145,7 @@
 		updateCurve();
 	}
 
-	function setHandlePosition(anchorIndex: number, handleIndex: number, position: [number, number]): void {
+	function setHandlePosition(anchorIndex: number, handleIndex: number, position: [number, number]) {
 		const { anchor, handles } = groups[anchorIndex];
 		const otherHandle = handles[1 - handleIndex];
 

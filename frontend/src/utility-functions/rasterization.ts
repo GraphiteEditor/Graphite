@@ -26,7 +26,7 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 	const image = new Image();
 	image.src = url;
 	await new Promise<void>((resolve) => {
-		image.onload = (): void => resolve();
+		image.onload = () => resolve();
 	});
 
 	// Draw our SVG to the canvas
@@ -41,7 +41,7 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 // Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
 export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
 	if (!width || !height) throw new Error("Width and height must be nonzero when given to rasterizeSVG()");
-	
+
 	const canvas = await rasterizeSVGCanvas(svg, width, height, backgroundColor);
 
 	// Convert the canvas to an image of the correct MIME type
@@ -109,7 +109,7 @@ export async function imageToCanvasContext(imageData: ImageBitmapSource): Promis
 	const canvas = document.createElement("canvas");
 	canvas.width = width;
 	canvas.height = height;
-	
+
 	const context = canvas.getContext("2d");
 	if (!context) throw new Error("Could not create canvas context");
 	context.drawImage(image, 0, 0, image.width, image.height, 0, 0, width, height);

@@ -1,6 +1,6 @@
 import { Demo, DemoPane, InputOption } from "@/utils/types";
 
-export function renderDemo(demo: Demo): void {
+export function renderDemo(demo: Demo) {
 	const header = document.createElement("h4");
 	header.className = "demo-header";
 	header.innerText = demo.title;
@@ -47,7 +47,7 @@ export function renderDemo(demo: Demo): void {
 				selectInput.disabled = true;
 			}
 
-			selectInput.addEventListener("change", (event: Event): void => {
+			selectInput.addEventListener("change", (event: Event) => {
 				demo.sliderData[inputOption.variable] = Number((event.target as HTMLInputElement).value);
 				demo.drawDemo(figure);
 			});
@@ -65,7 +65,7 @@ export function renderDemo(demo: Demo): void {
 			const ratio = (Number(inputOption.default) - Number(inputOption.min)) / range;
 			sliderInput.style.setProperty("--range-ratio", String(ratio));
 
-			sliderInput.addEventListener("input", (event: Event): void => {
+			sliderInput.addEventListener("input", (event: Event) => {
 				const target = event.target as HTMLInputElement;
 				demo.sliderData[inputOption.variable] = Number(target.value);
 				const data = demo.sliderData[inputOption.variable];
@@ -86,7 +86,7 @@ export function renderDemo(demo: Demo): void {
 	demo.append(parentSliderContainer);
 }
 
-export function renderDemoPane(demoPane: DemoPane): void {
+export function renderDemoPane(demoPane: DemoPane) {
 	const container = document.createElement("div");
 	container.className = "demo-pane-container";
 

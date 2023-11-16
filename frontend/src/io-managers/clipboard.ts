@@ -1,8 +1,8 @@
+import { imageToPNG } from "@graphite/utility-functions/rasterization";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import { TriggerTextCopy } from "@graphite/wasm-communication/messages";
-import { imageToPNG } from "@graphite/utility-functions/rasterization";
 
-export function createClipboardManager(editor: Editor): void {
+export function createClipboardManager(editor: Editor) {
 	// Subscribe to process backend event
 	editor.subscriptions.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
@@ -10,7 +10,7 @@ export function createClipboardManager(editor: Editor): void {
 	});
 }
 
-export async function copyToClipboardFileURL(url: string): Promise<void> {
+export async function copyToClipboardFileURL(url: string) {
 	const response = await fetch(url);
 	const blob = await response.blob();
 

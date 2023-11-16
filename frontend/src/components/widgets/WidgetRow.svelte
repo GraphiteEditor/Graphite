@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+
 	import { debouncer } from "@graphite/utility-functions/debounce";
-	import type { Widget } from "@graphite/wasm-communication/messages";
-	import { narrowWidgetProps } from "@graphite/wasm-communication/messages";
-	import { isWidgetColumn, isWidgetRow, type WidgetColumn, type WidgetRow } from "@graphite/wasm-communication/messages";
+	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { Widget, WidgetColumn, WidgetRow } from "@graphite/wasm-communication/messages";
+	import { narrowWidgetProps, isWidgetColumn, isWidgetRow } from "@graphite/wasm-communication/messages";
 
 	import PivotAssist from "@graphite/components/widgets/assists/PivotAssist.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
@@ -27,14 +28,14 @@
 	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import { getContext } from "svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const SUFFIX_WIDGETS = ["PopoverButton"];
 
 	const editor = getContext<Editor>("editor");
 
 	export let widgetData: WidgetColumn | WidgetRow;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any;
 
 	$: direction = watchDirection(widgetData);
@@ -73,6 +74,7 @@
 	function exclude<T extends object>(props: T, additional?: (keyof T)[]): Omit<T, typeof additional extends Array<infer K> ? K : never> {
 		const exclusions = ["kind", ...(additional || [])];
 
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
 	}
 </script>
@@ -241,4 +243,5 @@
 			}
 		}
 	}
+	// paddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpadding
 </style>

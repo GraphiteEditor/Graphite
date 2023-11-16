@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
+	import type { FontsState } from "@graphite/state-providers/fonts";
 	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { FontsState } from "@graphite/state-providers/fonts";
 
 	const fonts = getContext<FontsState>("fonts");
 
@@ -34,14 +34,14 @@
 
 	$: watchFont(fontFamily, fontStyle);
 
-	async function watchFont(..._: string[]): Promise<void> {
+	async function watchFont(..._: string[]) {
 		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop
 		const newEntries = await getEntries();
 		entries = newEntries;
 		activeEntry = getActiveEntry(newEntries);
 	}
 
-	async function setOpen(): Promise<void> {
+	async function setOpen() {
 		open = true;
 
 		// Scroll to the active entry (the scroller div does not yet exist so we must wait for the component to render)
@@ -53,7 +53,7 @@
 		}
 	}
 
-	function toggleOpen(): void {
+	function toggleOpen() {
 		if (!disabled) {
 			open = !open;
 
@@ -61,7 +61,7 @@
 		}
 	}
 
-	async function selectFont(newName: string): Promise<void> {
+	async function selectFont(newName: string) {
 		let family;
 		let style;
 

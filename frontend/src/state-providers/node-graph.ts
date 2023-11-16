@@ -1,15 +1,7 @@
-import {writable} from "svelte/store";
+import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
-import {
-	type FrontendNode,
-	type FrontendNodeLink,
-	type FrontendNodeType,
-	UpdateNodeGraph,
-	UpdateNodeTypes,
-	UpdateNodeThumbnail,
-	UpdateZoomWithScroll,
-} from "@graphite/wasm-communication/messages";
+import { type FrontendNode, type FrontendNodeLink, type FrontendNodeType, UpdateNodeGraph, UpdateNodeTypes, UpdateNodeThumbnail, UpdateZoomWithScroll } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
@@ -26,11 +18,10 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.nodes = updateNodeGraph.nodes;
 			state.links = updateNodeGraph.links;
-			let newThumbnails = new Map<bigint, string>();
+			const newThumbnails = new Map<bigint, string>();
 			state.nodes.forEach((node) => {
 				const thumbnail = state.thumbnails.get(node.id);
-				if (thumbnail)
-					newThumbnails.set(node.id, thumbnail);
+				if (thumbnail) newThumbnails.set(node.id, thumbnail);
 			});
 			state.thumbnails = newThumbnails;
 			return state;

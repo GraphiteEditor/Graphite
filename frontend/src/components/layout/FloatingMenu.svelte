@@ -137,9 +137,9 @@
 			floatingMenuContentDiv.style.setProperty("min-height", "unset");
 		}
 
-		// Gets the client bounds of the elements and apply relevant styles to them
-		// TODO: Use DOM attribute bindings more whilst not causing recursive updates
-		// Turning measuring on and off both causes the component to change, which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop)
+		// Gets the client bounds of the elements and apply relevant styles to them.
+		// TODO: Use DOM attribute bindings more whilst not causing recursive updates. Turning measuring on and off both causes the component to change,
+		// TODO: which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop).
 		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 
@@ -237,7 +237,7 @@
 	}
 
 	// To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
-	export async function measureAndEmitNaturalWidth(): Promise<void> {
+	export async function measureAndEmitNaturalWidth() {
 		if (!measuringOngoingGuard) return;
 
 		// Wait for the changed content which fired the `afterUpdate()` Svelte event to be put into the DOM
@@ -297,7 +297,7 @@
 		}
 	}
 
-	function hoverTransfer(self: HTMLDivElement | undefined, ownSpawner: HTMLElement | undefined, targetSpawner: HTMLElement | undefined): void {
+	function hoverTransfer(self: HTMLDivElement | undefined, ownSpawner: HTMLElement | undefined, targetSpawner: HTMLElement | undefined) {
 		// Algorithm pseudo-code to detect and transfer to hover-transferrable floating menu spawners
 		// Accompanying diagram: <https://files.keavon.com/-/SpringgreenKnownXantus/capture.png>
 		//

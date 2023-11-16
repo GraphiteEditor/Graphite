@@ -2,12 +2,12 @@
 	import { getContext, onMount } from "svelte";
 
 	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/wasm-communication/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
 	const accelKey = platformIsMac() ? "Command" : "Control";
@@ -57,7 +57,7 @@
 				...entry,
 
 				// Shared names with fields that need to be converted from the type used in `MenuBarEntry` to that of `MenuListEntry`
-				action: (): void => editor.instance.updateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
+				action: () => editor.instance.updateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
 				children: entry.children ? entry.children.map((entries) => entries.map((entry) => menuBarEntryToMenuListEntry(entry))) : undefined,
 
 				// New fields in `MenuListEntry`
