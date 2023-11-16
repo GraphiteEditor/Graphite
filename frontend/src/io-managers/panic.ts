@@ -4,7 +4,7 @@ import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import { DisplayDialogPanic } from "@graphite/wasm-communication/messages";
 
-export function createPanicManager(editor: Editor, dialogState: DialogState): void {
+export function createPanicManager(editor: Editor, dialogState: DialogState) {
 	// Code panic dialog and console error
 	editor.subscriptions.subscribeJsMessage(DisplayDialogPanic, (displayDialogPanic) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium

@@ -13,18 +13,18 @@ type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
 export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 
-	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>): void => {
+	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>) => {
 		subscriptions[messageType.name] = callback;
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmRawInstance, instance: WasmEditorInstance): void => {
+	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmRawInstance, instance: WasmEditorInstance) => {
 		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
 		const messageMaker = messageMakers[messageType];
 		if (!messageMaker) {
 			// eslint-disable-next-line no-console
 			console.error(
 				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
-					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `messages.ts`.)"
+					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `messages.ts`.)",
 			);
 			return;
 		}

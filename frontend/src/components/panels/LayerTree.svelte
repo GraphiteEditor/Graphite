@@ -3,6 +3,7 @@
 
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import {
 		type LayerPanelEntry,
 		defaultWidgetLayout,
@@ -17,7 +18,6 @@
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -228,7 +228,7 @@
 		if (!layer.layerMetadata.selected) {
 			fakeHighlight = [layer.path];
 		}
-		const select = (): void => {
+		const select = () => {
 			if (!layer.layerMetadata.selected) selectLayer(false, false, listing);
 		};
 
@@ -275,7 +275,7 @@
 		layers = [];
 
 		// Build the new layer tree
-		const recurse = (folder: UpdateDocumentLayerTreeStructureJs): void => {
+		const recurse = (folder: UpdateDocumentLayerTreeStructureJs) => {
 			folder.children.forEach((item, index) => {
 				// TODO: fix toString
 				const layerId = BigInt(item.layerId.toString());

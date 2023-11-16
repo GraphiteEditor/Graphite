@@ -2,6 +2,7 @@
 	import { onDestroy, createEventDispatcher, getContext } from "svelte";
 
 	import { clamp } from "@graphite/utility-functions/math";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type HSV, type RGB } from "@graphite/wasm-communication/messages";
 	import { Color } from "@graphite/wasm-communication/messages";
 
@@ -14,7 +15,6 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 
@@ -71,7 +71,7 @@
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
 
-	function generateColor(h: number, s: number, v: number, a: number, none: boolean, ..._: any[]) {
+	function generateColor(h: number, s: number, v: number, a: number, none: boolean) {
 		if (none) return new Color("none");
 		return new Color({ h, s, v, a });
 	}
@@ -432,8 +432,13 @@
 
 		.hue-picker {
 			background-blend-mode: screen;
-			background: linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
-				linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%), linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
+			background:
+				// Reds
+				linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
+				// Greens
+				linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%),
+				// Blues
+				linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
 			--selection-needle-color: var(--hue-color-contrasting);
 		}
 
@@ -567,7 +572,17 @@
 
 						.text-label {
 							// Many stacked white shadows helps to increase the opacity and approximate shadow spread which does not exist for text shadows
-							text-shadow: 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white, 0 0 4px white;
+							text-shadow:
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white,
+								0 0 4px white;
 						}
 					}
 				}

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
+	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -28,8 +30,6 @@
 	import CanvasRuler from "@graphite/components/widgets/metrics/CanvasRuler.svelte";
 	import PersistentScrollbar from "@graphite/components/widgets/metrics/PersistentScrollbar.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { DocumentState } from "@graphite/state-providers/document";
 
 	let rulerHorizontal: CanvasRuler | undefined;
 	let rulerVertical: CanvasRuler | undefined;
@@ -136,6 +136,7 @@
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const canvas = (window as any).imageCanvases[canvasName];
 			placeholder.replaceWith(canvas);
 		});
@@ -198,7 +199,7 @@
 			mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
 			mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
 			ZOOM_WINDOW_DIMENSIONS,
-			ZOOM_WINDOW_DIMENSIONS
+			ZOOM_WINDOW_DIMENSIONS,
 		);
 		cursorEyedropperPreviewImageData = previewRegion;
 
@@ -272,13 +273,13 @@
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
-		textInput.oninput = (): void => {
+		textInput.oninput = () => {
 			if (!textInput) return;
 			editor.instance.updateBounds(textInputCleanup(textInput.innerText));
 		};
 		textInputMatrix = displayEditableTextbox.transform;
-		const new_font = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(new_font);
+		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
+		window.document.fonts.add(newFont);
 		textInput.style.fontFamily = "text-font";
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060

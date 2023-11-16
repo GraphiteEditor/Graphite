@@ -61,10 +61,11 @@ export function isEventSupported(eventName: string) {
 	if (["submit", "reset"].includes(eventName)) tag = "form";
 	if (["error", "load", "abort"].includes(eventName)) tag = "img";
 	const element = document.createElement(tag);
-	
+
 	if (onEventName in element) return true;
 
 	// Check if "return;" gets converted into a function, meaning the event is supported
 	element.setAttribute(eventName, "return;");
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	return typeof (element as Record<string, any>)[onEventName] === "function";
 }

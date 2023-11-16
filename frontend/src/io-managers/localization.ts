@@ -1,8 +1,8 @@
 import { type Editor } from "@graphite/wasm-communication/editor";
 import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/wasm-communication/messages";
 
-export function createLocalizationManager(editor: Editor): void {
-	function localizeTimestamp(utc: string): { timestamp: string, year: string } {
+export function createLocalizationManager(editor: Editor) {
+	function localizeTimestamp(utc: string): { timestamp: string; year: string } {
 		// Timestamp
 		const date = new Date(utc);
 		if (Number.isNaN(date.getTime())) return { timestamp: utc, year: `${new Date().getFullYear()}` };

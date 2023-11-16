@@ -1,5 +1,5 @@
-import {tick} from "svelte";
-import {writable} from "svelte/store";
+import { tick } from "svelte";
+import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
@@ -35,7 +35,7 @@ export function createDocumentState(editor: Editor) {
 	// Update layouts
 	editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
 		await tick();
-		
+
 		update((state) => {
 			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.documentModeLayout, updateDocumentModeLayout);
@@ -44,7 +44,7 @@ export function createDocumentState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (updateToolOptionsLayout) => {
 		await tick();
-		
+
 		update((state) => {
 			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.toolOptionsLayout, updateToolOptionsLayout);
@@ -53,7 +53,7 @@ export function createDocumentState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (updateDocumentBarLayout) => {
 		await tick();
-		
+
 		update((state) => {
 			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.documentBarLayout, updateDocumentBarLayout);
@@ -62,7 +62,7 @@ export function createDocumentState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (updateToolShelfLayout) => {
 		await tick();
-		
+
 		update((state) => {
 			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.toolShelfLayout, updateToolShelfLayout);
@@ -79,7 +79,7 @@ export function createDocumentState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
 		await tick();
-		
+
 		update((state) => {
 			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.workingColorsLayout, updateWorkingColorsLayout);

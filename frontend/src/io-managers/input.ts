@@ -41,18 +41,18 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		{ target: window, eventName: "wheel", action: (e: WheelEvent) => onWheelScroll(e), options: { passive: false } },
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 		{ target: window, eventName: "focusout", action: () => (canvasFocused = false) },
-		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e)  },
+		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => onPaste(e) },
 	];
 
 	// Event bindings
 
-	function bindListeners(): void {
+	function bindListeners() {
 		// Add event bindings for the lifetime of the application
 		listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
 	}
-	function unbindListeners(): void {
+	function unbindListeners() {
 		// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)
 		listeners.forEach(({ target, eventName, action, options }) => target.removeEventListener(eventName, action, options));
 	}
@@ -96,7 +96,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		return true;
 	}
 
-	async function onKeyDown(e: KeyboardEvent): Promise<void> {
+	async function onKeyDown(e: KeyboardEvent) {
 		const key = await getLocalizedScanCode(e);
 
 		const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -114,7 +114,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 	}
 
-	async function onKeyUp(e: KeyboardEvent): Promise<void> {
+	async function onKeyUp(e: KeyboardEvent) {
 		const key = await getLocalizedScanCode(e);
 
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
@@ -127,7 +127,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Pointer events
 
 	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-	function onPointerMove(e: PointerEvent): void {
+	function onPointerMove(e: PointerEvent) {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
@@ -149,12 +149,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		editor.instance.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
-	function onMouseDown(e: MouseEvent): void {
+	function onMouseDown(e: MouseEvent) {
 		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
 		if (e.button === 1) e.preventDefault();
 	}
 
-	function onPointerDown(e: PointerEvent): void {
+	function onPointerDown(e: PointerEvent) {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
@@ -177,7 +177,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 	}
 
-	function onPointerUp(e: PointerEvent): void {
+	function onPointerUp(e: PointerEvent) {
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		if (textToolInteractiveInputElement) return;
@@ -186,12 +186,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		editor.instance.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
-	function onPotentialDoubleClick(e: MouseEvent): void {
+	function onPotentialDoubleClick(e: MouseEvent) {
 		if (textToolInteractiveInputElement) return;
-		
+
 		// Allow only double-clicks
 		if (e.detail !== 2) return;
-		
+
 		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
 		let buttons = 1;
 		if (e.button === 0) buttons = 1; // LMB
@@ -204,7 +204,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Mouse events
 
-	function onWheelScroll(e: WheelEvent): void {
+	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
 
@@ -223,7 +223,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 	}
 
-	function onContextMenu(e: MouseEvent): void {
+	function onContextMenu(e: MouseEvent) {
 		if (!targetIsTextField(e.target || undefined) && e.target !== textToolInteractiveInputElement) {
 			e.preventDefault();
 		}
@@ -231,13 +231,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Receives a custom event dispatched when the user begins interactively editing with the text tool.
 	// We keep a copy of the text input element to check against when it's active for text entry.
-	function onModifyInputField(e: CustomEvent): void {
+	function onModifyInputField(e: CustomEvent) {
 		textToolInteractiveInputElement = e.detail;
 	}
 
 	// Window events
 
-	function onWindowResize(container: HTMLElement): void {
+	function onWindowResize(container: HTMLElement) {
 		const viewports = Array.from(container.querySelectorAll("[data-viewport]"));
 		const boundsOfViewports = viewports.map((canvas) => {
 			const bounds = canvas.getBoundingClientRect();
@@ -250,7 +250,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (boundsOfViewports.length > 0) editor.instance.boundsOfViewports(data);
 	}
 
-	async function onBeforeUnload(e: BeforeUnloadEvent): Promise<void> {
+	async function onBeforeUnload(e: BeforeUnloadEvent) {
 		const activeDocument = get(portfolio).documents[get(portfolio).activeDocumentIndex];
 		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
 
@@ -267,7 +267,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 	}
 
-	function onPaste(e: ClipboardEvent): void {
+	function onPaste(e: ClipboardEvent) {
 		const dataTransfer = e.clipboardData;
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
@@ -285,7 +285,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 			const file = item.getAsFile();
 			if (file?.type.startsWith("image")) {
-				extractPixelData(file).then((imageData): void => {
+				extractPixelData(file).then((imageData) => {
 					editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 				});
 			}
@@ -315,7 +315,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				if (item.types.includes("text/plain")) {
 					const blob = await item.getType("text/plain");
 					const reader = new FileReader();
-					reader.onload = (): void => {
+					reader.onload = () => {
 						const text = reader.result as string;
 
 						if (text.startsWith("graphite/layer: ")) {
@@ -330,7 +330,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				if (imageType) {
 					const blob = await item.getType(imageType);
 					const reader = new FileReader();
-					reader.onload = async (): Promise<void> => {
+					reader.onload = async () => {
 						if (reader.result instanceof ArrayBuffer) {
 							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
 							editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);

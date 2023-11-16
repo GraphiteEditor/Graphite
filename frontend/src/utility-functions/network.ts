@@ -9,7 +9,7 @@ export function requestWithUploadDownloadProgress(
 	method: "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH",
 	body: string,
 	uploadProgress: (progress: number) => void,
-	downloadOccurring: () => void
+	downloadOccurring: () => void,
 ): [Promise<RequestResult>, XMLHttpRequest | undefined] {
 	let xhrValue: XMLHttpRequest | undefined;
 	const promise = new Promise<RequestResult>((resolve, reject) => {

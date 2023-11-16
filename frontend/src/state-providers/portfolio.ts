@@ -2,7 +2,8 @@
 
 import { writable } from "svelte/store";
 
-import { downloadFileText, downloadFileBlob, upload, downloadFileURL } from "@graphite/utility-functions/files";
+import { copyToClipboardFileURL } from "@graphite/io-managers/clipboard";
+import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, imageToPNG, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
@@ -20,7 +21,6 @@ import {
 	UpdateImageData,
 	UpdateOpenDocumentsList,
 } from "@graphite/wasm-communication/messages";
-import { copyToClipboardFileURL } from "@graphite/io-managers/clipboard";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
@@ -35,7 +35,7 @@ export function createPortfolioState(editor: Editor) {
 		update((state) => {
 			state.documents = updateOpenDocumentList.openDocuments;
 			return state;
-		})
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
 		update((state) => {
@@ -43,7 +43,7 @@ export function createPortfolioState(editor: Editor) {
 			const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.documentId);
 			state.activeDocumentIndex = activeId;
 			return state;
-		})
+		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
 		try {
@@ -98,7 +98,6 @@ export function createPortfolioState(editor: Editor) {
 		} catch {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
-
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
 		updateImageData.imageData.forEach(async (element) => {
@@ -126,12 +125,10 @@ export function createPortfolioState(editor: Editor) {
 
 				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
-		}
-		// getImageData may throw an exception if the resolution is too high
-		catch (e) {
+		} catch (e) {
+			// getImageData may throw an exception if the resolution is too high
 			console.error("Failed to rasterize the SVG canvas in JS to be sent back to Rust:", e);
 		}
-
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

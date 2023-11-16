@@ -55,7 +55,7 @@
 		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 	}
 
-	function onEntryClick(menuListEntry: MenuListEntry): void {
+	function onEntryClick(menuListEntry: MenuListEntry) {
 		// Call the action if available
 		if (menuListEntry.action) menuListEntry.action();
 
@@ -71,7 +71,7 @@
 		open = false;
 	}
 
-	function onEntryPointerEnter(menuListEntry: MenuListEntry): void {
+	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) return;
 
 		if (menuListEntry.ref) {
@@ -80,7 +80,7 @@
 		} else dispatch("open", true);
 	}
 
-	function onEntryPointerLeave(menuListEntry: MenuListEntry): void {
+	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) return;
 
 		if (menuListEntry.ref) {
@@ -104,7 +104,7 @@
 		const flatEntries = entries.flat().filter((entry) => !entry.disabled);
 		const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.open);
 
-		const openSubmenu = (highlightedEntry: MenuListEntry): void => {
+		const openSubmenu = (highlightedEntry: MenuListEntry) => {
 			if (highlightedEntry.ref && highlightedEntry.children?.length) {
 				highlightedEntry.ref.open = true;
 				// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
@@ -181,7 +181,7 @@
 		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
 	}
 
-	export function scrollViewTo(distanceDown: number): void {
+	export function scrollViewTo(distanceDown: number) {
 		scroller?.div()?.scrollTo(0, distanceDown);
 	}
 </script>

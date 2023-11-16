@@ -1,4 +1,4 @@
-export function downloadFileURL(filename: string, url: string): void {
+export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
 
 	element.href = url;
@@ -7,7 +7,7 @@ export function downloadFileURL(filename: string, url: string): void {
 	element.click();
 }
 
-export function downloadFileBlob(filename: string, blob: Blob): void {
+export function downloadFileBlob(filename: string, blob: Blob) {
 	const url = URL.createObjectURL(blob);
 
 	downloadFileURL(filename, url);
@@ -15,7 +15,7 @@ export function downloadFileBlob(filename: string, blob: Blob): void {
 	URL.revokeObjectURL(url);
 }
 
-export function downloadFileText(filename: string, text: string): void {
+export function downloadFileText(filename: string, text: string) {
 	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
 
 	const blob = new Blob([text], { type });
@@ -41,7 +41,7 @@ export async function upload<T extends "text" | "data">(acceptedExtensions: stri
 					resolve({ filename, type, content });
 				}
 			},
-			{ capture: false, once: true }
+			{ capture: false, once: true },
 		);
 
 		element.click();
@@ -55,7 +55,7 @@ type UploadResultType<T> = T extends "text" ? string : T extends "data" ? Uint8A
 export function blobToBase64(blob: Blob): Promise<string> {
 	return new Promise((resolve) => {
 		const reader = new FileReader();
-		reader.onloadend = (): void => resolve(typeof reader.result === "string" ? reader.result : "");
+		reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
 		reader.readAsDataURL(blob);
 	});
 }

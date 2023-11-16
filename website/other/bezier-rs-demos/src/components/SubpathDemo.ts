@@ -34,7 +34,7 @@ class SubpathDemo extends HTMLElement {
 
 	sliderUnits!: Record<string, string | string[]>;
 
-	async connectedCallback(): Promise<void> {
+	async connectedCallback() {
 		this.title = this.getAttribute("title") || "";
 		this.triples = JSON.parse(this.getAttribute("triples") || "[]");
 		this.key = this.getAttribute("key") as SubpathFeatureKey;
@@ -53,15 +53,15 @@ class SubpathDemo extends HTMLElement {
 		this.drawDemo(figure);
 	}
 
-	render(): void {
+	render() {
 		renderDemo(this);
 	}
 
-	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
+	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = this.callback(this.subpath, this.sliderData, mouseLocation);
 	}
 
-	onMouseDown(event: MouseEvent): void {
+	onMouseDown(event: MouseEvent) {
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		for (let controllerIndex = 0; controllerIndex < this.triples.length; controllerIndex += 1) {
@@ -75,11 +75,11 @@ class SubpathDemo extends HTMLElement {
 		}
 	}
 
-	onMouseUp(): void {
+	onMouseUp() {
 		this.activeIndex = undefined;
 	}
 
-	onMouseMove(event: MouseEvent): void {
+	onMouseMove(event: MouseEvent) {
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		const figure = event.currentTarget as HTMLElement;

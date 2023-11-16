@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
+
 	import { githubUrl } from "@graphite/io-managers/panic";
 	import { wipeDocuments } from "@graphite/io-managers/persistence";
+
+	import type { DialogState } from "@graphite/state-providers/dialog";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -10,7 +13,6 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import type { DialogState } from "@graphite/state-providers/dialog";
 
 	const dialog = getContext<DialogState>("dialog");
 

@@ -1,15 +1,12 @@
 <script lang="ts">
-	import { isWidgetRow, isWidgetSection, type LayoutGroup, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
+	import { isWidgetRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetRow from "@graphite/components/widgets/WidgetRow.svelte";
-	import { getContext } from "svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-
-	const editor = getContext<Editor>("editor");
 
 	export let widgetData: WidgetSectionFromJsMessages;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any; // TODO: Give type
 
 	let expanded = true;

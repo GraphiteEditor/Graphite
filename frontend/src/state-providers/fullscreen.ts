@@ -1,4 +1,4 @@
-import {writable} from "svelte/store";
+import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
 
@@ -9,7 +9,7 @@ export function createFullscreenState(_: Editor) {
 		keyboardLocked: false,
 	});
 
-	function fullscreenModeChanged(): void {
+	function fullscreenModeChanged() {
 		update((state) => {
 			state.windowFullscreen = Boolean(document.fullscreenElement);
 			if (!state.windowFullscreen) state.keyboardLocked = false;
@@ -17,7 +17,7 @@ export function createFullscreenState(_: Editor) {
 		});
 	}
 
-	async function enterFullscreen(): Promise<void> {
+	async function enterFullscreen() {
 		await document.documentElement.requestFullscreen();
 
 		if (keyboardLockApiSupported) {
@@ -31,11 +31,11 @@ export function createFullscreenState(_: Editor) {
 		}
 	}
 
-	async function exitFullscreen(): Promise<void> {
+	async function exitFullscreen() {
 		await document.exitFullscreen();
 	}
 
-	async function toggleFullscreen(): Promise<void> {
+	async function toggleFullscreen() {
 		return new Promise((resolve, reject) => {
 			update((state) => {
 				if (state.windowFullscreen) exitFullscreen().then(resolve).catch(reject);

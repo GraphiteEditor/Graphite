@@ -87,7 +87,9 @@
 				left: -8px;
 				padding: 8px;
 				border-radius: 50%;
-				box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 8px rgba(0, 0, 0, 0.25);
+				box-shadow:
+					0 0 0 1px rgba(255, 255, 255, 0.5),
+					0 0 8px rgba(0, 0, 0, 0.25);
 			}
 
 			.canvas-container {
@@ -109,7 +111,9 @@
 					width: 100%;
 					height: 100%;
 					border-radius: 50%;
-					box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 0 8px rgba(0, 0, 0, 0.25);
+					box-shadow:
+						inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+						inset 0 0 8px rgba(0, 0, 0, 0.25);
 				}
 
 				.pixel-outline {

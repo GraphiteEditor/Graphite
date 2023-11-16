@@ -79,10 +79,10 @@ export interface Demo extends HTMLElement {
 	sliderData: Record<string, number>;
 	sliderUnits: Record<string, string | string[]>;
 
-	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void;
-	onMouseDown(event: MouseEvent): void;
-	onMouseUp(): void;
-	onMouseMove(event: MouseEvent): void;
+	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]);
+	onMouseDown(event: MouseEvent);
+	onMouseUp();
+	onMouseMove(event: MouseEvent);
 	getSliderUnit(sliderValue: number, variable: string): string;
 }
 

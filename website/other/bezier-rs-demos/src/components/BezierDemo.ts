@@ -37,7 +37,7 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	sliderUnits!: Record<string, string | string[]>;
 
-	async connectedCallback(): Promise<void> {
+	async connectedCallback() {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
 		this.key = this.getAttribute("key") as BezierFeatureKey;
@@ -59,15 +59,15 @@ class BezierDemo extends HTMLElement implements Demo {
 		this.drawDemo(figure);
 	}
 
-	render(): void {
+	render() {
 		renderDemo(this);
 	}
 
-	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void {
+	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = this.callback(this.bezier, this.sliderData, mouseLocation);
 	}
 
-	onMouseDown(event: MouseEvent): void {
+	onMouseDown(event: MouseEvent) {
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		for (let pointIndex = 0; pointIndex < this.points.length; pointIndex += 1) {
@@ -79,11 +79,11 @@ class BezierDemo extends HTMLElement implements Demo {
 		}
 	}
 
-	onMouseUp(): void {
+	onMouseUp() {
 		this.activeIndex = undefined;
 	}
 
-	onMouseMove(event: MouseEvent): void {
+	onMouseMove(event: MouseEvent) {
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		const figure = event.currentTarget as HTMLElement;

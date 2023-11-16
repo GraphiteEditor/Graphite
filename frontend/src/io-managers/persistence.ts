@@ -7,16 +7,16 @@ import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerS
 
 const graphiteStore = createStore("graphite", "store");
 
-export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): void {
+export function createPersistenceManager(editor: Editor, portfolio: PortfolioState) {
 	// DOCUMENTS
 
-	async function storeDocumentOrder(): Promise<void> {
+	async function storeDocumentOrder() {
 		const documentOrder = getFromStore(portfolio).documents.map((doc) => String(doc.id));
 
 		await set("documents_tab_order", documentOrder, graphiteStore);
 	}
 
-	async function storeDocument(autoSaveDocument: TriggerIndexedDbWriteDocument): Promise<void> {
+	async function storeDocument(autoSaveDocument: TriggerIndexedDbWriteDocument) {
 		await update<Record<string, TriggerIndexedDbWriteDocument>>(
 			"documents",
 			(old) => {
@@ -24,13 +24,13 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 				documents[autoSaveDocument.details.id] = autoSaveDocument;
 				return documents;
 			},
-			graphiteStore
+			graphiteStore,
 		);
 
 		await storeDocumentOrder();
 	}
 
-	async function removeDocument(id: string): Promise<void> {
+	async function removeDocument(id: string) {
 		await update<Record<string, TriggerIndexedDbWriteDocument>>(
 			"documents",
 			(old) => {
@@ -38,13 +38,13 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 				delete documents[id];
 				return documents;
 			},
-			graphiteStore
+			graphiteStore,
 		);
 
 		await storeDocumentOrder();
 	}
 
-	async function loadDocuments(): Promise<void> {
+	async function loadDocuments() {
 		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
 		if (!previouslySavedDocuments || !documentOrder) return;
@@ -64,11 +64,11 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	// PREFERENCES
 
-	async function savePreferences(preferences: TriggerSavePreferences["preferences"]): Promise<void> {
+	async function savePreferences(preferences: TriggerSavePreferences["preferences"]) {
 		await set("preferences", preferences, graphiteStore);
 	}
 
-	async function loadPreferences(): Promise<void> {
+	async function loadPreferences() {
 		const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
 		if (!preferences) return;
 
@@ -95,7 +95,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	});
 }
 
-export async function wipeDocuments(): Promise<void> {
+export async function wipeDocuments() {
 	await del("documents_tab_order", graphiteStore);
 	await del("documents", graphiteStore);
 }

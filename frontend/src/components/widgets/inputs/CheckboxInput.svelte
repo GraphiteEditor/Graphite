@@ -36,7 +36,7 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(e) => dispatch("checked", inputElement?.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
+	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(_) => dispatch("checked", inputElement?.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
 	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />

@@ -20,7 +20,7 @@ window.customElements.define("bezier-demo-pane", BezierDemoPane);
 window.customElements.define("subpath-demo", SubpathDemo);
 window.customElements.define("subpath-demo-pane", SubpathDemoPane);
 
-function renderBezierPane(featureName: BezierFeatureKey, container: HTMLElement | null): void {
+function renderBezierPane(featureName: BezierFeatureKey, container: HTMLElement | null) {
 	const feature = bezierFeatures[featureName];
 	const demo = document.createElement("bezier-demo-pane");
 
@@ -30,7 +30,7 @@ function renderBezierPane(featureName: BezierFeatureKey, container: HTMLElement 
 	container?.append(demo);
 }
 
-function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElement | null): void {
+function renderSubpathPane(featureName: SubpathFeatureKey, container: HTMLElement | null) {
 	const feature = subpathFeatures[featureName];
 	const demo = document.createElement("subpath-demo-pane");
 
@@ -46,7 +46,7 @@ function isUrlSolo(url: string): boolean {
 	return splitHash?.length === 3 && splitHash?.[2] === "solo";
 }
 
-window.addEventListener("hashchange", (e: Event): void => {
+window.addEventListener("hashchange", (e: Event) => {
 	const hashChangeEvent = e as HashChangeEvent;
 	const isOldHashSolo = isUrlSolo(hashChangeEvent.oldURL);
 	const isNewHashSolo = isUrlSolo(hashChangeEvent.newURL);
@@ -57,7 +57,7 @@ window.addEventListener("hashchange", (e: Event): void => {
 	}
 });
 
-function renderExamples(): void {
+function renderExamples() {
 	const hash = window.location.hash;
 	const splitHash = hash.split("/");
 

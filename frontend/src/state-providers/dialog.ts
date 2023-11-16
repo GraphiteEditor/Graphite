@@ -1,4 +1,4 @@
-import {writable} from "svelte/store";
+import { writable } from "svelte/store";
 
 import { type IconName } from "@graphite/utility-functions/icons";
 import { type Editor } from "@graphite/wasm-communication/editor";
@@ -17,18 +17,18 @@ export function createDialogState(editor: Editor) {
 		panicDetails: "",
 	});
 
-	function dismissDialog(): void {
+	function dismissDialog() {
 		update((state) => {
 			// Disallow dismissing the crash dialog since it can confuse users why the app stopped responding if they dismiss it without realizing what it means
 			if (state.panicDetails === "") state.visible = false;
-			
+
 			return state;
 		});
 	}
 
 	// Creates a crash dialog from JS once the editor has panicked.
 	// Normal dialogs are created in the Rust backend, but for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
-	function createCrashDialog(panicDetails: string): void {
+	function createCrashDialog(panicDetails: string) {
 		update((state) => {
 			state.visible = true;
 
@@ -51,7 +51,7 @@ export function createDialogState(editor: Editor) {
 
 			state.title = displayDialog.title;
 			state.icon = displayDialog.icon;
-			
+
 			return state;
 		});
 	});

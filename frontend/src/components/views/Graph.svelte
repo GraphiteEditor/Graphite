@@ -1,16 +1,17 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
+	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
 	import type { FrontendNodeLink, FrontendNodeType, FrontendNode } from "@graphite/wasm-communication/messages";
+
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
@@ -142,7 +143,7 @@
 		return { nodeOutput, nodeInput };
 	}
 
-	async function refreshLinks(): Promise<void> {
+	async function refreshLinks() {
 		await tick();
 
 		if (!nodesContainer) return;
@@ -263,7 +264,7 @@
 		}
 	}
 
-	function keydown(e: KeyboardEvent): void {
+	function keydown(e: KeyboardEvent) {
 		if (e.key.toLowerCase() === "escape") {
 			nodeListLocation = undefined;
 			document.removeEventListener("keydown", keydown);
@@ -380,7 +381,7 @@
 		panning = true;
 	}
 
-	function doubleClick(e: MouseEvent) {
+	function doubleClick(_e: MouseEvent) {
 		// const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		// const nodeId = node?.getAttribute("data-node") || undefined;
 		// if (nodeId) {
@@ -416,9 +417,12 @@
 				refresh();
 				// const DRAG_SMOOTHING_TIME = 0.1;
 				const DRAG_SMOOTHING_TIME = 0; // TODO: Reenable this after fixing the bugs with the wires, see the CSS `transition` attribute todo for other info
-				setTimeout(() => {
-					stop = true;
-				}, DRAG_SMOOTHING_TIME * 1000 + 10);
+				setTimeout(
+					() => {
+						stop = true;
+					},
+					DRAG_SMOOTHING_TIME * 1000 + 10,
+				);
 			}
 		}
 	}
@@ -473,7 +477,7 @@
 				selectedNodeBounds.top - containerBoundsBounds.y,
 				selectedNodeBounds.left - containerBoundsBounds.x,
 				selectedNodeBounds.bottom - containerBoundsBounds.y,
-				selectedNodeBounds.right - containerBoundsBounds.x
+				selectedNodeBounds.right - containerBoundsBounds.x,
 			);
 		});
 
@@ -516,7 +520,7 @@
 
 			linkInProgressToConnector = new DOMRect(
 				(nodeListLocation2.x * GRID_SIZE + transform.x) * transform.scale + graphBounds.x,
-				(nodeListLocation2.y * GRID_SIZE + transform.y) * transform.scale + graphBounds.y
+				(nodeListLocation2.y * GRID_SIZE + transform.y) * transform.scale + graphBounds.y,
 			);
 
 			return;
@@ -540,7 +544,7 @@
 		linkInProgressToConnector = undefined;
 	}
 
-	function createNode(nodeType: string): void {
+	function createNode(nodeType: string) {
 		if (!nodeListLocation) return;
 
 		const inputNodeConnectionIndex = 0;
@@ -658,7 +662,6 @@
 	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 		<!-- Layers -->
 		{#each $nodeGraph.nodes.filter((node) => node.displayName === "Layer") as node (String(node.id))}
-			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			{@const stackDatainput = node.exposedInputs[0]}
 			<div
