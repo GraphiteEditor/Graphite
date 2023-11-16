@@ -424,6 +424,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
+		let mut empty = false;
 
 		self.modify_inputs("Shape", false, |inputs, _node_id, _metadata| {
 			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
@@ -448,11 +449,17 @@ impl<'a> ModifyInputsContext<'a> {
 			[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 
 			transform_utils::VectorModificationState { subpaths, mirror_angle_groups }.modify(modification);
+			empty = !subpaths.iter().any(|subpath| !subpath.is_empty());
 
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
 
 		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
+		if empty {
+			if let Some(layer) = self.layer_node {
+				self.responses.add(DocumentMessage::DeleteLayer { layer_path: vec![layer] })
+			}
+		}
 	}
 
 	fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
