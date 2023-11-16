@@ -51,6 +51,9 @@ impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, Manipul
 
 	// Returns the Bezier representation of each `Subpath` segment, defined between a pair of adjacent manipulator points.
 	fn next(&mut self) -> Option<Self::Item> {
+		if self.subpath.is_empty() {
+			return None;
+		}
 		let len = self.subpath.len() - 1
 			+ match self.subpath.closed {
 				true => 1,
