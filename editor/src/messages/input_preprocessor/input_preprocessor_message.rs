@@ -2,7 +2,6 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, Modifier
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ViewportBounds};
 use crate::messages::prelude::*;
 
-
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
