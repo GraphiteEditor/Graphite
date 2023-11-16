@@ -127,6 +127,7 @@ export function createPortfolioState(editor: Editor) {
 			}
 		} catch (e) {
 			// getImageData may throw an exception if the resolution is too high
+			// eslint-disable-next-line no-console
 			console.error("Failed to rasterize the SVG canvas in JS to be sent back to Rust:", e);
 		}
 	});

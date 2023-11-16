@@ -35,6 +35,7 @@
 	const editor = getContext<Editor>("editor");
 
 	export let widgetData: WidgetColumn | WidgetRow;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any;
 
 	$: direction = watchDirection(widgetData);
@@ -73,6 +74,7 @@
 	function exclude<T extends object>(props: T, additional?: (keyof T)[]): Omit<T, typeof additional extends Array<infer K> ? K : never> {
 		const exclusions = ["kind", ...(additional || [])];
 
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
 	}
 </script>
