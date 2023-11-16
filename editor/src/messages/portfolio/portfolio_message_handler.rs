@@ -500,7 +500,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::SubmitGraphRender { document_id, layer_path } => {
 				let result = self.executor.submit_node_graph_evaluation(
-					(document_id, self.documents.get_mut(&document_id).expect("Tried to render no existent Document")),
+					self.documents.get_mut(&document_id).expect("Tried to render no existent Document"),
 					layer_path,
 					ipp.viewport_bounds.size().as_uvec2(),
 				);

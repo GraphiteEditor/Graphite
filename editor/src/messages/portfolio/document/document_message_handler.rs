@@ -113,8 +113,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			document_id,
 			ipp,
 			persistent_data,
-			preferences,
 			executor,
+			..
 		} = document_inputs;
 		use DocumentMessage::*;
 
