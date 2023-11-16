@@ -242,7 +242,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				..Default::default()
 			}),
 			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Vector Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Name", TaggedValue::String(String::new()), false),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
 				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),

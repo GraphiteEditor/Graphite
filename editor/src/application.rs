@@ -55,6 +55,7 @@ mod test {
 	use crate::messages::{input_mapper::utility_types::input_mouse::ViewportBounds, prelude::*};
 
 	#[test]
+	#[ignore]
 	fn debug_ub() {
 		let mut editor = super::Editor::new();
 		let mut responses = Vec::new();

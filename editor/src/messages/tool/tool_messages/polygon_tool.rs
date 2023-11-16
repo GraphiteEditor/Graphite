@@ -3,6 +3,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 
+use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
@@ -244,23 +245,22 @@ impl Fsm for PolygonToolFsmState {
 			(PolygonToolFsmState::Ready, PolygonToolMessage::DragStart) => {
 				polygon_data.start(responses, document, input, render_data);
 				responses.add(DocumentMessage::StartTransaction);
-				let layer_path = document.get_path_for_new_layer();
-				polygon_data.path = Some(layer_path.clone());
 
 				let subpath = match tool_options.primitive_shape_type {
 					PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
 					PrimitiveShapeType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
 				};
-				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
+				polygon_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer_path.clone(),
+					layer: layer.to_path(),
 					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer_path,
+					layer: layer.to_path(),
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 

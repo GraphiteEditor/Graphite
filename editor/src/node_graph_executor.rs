@@ -512,15 +512,27 @@ impl NodeGraphExecutor {
 							warn!("Missing node");
 							continue;
 						}
+						let layer = LayerNodeIdentifier::new(node_id, &document.document_network);
 						responses.add(FrontendMessage::UpdateDocumentLayerDetails {
 							data: LayerPanelEntry {
-								name: "Layer".to_string(),
+								name: if document.metadata.is_artboard(layer) {
+									"Artboard"
+								} else if document.metadata.is_folder(layer) {
+									"Folder"
+								} else {
+									"Layer"
+								}
+								.to_string(),
 								tooltip: format!("Layer id: {node_id}"),
 								visible: true,
-								layer_type: LayerDataTypeDiscriminant::Layer,
+								layer_type: if document.metadata.is_folder(layer) {
+									LayerDataTypeDiscriminant::Folder
+								} else {
+									LayerDataTypeDiscriminant::Layer
+								},
 								layer_metadata: LayerMetadata {
-									expanded: true,
-									selected: document.metadata.selected_layers_contains(LayerNodeIdentifier::new(node_id, &document.document_network)),
+									expanded: layer.has_children(&document.metadata),
+									selected: document.metadata.selected_layers_contains(layer),
 								},
 								path: vec![node_id],
 								thumbnail: svg.to_string(),

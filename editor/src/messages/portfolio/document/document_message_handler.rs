@@ -273,17 +273,15 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(FrontendMessage::TriggerCopyToClipboardBlobUrl { blob_url });
 				}
 			}
-			CreateEmptyFolder { mut container_path } => {
+			CreateEmptyFolder { parent } => {
 				let id = generate_uuid();
-				container_path.push(id);
+
 				responses.add(DocumentMessage::DeselectAllLayers);
-				responses.add(DocumentOperation::CreateFolder {
-					path: container_path.clone(),
+				responses.add(GraphOperationMessage::NewCustomLayer {
+					id,
+					nodes: HashMap::new(),
+					parent,
 					insert_index: -1,
-				});
-				responses.add(DocumentMessage::SetLayerExpansion {
-					layer_path: container_path,
-					set_expanded: true,
 				});
 			}
 			DebugPrintDocument => {
@@ -430,7 +428,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
-				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers());
+				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers()).unwrap_or(LayerNodeIdentifier::ROOT);
 
 				let folder_id = generate_uuid();
 
@@ -571,22 +569,19 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				let image_frame = ImageFrame { image, transform: DAffine2::IDENTITY };
 
-				let layer_path = self.get_path_for_new_layer();
 				use crate::messages::tool::common_functionality::graph_modification_utils;
-				graph_modification_utils::new_image_layer(image_frame, layer_path.clone(), responses);
+				let layer = graph_modification_utils::new_image_layer(image_frame, generate_uuid(), self.new_layer_parent(), responses);
 
-				responses.add(DocumentMessage::SetSelectedLayers {
-					replacement_selected_layers: vec![layer_path.clone()],
-				});
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 				responses.add(GraphOperationMessage::TransformSet {
-					layer: layer_path.clone(),
+					layer: layer.to_path(),
 					transform,
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
 
-				responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+				responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
 
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
@@ -1420,6 +1415,15 @@ impl DocumentMessageHandler {
 		path
 	}
 
+	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
+		let new_parent = self
+			.metadata()
+			.deepest_common_ancestor(self.metadata().selected_layers())
+			.unwrap_or_else(|| self.metadata().active_artboard());
+		println!("New parent {new_parent:?} layers{:?}", self.metadata().selected_layers().collect::<Vec<_>>());
+		new_parent
+	}
+
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
@@ -1702,7 +1706,7 @@ impl DocumentMessageHandler {
 				IconButton::new("Folder", 24)
 					.tooltip("New Folder")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-					.on_update(|_| DocumentMessage::CreateEmptyFolder { container_path: vec![] }.into())
+					.on_update(|_| DocumentMessage::CreateEmptyFolder { parent: LayerNodeIdentifier::ROOT }.into())
 					.widget_holder(),
 				IconButton::new("Trash", 24)
 					.tooltip("Delete Selected")

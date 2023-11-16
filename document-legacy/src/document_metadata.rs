@@ -1,6 +1,6 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::ClickTarget;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
@@ -12,6 +12,8 @@ pub struct DocumentMetadata {
 	transforms: HashMap<LayerNodeIdentifier, DAffine2>,
 	upstream_transforms: HashMap<NodeId, DAffine2>,
 	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
+	artboards: HashSet<LayerNodeIdentifier>,
+	folders: HashSet<LayerNodeIdentifier>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	selected_nodes: Vec<NodeId>,
 	/// Transform from document space to viewport space.
@@ -25,6 +27,8 @@ impl Default for DocumentMetadata {
 			upstream_transforms: HashMap::new(),
 			click_targets: HashMap::new(),
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
+			artboards: HashSet::new(),
+			folders: HashSet::new(),
 			selected_nodes: Vec::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
@@ -92,25 +96,38 @@ impl DocumentMetadata {
 		sorted_layers
 	}
 
-	/// Ancestor that is shared by all layers and that is deepest (more nested). May be the root layer.
-	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> LayerNodeIdentifier {
+	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root
+	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<LayerNodeIdentifier> {
 		layers
 			.map(|layer| {
-				let mut layer_path = layer.ancestors(self).skip(1).collect::<Vec<_>>();
+				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
+
 				layer_path.reverse();
+				if !self.folders.contains(&layer) {
+					layer_path.pop();
+				}
 				layer_path
 			})
 			.reduce(|mut a, b| {
 				a.truncate(a.iter().zip(b.iter()).position(|(&a, &b)| a != b).unwrap_or_else(|| a.len().min(b.len())));
 				a
 			})
-			.and_then(|path| path.last().copied())
-			.unwrap_or(LayerNodeIdentifier::ROOT)
+			.and_then(|layer| layer.last().copied())
 	}
 
+	pub fn active_artboard(&self) -> LayerNodeIdentifier {
+		self.artboards.iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT)
+	}
+
+	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
+		self.folders.contains(&layer)
+	}
+	pub fn is_artboard(&self, layer: LayerNodeIdentifier) -> bool {
+		self.artboards.contains(&layer)
+	}
 	/// Filter out non folder layers
 	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		layers.filter(|layer| layer.has_children(self))
+		layers.filter(|layer| self.folders.contains(layer))
 	}
 
 	/// Folders sorted from most nested to least nested
@@ -146,6 +163,8 @@ impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork) {
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
+		self.folders = HashSet::new();
+		self.artboards = HashSet::new();
 
 		let id = graph.outputs[0].node_id;
 		let Some(output_node) = graph.nodes.get(&id) else {
@@ -165,6 +184,13 @@ impl DocumentMetadata {
 
 					if let Some((child_node, child_id)) = first_child_layer(graph, current_node) {
 						stack.push((child_node, child_id, current_identifier));
+					}
+
+					if is_artboard(current_identifier, graph) {
+						self.artboards.insert(current_identifier);
+					}
+					if is_folder(current_identifier, graph) {
+						self.folders.insert(current_identifier);
 					}
 				}
 
@@ -208,6 +234,14 @@ impl DocumentMetadata {
 
 fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 	network.primary_flow_from_node(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
+}
+
+fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
+		|| network
+			.primary_flow_from_node(Some(layer.to_node()))
+			.skip(1)
+			.any(|(node, _)| node.name == "Artboard" || node.name == "Layer")
 }
 
 // click targets

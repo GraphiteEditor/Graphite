@@ -66,6 +66,8 @@ pub enum GraphOperationMessage {
 	NewBitmapLayer {
 		id: NodeId,
 		image_frame: ImageFrame<Color>,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
 	},
 	NewCustomLayer {
 		id: NodeId,
@@ -76,12 +78,16 @@ pub enum GraphOperationMessage {
 	NewVectorLayer {
 		id: NodeId,
 		subpaths: Vec<Subpath<ManipulatorGroupId>>,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
 	},
 	NewTextLayer {
 		id: NodeId,
 		text: String,
 		font: Font,
 		size: f64,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
 	},
 	ResizeArtboard {
 		id: NodeId,

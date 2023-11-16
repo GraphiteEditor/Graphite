@@ -7,8 +7,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::get_s
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
-use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::uuid::{generate_uuid, ManipulatorGroupId};
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 use graphene_core::Color;
@@ -200,7 +199,7 @@ struct ModifierState {
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
 	weight: f64,
-	path: Option<Vec<LayerId>>,
+	layer: Option<LayerNodeIdentifier>,
 	subpath_index: usize,
 	snap_manager: SnapManager,
 	should_mirror: bool,
@@ -209,13 +208,13 @@ struct PenToolData {
 	angle: f64,
 }
 impl PenToolData {
-	fn extend_subpath(&mut self, layer: &[LayerId], subpath_index: usize, from_start: bool, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.path = Some(layer.to_vec());
+	fn extend_subpath(&mut self, layer: LayerNodeIdentifier, subpath_index: usize, from_start: bool, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.layer = Some(layer);
 		self.from_start = from_start;
 		self.subpath_index = subpath_index;
 
 		// Stop the handles on the first point from mirroring
-		let Some(subpaths) = get_subpaths(LayerNodeIdentifier::from_path(layer, document.network()), &document.document_legacy) else {
+		let Some(subpaths) = get_subpaths(layer, &document.document_legacy) else {
 			return;
 		};
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
@@ -224,7 +223,7 @@ impl PenToolData {
 		};
 
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_vec(),
+			layer: layer.to_path(),
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: last_handle.id,
 				mirror_angle: false,
@@ -241,32 +240,31 @@ impl PenToolData {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
+		let parent = document.new_layer_parent();
 		// Deselect layers because we are now creating a new layer
 		responses.add(DocumentMessage::DeselectAllLayers);
 
-		let layer_path = document.get_path_for_new_layer();
-
 		// Get the position and set properties
-		let transform = document.metadata().document_to_viewport * document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).unwrap_or_default();
+		let transform = document.metadata().document_to_viewport * document.metadata().transform_to_viewport(parent);
 		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
 		let start_position = transform.inverse().transform_point2(snapped_position);
 		self.weight = line_weight;
 
 		// Create the initial shape with a `bez_path` (only contains a moveto initially)
 		let subpath = bezier_rs::Subpath::new(vec![bezier_rs::ManipulatorGroup::new(start_position, Some(start_position), Some(start_position))], false);
-		graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+		let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), parent, responses);
+		self.layer = Some(layer);
 
 		responses.add(GraphOperationMessage::FillSet {
-			layer: layer_path.clone(),
+			layer: layer.to_path(),
 			fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 		});
 
 		responses.add(GraphOperationMessage::StrokeSet {
-			layer: layer_path.clone(),
+			layer: layer.to_path(),
 			stroke: Stroke::new(stroke_color, line_weight),
 		});
 
-		self.path = Some(layer_path);
 		self.from_start = false;
 		self.subpath_index = 0;
 	}
@@ -275,8 +273,8 @@ impl PenToolData {
 	/// If you place the anchor on top of the previous anchor then you break the mirror
 	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<()> {
 		// Get subpath
-		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
+		let layer = self.layer?;
+		let subpath = &get_subpaths(layer, &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -297,21 +295,21 @@ impl PenToolData {
 		}
 		// Remove the point that has just been placed
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: layer.to_path(),
 			modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
 		});
 
 		// Move the in handle of the previous anchor to on top of the previous position
 		let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: layer.to_path(),
 			modification: VectorDataModification::SetManipulatorPosition { point, position: previous_anchor },
 		});
 
 		// Stop the handles on the last point from mirroring
 		let id = previous_manipulator_group.id;
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: layer.to_path(),
 			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
 		});
 
@@ -321,8 +319,8 @@ impl PenToolData {
 
 	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
-		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
+		let layer = self.layer?;
+		let subpath = &get_subpaths(layer, &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -352,33 +350,33 @@ impl PenToolData {
 			// Move the in handle of the first point to where the user has placed it
 			let point = ManipulatorPointId::new(first_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: last_in },
 			});
 
 			// Stop the handles on the first point from mirroring
 			let id = first_manipulator_group.id;
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
 			});
 
 			// Remove the point that has just been placed
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 
 			// Push a close path node
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetClosed { index: 0, closed: true },
 			});
 
 			responses.add(DocumentMessage::CommitTransaction);
 
 			// Clean up tool data
-			self.path = None;
+			self.layer = None;
 			self.snap_manager.cleanup(responses);
 
 			// Return to ready state
@@ -386,7 +384,7 @@ impl PenToolData {
 		}
 		// Add a new manipulator for the next anchor that we will place
 		if let Some(out_handle) = outwards_handle.get_position(last_manipulator_group) {
-			responses.add(add_manipulator_group(&self.path, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
+			responses.add(add_manipulator_group(&self.layer, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
 		}
 
 		Some(PenToolFsmState::PlacingAnchor)
@@ -394,8 +392,7 @@ impl PenToolData {
 
 	fn drag_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
-		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group
 		let manipulator_groups = subpath.manipulator_groups();
@@ -419,7 +416,7 @@ impl PenToolData {
 		// Update points on current segment (to show preview of new handle)
 		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: self.layer?.to_path(),
 			modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 		});
 
@@ -430,7 +427,7 @@ impl PenToolData {
 			let pos = last_anchor - (pos - last_anchor);
 			let point = ManipulatorPointId::new(last_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: self.layer?.to_path(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 			});
 		}
@@ -438,7 +435,7 @@ impl PenToolData {
 		// Update the mirror status of the currently modifying point
 		let id = last_manipulator_group.id;
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: self.layer?.to_path(),
 			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: should_mirror },
 		});
 
@@ -447,8 +444,8 @@ impl PenToolData {
 
 	fn place_anchor(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
-		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
+		let layer = self.layer?;
+		let subpath = &get_subpaths(layer, &document.document_legacy)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -483,7 +480,7 @@ impl PenToolData {
 		for manipulator_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
 			let point = ManipulatorPointId::new(last_manipulator_group.id, manipulator_type);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: layer.to_path(),
 				modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 			});
 		}
@@ -492,8 +489,7 @@ impl PenToolData {
 
 	fn finish_transaction(&mut self, fsm: PenToolFsmState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Option<DocumentMessage> {
 		// Get subpath
-		let layer_path = self.path.as_ref()?;
-		let subpath = &get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.document_legacy)?[self.subpath_index];
 
 		// Abort if only one manipulator group has been placed
 		if fsm == PenToolFsmState::PlacingAnchor && subpath.len() < 3 {
@@ -516,9 +512,8 @@ impl PenToolData {
 		// Clean up if there are two or more manipulators
 		// Remove the unplaced anchor if in anchor placing mode
 		if fsm == PenToolFsmState::PlacingAnchor {
-			let layer_path = layer_path.clone();
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer_path.to_vec(),
+				layer: self.layer?.to_path(),
 				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 			last_manipulator_group = previous_manipulator_group;
@@ -528,7 +523,7 @@ impl PenToolData {
 		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		let position = last_manipulator_group.anchor;
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_vec(),
+			layer: self.layer?.to_path(),
 			modification: VectorDataModification::SetManipulatorPosition { point, position },
 		});
 
@@ -551,13 +546,13 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let mut transform = tool_data.path.as_ref().and_then(|path| document.document_legacy.multiply_transforms(path).ok()).unwrap_or_default();
+		let mut transform = tool_data.layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
 			let parent_transform = tool_data
-				.path
-				.as_ref()
-				.and_then(|layer_path| document.document_legacy.multiply_transforms(&layer_path[..layer_path.len() - 1]).ok());
+				.layer
+				.and_then(|layer| layer.parent(document.metadata()))
+				.map(|layer| document.metadata().transform_to_viewport(layer));
 
 			transform = parent_transform.unwrap_or(DAffine2::IDENTITY);
 		}
@@ -565,8 +560,6 @@ impl Fsm for PenToolFsmState {
 		if !transform.inverse().is_finite() {
 			transform = DAffine2::IDENTITY;
 		}
-
-		transform = document.metadata().document_to_viewport * transform;
 
 		let ToolMessage::Pen(event) = event else {
 			return self;
@@ -661,7 +654,7 @@ impl Fsm for PenToolFsmState {
 				let message = tool_data.finish_transaction(self, document, responses).unwrap_or(DocumentMessage::AbortTransaction);
 				responses.add(message);
 
-				tool_data.path = None;
+				tool_data.layer = None;
 				tool_data.snap_manager.cleanup(responses);
 
 				PenToolFsmState::Ready
@@ -721,10 +714,11 @@ fn compute_snapped_angle(cached_angle: &mut f64, lock_angle: bool, snap_angle: b
 }
 
 /// Pushes a [ManipulatorGroup] to the current layer via a [GraphOperationMessage].
-fn add_manipulator_group(layer_path: &Option<Vec<LayerId>>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<ManipulatorGroupId>) -> Message {
-	let Some(layer) = layer_path.clone() else {
+fn add_manipulator_group(layer: &Option<LayerNodeIdentifier>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<ManipulatorGroupId>) -> Message {
+	let Some(layer) = layer else {
 		return Message::NoOp;
 	};
+	let layer = layer.to_path();
 	let modification = if from_start {
 		VectorDataModification::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
 	} else {
@@ -734,16 +728,14 @@ fn add_manipulator_group(layer_path: &Option<Vec<LayerId>>, from_start: bool, ma
 }
 
 /// Determines if a path should be extended. Returns the path and if it is extending from the start, if applicable.
-fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) -> Option<(&[LayerId], usize, bool)> {
+fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) -> Option<(LayerNodeIdentifier, usize, bool)> {
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
 
-	for layer_path in document.selected_layers() {
-		let Ok(viewspace) = document.document_legacy.generate_transform_relative_to_viewport(layer_path) else {
-			continue;
-		};
+	for layer in document.metadata().selected_layers() {
+		let viewspace = document.metadata().transform_to_viewport(layer);
 
-		let subpaths = get_subpaths(LayerNodeIdentifier::from_path(layer_path, document.network()), &document.document_legacy)?;
+		let subpaths = get_subpaths(layer, &document.document_legacy)?;
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			if subpath.closed() {
 				continue;
@@ -755,7 +747,7 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 				let distance_squared = viewspace.transform_point2(manipulator_group.anchor).distance_squared(pos);
 
 				if distance_squared < best_distance_squared {
-					best = Some((layer_path, subpath_index, from_start));
+					best = Some((layer, subpath_index, from_start));
 					best_distance_squared = distance_squared;
 				}
 			}

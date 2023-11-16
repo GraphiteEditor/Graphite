@@ -14,18 +14,24 @@ use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
-pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-	let id = *layer_path.last().unwrap();
-	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths });
-	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] })
+pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	let insert_index = -1;
+	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index });
+	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
+
+	LayerNodeIdentifier::new_unchecked(id)
 }
 
 /// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
-pub fn new_image_layer(image_frame: ImageFrame<Color>, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
+pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	let insert_index = -1;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
-		id: *layer_path.last().unwrap(),
+		id,
 		image_frame,
+		parent,
+		insert_index,
 	});
+	LayerNodeIdentifier::new_unchecked(id)
 }
 
 /// Create a legacy node graph frame TODO: remove
@@ -41,10 +47,10 @@ pub fn new_custom_layer(network: NodeNetwork, layer_path: Vec<LayerId>, response
 }
 
 /// Batch set all of the manipulator groups to mirror on a specific layer
-pub fn set_manipulator_mirror_angle(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer_path: &[u64], mirror_angle: bool, responses: &mut VecDeque<Message>) {
+pub fn set_manipulator_mirror_angle(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer: LayerNodeIdentifier, mirror_angle: bool, responses: &mut VecDeque<Message>) {
 	for manipulator_group in manipulator_groups {
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer_path.to_owned(),
+			layer: layer.to_path(),
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: manipulator_group.id,
 				mirror_angle,

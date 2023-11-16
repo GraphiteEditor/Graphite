@@ -150,6 +150,17 @@ impl<'a> ModifyInputsContext<'a> {
 		new_id
 	}
 
+	fn create_layer_with_insert_index(&mut self, new_id: NodeId, insert_index: isize, parent: LayerNodeIdentifier) -> Option<NodeId> {
+		let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
+
+		let output_node_id = if parent == LayerNodeIdentifier::ROOT {
+			self.network.original_outputs()[0].node_id
+		} else {
+			parent.to_node()
+		};
+		self.create_layer(new_id, output_node_id, 0, skip_layer_nodes)
+	}
+
 	fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
@@ -605,10 +616,16 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
+				document.metadata.load_structure(&document.document_network);
 			}
-			GraphOperationMessage::NewBitmapLayer { id, image_frame } => {
+			GraphOperationMessage::NewBitmapLayer {
+				id,
+				image_frame,
+				parent,
+				insert_index,
+			} => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
+				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_image_data(image_frame, layer);
 				}
 			}
@@ -617,15 +634,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 
-				let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
-
-				let output_node_id = if parent == LayerNodeIdentifier::ROOT {
-					modify_inputs.network.original_outputs()[0].node_id
-				} else {
-					parent.to_node()
-				};
-
-				if let Some(layer) = modify_inputs.create_layer(id, output_node_id, 0, skip_layer_nodes) {
+				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, crate::application::generate_uuid())).collect();
 
 					let shift = nodes
@@ -662,17 +671,27 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 
 				document.metadata.load_structure(&document.document_network);
 			}
-			GraphOperationMessage::NewVectorLayer { id, subpaths } => {
+			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
+				println!("Create vector layer with parent {parent:?}");
+				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
+				document.metadata.load_structure(&document.document_network);
 			}
-			GraphOperationMessage::NewTextLayer { id, text, font, size } => {
+			GraphOperationMessage::NewTextLayer {
+				id,
+				text,
+				font,
+				size,
+				parent,
+				insert_index,
+			} => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
+				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
+				document.metadata.load_structure(&document.document_network);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&[id], document, node_graph, responses) {
@@ -689,6 +708,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				for id in artboard_nodes {
 					modify_inputs.delete_layer(id);
 				}
+				document.metadata.load_structure(&document.document_network);
 			}
 		}
 	}

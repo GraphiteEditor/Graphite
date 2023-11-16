@@ -57,7 +57,7 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	CreateEmptyFolder {
-		container_path: Vec<LayerId>,
+		parent: LayerNodeIdentifier,
 	},
 	DebugPrintDocument,
 	DeleteLayer {

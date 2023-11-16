@@ -5,7 +5,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::LayerId;
+use document_legacy::document_metadata::LayerNodeIdentifier;
+use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
@@ -185,7 +186,7 @@ struct SplineToolData {
 	points: Vec<DVec2>,
 	next_point: DVec2,
 	weight: f64,
-	path: Option<Vec<LayerId>>,
+	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 }
 
@@ -215,7 +216,6 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
-				tool_data.path = Some(document.get_path_for_new_layer());
 
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
@@ -228,7 +228,18 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				add_spline(tool_data, tool_options.fill.active_color(), tool_options.stroke.active_color(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![], generate_uuid(), document.new_layer_parent(), responses);
+
+				responses.add(GraphOperationMessage::FillSet {
+					layer: layer.to_path(),
+					fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
+				});
+
+				responses.add(GraphOperationMessage::StrokeSet {
+					layer: layer.to_path(),
+					stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
+				});
+				tool_data.layer = Some(layer);
 
 				SplineToolFsmState::Drawing
 			}
@@ -264,7 +275,7 @@ impl Fsm for SplineToolFsmState {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 
-				tool_data.path = None;
+				tool_data.layer = None;
 				tool_data.points.clear();
 				tool_data.snap_manager.cleanup(responses);
 
@@ -298,23 +309,6 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn add_spline(tool_data: &SplineToolData, fill_color: Option<Color>, stroke_color: Option<Color>, responses: &mut VecDeque<Message>) {
-	let Some(layer_path) = tool_data.path.clone() else {
-		return;
-	};
-	graph_modification_utils::new_vector_layer(vec![], layer_path.clone(), responses);
-
-	responses.add(GraphOperationMessage::FillSet {
-		layer: layer_path.clone(),
-		fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-	});
-
-	responses.add(GraphOperationMessage::StrokeSet {
-		layer: layer_path,
-		stroke: Stroke::new(stroke_color, tool_data.weight),
-	});
-}
-
 fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
 	let mut points = tool_data.points.clone();
 	if show_preview {
@@ -323,12 +317,12 @@ fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut
 
 	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
 
-	let Some(layer) = tool_data.path.clone() else {
+	let Some(layer) = tool_data.layer.clone() else {
 		return;
 	};
 
-	graph_modification_utils::set_manipulator_mirror_angle(subpath.manipulator_groups(), &layer, true, responses);
+	graph_modification_utils::set_manipulator_mirror_angle(subpath.manipulator_groups(), layer, true, responses);
 	let subpaths = vec![subpath];
 	let modification = VectorDataModification::UpdateSubpaths { subpaths };
-	responses.add(GraphOperationMessage::Vector { layer, modification });
+	responses.add(GraphOperationMessage::Vector { layer: layer.to_path(), modification });
 }

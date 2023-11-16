@@ -290,6 +290,8 @@ impl TextToolData {
 				text: String::new(),
 				font: editing_text.font.clone(),
 				size: editing_text.font_size,
+				parent: LayerNodeIdentifier::ROOT,
+				insert_index: -1,
 			});
 			responses.add(GraphOperationMessage::FillSet {
 				layer: self.layer.to_path(),
