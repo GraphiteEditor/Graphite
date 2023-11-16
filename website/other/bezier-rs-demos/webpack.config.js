@@ -1,3 +1,5 @@
+// TODO: Eventually migrate the bundler from Webpack to Vite
+
 const path = require("path");
 
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
