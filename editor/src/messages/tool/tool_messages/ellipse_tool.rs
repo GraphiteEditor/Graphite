@@ -91,7 +91,7 @@ impl LayoutHolder for EllipseTool {
 			true,
 			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value)).into(),
+			|color: &ColorButton| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value)).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
@@ -101,7 +101,7 @@ impl LayoutHolder for EllipseTool {
 			true,
 			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value)).into(),
+			|color: &ColorButton| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value)).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));

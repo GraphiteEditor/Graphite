@@ -384,20 +384,20 @@
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone}
-					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set none" tabindex="0" />
+					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set No Color" tabindex="0" />
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set black" tabindex="0" />
+				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set Black" tabindex="0" />
 				<Separator type="Related" />
-				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set white" tabindex="0" />
+				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set White" tabindex="0" />
 				<Separator type="Related" />
 				<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set magenta" />
+					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set Red" />
+					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set Yellow" />
+					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set Green" />
+					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set Cyan" />
+					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set Blue" />
+					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set Magenta" />
 				</button>
 				<Separator type="Related" />
 				<IconButton icon="Eyedropper" size={24} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />

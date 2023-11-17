@@ -92,7 +92,7 @@ impl LayoutHolder for LineTool {
 			true,
 			|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value)).into(),
+			|color: &ColorButton| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value)).into(),
 		);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));

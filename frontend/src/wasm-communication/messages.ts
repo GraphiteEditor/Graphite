@@ -762,7 +762,7 @@ export class CheckboxInput extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export class ColorInput extends WidgetProps {
+export class ColorButton extends WidgetProps {
 	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
 		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha),
 	)
@@ -1130,7 +1130,7 @@ export class PivotAssist extends WidgetProps {
 const widgetSubTypes = [
 	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
-	{ value: ColorInput, name: "ColorInput" },
+	{ value: ColorButton, name: "ColorButton" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },

@@ -187,7 +187,7 @@ impl LayoutHolder for BrushTool {
 			false,
 			|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
-			|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into(),
+			|color: &ColorButton| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value)).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());

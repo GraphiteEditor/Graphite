@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import ColorButton from "./buttons/ColorButton.svelte";
+
 	import { debouncer } from "@graphite/utility-functions/debounce";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import type { Widget, WidgetColumn, WidgetRow } from "@graphite/wasm-communication/messages";
@@ -13,7 +15,6 @@
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
-	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
@@ -88,9 +89,9 @@
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
+		{@const colorInput = narrowWidgetProps(component.props, "ColorButton")}
 		{#if colorInput}
-			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}

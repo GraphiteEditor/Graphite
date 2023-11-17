@@ -44,32 +44,6 @@ impl Default for CheckboxInput {
 	}
 }
 
-#[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq, Default)]
-pub struct ColorInput {
-	#[widget_builder(constructor)]
-	pub value: Option<Color>,
-
-	// TODO: Implement
-	// #[serde(rename = "allowTransparency")]
-	// #[derivative(Default(value = "false"))]
-	// pub allow_transparency: bool,
-	#[serde(rename = "allowNone")]
-	#[derivative(Default(value = "true"))]
-	pub allow_none: bool,
-
-	// pub disabled: bool,
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
-
-	// Callbacks
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<ColorInput>,
-}
-
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {

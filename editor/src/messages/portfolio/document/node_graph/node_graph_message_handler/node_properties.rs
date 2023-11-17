@@ -507,13 +507,13 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 	row.push(label.widget_holder());
 	let on_update = {
 		let positions = positions.clone();
-		move |color_input: &ColorInput| {
+		move |color_button: &ColorButton| {
 			let mut new_positions = positions.clone();
-			new_positions[index].1 = color_input.value;
+			new_positions[index].1 = color_button.value;
 			TaggedValue::GradientPositions(new_positions)
 		}
 	};
-	let color = ColorInput::new(positions[index].1).on_update(update_value(on_update, node_id, input_index));
+	let color = ColorButton::new(positions[index].1).on_update(update_value(on_update, node_id, input_index));
 	add_blank_assist(row);
 	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	row.push(color.widget_holder());
@@ -617,7 +617,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 	}
 }
 
-fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorInput, blank_assist: bool) -> LayoutGroup {
+fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorButton, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
@@ -626,7 +626,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				color_props
 					.value(Some(x as Color))
-					.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.unwrap()), node_id, index))
+					.on_update(update_value(|x: &ColorButton| TaggedValue::Color(x.value.unwrap()), node_id, index))
 					.widget_holder(),
 			])
 		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
@@ -634,7 +634,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				color_props
 					.value(x)
-					.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value), node_id, index))
+					.on_update(update_value(|x: &ColorButton| TaggedValue::OptionalColor(x.value), node_id, index))
 					.widget_holder(),
 			])
 		}
@@ -691,7 +691,7 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 	const MIN: f64 = -200.;
 	const MAX: f64 = 300.;
 	// TODO: Add tint color (blended above using the "Color" blend mode)
-	let tint = color_widget(document_node, node_id, 1, "Tint", ColorInput::default(), true);
+	let tint = color_widget(document_node, node_id, 1, "Tint", ColorButton::default(), true);
 	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
 	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
 	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
@@ -711,7 +711,7 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 }
 
 pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorInput::default(), true);
+	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
 
@@ -731,7 +731,7 @@ pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![color_widget(document_node, node_id, 0, "Color", ColorInput::default(), true)]
+	vec![color_widget(document_node, node_id, 0, "Color", ColorButton::default(), true)]
 }
 
 pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -772,7 +772,7 @@ pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, contex
 }
 
 pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorInput::default(), true);
+	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorButton::default(), true);
 
 	vec![mask]
 }
@@ -1797,7 +1797,7 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	let line_join_index = 6;
 	let miter_limit_index = 7;
 
-	let color = color_widget(document_node, node_id, color_index, "Color", ColorInput::default(), true);
+	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
 	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
 	let dash_lengths = vec_f32_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
 	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", NumberInput::default().unit("px").min(0.), true);
@@ -1862,7 +1862,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	widgets.push(fill_type_switch);
 
 	if fill_type.is_none() || solid {
-		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorInput::default(), true);
+		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorButton::default(), true);
 		widgets.push(solid_color);
 	}
 
@@ -1895,7 +1895,7 @@ pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
 	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);
-	let background = color_widget(document_node, node_id, 3, "Background", ColorInput::default().allow_none(false), true);
+	let background = color_widget(document_node, node_id, 3, "Background", ColorButton::default().allow_none(false), true);
 	let clip = LayoutGroup::Row {
 		widgets: bool_widget(document_node, node_id, 4, "Clip", true),
 	};
@@ -1903,12 +1903,12 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 }
 
 pub fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
+	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
 	vec![color]
 }
 
 pub fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 1, "Color", ColorInput::default(), true);
+	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
 

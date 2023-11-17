@@ -361,8 +361,8 @@ fn node_gradient_color(gradient: &Gradient, position: usize) -> LayoutGroup {
 		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
 		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 		Separator::new(SeparatorType::Unrelated).widget_holder(),
-		ColorInput::new(gradient_clone.positions[position].1)
-			.on_update(move |text_input: &ColorInput| {
+		ColorButton::new(gradient_clone.positions[position].1)
+			.on_update(move |text_input: &ColorButton| {
 				let mut new_gradient = (*gradient_clone).clone();
 				new_gradient.positions[position].1 = text_input.value;
 				send_fill_message(new_gradient)
@@ -425,8 +425,8 @@ fn node_section_fill(fill: &Fill) -> Option<LayoutGroup> {
 						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
 						Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 						Separator::new(SeparatorType::Unrelated).widget_holder(),
-						ColorInput::new(if let Fill::Solid(color) = fill { Some(*color) } else { None })
-							.on_update(|text_input: &ColorInput| {
+						ColorButton::new(if let Fill::Solid(color) = fill { Some(*color) } else { None })
+							.on_update(|text_input: &ColorButton| {
 								let fill = if let Some(value) = text_input.value { Fill::Solid(value) } else { Fill::None };
 								PropertiesPanelMessage::ModifyFill { fill }.into()
 							})
@@ -543,8 +543,8 @@ fn node_section_stroke(stroke: &Stroke) -> LayoutGroup {
 					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
 					Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					ColorInput::new(stroke.color())
-						.on_update(move |text_input: &ColorInput| {
+					ColorButton::new(stroke.color())
+						.on_update(move |text_input: &ColorButton| {
 							internal_stroke1
 								.clone()
 								.with_color(&text_input.value)

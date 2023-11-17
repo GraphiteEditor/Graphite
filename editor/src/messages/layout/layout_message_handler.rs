@@ -96,8 +96,8 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let callback_message = (checkbox_input.on_update.callback)(checkbox_input);
 						responses.add(callback_message);
 					}
-					Widget::ColorInput(color_input) => {
-						let update_value = value.as_object().expect("ColorInput update was not of type: object");
+					Widget::ColorButton(color_button) => {
+						let update_value = value.as_object().expect("ColorButton update was not of type: object");
 						let parsed_color = (|| {
 							let is_none = update_value.get("none")?.as_bool()?;
 
@@ -112,9 +112,9 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 								Some(None)
 							}
 						})()
-						.unwrap_or_else(|| panic!("ColorInput update was not able to be parsed with color data: {color_input:?}"));
-						color_input.value = parsed_color;
-						let callback_message = (color_input.on_update.callback)(color_input);
+						.unwrap_or_else(|| panic!("ColorButton update was not able to be parsed with color data: {color_button:?}"));
+						color_button.value = parsed_color;
+						let callback_message = (color_button.on_update.callback)(color_button);
 						responses.add(callback_message);
 					}
 					Widget::CurveInput(curve_input) => {

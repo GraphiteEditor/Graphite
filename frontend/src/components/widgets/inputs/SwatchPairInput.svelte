@@ -37,11 +37,11 @@
 
 <LayoutCol class="swatch-pair">
 	<LayoutRow class="primary swatch">
-		<button on:click={clickPrimarySwatch} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
+		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
 		<ColorPicker open={primaryOpen} on:open={({ detail }) => (primaryOpen = detail)} color={primary} on:color={({ detail }) => primaryColorChanged(detail)} direction="Right" />
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
-		<button on:click={clickSecondarySwatch} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
+		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
 		<ColorPicker open={secondaryOpen} on:open={({ detail }) => (secondaryOpen = detail)} color={secondary} on:color={({ detail }) => secondaryColorChanged(detail)} direction="Right" />
 	</LayoutRow>
 </LayoutCol>
@@ -70,6 +70,11 @@
 				background-size: var(--color-transparent-checkered-background-size);
 				background-position: var(--color-transparent-checkered-background-position);
 				overflow: hidden;
+
+				&:hover,
+				&.open {
+					border-color: var(--color-6-lowergray);
+				}
 			}
 
 			.floating-menu {

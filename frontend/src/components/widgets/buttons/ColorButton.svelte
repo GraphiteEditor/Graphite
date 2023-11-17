@@ -4,7 +4,7 @@
 	import type { Color } from "@graphite/wasm-communication/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	// emits: ["update:value"],
@@ -20,11 +20,16 @@
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
 
-	// TODO: Implement
-	$: chip = undefined;
+	function colorLabel(value: Color): string {
+		if (value.none) return "No Color";
+		const type = "Color"; // TODO: Add "Gradient" type
+		const hex = value.toHexNoAlpha();
+		const alpha = value.alpha === 1 ? undefined : `${Math.floor(value.alpha * 100)}%`;
+		return [type, hex, alpha].filter((x) => x).join(" — ");
+	}
 </script>
 
-<LayoutRow class="color-input" classes={{ "sharp-right-corners": sharpRightCorners }} {tooltip}>
+<LayoutCol class="color-button" classes={{ "sharp-right-corners": sharpRightCorners }} {tooltip}>
 	<button
 		class:none={value.none}
 		class:sharp-right-corners={sharpRightCorners}
@@ -32,11 +37,7 @@
 		on:click={() => (open = true)}
 		tabindex="0"
 		data-floating-menu-spawner
-	>
-		{#if chip}
-			<TextLabel class="chip" bold={true}>{chip}</TextLabel>
-		{/if}
-	</button>
+	></button>
 	<ColorPicker
 		{open}
 		on:open={({ detail }) => (open = detail)}
@@ -47,15 +48,12 @@
 		}}
 		{allowNone}
 	/>
-</LayoutRow>
+	<TextLabel>{colorLabel(value)}</TextLabel>
+</LayoutCol>
 
 <style lang="scss" global>
-	.color-input {
-		box-sizing: border-box;
+	.color-button {
 		position: relative;
-		border: 1px solid var(--color-5-dullgray);
-		border-radius: 2px;
-		padding: 1px;
 		min-width: 80px;
 
 		> button {
@@ -65,8 +63,10 @@
 			margin: 0;
 			padding: 0;
 			width: 100%;
-			height: 100%;
-			border-radius: 1px;
+			height: 16px;
+			// TODO: Find a way to work around Chrome's light-colored antialiasing artifacts around the rounded parts of the pill border most visible when the color is dark colored
+			border: 1px solid var(--color-5-dullgray);
+			border-radius: 10000px;
 
 			&::before {
 				content: "";
@@ -88,29 +88,19 @@
 				background-size: var(--color-none-size-24px);
 				background-image: var(--color-none-image-24px);
 			}
-
-			.chip {
-				position: absolute;
-				bottom: -1px;
-				right: 0;
-				height: 13px;
-				line-height: 13px;
-				background: var(--color-f-white);
-				color: var(--color-2-mildblack);
-				border-radius: 4px 0 0 0;
-				padding: 0 4px;
-				font-size: 10px;
-				box-shadow: 0 0 2px var(--color-3-darkgray);
-			}
-		}
-
-		&.color-input.color-input > button {
-			outline-offset: 0;
 		}
 
 		> .floating-menu {
 			left: 50%;
 			bottom: 0;
+		}
+
+		> .text-label {
+			margin-top: 1px;
+			height: 24px - 16px - 1px;
+			line-height: 24px - 16px - 1px;
+			font-size: 10px;
+			text-align: center;
 		}
 	}
 </style>

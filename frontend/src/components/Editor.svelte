@@ -125,29 +125,34 @@
 		--color-none-position: center center;
 		// 24px tall, 48px wide
 		--color-none-size-24px: 60px 24px;
-		--color-none-image-24px:
-			// Red diagonal slash (24px tall)
-			url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 24"><line stroke="red" stroke-width="4px" x1="0" y1="27" x2="60" y2="-3" /></svg>');
+		// Red diagonal slash (24px tall)
+		--color-none-image-24px: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 24"><line stroke="red" stroke-width="4px" x1="0" y1="27" x2="60" y2="-3" /></svg>\
+			');
 		// 32px tall, 64px wide
 		--color-none-size-32px: 80px 32px;
-		--color-none-image-32px:
-			// Red diagonal slash (32px tall)
-			url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>');
+		// Red diagonal slash (32px tall)
+		--color-none-image-32px: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>\
+			');
 
 		--color-transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
 			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px;
 
-		--icon-expand-collapse-arrow:
-			// Arrow triangle (#eee fill)
-			url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
-		--icon-expand-collapse-arrow-hover:
-			// Arrow triangle (#fff fill)
-			url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
-		--icon-expand-collapse-arrow-disabled:
-			// Arrow triangle (#888 fill)
-			url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23888" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>');
+		// Arrow triangle (#eee fill)
+		--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
+			');
+		// Arrow triangle (#fff fill)
+		--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
+			');
+		// Arrow triangle (#888 fill)
+		--icon-expand-collapse-arrow-disabled: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23888" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
+			');
 	}
 
 	html,
@@ -265,7 +270,7 @@
 	.icon-button,
 	.text-button,
 	.popover-button,
-	.color-input > button,
+	.color-button > button,
 	.color-picker .preset-color,
 	.swatch-pair .swatch > button,
 	.radio-input button,

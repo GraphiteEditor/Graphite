@@ -2,6 +2,7 @@ use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::FrontendGraphDataType;
 
+use graphene_core::raster::color::Color;
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;
@@ -103,6 +104,32 @@ pub struct TextButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextButton>,
+}
+
+#[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct ColorButton {
+	#[widget_builder(constructor)]
+	pub value: Option<Color>,
+
+	// TODO: Implement
+	// #[serde(rename = "allowTransparency")]
+	// #[derivative(Default(value = "false"))]
+	// pub allow_transparency: bool,
+	#[serde(rename = "allowNone")]
+	#[derivative(Default(value = "true"))]
+	pub allow_none: bool,
+
+	// pub disabled: bool,
+	pub tooltip: String,
+
+	#[serde(skip)]
+	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ColorButton>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
