@@ -1261,16 +1261,16 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 	});
 }
 
-export type LayoutGroup = WidgetRow | WidgetColumn | WidgetSection;
+export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetSection;
 
-export type WidgetColumn = { columnWidgets: Widget[] };
-export function isWidgetColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetColumn {
-	return Boolean((layoutColumn as WidgetColumn).columnWidgets);
+export type WidgetSpanColumn = { columnWidgets: Widget[] };
+export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
+	return Boolean((layoutColumn as WidgetSpanColumn).columnWidgets);
 }
 
-export type WidgetRow = { rowWidgets: Widget[] };
-export function isWidgetRow(layoutRow: LayoutGroup): layoutRow is WidgetRow {
-	return Boolean((layoutRow as WidgetRow).rowWidgets);
+export type WidgetSpanRow = { rowWidgets: Widget[] };
+export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
+	return Boolean((layoutRow as WidgetSpanRow).rowWidgets);
 }
 
 export type WidgetSection = { name: string; layout: LayoutGroup[] };
@@ -1303,12 +1303,12 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
 		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
 
-		const result: WidgetColumn = { columnWidgets };
+		const result: WidgetSpanColumn = { columnWidgets };
 		return result;
 	}
 
 	if (layoutGroup.row) {
-		const result: WidgetRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
+		const result: WidgetSpanRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
 		return result;
 	}
 

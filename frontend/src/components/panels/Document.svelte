@@ -572,7 +572,7 @@
 					.widget-layout:last-of-type {
 						height: auto;
 
-						.widget-row {
+						.widget-span.row {
 							min-height: 0;
 
 							.working-colors-button {

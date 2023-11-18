@@ -3,8 +3,8 @@
 
 	import { debouncer } from "@graphite/utility-functions/debounce";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Widget, WidgetColumn, WidgetRow } from "@graphite/wasm-communication/messages";
-	import { narrowWidgetProps, isWidgetColumn, isWidgetRow } from "@graphite/wasm-communication/messages";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/wasm-communication/messages";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/wasm-communication/messages";
 
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
@@ -34,7 +34,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	export let widgetData: WidgetColumn | WidgetRow;
+	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any;
 
@@ -42,16 +42,15 @@
 	$: widgets = watchWidgets(widgetData);
 	$: widgetsAndNextSiblingIsSuffix = watchWidgetsAndNextSiblingIsSuffix(widgets);
 
-	function watchDirection(widgetData: WidgetRow | WidgetColumn): "row" | "column" | "ERROR" {
-		if (isWidgetRow(widgetData)) return "row";
-		if (isWidgetColumn(widgetData)) return "column";
-		return "ERROR";
+	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
+		if (isWidgetSpanRow(widgetData)) return "row";
+		if (isWidgetSpanColumn(widgetData)) return "column";
 	}
 
-	function watchWidgets(widgetData: WidgetRow | WidgetColumn): Widget[] {
+	function watchWidgets(widgetData: WidgetSpanRow | WidgetSpanColumn): Widget[] {
 		let widgets: Widget[] = [];
-		if (isWidgetRow(widgetData)) widgets = widgetData.rowWidgets;
-		else if (isWidgetColumn(widgetData)) widgets = widgetData.columnWidgets;
+		if (isWidgetSpanRow(widgetData)) widgets = widgetData.rowWidgets;
+		else if (isWidgetSpanColumn(widgetData)) widgets = widgetData.columnWidgets;
 		return widgets;
 	}
 
@@ -82,7 +81,7 @@
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 <!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.svelte` as part of its refactor -->
 
-<div class={`widget-${direction}`}>
+<div class="widget-span" class:row={direction === "row"} class:column={direction === "column"}>
 	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
@@ -189,13 +188,13 @@
 </div>
 
 <style lang="scss" global>
-	.widget-column {
+	.widget-span.column {
 		flex: 0 0 auto;
 		display: flex;
 		flex-direction: column;
 	}
 
-	.widget-row.widget-row {
+	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
 		min-height: 32px;

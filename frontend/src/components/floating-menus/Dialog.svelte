@@ -39,11 +39,11 @@
 			{/if}
 			{#if $dialog.panicDetails}
 				<div class="widget-layout details">
-					<div class="widget-row"><TextLabel bold={true}>The editor crashed — sorry about that</TextLabel></div>
-					<div class="widget-row"><TextLabel>Please report this by filing an issue on GitHub:</TextLabel></div>
-					<div class="widget-row"><TextButton label="Report Bug" icon="Warning" noBackground={true} action={() => window.open(githubUrl($dialog.panicDetails), "_blank")} /></div>
-					<div class="widget-row"><TextLabel multiline={true}>Reload the editor to continue. If this occurs<br />immediately on repeated reloads, clear storage:</TextLabel></div>
-					<div class="widget-row">
+					<div class="widget-span row"><TextLabel bold={true}>The editor crashed — sorry about that</TextLabel></div>
+					<div class="widget-span row"><TextLabel>Please report this by filing an issue on GitHub:</TextLabel></div>
+					<div class="widget-span row"><TextButton label="Report Bug" icon="Warning" noBackground={true} action={() => window.open(githubUrl($dialog.panicDetails), "_blank")} /></div>
+					<div class="widget-span row"><TextLabel multiline={true}>Reload the editor to continue. If this occurs<br />immediately on repeated reloads, clear storage:</TextLabel></div>
+					<div class="widget-span row">
 						<TextButton
 							label="Clear Saved Documents"
 							icon="Trash"
