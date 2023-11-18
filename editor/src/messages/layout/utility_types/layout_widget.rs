@@ -1,4 +1,3 @@
-use super::widgets::assist_widgets::*;
 use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
@@ -337,7 +336,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip,
 				Widget::TextLabel(x) => &mut x.tooltip,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
-				Widget::InvisibleStandinInput(_) | Widget::PivotAssist(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsButton(_) => continue,
+				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsButton(_) => continue,
 			};
 			if val.is_empty() {
 				*val = tooltip.clone();
@@ -483,7 +482,7 @@ pub enum Widget {
 	NumberInput(NumberInput),
 	OptionalInput(OptionalInput),
 	ParameterExposeButton(ParameterExposeButton),
-	PivotAssist(PivotAssist),
+	PivotInput(PivotInput),
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
@@ -559,7 +558,7 @@ impl DiffUpdate {
 				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
-				| Widget::PivotAssist(_)
+				| Widget::PivotInput(_)
 				| Widget::RadioInput(_)
 				| Widget::Separator(_)
 				| Widget::TextAreaInput(_)

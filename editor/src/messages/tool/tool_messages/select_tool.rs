@@ -116,8 +116,8 @@ impl SelectTool {
 	// }
 
 	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
-		PivotAssist::new(self.tool_data.pivot.to_pivot_position())
-			.on_update(|pivot_assist: &PivotAssist| SelectToolMessage::SetPivot { position: pivot_assist.position }.into())
+		PivotInput::new(self.tool_data.pivot.to_pivot_position())
+			.on_update(|pivot_input: &PivotInput| SelectToolMessage::SetPivot { position: pivot_input.position }.into())
 			.disabled(disabled)
 			.widget_holder()
 	}

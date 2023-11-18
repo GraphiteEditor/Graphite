@@ -14,7 +14,7 @@
 	}
 </script>
 
-<div class="pivot-assist" class:disabled>
+<div class="pivot-input" class:disabled>
 	<button on:click={() => setPosition("TopLeft")} class="row-1 col-1" class:active={position === "TopLeft"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setPosition("TopCenter")} class="row-1 col-2" class:active={position === "TopCenter"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setPosition("TopRight")} class="row-1 col-3" class:active={position === "TopRight"} tabindex="-1" {disabled}><div /></button>
@@ -27,7 +27,7 @@
 </div>
 
 <style lang="scss" global>
-	.pivot-assist {
+	.pivot-input {
 		position: relative;
 		flex: 0 0 auto;
 		width: 24px;

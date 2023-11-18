@@ -6,7 +6,6 @@
 	import type { Widget, WidgetColumn, WidgetRow } from "@graphite/wasm-communication/messages";
 	import { narrowWidgetProps, isWidgetColumn, isWidgetRow } from "@graphite/wasm-communication/messages";
 
-	import PivotAssist from "@graphite/components/widgets/assists/PivotAssist.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -21,6 +20,7 @@
 	import LayerReferenceInput from "@graphite/components/widgets/inputs/LayerReferenceInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import OptionalInput from "@graphite/components/widgets/inputs/OptionalInput.svelte";
+	import PivotInput from "@graphite/components/widgets/inputs/PivotInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
@@ -138,9 +138,9 @@
 		{#if optionalInput}
 			<OptionalInput {...exclude(optionalInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{@const pivotAssist = narrowWidgetProps(component.props, "PivotAssist")}
-		{#if pivotAssist}
-			<PivotAssist {...exclude(pivotAssist)} on:position={({ detail }) => updateLayout(index, detail)} />
+		{@const pivotInput = narrowWidgetProps(component.props, "PivotInput")}
+		{#if pivotInput}
+			<PivotInput {...exclude(pivotInput)} on:position={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}

@@ -1121,7 +1121,7 @@ export class TextLabel extends WidgetProps {
 
 export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
-export class PivotAssist extends WidgetProps {
+export class PivotInput extends WidgetProps {
 	position!: PivotPosition;
 
 	disabled!: boolean;
@@ -1143,7 +1143,7 @@ const widgetSubTypes = [
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: OptionalInput, name: "OptionalInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
-	{ value: PivotAssist, name: "PivotAssist" },
+	{ value: PivotInput, name: "PivotInput" },
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },

@@ -1181,8 +1181,8 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		{
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.push(
-				PivotAssist::new(pivot.into())
-					.on_update(update_value(|pivot: &PivotAssist| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
+				PivotInput::new(pivot.into())
+					.on_update(update_value(|pivot: &PivotInput| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
 					.widget_holder(),
 			);
 		} else {
