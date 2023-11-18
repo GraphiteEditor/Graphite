@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import ColorButton from "./buttons/ColorButton.svelte";
-
 	import { debouncer } from "@graphite/utility-functions/debounce";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import type { Widget, WidgetColumn, WidgetRow } from "@graphite/wasm-communication/messages";
@@ -10,10 +8,12 @@
 
 	import PivotAssist from "@graphite/components/widgets/assists/PivotAssist.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
+	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import WorkingColorsButton from "@graphite/components/widgets/buttons/WorkingColorsButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
@@ -22,7 +22,6 @@
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import OptionalInput from "@graphite/components/widgets/inputs/OptionalInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
-	import SwatchPairInput from "@graphite/components/widgets/inputs/SwatchPairInput.svelte";
 	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -162,9 +161,9 @@
 		{#if separator}
 			<Separator {...exclude(separator)} />
 		{/if}
-		{@const swatchPairInput = narrowWidgetProps(component.props, "SwatchPairInput")}
-		{#if swatchPairInput}
-			<SwatchPairInput {...exclude(swatchPairInput)} />
+		{@const workingColorsButton = narrowWidgetProps(component.props, "WorkingColorsButton")}
+		{#if workingColorsButton}
+			<WorkingColorsButton {...exclude(workingColorsButton)} />
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}

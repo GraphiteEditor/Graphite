@@ -575,7 +575,7 @@
 						.widget-row {
 							min-height: 0;
 
-							.swatch-pair {
+							.working-colors-button {
 								margin: 0;
 							}
 

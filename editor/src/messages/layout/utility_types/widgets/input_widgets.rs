@@ -341,16 +341,6 @@ pub struct RadioEntryData {
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
-pub struct SwatchPairInput {
-	#[widget_builder(constructor)]
-	pub primary: Color,
-
-	#[widget_builder(constructor)]
-	pub secondary: Color,
-}
-
-#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq, Default)]
 pub struct TextAreaInput {
 	#[widget_builder(constructor)]
 	pub value: String,

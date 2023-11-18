@@ -106,6 +106,16 @@ pub struct TextButton {
 	pub on_update: WidgetCallback<TextButton>,
 }
 
+#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct WorkingColorsButton {
+	#[widget_builder(constructor)]
+	pub primary: Color,
+
+	#[widget_builder(constructor)]
+	pub secondary: Color,
+}
+
 #[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorButton {

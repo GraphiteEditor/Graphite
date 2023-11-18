@@ -210,7 +210,6 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::Separator(_) => {}
-					Widget::SwatchPairInput(_) => {}
 					Widget::TextAreaInput(text_area_input) => {
 						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
 						text_area_input.value = update_value.into();
@@ -228,6 +227,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::TextLabel(_) => {}
+					Widget::WorkingColorsButton(_) => {}
 				};
 				responses.add(ResendActiveWidget { layout_target, dirty_id: widget_id });
 			}

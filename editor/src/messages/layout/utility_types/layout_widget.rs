@@ -337,7 +337,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip,
 				Widget::TextLabel(x) => &mut x.tooltip,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
-				Widget::InvisibleStandinInput(_) | Widget::PivotAssist(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::SwatchPairInput(_) => continue,
+				Widget::InvisibleStandinInput(_) | Widget::PivotAssist(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsButton(_) => continue,
 			};
 			if val.is_empty() {
 				*val = tooltip.clone();
@@ -487,11 +487,11 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
-	SwatchPairInput(SwatchPairInput),
 	TextAreaInput(TextAreaInput),
 	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
+	WorkingColorsButton(WorkingColorsButton),
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
@@ -562,10 +562,10 @@ impl DiffUpdate {
 				| Widget::PivotAssist(_)
 				| Widget::RadioInput(_)
 				| Widget::Separator(_)
-				| Widget::SwatchPairInput(_)
 				| Widget::TextAreaInput(_)
 				| Widget::TextInput(_)
-				| Widget::TextLabel(_) => None,
+				| Widget::TextLabel(_)
+				| Widget::WorkingColorsButton(_) => None,
 			};
 			if let Some((tooltip, Some(tooltip_shortcut))) = &mut tooltip_shortcut {
 				apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);

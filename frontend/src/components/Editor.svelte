@@ -272,7 +272,7 @@
 	.popover-button,
 	.color-button > button,
 	.color-picker .preset-color,
-	.swatch-pair .swatch > button,
+	.working-colors-button .swatch > button,
 	.radio-input button,
 	.menu-list,
 	.menu-bar-input .entry,

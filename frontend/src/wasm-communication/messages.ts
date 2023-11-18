@@ -1010,7 +1010,7 @@ export class Separator extends WidgetProps {
 	type!: SeparatorType;
 }
 
-export class SwatchPairInput extends WidgetProps {
+export class WorkingColorsButton extends WidgetProps {
 	@Type(() => Color)
 	primary!: Color;
 
@@ -1145,7 +1145,7 @@ const widgetSubTypes = [
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },
-	{ value: SwatchPairInput, name: "SwatchPairInput" },
+	{ value: WorkingColorsButton, name: "WorkingColorsButton" },
 	{ value: TextAreaInput, name: "TextAreaInput" },
 	{ value: TextButton, name: "TextButton" },
 	{ value: TextInput, name: "TextInput" },
