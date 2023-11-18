@@ -1,4 +1,4 @@
-//! Handles modal dialogs that appear as floating menus in the center of the editor window.
+//! Handles dialogs that appear as floating menus in the center of the editor window.
 //!
 //! Dialogs are represented as structs that implement the `DialogLayoutHolder` trait.
 //!
