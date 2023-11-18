@@ -27,12 +27,12 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Graph from "@graphite/components/views/Graph.svelte";
-	import CanvasRuler from "@graphite/components/widgets/metrics/CanvasRuler.svelte";
-	import PersistentScrollbar from "@graphite/components/widgets/metrics/PersistentScrollbar.svelte";
+	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
+	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	let rulerHorizontal: CanvasRuler | undefined;
-	let rulerVertical: CanvasRuler | undefined;
+	let rulerHorizontal: RulerInput | undefined;
+	let rulerVertical: RulerInput | undefined;
 	let viewport: HTMLDivElement | undefined;
 
 	const editor = getContext<Editor>("editor");
@@ -441,11 +441,11 @@
 		</LayoutCol>
 		<LayoutCol class="table">
 			<LayoutRow class="ruler-or-scrollbar top-ruler">
-				<CanvasRuler origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+				<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 			</LayoutRow>
 			<LayoutRow class="viewport-container">
 				<LayoutCol class="ruler-or-scrollbar">
-					<CanvasRuler origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+					<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 				</LayoutCol>
 				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
@@ -482,7 +482,7 @@
 					</div>
 				</LayoutCol>
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
-					<PersistentScrollbar
+					<ScrollbarInput
 						direction="Vertical"
 						handleLength={scrollbarSize.y}
 						handlePosition={scrollbarPos.y}
@@ -492,7 +492,7 @@
 				</LayoutCol>
 			</LayoutRow>
 			<LayoutRow class="ruler-or-scrollbar bottom-scrollbar">
-				<PersistentScrollbar
+				<ScrollbarInput
 					direction="Horizontal"
 					handleLength={scrollbarSize.x}
 					handlePosition={scrollbarPos.x}
@@ -594,16 +594,16 @@
 					flex: 0 0 auto;
 				}
 
-				.top-ruler .canvas-ruler {
+				.top-ruler .ruler-input {
 					padding-left: 16px;
 					margin-right: 16px;
 				}
 
-				.right-scrollbar .persistent-scrollbar {
+				.right-scrollbar .scrollbar-input {
 					margin-top: -16px;
 				}
 
-				.bottom-scrollbar .persistent-scrollbar {
+				.bottom-scrollbar .scrollbar-input {
 					margin-right: 16px;
 				}
 

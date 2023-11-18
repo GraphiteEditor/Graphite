@@ -103,7 +103,7 @@
 	});
 </script>
 
-<div class={`persistent-scrollbar ${direction.toLowerCase()}`}>
+<div class={`scrollbar-input ${direction.toLowerCase()}`}>
 	<button class="arrow decrease" on:pointerdown={() => changePosition(-50)} tabindex="-1" />
 	<div class="scroll-track" bind:this={scrollTrack} on:pointerdown={grabArea}>
 		<div class="scroll-thumb" on:pointerdown={grabHandle} class:dragging style:top={thumbTop} style:bottom={thumbBottom} style:left={thumbLeft} style:right={thumbRight} />
@@ -112,7 +112,7 @@
 </div>
 
 <style lang="scss" global>
-	.persistent-scrollbar {
+	.scrollbar-input {
 		display: flex;
 		flex: 1 1 100%;
 
