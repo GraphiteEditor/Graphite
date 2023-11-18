@@ -24,7 +24,7 @@
 </script>
 
 <LayoutRow class="radio-input" classes={{ disabled }}>
-	{#each entries as entry, index (index)}
+	{#each entries as entry, index}
 		<button
 			class:active={index === selectedIndex}
 			class:mixed={selectedIndex === undefined}

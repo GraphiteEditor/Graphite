@@ -60,7 +60,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Keyboard events
 
 	async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent): Promise<boolean> {
-		// Don't redirect when a modal is covering the workspace
+		// Don't redirect when a dialog is covering the workspace
 		if (get(dialog).visible) return false;
 
 		const key = await getLocalizedScanCode(e);
@@ -157,7 +157,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	function onPointerDown(e: PointerEvent) {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
-		const inDialog = target instanceof Element && target.closest("[data-dialog-modal] [data-floating-menu-content]");
+		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inTextInput = target === textToolInteractiveInputElement;
 
 		if (get(dialog).visible && !inDialog) {

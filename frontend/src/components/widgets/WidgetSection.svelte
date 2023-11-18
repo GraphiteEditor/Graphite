@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { isWidgetRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
+	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetRow from "@graphite/components/widgets/WidgetRow.svelte";
+	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
 	export let widgetData: WidgetSectionFromJsMessages;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,9 +20,11 @@
 	</button>
 	{#if expanded}
 		<LayoutCol class="body">
-			{#each widgetData.layout as layoutGroup, index (index)}
-				{#if isWidgetRow(layoutGroup)}
-					<WidgetRow widgetData={layoutGroup} {layoutTarget} />
+			{#each widgetData.layout as layoutGroup}
+				{#if isWidgetSpanRow(layoutGroup)}
+					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
+				{:else if isWidgetSpanColumn(layoutGroup)}
+					<span style="color: #d6536e">Error: The WidgetSpan used here should be a row not a column</span>
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />
 				{:else}
@@ -105,7 +107,7 @@
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 
-			.widget-row {
+			.widget-span.row {
 				&:first-child {
 					margin-top: calc(4px - 1px);
 				}

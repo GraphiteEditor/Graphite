@@ -196,10 +196,10 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						let callback_message = (parameter_expose_button.on_update.callback)(parameter_expose_button);
 						responses.add(callback_message);
 					}
-					Widget::PivotAssist(pivot_assist) => {
-						let update_value = value.as_str().expect("RadioInput update was not of type: u64");
-						pivot_assist.position = update_value.into();
-						let callback_message = (pivot_assist.on_update.callback)(pivot_assist);
+					Widget::PivotInput(pivot_input) => {
+						let update_value = value.as_str().expect("PivotInput update was not of type: u64");
+						pivot_input.position = update_value.into();
+						let callback_message = (pivot_input.on_update.callback)(pivot_input);
 						responses.add(callback_message);
 					}
 					Widget::PopoverButton(_) => {}
@@ -210,7 +210,6 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::Separator(_) => {}
-					Widget::SwatchPairInput(_) => {}
 					Widget::TextAreaInput(text_area_input) => {
 						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
 						text_area_input.value = update_value.into();
@@ -228,6 +227,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::TextLabel(_) => {}
+					Widget::WorkingColorsButton(_) => {}
 				};
 				responses.add(ResendActiveWidget { layout_target, dirty_id: widget_id });
 			}

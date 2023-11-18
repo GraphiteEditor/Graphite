@@ -167,8 +167,8 @@ fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> La
 				widgets: vec![
 					TextLabel::new("Location").widget_holder(),
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					PivotAssist::new(layer.pivot.into())
-						.on_update(|pivot_assist: &PivotAssist| PropertiesPanelMessage::SetPivot { new_position: pivot_assist.position }.into())
+					PivotInput::new(layer.pivot.into())
+						.on_update(|pivot_input: &PivotInput| PropertiesPanelMessage::SetPivot { new_position: pivot_input.position }.into())
 						.widget_holder(),
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(layer.transform.x() + pivot.x))

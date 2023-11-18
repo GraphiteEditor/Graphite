@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import ColorButton from "./buttons/ColorButton.svelte";
-
 	import { debouncer } from "@graphite/utility-functions/debounce";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Widget, WidgetColumn, WidgetRow } from "@graphite/wasm-communication/messages";
-	import { narrowWidgetProps, isWidgetColumn, isWidgetRow } from "@graphite/wasm-communication/messages";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/wasm-communication/messages";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/wasm-communication/messages";
 
-	import PivotAssist from "@graphite/components/widgets/assists/PivotAssist.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
+	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import WorkingColorsButton from "@graphite/components/widgets/buttons/WorkingColorsButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
@@ -21,8 +20,8 @@
 	import LayerReferenceInput from "@graphite/components/widgets/inputs/LayerReferenceInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import OptionalInput from "@graphite/components/widgets/inputs/OptionalInput.svelte";
+	import PivotInput from "@graphite/components/widgets/inputs/PivotInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
-	import SwatchPairInput from "@graphite/components/widgets/inputs/SwatchPairInput.svelte";
 	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -35,7 +34,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	export let widgetData: WidgetColumn | WidgetRow;
+	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any;
 
@@ -43,16 +42,15 @@
 	$: widgets = watchWidgets(widgetData);
 	$: widgetsAndNextSiblingIsSuffix = watchWidgetsAndNextSiblingIsSuffix(widgets);
 
-	function watchDirection(widgetData: WidgetRow | WidgetColumn): "row" | "column" | "ERROR" {
-		if (isWidgetRow(widgetData)) return "row";
-		if (isWidgetColumn(widgetData)) return "column";
-		return "ERROR";
+	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
+		if (isWidgetSpanRow(widgetData)) return "row";
+		if (isWidgetSpanColumn(widgetData)) return "column";
 	}
 
-	function watchWidgets(widgetData: WidgetRow | WidgetColumn): Widget[] {
+	function watchWidgets(widgetData: WidgetSpanRow | WidgetSpanColumn): Widget[] {
 		let widgets: Widget[] = [];
-		if (isWidgetRow(widgetData)) widgets = widgetData.rowWidgets;
-		else if (isWidgetColumn(widgetData)) widgets = widgetData.columnWidgets;
+		if (isWidgetSpanRow(widgetData)) widgets = widgetData.rowWidgets;
+		else if (isWidgetSpanColumn(widgetData)) widgets = widgetData.columnWidgets;
 		return widgets;
 	}
 
@@ -83,8 +81,8 @@
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 <!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.svelte` as part of its refactor -->
 
-<div class={`widget-${direction}`}>
-	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index (index)}
+<div class="widget-span" class:row={direction === "row"} class:column={direction === "column"}>
+	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
@@ -139,9 +137,9 @@
 		{#if optionalInput}
 			<OptionalInput {...exclude(optionalInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
-		{@const pivotAssist = narrowWidgetProps(component.props, "PivotAssist")}
-		{#if pivotAssist}
-			<PivotAssist {...exclude(pivotAssist)} on:position={({ detail }) => updateLayout(index, detail)} />
+		{@const pivotInput = narrowWidgetProps(component.props, "PivotInput")}
+		{#if pivotInput}
+			<PivotInput {...exclude(pivotInput)} on:position={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
@@ -162,9 +160,9 @@
 		{#if separator}
 			<Separator {...exclude(separator)} />
 		{/if}
-		{@const swatchPairInput = narrowWidgetProps(component.props, "SwatchPairInput")}
-		{#if swatchPairInput}
-			<SwatchPairInput {...exclude(swatchPairInput)} />
+		{@const workingColorsButton = narrowWidgetProps(component.props, "WorkingColorsButton")}
+		{#if workingColorsButton}
+			<WorkingColorsButton {...exclude(workingColorsButton)} />
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}
@@ -190,13 +188,13 @@
 </div>
 
 <style lang="scss" global>
-	.widget-column {
+	.widget-span.column {
 		flex: 0 0 auto;
 		display: flex;
 		flex-direction: column;
 	}
 
-	.widget-row.widget-row {
+	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
 		min-height: 32px;

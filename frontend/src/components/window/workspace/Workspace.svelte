@@ -7,7 +7,7 @@
 
 	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
 
-	import DialogModal from "@graphite/components/floating-menus/DialogModal.svelte";
+	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Panel from "@graphite/components/window/workspace/Panel.svelte";
@@ -124,7 +124,7 @@
 		</LayoutCol>
 	</LayoutRow>
 	{#if $dialog.visible}
-		<DialogModal />
+		<Dialog />
 	{/if}
 </LayoutRow>
 

@@ -4,7 +4,7 @@ Each component represents a (usually reusable) part of the Graphite editor GUI. 
 
 ## Floating Menus: `floating-menus/`
 
-The temporary UI areas with dark backgrounds which hover over the top of the editor window content. Examples include popovers, dropdown menu selectors, and dialog modals.
+The temporary UI areas with dark backgrounds which hover over the top of the editor window content. Examples include menu lists, popovers, and dialogs.
 
 ## Layout: `layout/`
 

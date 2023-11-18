@@ -319,7 +319,7 @@
 				<TextLabel tooltip="Red/Green/Blue channels of the color, integers 0–255">RGB</TextLabel>
 				<Separator />
 				<LayoutRow>
-					{#each rgbChannels as [channel, strength], index (channel)}
+					{#each rgbChannels as [channel, strength], index}
 						{#if index > 0}
 							<Separator type="Related" />
 						{/if}
@@ -343,7 +343,7 @@
 				>
 				<Separator />
 				<LayoutRow>
-					{#each hsvChannels as [channel, strength], index (channel)}
+					{#each hsvChannels as [channel, strength], index}
 						{#if index > 0}
 							<Separator type="Related" />
 						{/if}

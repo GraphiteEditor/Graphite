@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { isWidgetColumn, isWidgetRow, isWidgetSection, type WidgetLayout } from "@graphite/wasm-communication/messages";
+	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type WidgetLayout } from "@graphite/wasm-communication/messages";
 
-	import WidgetSection from "@graphite/components/widgets/groups/WidgetSection.svelte";
-	import WidgetRow from "@graphite/components/widgets/WidgetRow.svelte";
+	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
+	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
 	export let layout: WidgetLayout;
 	let className = "";
@@ -14,15 +14,14 @@
 		.join(" ");
 </script>
 
-<!-- TODO: Refactor this component (together with `WidgetRow.svelte`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
 <div class={`widget-layout ${className} ${extraClasses}`.trim()}>
-	{#each layout.layout as layoutGroup, index (index)}
-		{#if isWidgetColumn(layoutGroup) || isWidgetRow(layoutGroup)}
-			<WidgetRow widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
+	{#each layout.layout as layoutGroup}
+		{#if isWidgetSpanRow(layoutGroup) || isWidgetSpanColumn(layoutGroup)}
+			<WidgetSpan widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
 		{:else if isWidgetSection(layoutGroup)}
 			<WidgetSection widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
 		{:else}
-			<span style="color: #d6536e">Error: The widget row that belongs here has an invalid layout group type</span>
+			<span style="color: #d6536e">Error: The widget layout that belongs here has an invalid layout group type</span>
 		{/if}
 	{/each}
 </div>

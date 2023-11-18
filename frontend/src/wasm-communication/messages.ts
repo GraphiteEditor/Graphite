@@ -6,6 +6,8 @@ import { Transform, Type, plainToClass } from "class-transformer";
 import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
 
+import type MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
 	static readonly jsMessageMarker = true;
@@ -791,7 +793,7 @@ export type MenuBarEntry = MenuEntryCommon & {
 	disabled?: boolean;
 };
 
-// An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
+// An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `MenuListButton` and `DropdownInput`)
 export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
 	children?: MenuListEntry[][];
@@ -801,7 +803,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	disabled?: boolean;
 	tooltip?: string;
 	font?: URL;
-	ref?: any;
+	ref?: MenuList;
 };
 
 export class CurveManipulatorGroup {
@@ -1010,7 +1012,7 @@ export class Separator extends WidgetProps {
 	type!: SeparatorType;
 }
 
-export class SwatchPairInput extends WidgetProps {
+export class WorkingColorsButton extends WidgetProps {
 	@Type(() => Color)
 	primary!: Color;
 
@@ -1119,7 +1121,7 @@ export class TextLabel extends WidgetProps {
 
 export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
-export class PivotAssist extends WidgetProps {
+export class PivotInput extends WidgetProps {
 	position!: PivotPosition;
 
 	disabled!: boolean;
@@ -1141,11 +1143,11 @@ const widgetSubTypes = [
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: OptionalInput, name: "OptionalInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
-	{ value: PivotAssist, name: "PivotAssist" },
+	{ value: PivotInput, name: "PivotInput" },
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },
-	{ value: SwatchPairInput, name: "SwatchPairInput" },
+	{ value: WorkingColorsButton, name: "WorkingColorsButton" },
 	{ value: TextAreaInput, name: "TextAreaInput" },
 	{ value: TextButton, name: "TextButton" },
 	{ value: TextInput, name: "TextInput" },
@@ -1259,16 +1261,16 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 	});
 }
 
-export type LayoutGroup = WidgetRow | WidgetColumn | WidgetSection;
+export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetSection;
 
-export type WidgetColumn = { columnWidgets: Widget[] };
-export function isWidgetColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetColumn {
-	return Boolean((layoutColumn as WidgetColumn).columnWidgets);
+export type WidgetSpanColumn = { columnWidgets: Widget[] };
+export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
+	return Boolean((layoutColumn as WidgetSpanColumn).columnWidgets);
 }
 
-export type WidgetRow = { rowWidgets: Widget[] };
-export function isWidgetRow(layoutRow: LayoutGroup): layoutRow is WidgetRow {
-	return Boolean((layoutRow as WidgetRow).rowWidgets);
+export type WidgetSpanRow = { rowWidgets: Widget[] };
+export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
+	return Boolean((layoutRow as WidgetSpanRow).rowWidgets);
 }
 
 export type WidgetSection = { name: string; layout: LayoutGroup[] };
@@ -1301,12 +1303,12 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
 		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
 
-		const result: WidgetColumn = { columnWidgets };
+		const result: WidgetSpanColumn = { columnWidgets };
 		return result;
 	}
 
 	if (layoutGroup.row) {
-		const result: WidgetRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
+		const result: WidgetSpanRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
 		return result;
 	}
 

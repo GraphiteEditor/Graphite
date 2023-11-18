@@ -15,7 +15,7 @@
 	export let mediumDivisions = 5;
 	export let minorDivisions = 2;
 
-	let canvasRuler: HTMLDivElement | undefined;
+	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
 
@@ -76,11 +76,11 @@
 	}
 
 	export function resize() {
-		if (!canvasRuler) return;
+		if (!rulerInput) return;
 
 		const isVertical = direction === "Vertical";
 
-		const newLength = isVertical ? canvasRuler.clientHeight : canvasRuler.clientWidth;
+		const newLength = isVertical ? rulerInput.clientHeight : rulerInput.clientWidth;
 		const roundedUp = (Math.floor(newLength / majorMarkSpacing) + 1) * majorMarkSpacing;
 
 		if (roundedUp !== rulerLength) {
@@ -98,17 +98,17 @@
 	}
 </script>
 
-<div class={`canvas-ruler ${direction.toLowerCase()}`} bind:this={canvasRuler}>
+<div class={`ruler-input ${direction.toLowerCase()}`} bind:this={rulerInput}>
 	<svg style:width={svgBounds.width} style:height={svgBounds.height}>
 		<path d={svgPath} />
-		{#each svgTexts as svgText, index (index)}
+		{#each svgTexts as svgText}
 			<text transform={svgText.transform}>{svgText.text}</text>
 		{/each}
 	</svg>
 </div>
 
 <style lang="scss" global>
-	.canvas-ruler {
+	.ruler-input {
 		flex: 1 1 100%;
 		background: var(--color-4-dimgray);
 		overflow: hidden;

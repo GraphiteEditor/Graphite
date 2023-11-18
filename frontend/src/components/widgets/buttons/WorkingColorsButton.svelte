@@ -35,7 +35,7 @@
 	}
 </script>
 
-<LayoutCol class="swatch-pair">
+<LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
 		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
 		<ColorPicker open={primaryOpen} on:open={({ detail }) => (primaryOpen = detail)} color={primary} on:color={({ detail }) => primaryColorChanged(detail)} direction="Right" />
@@ -47,7 +47,7 @@
 </LayoutCol>
 
 <style lang="scss" global>
-	.swatch-pair {
+	.working-colors-button {
 		flex: 0 0 auto;
 
 		.swatch {

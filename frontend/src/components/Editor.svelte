@@ -272,10 +272,10 @@
 	.popover-button,
 	.color-button > button,
 	.color-picker .preset-color,
-	.swatch-pair .swatch > button,
+	.working-colors-button .swatch > button,
 	.radio-input button,
 	.menu-list,
-	.menu-bar-input .entry,
+	.menu-list-button .entry,
 	.layer-tree .expand-arrow,
 	.widget-section .header {
 		&:focus-visible {

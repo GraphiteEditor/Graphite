@@ -88,12 +88,12 @@
 			}
 		}
 
-		.widget-row > & + .text-button,
+		.widget-span.row > & + .text-button,
 		.layout-row > & + .text-button {
 			margin-left: 8px;
 		}
 
-		.widget-column > & + .text-button,
+		.widget-span.column > & + .text-button,
 		.layout-column > & + .text-button {
 			margin-top: 8px;
 		}

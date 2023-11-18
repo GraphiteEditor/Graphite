@@ -103,7 +103,7 @@
 
 		const menuOpen = open;
 		const flatEntries = entries.flat().filter((entry) => !entry.disabled);
-		const openChild = flatEntries.findIndex((entry) => entry.children?.length && entry.ref?.open);
+		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && entry.ref?.open);
 
 		const openSubmenu = (highlightedEntry: MenuListEntry) => {
 			if (highlightedEntry.ref && highlightedEntry.children?.length) {
