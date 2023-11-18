@@ -13,9 +13,21 @@ use glam::{DAffine2, DVec2, IVec2, UVec2};
 pub mod renderer;
 
 /// A list of [`GraphicElement`]s
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, Default)]
+#[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GraphicGroup(Vec<GraphicElement>);
+pub struct GraphicGroup {
+	elements: Vec<GraphicElement>,
+	pub opacity: f32,
+	pub transform: DAffine2,
+}
+
+impl core::hash::Hash for GraphicGroup {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.elements.hash(state);
+		self.opacity.to_bits().hash(state);
+		self.transform.to_cols_array().iter().for_each(|element| element.to_bits().hash(state))
+	}
+}
 
 /// Internal data for a [`GraphicElement`]. Can be [`VectorData`], [`ImageFrame`], text, or a nested [`GraphicGroup`]
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
@@ -166,12 +178,12 @@ impl From<Artboard> for GraphicElementData {
 impl Deref for GraphicGroup {
 	type Target = Vec<GraphicElement>;
 	fn deref(&self) -> &Self::Target {
-		&self.0
+		&self.elements
 	}
 }
 impl DerefMut for GraphicGroup {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
+		&mut self.elements
 	}
 }
 
@@ -193,12 +205,20 @@ where
 			graphic_element_data: value.into(),
 			..Default::default()
 		};
-		Self(vec![element])
+		Self {
+			elements: (vec![element]),
+			opacity: 1.,
+			transform: DAffine2::IDENTITY,
+		}
 	}
 }
 
 impl GraphicGroup {
-	pub const EMPTY: Self = Self(Vec::new());
+	pub const EMPTY: Self = Self {
+		elements: Vec::new(),
+		opacity: 1.,
+		transform: DAffine2::IDENTITY,
+	};
 
 	pub fn to_usvg_tree(&self, resolution: UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
 		let root_node = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
@@ -211,7 +231,7 @@ impl GraphicGroup {
 			root: root_node.clone(),
 		};
 
-		for element in self.0.iter() {
+		for element in self.iter() {
 			root_node.append(element.to_usvg_node());
 		}
 		tree
@@ -293,7 +313,7 @@ impl GraphicElement {
 			GraphicElementData::GraphicGroup(group) => {
 				let group_element = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
 
-				for element in group.0.iter() {
+				for element in group.iter() {
 					group_element.append(element.to_usvg_node());
 				}
 				group_element

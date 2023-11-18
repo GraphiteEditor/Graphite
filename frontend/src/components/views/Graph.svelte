@@ -756,7 +756,7 @@
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.displayName)} />
-					<TextLabel tooltip={node.displayName}>{node.displayName}</TextLabel>
+					<TextLabel tooltip={`${node.displayName} node with id: ${node.id}`}>{node.displayName}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}

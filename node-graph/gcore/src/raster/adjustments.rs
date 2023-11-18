@@ -1,5 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::{vector::VectorData, GraphicGroup};
+
 #[cfg(feature = "alloc")]
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use super::{Channel, Color, Node, RGBMut};
@@ -848,6 +850,20 @@ pub struct OpacityNode<O> {
 fn image_opacity(color: Color, opacity_multiplier: f32) -> Color {
 	let opacity_multiplier = opacity_multiplier / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+}
+
+#[node_macro::node_impl(OpacityNode)]
+fn image_opacity(mut vector_data: VectorData, opacity_multiplier: f32) -> VectorData {
+	let opacity_multiplier = opacity_multiplier / 100.;
+	vector_data.style.opacity *= opacity_multiplier;
+	vector_data
+}
+
+#[node_macro::node_impl(OpacityNode)]
+fn image_opacity(mut graphic_group: GraphicGroup, opacity_multiplier: f32) -> GraphicGroup {
+	let opacity_multiplier = opacity_multiplier / 100.;
+	graphic_group.opacity *= opacity_multiplier;
+	graphic_group
 }
 
 #[derive(Debug, Clone, Copy)]

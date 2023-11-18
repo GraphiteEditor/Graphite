@@ -1,5 +1,9 @@
 import json
 import copy
+import math
+import numpy
+
+numpy.set_printoptions(suppress=True)
 
 def gen_id():
 	new_id = 42
@@ -19,17 +23,72 @@ y_position = gen_y()
 new_nodes = {}
 shift_left = 32
 
-def update_layer(data, indent, layer_node_id, next_id):
+def set_transform(node, transform):
+	x_axis = transform[0]
+	y_axis = transform[1]
+
+	# Assuming there is no vertical shear
+	angle = math.atan2( x_axis[1], x_axis[0])
+	(sin, cos) = math.sin(angle), math.cos(angle)
+	scale_x = x_axis[0] / cos if math.fabs(cos) > 1e-10 else x_axis[1] / sin
+
+	shear_x = (sin * y_axis[1] + cos * y_axis[0]) / (sin * sin * scale_x + cos * cos * scale_x);
+	if not numpy.isfinite(shear_x):
+		shear_x = 0.;
+	
+	scale_y = (y_axis[1] - scale_x * sin * shear_x) / cos if math.fabs(cos) > 1e-10 else (scale_x * cos * shear_x - y_axis[0]) / sin
+
+	translation = transform[2][:2]
+	node["inputs"][1] = {"Value": { "tagged_value": { "DVec2": [translation[0], translation[1]] }, "exposed": False}}
+	node["inputs"][2] = {"Value": { "tagged_value": { "F32": angle }, "exposed": False}}
+	node["inputs"][3] = {"Value": { "tagged_value": { "DVec2": [scale_x, scale_y] }, "exposed": False}}
+	node["inputs"][4] = {"Value": { "tagged_value": { "DVec2": [shear_x, 0] }, "exposed": False}}
+	node["inputs"][5] = {"Value": { "tagged_value": { "DVec2": [0,0] }, "exposed": False}}
+
+def to_transform(transform):
+	mat = transform["matrix2"]
+	translation = transform["translation"]
+	return numpy.array([[mat[0], mat[1], 0], [mat[2], mat[3], 0], [translation[0], translation[1], 1]])
+
+def update_layer(layer, indent, layer_node_id, next_id, opacity):
+	data = layer["data"]
+	
+	opacity = opacity * layer["opacity"]
+
 	y = next(y_position)
 	output = None
 	if "Folder" in data:
 		new_layer_ids = list(map(lambda x, _: x, new_id, data["Folder"]["layers"]))
+		output = new_layer_ids[0]
+		insert_transform = "transform" in layer and (numpy.identity(3) != to_transform(layer["transform"])).any()
+		if insert_transform:
+			node = {
+				"name": "Transform",
+				"implementation": {"Unresolved":{"name": "graphene_core::transform::TransformNode<_, _, _, _, _, _>"}},
+				"manual_composition":{"Concrete":{"name":"graphene_core::transform::Footprint","size":72,"align":8}},
+				"metadata": {"position": [-indent-8,y]},
+				"skip_deduplication": False,
+				"path": None,
+				"manual_composition": {"Concrete": {"name": "graphene_core::transform::Footprint","size": 72,"align": 8}},
+				"inputs":[{"Node":{"node_id":output,"output_index":0,"lambda":False}}, None, None, None, None, None]
+			}
+			transform_id = next(new_id)
+			new_nodes[str(transform_id)] = node
+			output = transform_id
+			set_transform(node, to_transform(layer["transform"]))
+			indent += 8
+			
+
+		
 		for index, layer in enumerate(reversed(data["Folder"]["layers"])):
 			next_index = None
 			if index +1 < len(new_layer_ids):
 				next_index = new_layer_ids[index+1]
-			update_layer(layer["data"], indent + 5, new_layer_ids[index], next_index)
-		output = new_layer_ids[0]
+			update_layer(layer, indent + 5, new_layer_ids[index], next_index, opacity)
+
+		if insert_transform:
+			indent -= 8
+		
 	if "Layer" in data:
 		network = data["Layer"]["network"]
 
@@ -47,8 +106,6 @@ def update_layer(data, indent, layer_node_id, next_id):
 				if "Node" in node_input:
 					node_input["Node"]["node_id"] = new_ids[node_input["Node"]["node_id"]]
 			if node["name"] == "Transform":
-				
-				
 				node["implementation"]={"Unresolved":{"name": "graphene_core::transform::TransformNode<_, _, _, _, _, _>"}}
 				node["manual_composition"]={"Concrete":{"name":"graphene_core::transform::Footprint","size":72,"align":8}}
 			
@@ -56,7 +113,10 @@ def update_layer(data, indent, layer_node_id, next_id):
 				if not any(map(lambda x: network["nodes"][x]["name"] == "Cull", nodes)):
 					node["metadata"]["position"][1] = y
 					node["metadata"]["position"][0] -= shift_left + 8 + indent
+					if opacity != 1:
+						node["metadata"]["position"][0] -= 8
 					shape = next(new_id)
+					cull = next(new_id)
 
 					new_nodes[str(shape)] = copy.deepcopy(node)
 
@@ -65,7 +125,17 @@ def update_layer(data, indent, layer_node_id, next_id):
 					node["manual_composition"] = {"Concrete":{"name":"graphene_core::transform::Footprint","size":72,"align":8}}
 					node["has_primary_output"] = True
 					node["implementation"] = {"Unresolved":{"name":"graphene_core::transform::CullNode<_>"}}
-					node["metadata"]["position"][0] += shift_left + 8 + indent
+					
+					if opacity != 1:
+						node["metadata"]["position"][0] += 8
+						new_nodes[str(cull)] = copy.deepcopy(node)
+
+						node["name"] = "Opacity"
+						node["inputs"] = [{"Node":{"node_id":cull,"output_index":0,"lambda":False}}, {"Value":{"tagged_value":{"F32":opacity * 100},"exposed":False}}]
+						node["manual_composition"] = None
+						node["has_primary_output"] = True
+						node["implementation"] = {"Unresolved":{"name":"graphene_core::raster::OpacityNode<_>"}}
+					node["metadata"]["position"][0] += 8 + shift_left + indent
 
 			node["metadata"]["position"][1] = y
 			node["metadata"]["position"][0] -= shift_left + indent
@@ -76,7 +146,7 @@ def update_layer(data, indent, layer_node_id, next_id):
 		
 	assert(output == None or str(output) in new_nodes)
 
-	node_to_input = lambda node_id: {"Node": {"node_id": node_id,"output_index": 0,"lambda": False}} if node_id else {"Value":{"tagged_value":{"GraphicGroup":[]},"exposed":True}}
+	node_to_input = lambda node_id: {"Node": {"node_id": node_id,"output_index": 0,"lambda": False}} if node_id else {"Value":{"tagged_value":{"GraphicGroup":{"elements":[],"opacity":1.0,"transform":[1.0,0.0,0.0,1.0,0.0,0.0]}},"exposed":True}}
 
 	node = {
 		"name": "Layer",
@@ -85,7 +155,7 @@ def update_layer(data, indent, layer_node_id, next_id):
 			{
 				"Value": {
 					"tagged_value": {
-						"String": ""
+						"String": layer["name"] or "Untitled"
 					},
 					"exposed": False
 				}
@@ -93,7 +163,7 @@ def update_layer(data, indent, layer_node_id, next_id):
 			{
 				"Value": {
 					"tagged_value": {
-						"BlendMode": "Normal"
+						"BlendMode": layer["blend_mode"]
 					},
 					"exposed": False
 				}
@@ -346,8 +416,14 @@ def migrate(name, new_name):
 
 	with open(name) as f:
 		document = json.load(f)
-	data = document["document_legacy"]["root"]["data"]
-	update_layer(data, 0, next(new_id), None)
+	layer = document["document_legacy"]["root"]
+	data = layer["data"]
+	new_layer_ids = list(map(lambda x, _: x, new_id, data["Folder"]["layers"]))
+	for index, layer in enumerate(reversed(data["Folder"]["layers"])):
+		next_index = None
+		if index + 1 < len(new_layer_ids):
+			next_index = new_layer_ids[index+1]
+		update_layer(layer, 5, new_layer_ids[index], next_index, 1)
 
 	new_nodes["0"] = {
 		"name": "Output",
