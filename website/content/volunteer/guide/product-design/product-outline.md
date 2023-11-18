@@ -10,7 +10,7 @@ order = 1 # Page number after chapter intro
 - Interface
 	- Title bar
 		- Menu bar
-		- Focused document title
+		- Document title
 		- Window buttons
 	- Workspace
 		- Panel interface (tab, pin, options bar, left menu)

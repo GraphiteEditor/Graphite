@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-/// A dialog for confirming the closing of all documents viewable via `file -> close all` in the menu bar.
+/// A dialog for confirming the closing of all documents viewable via `File -> Close All` in the menu bar.
 pub struct CloseAllDocumentsDialog {
 	pub unsaved_document_names: Vec<String>,
 }

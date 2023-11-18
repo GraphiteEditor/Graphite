@@ -6,6 +6,8 @@ import { Transform, Type, plainToClass } from "class-transformer";
 import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
 
+import type MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
 	static readonly jsMessageMarker = true;
@@ -791,7 +793,7 @@ export type MenuBarEntry = MenuEntryCommon & {
 	disabled?: boolean;
 };
 
-// An entry in the all-encompassing MenuList component which defines all types of menus ranging from `MenuBarInput` to `DropdownInput` widgets
+// An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `MenuListButton` and `DropdownInput`)
 export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
 	children?: MenuListEntry[][];
@@ -801,7 +803,7 @@ export type MenuListEntry = MenuEntryCommon & {
 	disabled?: boolean;
 	tooltip?: string;
 	font?: URL;
-	ref?: any;
+	ref?: MenuList;
 };
 
 export class CurveManipulatorGroup {

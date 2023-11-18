@@ -3,12 +3,15 @@
 </script>
 
 <script lang="ts">
-	import { getContext } from "svelte";
+	import { getContext, onMount } from "svelte";
 
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import type { Editor } from "@graphite/wasm-communication/editor";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/wasm-communication/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import MenuBarInput from "@graphite/components/widgets/inputs/MenuBarInput.svelte";
+	import MenuListButton from "@graphite/components/widgets/buttons/MenuListButton.svelte";
 	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
@@ -17,25 +20,73 @@
 	export let platform: Platform;
 	export let maximized: boolean;
 
+	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
+
+	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
+	const ACCEL_KEY = platformIsMac() ? "Command" : "Control";
+	const LOCK_REQUIRING_SHORTCUTS: KeyRaw[][] = [
+		[ACCEL_KEY, "KeyW"],
+		[ACCEL_KEY, "KeyN"],
+		[ACCEL_KEY, "Shift", "KeyN"],
+		[ACCEL_KEY, "KeyT"],
+		[ACCEL_KEY, "Shift", "KeyT"],
+	];
+
+	let entries: MenuListEntry[] = [];
 
 	$: docIndex = $portfolio.activeDocumentIndex;
 	$: displayName = $portfolio.documents[docIndex]?.displayName || "";
 	$: windowTitle = `${displayName}${displayName && " - "}Graphite`;
+
+	onMount(() => {
+		const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
+		const shortcutRequiresLock = (shortcut: LayoutKeysGroup): boolean => {
+			const shortcutKeys = shortcut.map((keyWithLabel) => keyWithLabel.key);
+
+			// If this shortcut matches any of the browser-reserved shortcuts
+			return LOCK_REQUIRING_SHORTCUTS.some((lockKeyCombo) => arraysEqual(shortcutKeys, lockKeyCombo));
+		};
+
+		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
+			const menuBarEntryToMenuListEntry = (entry: MenuBarEntry): MenuListEntry => ({
+				// From `MenuEntryCommon`
+				...entry,
+
+				// Shared names with fields that need to be converted from the type used in `MenuBarEntry` to that of `MenuListEntry`
+				action: () => editor.instance.updateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
+				children: entry.children ? entry.children.map((entries) => entries.map((entry) => menuBarEntryToMenuListEntry(entry))) : undefined,
+
+				// New fields in `MenuListEntry`
+				shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
+				value: undefined,
+				disabled: entry.disabled ?? undefined,
+				font: undefined,
+				ref: undefined,
+			});
+
+			entries = updateMenuBarLayout.layout.map(menuBarEntryToMenuListEntry);
+		});
+	});
 </script>
 
 <LayoutRow class="title-bar">
-	<LayoutRow class="header-part">
+	<!-- Menu bar (or on Mac: window buttons) -->
+	<LayoutRow class="left">
 		{#if platform === "Mac"}
 			<WindowButtonsMac {maximized} />
 		{:else}
-			<MenuBarInput />
+			{#each entries as entry}
+				<MenuListButton {entry} />
+			{/each}
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="header-part">
+	<!-- Document title -->
+	<LayoutRow class="center">
 		<WindowTitle text={windowTitle} />
 	</LayoutRow>
-	<LayoutRow class="header-part">
+	<!-- Window buttons (except on Mac) -->
+	<LayoutRow class="right">
 		{#if platform === "Windows" || platform === "Linux"}
 			<WindowButtonsWindows {maximized} />
 		{:else if platform === "Web"}
@@ -49,18 +100,18 @@
 		height: 28px;
 		flex: 0 0 auto;
 
-		.header-part {
+		> .layout-row {
 			flex: 1 1 100%;
 
-			&:nth-child(1) {
+			&.left {
 				justify-content: flex-start;
 			}
 
-			&:nth-child(2) {
+			&.center {
 				justify-content: center;
 			}
 
-			&:nth-child(3) {
+			&.right {
 				justify-content: flex-end;
 			}
 		}
