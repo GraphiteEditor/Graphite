@@ -520,8 +520,8 @@ mod test {
 		let mut editor = Editor::create();
 
 		let test_files = [
-			("Just a Potted Cactus", include_str!("../../demo-artwork/migrated_just_a_potted_cactus.graphite")),
-			("Valley of Spires", include_str!("../../demo-artwork/migrated_valley_of_spires.graphite")),
+			("Just a Potted Cactus", include_str!("../../demo-artwork/just-a-potted-cactus.graphite")),
+			("Valley of Spires", include_str!("../../demo-artwork/valley-of-spires.graphite")),
 		];
 
 		for (document_name, document_serialized_content) in test_files {

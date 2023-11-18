@@ -8,12 +8,12 @@ const ARTWORK: [(&str, &str, &str); 2] = [
 	(
 		"Valley of Spires",
 		"ThumbnailValleyOfSpires",
-		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/fix-tests/demo-artwork/migrated_valley_of_spires.graphite",
+		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/fix-tests/demo-artwork/valley-of-spires.graphite",
 	),
 	(
 		"Just a Potted Cactus",
 		"ThumbnailJustAPottedCactus",
-		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/fix-tests/demo-artwork/migrated_just_a_potted_cactus.graphite",
+		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/fix-tests/demo-artwork/just-a-potted-cactus.graphite",
 	),
 ];
 
